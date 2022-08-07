@@ -54,6 +54,7 @@ namespace Clap
 
     // if successful, query the extensions the wrapper might want to use
     getExtension(_plugin, _ext._state, CLAP_EXT_STATE);
+    getExtension(_plugin, _ext._params, CLAP_EXT_PARAMS);
     getExtension(_plugin, _ext._audioports, CLAP_EXT_AUDIO_PORTS);
     getExtension(_plugin, _ext._noteports, CLAP_EXT_NOTE_PORTS);
     getExtension(_plugin, _ext._midimap, CLAP_EXT_MIDI_MAPPINGS);
@@ -98,11 +99,17 @@ namespace Clap
     {
       _parentHost->setupMIDIBusses(_plugin, _ext._noteports);
     }
+    if (_ext._params)
+    {
+      _parentHost->setupParameters(_plugin, _ext._params);
+    }
     return true;
   }
 
   void Plugin::terminate()
   {
+    _plugin->destroy(_plugin);
+    _plugin = nullptr;
   }
 
   void Plugin::setSampleRate(double sampleRate)

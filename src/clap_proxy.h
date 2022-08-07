@@ -20,6 +20,7 @@ namespace Clap
 
     virtual void setupAudioBusses(const clap_plugin_t* plugin, const clap_plugin_audio_ports_t* audioports) = 0;   // called from initialize() to allow the setup of audio ports
     virtual void setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_note_ports_t* noteports) = 0;      // called from initialize() to allow the setup of MIDI ports
+    virtual void setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params) = 0;
   };
 
   struct ClapPluginExtensions;
@@ -34,6 +35,7 @@ namespace Clap
   struct ClapPluginExtensions
   {
     const clap_plugin_state_t* _state = nullptr;
+    const clap_plugin_params_t* _params = nullptr;
     const clap_plugin_audio_ports_t* _audioports = nullptr;
     const clap_plugin_gui_t* _gui = nullptr;
     const clap_plugin_note_ports_t* _noteports = nullptr;

@@ -3,6 +3,7 @@
 #include <clap/clap.h>
 #include <pluginterfaces/vst/ivstevents.h>
 #include <pluginterfaces/vst/ivstaudioprocessor.h>
+#include <public.sdk/source/vst/vstparameters.h>
 #include <vector>
 
 class ProcessAdapter
@@ -10,12 +11,14 @@ class ProcessAdapter
 public:
   typedef union clap_multi_event
   {
+		clap_event_header_t header;
     clap_event_note_t note;
     clap_event_midi_t midi;
     clap_event_midi_sysex_t sysex;
+		clap_event_param_value_t param;
   } clap_multi_event_t;
 
-  void setupProcessing(size_t numInputs, size_t numOutputs, size_t numEventInputs, size_t numEventOutputs);
+  void setupProcessing(size_t numInputs, size_t numOutputs, size_t numEventInputs, size_t numEventOutputs, Steinberg::Vst::ParameterContainer& params);
   void process(Steinberg::Vst::ProcessData& data, const clap_plugin_t* plugin);
 
 	// C callbacks
@@ -24,6 +27,8 @@ public:
 
 	static bool output_events_try_push(const struct clap_output_events* list, const clap_event_header_t* event);
 private:
+	Steinberg::Vst::ParameterContainer* parameters = nullptr;
+
 	clap_audio_buffer_t _inputs;
 	clap_audio_buffer_t _outputs;
 	clap_event_transport_t _transport;
@@ -35,4 +40,5 @@ private:
 	Steinberg::Vst::ProcessData* _vstdata = nullptr;
 
 	std::vector<clap_multi_event_t> _events;
+	std::vector<size_t> _eventindices;
 };

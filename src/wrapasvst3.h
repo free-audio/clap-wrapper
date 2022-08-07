@@ -66,6 +66,7 @@ public:
 	// Clap::IHost
 	void setupAudioBusses(const clap_plugin_t* plugin, const clap_plugin_audio_ports_t* audioports) override;
 	void setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_note_ports_t* noteports) override;
+  void setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params) override;
 	void mark_dirty() override;
 	void schnick() override;
 
@@ -73,7 +74,6 @@ private:
 	// helper functions
 	void addAudioBusFrom(const clap_audio_port_info_t* info, bool is_input);
 	void addMIDIBusFrom(const clap_note_port_info_t* info, bool is_input);
-
 	Clap::Library* _library = nullptr;
 	int _libraryIndex = 0;
 	std::shared_ptr<Clap::Plugin> _plugin;

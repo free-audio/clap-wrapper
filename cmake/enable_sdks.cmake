@@ -104,6 +104,8 @@ set(wrappersources
 	src/wrapasvst3.cpp
 	src/wrapasvst3_version.h
 	src/wrapasvst3_entry.cpp
+	src/detail/vst3/parameter.h
+	src/detail/vst3/parameter.cpp
 	src/detail/vst3/plugview.h
 	src/detail/vst3/plugview.cpp
 	src/detail/vst3/state.h
