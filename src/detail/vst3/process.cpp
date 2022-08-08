@@ -163,7 +163,7 @@ void ProcessAdapter::process(Steinberg::Vst::ProcessData& data, const clap_plugi
         {
           clap_multi_event_t n;
           n.note.header.type = CLAP_EVENT_NOTE_ON;
-          n.note.header.flags = vstevent.flags & Vst::Event::kIsLive ? CLAP_EVENT_IS_LIVE : 0;
+          n.note.header.flags = (vstevent.flags & Vst::Event::kIsLive) ? CLAP_EVENT_IS_LIVE : 0;
           n.note.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
           n.note.header.time = vstevent.sampleOffset;
           n.note.header.size = sizeof(clap_event_note);
@@ -179,7 +179,7 @@ void ProcessAdapter::process(Steinberg::Vst::ProcessData& data, const clap_plugi
         {
           clap_multi_event_t n;
           n.note.header.type = CLAP_EVENT_NOTE_OFF;
-          n.note.header.flags = vstevent.flags & Vst::Event::kIsLive ? CLAP_EVENT_IS_LIVE : 0;
+          n.note.header.flags = (vstevent.flags & Vst::Event::kIsLive) ? CLAP_EVENT_IS_LIVE : 0;
           n.note.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
           n.note.header.time = vstevent.sampleOffset;
           n.note.header.size = sizeof(clap_event_note);

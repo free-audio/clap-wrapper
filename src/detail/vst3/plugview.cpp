@@ -71,7 +71,10 @@ tresult PLUGIN_API WrappedView::attached(void* parent, FIDString type)
   ensure_ui();
   _extgui->set_parent(_plugin, &_window);
   _attached = true;
-  _extgui->set_size(_plugin, _rect.getWidth(), _rect.getHeight());
+  if (_extgui->can_resize(_plugin))
+  {
+    _extgui->set_size(_plugin, _rect.getWidth(), _rect.getHeight());
+  }
   return kResultOk;
 }
 
@@ -125,10 +128,18 @@ tresult PLUGIN_API WrappedView::onSize(ViewRect* newSize)
     _rect = *newSize;
     if (_created && _attached)
     {
-      if (_extgui->set_size(_plugin, newSize->getWidth(), newSize->getHeight()))
+      if (_extgui->can_resize(_plugin))
       {
-        return kResultOk;
+        if (_extgui->set_size(_plugin, newSize->getWidth(), newSize->getHeight()))
+        {
+          return kResultOk;
+        }
       }
+      else
+      {
+        return kResultFalse;
+      }
+
     }
     return kResultOk;
   }
