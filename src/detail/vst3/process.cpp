@@ -1,13 +1,15 @@
 #include "process.h"
 #include <pluginterfaces/vst/ivstevents.h>
+#include <pluginterfaces/vst/ivstparameterchanges.h>
+#include "parameter.h"
+#include <algorithm>
 
 using namespace Steinberg;
 
-
-
-
-void ProcessAdapter::setupProcessing(size_t numInputs, size_t numOutputs, size_t numEventInputs, size_t numEventOutputs)
+void ProcessAdapter::setupProcessing(size_t numInputs, size_t numOutputs, size_t numEventInputs, size_t numEventOutputs, Steinberg::Vst::ParameterContainer& params)
 {
+  parameters = &params;
+
   _processData.audio_inputs_count = numInputs;
   if (numInputs > 0)
   {
@@ -33,7 +35,9 @@ void ProcessAdapter::setupProcessing(size_t numInputs, size_t numOutputs, size_t
   _out_events.try_push = output_events_try_push;
 
   _events.clear();
-  _events.reserve(200);
+  _events.reserve(256);
+  _eventindices.clear();
+  _eventindices.reserve(_events.capacity());
 
   _out_events.ctx = this;
 
@@ -65,67 +69,70 @@ void ProcessAdapter::process(Steinberg::Vst::ProcessData& data, const clap_plugi
     0
   };
 
-  // converting the flags
-  _transport.flags = 0
-    // kPlaying = 1 << 1,		///< currently playing
-    | ( (_vstdata->processContext->state & Vst::ProcessContext::kPlaying) ? CLAP_TRANSPORT_IS_PLAYING : 0 )
-    // kRecording = 1 << 3,		///< currently recording
-    | ((_vstdata->processContext->state & Vst::ProcessContext::kRecording) ? CLAP_TRANSPORT_IS_RECORDING : 0)
-    // kCycleActive = 1 << 2,		///< cycle is active
-    | ((_vstdata->processContext->state & Vst::ProcessContext::kCycleActive) ? CLAP_TRANSPORT_IS_LOOP_ACTIVE : 0)
-    // kTempoValid = 1 << 10,	///< tempo contains valid information
-    | ((_vstdata->processContext->state & Vst::ProcessContext::kTempoValid) ? CLAP_TRANSPORT_HAS_TEMPO : 0                )
-    | ((_vstdata->processContext->state & Vst::ProcessContext::kBarPositionValid) ? CLAP_TRANSPORT_HAS_BEATS_TIMELINE : 0 )
-    | ((_vstdata->processContext->state & Vst::ProcessContext::kTimeSigValid) ? CLAP_TRANSPORT_HAS_TIME_SIGNATURE : 0      )
-    
-    // the rest of the flags has no meaning to CLAP
-    // kSystemTimeValid = 1 << 8,		///< systemTime contains valid information
-    // kContTimeValid = 1 << 17,	///< continousTimeSamples contains valid information
-    // 
-    // kProjectTimeMusicValid = 1 << 9,///< projectTimeMusic contains valid information
-    // kBarPositionValid = 1 << 11,	///< barPositionMusic contains valid information
-    // kCycleValid = 1 << 12,	///< cycleStartMusic and barPositionMusic contain valid information
-    // 
-    // kClockValid = 1 << 15		///< samplesToNextClock valid
-    // kTimeSigValid = 1 << 13,	///< timeSigNumerator and timeSigDenominator contain valid information
-    // kChordValid = 1 << 18,	///< chord contains valid information
-    // 
-    // kSmpteValid = 1 << 14,	///< smpteOffset and frameRate contain valid information
-    
-    ;
-
-  _transport.song_pos_beats = doubleToBeatTime(_vstdata->processContext->projectTimeMusic);
-  _transport.song_pos_seconds = 0;
-
-  _transport.tempo = _vstdata->processContext->tempo;
-  _transport.tempo_inc = 0;
-
-  _transport.loop_start_beats = doubleToBeatTime(_vstdata->processContext->cycleStartMusic);
-  _transport.loop_end_beats = doubleToBeatTime(_vstdata->processContext->cycleEndMusic);
-  _transport.loop_start_seconds = 0;
-  _transport.loop_end_seconds = 0;
-
-  _transport.bar_start = 0;
-  _transport.bar_number = 0;
-
-  if ((_vstdata->processContext->state & Vst::ProcessContext::kTimeSigValid))
+  _transport.flags = 0;
+  if (_vstdata->processContext)
   {
-    _transport.tsig_num = _vstdata->processContext->timeSigNumerator;
-    _transport.tsig_denom = _vstdata->processContext->timeSigDenominator;
-  }
-  else
-  {
-    _transport.tsig_num = 4;
-    _transport.tsig_denom = 4;
-  }
-  
-  _transport.bar_number = _vstdata->processContext->barPositionMusic;
+    // converting the flags
+    _transport.flags |= 0
+      // kPlaying = 1 << 1,		///< currently playing
+      | ((_vstdata->processContext->state & Vst::ProcessContext::kPlaying) ? CLAP_TRANSPORT_IS_PLAYING : 0)
+      // kRecording = 1 << 3,		///< currently recording
+      | ((_vstdata->processContext->state & Vst::ProcessContext::kRecording) ? CLAP_TRANSPORT_IS_RECORDING : 0)
+      // kCycleActive = 1 << 2,		///< cycle is active
+      | ((_vstdata->processContext->state & Vst::ProcessContext::kCycleActive) ? CLAP_TRANSPORT_IS_LOOP_ACTIVE : 0)
+      // kTempoValid = 1 << 10,	///< tempo contains valid information
+      | ((_vstdata->processContext->state & Vst::ProcessContext::kTempoValid) ? CLAP_TRANSPORT_HAS_TEMPO : 0)
+      | ((_vstdata->processContext->state & Vst::ProcessContext::kBarPositionValid) ? CLAP_TRANSPORT_HAS_BEATS_TIMELINE : 0)
+      | ((_vstdata->processContext->state & Vst::ProcessContext::kTimeSigValid) ? CLAP_TRANSPORT_HAS_TIME_SIGNATURE : 0)
 
+      // the rest of the flags has no meaning to CLAP
+      // kSystemTimeValid = 1 << 8,		///< systemTime contains valid information
+      // kContTimeValid = 1 << 17,	///< continousTimeSamples contains valid information
+      // 
+      // kProjectTimeMusicValid = 1 << 9,///< projectTimeMusic contains valid information
+      // kBarPositionValid = 1 << 11,	///< barPositionMusic contains valid information
+      // kCycleValid = 1 << 12,	///< cycleStartMusic and barPositionMusic contain valid information
+      // 
+      // kClockValid = 1 << 15		///< samplesToNextClock valid
+      // kTimeSigValid = 1 << 13,	///< timeSigNumerator and timeSigDenominator contain valid information
+      // kChordValid = 1 << 18,	///< chord contains valid information
+      // 
+      // kSmpteValid = 1 << 14,	///< smpteOffset and frameRate contain valid information
+
+      ;
+
+    _transport.song_pos_beats = doubleToBeatTime(_vstdata->processContext->projectTimeMusic);
+    _transport.song_pos_seconds = 0;
+
+    _transport.tempo = _vstdata->processContext->tempo;
+    _transport.tempo_inc = 0;
+
+    _transport.loop_start_beats = doubleToBeatTime(_vstdata->processContext->cycleStartMusic);
+    _transport.loop_end_beats = doubleToBeatTime(_vstdata->processContext->cycleEndMusic);
+    _transport.loop_start_seconds = 0;
+    _transport.loop_end_seconds = 0;
+
+    _transport.bar_start = 0;
+    _transport.bar_number = 0;
+
+    if ((_vstdata->processContext->state & Vst::ProcessContext::kTimeSigValid))
+    {
+      _transport.tsig_num = _vstdata->processContext->timeSigNumerator;
+      _transport.tsig_denom = _vstdata->processContext->timeSigDenominator;
+    }
+    else
+    {
+      _transport.tsig_num = 4;
+      _transport.tsig_denom = 4;
+    }
+
+    _transport.bar_number = _vstdata->processContext->barPositionMusic;
+    _processData.steady_time = _vstdata->processContext->projectTimeSamples;
+  }
 
   // setting up transport
   _processData.frames_count = _vstdata->numSamples;
-  _processData.steady_time = _vstdata->processContext->projectTimeSamples;
-  
+
   clap_audio_buffer_t outs;
 
   // setting up buffers
@@ -140,9 +147,13 @@ void ProcessAdapter::process(Steinberg::Vst::ProcessData& data, const clap_plugi
 
   _processData.audio_inputs_count = 0;
 
+  // always clear
+  _events.clear();
+  _eventindices.clear();
+
+  if (_vstdata->inputEvents)
   {
     Vst::Event vstevent;
-    _events.clear();
     auto numev = _vstdata->inputEvents->getEventCount();
     for (decltype(numev) i = 0; i < numev; ++i)
     {
@@ -152,7 +163,7 @@ void ProcessAdapter::process(Steinberg::Vst::ProcessData& data, const clap_plugi
         {
           clap_multi_event_t n;
           n.note.header.type = CLAP_EVENT_NOTE_ON;
-          n.note.header.flags = vstevent.flags & Vst::Event::kIsLive ? CLAP_EVENT_IS_LIVE : 0;
+          n.note.header.flags = (vstevent.flags & Vst::Event::kIsLive) ? CLAP_EVENT_IS_LIVE : 0;
           n.note.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
           n.note.header.time = vstevent.sampleOffset;
           n.note.header.size = sizeof(clap_event_note);
@@ -161,13 +172,14 @@ void ProcessAdapter::process(Steinberg::Vst::ProcessData& data, const clap_plugi
           n.note.port_index = 0;
           n.note.velocity = vstevent.noteOn.velocity;
           n.note.key = vstevent.noteOn.pitch;
+          _eventindices.push_back(_events.size());
           _events.push_back(n);
         }
         if (vstevent.type == Vst::Event::kNoteOffEvent)
         {
           clap_multi_event_t n;
           n.note.header.type = CLAP_EVENT_NOTE_OFF;
-          n.note.header.flags = vstevent.flags & Vst::Event::kIsLive ? CLAP_EVENT_IS_LIVE : 0;
+          n.note.header.flags = (vstevent.flags & Vst::Event::kIsLive) ? CLAP_EVENT_IS_LIVE : 0;
           n.note.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
           n.note.header.time = vstevent.sampleOffset;
           n.note.header.size = sizeof(clap_event_note);
@@ -176,6 +188,7 @@ void ProcessAdapter::process(Steinberg::Vst::ProcessData& data, const clap_plugi
           n.note.port_index = 0;
           n.note.velocity = vstevent.noteOn.velocity;
           n.note.key = vstevent.noteOn.pitch;
+          _eventindices.push_back(_events.size());
           _events.push_back(n);
         }
         if (vstevent.type == Vst::Event::kDataEvent)
@@ -191,6 +204,8 @@ void ProcessAdapter::process(Steinberg::Vst::ProcessData& data, const clap_plugi
             n.sysex.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
             n.sysex.header.time = vstevent.sampleOffset;
             n.sysex.header.size = sizeof(n.sysex);
+            _eventindices.push_back(_events.size());
+            _events.push_back(n);
           }
           else
           {
@@ -200,9 +215,53 @@ void ProcessAdapter::process(Steinberg::Vst::ProcessData& data, const clap_plugi
       }
     }
   }
-  
-  plugin->process(plugin, &_processData);
 
+  if (_vstdata->inputParameterChanges)
+  {
+    auto numPevent = _vstdata->inputParameterChanges->getParameterCount();
+    for (decltype(numPevent) i = 0; i < numPevent; ++i)
+    {
+      auto k = _vstdata->inputParameterChanges->getParameterData(i);
+
+      // get the Vst3Parameter
+      auto param = (Vst3Parameter*)parameters->getParameter(k->getParameterId());
+      auto nums = k->getPointCount();
+
+      Vst::ParamValue value;
+      int32 offset;
+      if (k->getPoint(nums - 1, offset, value) == kResultOk)
+      {
+        clap_multi_event_t n;
+        n.param.header.type = CLAP_EVENT_PARAM_VALUE;
+        n.param.header.flags = 0;
+        n.param.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+        n.param.header.time = offset;
+        n.param.header.size = sizeof(clap_event_param_value);
+        n.param.param_id = param->id;
+        n.param.cookie = param->cookie;
+
+        // nothing note specific
+        n.param.note_id = -1;   // always global
+        n.param.port_index = -1;
+        n.param.channel = -1;
+        n.param.key = -1;
+
+        n.param.value = param->asClapValue(value);
+        _eventindices.push_back(_events.size());
+        _events.push_back(n);
+      }
+
+    }
+  }
+
+  // just sorting the index
+  std::sort(_eventindices.begin(), _eventindices.end(), [&](size_t const& a, size_t const& b)
+    {
+      return _events[a].header.time < _events[b].header.time;
+    }
+  );
+  plugin->process(plugin, &_processData);
+  
   _vstdata = nullptr;
 }
 
@@ -212,17 +271,18 @@ uint32_t ProcessAdapter::input_events_size(const struct clap_input_events* list)
   return self->_events.size();
   // return self->_vstdata->inputEvents->getEventCount();
 }
+
+// returns the pointer to an event in the list. The index accessed is not the position in the event list itself
+// since all events indices were sorted by timestamp
 const clap_event_header_t* ProcessAdapter::input_events_get(const struct clap_input_events* list, uint32_t index)
 {
-  Vst::Event vstevent;
-  static clap_event_note n;
-
   auto self = static_cast<ProcessAdapter*>(list->ctx);
   if ( self->_events.size() > index)
   {
     // we can safely return the note.header also for other event types
     // since they are at the same memory address
-    return &(self->_events[index].note.header);
+    auto realindex = self->_eventindices[index];
+    return &(self->_events[realindex].header);
   }
   return nullptr;
 }

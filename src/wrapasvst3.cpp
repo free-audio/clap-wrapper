@@ -3,6 +3,7 @@
 #include "pluginterfaces/vst/ivstevents.h"
 #include "detail/vst3/state.h"
 #include "detail/vst3/process.h"
+#include "detail/vst3/parameter.h"
 
 // Clap::Library gClapLibrary;
 
@@ -40,6 +41,7 @@ tresult PLUGIN_API ClapAsVst3::terminate()
 	if (_plugin)
 	{
 		_plugin->terminate();
+		_plugin.reset();
 	}
 	return super::terminate();
 }
@@ -71,8 +73,8 @@ tresult PLUGIN_API ClapAsVst3::setActive(TBool state)
 tresult PLUGIN_API ClapAsVst3::process(Vst::ProcessData& data)
 {
 	this->processAdapter->process(data, _plugin->_plugin);
-
-	return kResultOk;
+	
+  return kResultOk;
 }
 
 tresult PLUGIN_API ClapAsVst3::canProcessSampleSize(int32 symbolicSampleSize)
@@ -111,7 +113,7 @@ tresult PLUGIN_API ClapAsVst3::setProcessing(TBool state)
 {
 	if (state)
 	{
-		processAdapter->setupProcessing(this->audioInputs.size(), this->audioOutputs.size(), this->eventInputs.size(), this->eventOutputs.size());
+		processAdapter->setupProcessing(this->audioInputs.size(), this->audioOutputs.size(), this->eventInputs.size(), this->eventOutputs.size(), parameters);
 		return (_plugin->start_processing() ? Steinberg::kResultOk : Steinberg::kResultFalse);
 	}
 	else
@@ -212,7 +214,7 @@ void ClapAsVst3::addMIDIBusFrom(const clap_note_port_info_t* info, bool is_input
 
 void ClapAsVst3::setupAudioBusses(const clap_plugin_t* plugin, const clap_plugin_audio_ports_t* audioports)
 {
-
+	if (!audioports) return;
 	auto numAudioInputs = audioports->count(plugin, true);
 	auto numAudioOutputs = audioports->count(plugin, false);
 	
@@ -245,10 +247,11 @@ void ClapAsVst3::setupAudioBusses(const clap_plugin_t* plugin, const clap_plugin
 
 void ClapAsVst3::setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_note_ports_t* noteports)
 {
+	if (!noteports) return;
 	auto numMIDIInPorts = noteports->count(plugin, true);
 	auto numMIDIOutPorts = noteports->count(plugin, false);
 
-	fprintf(stderr, "\tMIDI in: %d, out: %d\n", (int)numMIDIInPorts, (int)numMIDIOutPorts);
+	// fprintf(stderr, "\tMIDI in: %d, out: %d\n", (int)numMIDIInPorts, (int)numMIDIOutPorts);
 
 	std::vector<clap_note_port_info_t> inputs;
 	std::vector<clap_note_port_info_t> outputs;
@@ -270,6 +273,22 @@ void ClapAsVst3::setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_
 		if (noteports->get(plugin, i, false, &info))
 		{
 			addMIDIBusFrom(&info, false);
+		}
+	}
+}
+
+void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params)
+{
+	if (!params) return;
+	auto numparams = params->count(plugin);
+	this->parameters.init(numparams);
+	for (decltype(numparams) i = 0; i < numparams; ++i)
+	{
+		clap_param_info info;
+		if (params->get_info(plugin, i, &info))
+		{
+			auto p = Vst3Parameter::create(&info);
+			parameters.addParameter(p);
 		}
 	}
 }
