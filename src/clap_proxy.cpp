@@ -4,6 +4,52 @@
 
 namespace Clap
 {
+  namespace HostExt
+  {
+    void host_log(const clap_host_t* host, clap_log_severity severity, const char* msg)
+    {
+      auto self = (Plugin*)(host);
+      self->log(severity, msg);
+    }
+
+    clap_host_log_t log =
+    {
+      host_log
+    };
+
+    void rescan(const clap_host_t* host, clap_param_rescan_flags flags)
+    {
+
+    }
+
+    // Clears references to a parameter.
+    // [main-thread]
+    void clear(const clap_host_t* host, clap_id param_id, clap_param_clear_flags flags)
+    {
+
+    }
+
+    // Request a parameter flush.
+    //
+    // If the plugin is processing, this will result in no action. The process call
+    // will run normally. If plugin isn't processing, the host will make a subsequent
+    // call to clap_plugin_params->flush(). As a result, this function is always
+    // safe to call from a non-audio thread (typically the UI thread on a gesture)
+    // whether processing is active or not.
+    //
+    // This must not be called on the [audio-thread].
+    // [thread-safe,!audio-thread]
+    void request_flush(const clap_host_t* host)
+    {
+
+    }
+    clap_host_params_t params =
+    {
+      rescan, clear, request_flush
+    };
+
+  }
+
   std::shared_ptr<Plugin> Plugin::createInstance(Clap::Library& library, size_t index, IHost* host)
   {
     if (library.plugins.size() > index)
@@ -178,12 +224,56 @@ namespace Clap
     return nullptr;
   }
 
+  void Plugin::log(clap_log_severity severity, const char* msg)
+  {
+    std::string n;
+    switch (severity)
+    {
+    case CLAP_LOG_DEBUG:
+      n.append("PLUGIN: DEBUG: ");
+      break;
+    case CLAP_LOG_INFO:
+      n.append("PLUGIN: INFO: ");
+      break;
+    case CLAP_LOG_WARNING:
+      n.append("PLUGIN: WARNING: ");
+      break;
+    case CLAP_LOG_ERROR:
+      n.append("PLUGIN: ERROR: ");
+      break;
+    case CLAP_LOG_FATAL:
+      n.append("PLUGIN: FATAL: ");
+      break;
+    case CLAP_LOG_PLUGIN_MISBEHAVING:
+      n.append("PLUGIN: MISBEHAVING: ");
+      break;
+    case CLAP_LOG_HOST_MISBEHAVING:
+      n.append("PLUGIN: HOST MISBEHAVING: ");
+#if WIN32
+      OutputDebugString(msg);
+      _CrtDbgBreak();
+#endif
+      break;
+    }
+    n.append(msg);
+#if WIN32
+    OutputDebugString(n.c_str());
+    OutputDebugString("\n");
+#endif
+  }
+
   // Query an extension.
   // [thread-safe]
   const void* Plugin::clapExtension(const clap_host* host, const char* extension)
   {
     Plugin* self = reinterpret_cast<Plugin*>(host->host_data);
-    // OutputDebugString(extension); OutputDebugString("\n");
+
+    OutputDebugString(extension); OutputDebugString("\n");
+    if (!strcmp(extension, CLAP_EXT_LOG)) 
+      return &HostExt::log;
+    if (!strcmp(extension, CLAP_EXT_PARAMS)) 
+      return &HostExt::params;
+
     return nullptr;
   }
 

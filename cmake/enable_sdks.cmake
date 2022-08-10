@@ -83,8 +83,8 @@ set(vst3sources
 	${VST3_SDK_ROOT}/public.sdk/source/vst/vstaudioeffect.cpp
 	${VST3_SDK_ROOT}/public.sdk/source/vst/vstcomponentbase.cpp
 	${VST3_SDK_ROOT}/public.sdk/source/vst/vstcomponent.cpp
-    ${VST3_SDK_ROOT}/public.sdk/source/vst/vstsinglecomponenteffect.cpp
-    ${VST3_SDK_ROOT}/public.sdk/source/vst/vstsinglecomponenteffect.h
+	${VST3_SDK_ROOT}/public.sdk/source/vst/vstsinglecomponenteffect.cpp
+	${VST3_SDK_ROOT}/public.sdk/source/vst/vstsinglecomponenteffect.h
 	#${VST3_SDK_ROOT}/public.sdk/source/vst/vsteditcontroller.cpp
 	${VST3_SDK_ROOT}/public.sdk/source/vst/vstbus.cpp
 	${VST3_SDK_ROOT}/public.sdk/source/vst/vstparameters.cpp

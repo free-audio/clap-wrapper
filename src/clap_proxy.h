@@ -81,6 +81,7 @@ namespace Clap
 
     ClapPluginExtensions _ext;
     const clap_plugin_t* _plugin = nullptr;
+    void log(clap_log_severity severity, const char* msg);
   private:
     
     static const void* clapExtension(const clap_host* host, const char* extension);
@@ -90,7 +91,6 @@ namespace Clap
 
     //static bool clapIsMainThread(const clap_host* host);
     //static bool clapIsAudioThread(const clap_host* host);
-
 
 
     clap_host_t _host;                        // the host_t structure for the proxy
