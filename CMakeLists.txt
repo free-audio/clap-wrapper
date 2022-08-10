@@ -54,18 +54,23 @@ set(project "clapasvst3")
 add_definitions(-D${PLATFORM}=1)
 
 message(STATUS "platform is ${PLATFORM}")
-# 
+#
+smtg_enable_vst3_sdk()
 smtg_add_vst3plugin(${project}
 	${wrappersources}
 	${VST3_SDK_ROOT}/public.sdk/source/vst/vstsinglecomponenteffect.cpp
 	${VST3_SDK_ROOT}/public.sdk/source/vst/vstsinglecomponenteffect.h
 )
 
-
+smtg_target_add_library_main(${project})
 
 # link both SDKs
 target_link_libraries(${project} PRIVATE clap-core sdk)
 target_include_directories(${project} PUBLIC ${VST3_SDK_ROOT})
+
+if (APPLE)
+	target_link_libraries (${project} PRIVATE "-framework Foundation" "-framework CoreFoundation")
+endif()
 
 # a debuggable executable to test - will be removed later and disabled by default
 if(TRUE)

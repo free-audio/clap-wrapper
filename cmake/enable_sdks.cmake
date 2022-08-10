@@ -106,6 +106,10 @@ set(vst3sources
 	PARENT_SCOPE
 )
 
+
+if (APPLE)
+	set(os_wrappersources src/detail/clap/mac_helpers.mm)
+endif()
 set(wrappersources
 	src/clap_proxy.h
 	src/clap_proxy.cpp
@@ -126,7 +130,9 @@ set(wrappersources
 	src/detail/sha1.cpp
 	src/detail/clap/fsutil.h
 	src/detail/clap/fsutil.cpp
+	${os_wrappersources}
 PARENT_SCOPE)
+
 
 endfunction(DefineVST3Sources)
 

@@ -3,6 +3,7 @@
 #include <pluginterfaces/vst/ivstparameterchanges.h>
 #include "parameter.h"
 #include <algorithm>
+#include <cmath>
 
 using namespace Steinberg;
 
@@ -45,7 +46,7 @@ void ProcessAdapter::setupProcessing(size_t numInputs, size_t numOutputs, size_t
 
 inline clap_beattime doubleToBeatTime(double t)
 {
-  return round(t * CLAP_BEATTIME_FACTOR);
+  return std::round(t * CLAP_BEATTIME_FACTOR);
 }
 
 inline clap_sectime doubleToSecTime(double t)
