@@ -3,14 +3,18 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include <thread>
+#include <atomic>
+
 #if WIN
 #include <Windows.h>
 #endif
-#include "detail//clap/fsutil.h"
+#include "detail/clap/fsutil.h"
 
 namespace Clap
 {
   class Plugin;
+  class Raise;
 
   class IHost
   {
@@ -82,7 +86,13 @@ namespace Clap
     ClapPluginExtensions _ext;
     const clap_plugin_t* _plugin = nullptr;
     void log(clap_log_severity severity, const char* msg);
+
+    // threadcheck
+    bool is_main_thread() const;
+    bool is_audio_thread() const;
+
   private:
+    CLAP_NODISCARD Raise AlwaysAudioThread();
     
     static const void* clapExtension(const clap_host* host, const char* extension);
     static void clapRequestCallback(const clap_host* host);
@@ -95,6 +105,8 @@ namespace Clap
 
     clap_host_t _host;                        // the host_t structure for the proxy
     IHost* _parentHost = nullptr;
+    const std::thread::id _main_thread_id = std::this_thread::get_id();
+    std::atomic<uint32_t> _audio_thread_override = 0;
     AudioSetup _audioSetup;
     bool _activated = false;
   };

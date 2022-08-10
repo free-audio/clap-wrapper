@@ -6,10 +6,14 @@ namespace Clap
 {
   namespace HostExt
   {
+    static Plugin* self(const clap_host_t* host)
+    {
+      return static_cast<Plugin*>(host->host_data);
+    }
+
     void host_log(const clap_host_t* host, clap_log_severity severity, const char* msg)
     {
-      auto self = (Plugin*)(host);
-      self->log(severity, msg);
+      self(host)->log(severity, msg);
     }
 
     clap_host_log_t log =
@@ -48,7 +52,40 @@ namespace Clap
       rescan, clear, request_flush
     };
 
+    bool is_main_thread(const clap_host_t* host)
+    {
+      return self(host)->is_main_thread();
+    }
+
+    // Returns true if "this" thread is one of the audio threads.
+    // [thread-safe]
+    bool is_audio_thread(const clap_host_t* host)
+    {
+      return self(host)->is_audio_thread();
+    }
+
+    clap_host_thread_check_t threadcheck =
+    {
+      is_main_thread, is_audio_thread
+    };
+
   }
+
+  class Raise
+  {
+  public:
+    Raise(std::atomic<uint32_t>& counter)
+      : ctx(counter)
+    {
+      ++ctx;
+    }
+    ~Raise()
+    {
+      ctx--;
+    }
+  private:
+    std::atomic<uint32_t>& ctx;
+  };
 
   std::shared_ptr<Plugin> Plugin::createInstance(Clap::Library& library, size_t index, IHost* host)
   {
@@ -171,6 +208,7 @@ namespace Clap
 
   bool Plugin::load(const clap_istream_t* stream)
   {
+    return false;
     if (_ext._state)
     {
       return _ext._state->load(_plugin, stream);
@@ -199,16 +237,19 @@ namespace Clap
 
   bool Plugin::start_processing()
   {
+    auto thisFn = AlwaysAudioThread();
     return _plugin->start_processing(_plugin);
   }
 
   void Plugin::stop_processing()
   {
+    auto thisFn = AlwaysAudioThread();
     _plugin->stop_processing(_plugin);
   }
 
   void Plugin::process(const clap_process_t* data)
   {
+    auto thisFn = AlwaysAudioThread();
     _plugin->process(_plugin, data);
   }
 
@@ -262,6 +303,25 @@ namespace Clap
 #endif
   }
 
+  bool Plugin::is_main_thread() const
+  {
+    return _main_thread_id == std::this_thread::get_id();
+  }
+
+  bool Plugin::is_audio_thread() const
+  {
+    if (this->_audio_thread_override > 0)
+    {
+      return true;
+    }
+    return !is_main_thread();
+  }
+
+  CLAP_NODISCARD Raise Plugin::AlwaysAudioThread()
+  {
+      return Raise(this->_audio_thread_override); 
+  }
+
   // Query an extension.
   // [thread-safe]
   const void* Plugin::clapExtension(const clap_host* host, const char* extension)
@@ -273,6 +333,10 @@ namespace Clap
       return &HostExt::log;
     if (!strcmp(extension, CLAP_EXT_PARAMS)) 
       return &HostExt::params;
+    if (!strcmp(extension, CLAP_EXT_THREAD_CHECK))
+    {
+      return &HostExt::threadcheck;
+    }
 
     return nullptr;
   }
