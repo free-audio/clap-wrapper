@@ -304,15 +304,15 @@ namespace Clap
     case CLAP_LOG_HOST_MISBEHAVING:
       n.append("PLUGIN: HOST MISBEHAVING: ");
 #if WIN32
-      OutputDebugString(msg);
+      OutputDebugStringA(msg);
       _CrtDbgBreak();
 #endif
       break;
     }
     n.append(msg);
 #if WIN32
-    OutputDebugString(n.c_str());
-    OutputDebugString("\n");
+    OutputDebugStringA(n.c_str());
+    OutputDebugStringA("\n");
 #endif
   }
 
@@ -341,7 +341,7 @@ namespace Clap
   {
     Plugin* self = reinterpret_cast<Plugin*>(host->host_data);
 
-    OutputDebugString(extension); OutputDebugString("\n");
+    OutputDebugStringA(extension); OutputDebugStringA("\n");
     if (!strcmp(extension, CLAP_EXT_LOG)) 
       return &HostExt::log;
     if (!strcmp(extension, CLAP_EXT_PARAMS)) 

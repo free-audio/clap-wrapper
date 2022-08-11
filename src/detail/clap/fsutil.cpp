@@ -98,7 +98,7 @@ namespace Clap
     }
     _handle = 0;
     _pluginEntry = nullptr;
-    _handle = LoadLibrary(name);
+    _handle = LoadLibraryA(name);
     if (_handle)
     {
       if (!getEntryFunction(_handle, name))
@@ -142,7 +142,7 @@ namespace Clap
   }
 #endif
 
-  bool Library::setupPluginsFromPluginEntry(const char* path) {
+  void Library::setupPluginsFromPluginEntry(const char* path) {
      if (clap_version_is_compatible(_pluginEntry->clap_version)) {
         if (_pluginEntry->init(path)) {
            _pluginFactory =
@@ -163,13 +163,13 @@ namespace Clap
   }
   static void ffeomwe()
   {}
-  static char modulename[2048];
 
   Library::Library()
   {
 #if WIN
+    static TCHAR modulename[2048];
     HMODULE selfmodule;
-    if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCSTR)ffeomwe, &selfmodule))
+    if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCTSTR)ffeomwe, &selfmodule))
     {
       auto size = GetModuleFileName(selfmodule, modulename, 2048);
     }

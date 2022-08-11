@@ -38,7 +38,7 @@ namespace Clap
     bool getEntryFunction(HMODULE handle, const char* path);
 #endif
 
-    bool setupPluginsFromPluginEntry(const char* p);
+    void setupPluginsFromPluginEntry(const char* p);
     bool _selfcontained = false;
   };
 
