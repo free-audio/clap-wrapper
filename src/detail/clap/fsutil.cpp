@@ -8,6 +8,10 @@
 #include <CoreFoundation/CoreFoundation.h>
 #endif
 
+#if LIN
+#include <dlfcn.h>
+#endif
+
 
 namespace Clap
 {
@@ -107,7 +111,25 @@ namespace Clap
         _handle = NULL;
       }
     }
+
+    setupPluginsFromPluginEntry(name);
     return _handle != 0;
+#endif
+
+#if LIN
+      int *iptr;
+
+      _handle = dlopen(name, RTLD_LOCAL | RTLD_LAZY);
+      if (!_handle)
+          return false;
+
+      iptr = (int *)dlsym(_handle, "clap_entry");
+      if (!iptr)
+          return false;
+
+      _pluginEntry = (const clap_plugin_entry_t *)iptr;
+      setupPluginsFromPluginEntry(name);
+      return true;
 #endif
   }
 
@@ -160,6 +182,7 @@ namespace Clap
            }
         }
      }
+     return true;
   }
   static void ffeomwe()
   {}
@@ -189,12 +212,24 @@ namespace Clap
     {
       _pluginEntry->deinit();
     }
+#if MAC
+    // FIXME keep the bundle ref and free it here
+#endif
+
+#if LIN
+    if (_handle)
+    {
+        dlclose(_handle);
+        _handle = nullptr;
+    }
+#endif
+
+#if WIN
     if (_handle && !_selfcontained)
     {
-#if WIN
       FreeLibrary(_handle);
-#endif
     }
+#endif
   }
 
 }

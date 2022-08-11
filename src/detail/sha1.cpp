@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <memory>
 #include <cassert>
+#include <string.h>
 
 #if WIN32
 #pragma warning( disable: 6386 )

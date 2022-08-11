@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.20)
 cmake_policy(SET CMP0091 NEW)
 
 #
@@ -70,6 +70,10 @@ target_include_directories(${project} PUBLIC ${VST3_SDK_ROOT})
 
 if (APPLE)
 	target_link_libraries (${project} PRIVATE "-framework Foundation" "-framework CoreFoundation")
+endif()
+
+if (UNIX AND NOT APPLE)
+	target_link_libraries (${project} PRIVATE "-ldl")
 endif()
 
 # a debuggable executable to test - will be removed later and disabled by default

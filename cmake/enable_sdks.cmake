@@ -60,7 +60,7 @@ function(DetectVST3SDK)
 	endif()
 
 	if(VST3_SDK_ROOT STREQUAL "")
-		message(FATAL_ERROR "Unable to detect VST3 SDK!")
+		message(FATAL_ERROR "Unable to detect VST3 SDK. Have you set -DVST3_SDK_ROOT=/path/to/sdk?")
 	endif()
   
   endif()

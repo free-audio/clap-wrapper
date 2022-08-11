@@ -2,7 +2,7 @@
 #include "detail/clap/fsutil.h"
 #include "public.sdk/source/main/pluginfactory.h"
 
-#if MAC
+#if MAC || LIN
 #include <iostream>
 #define OutputDebugString(x) std::cout << __FILE__ << ":" << __LINE__ << " " << x << std::endl;
 #endif
@@ -158,6 +158,9 @@ namespace Clap
 #endif
 #if MAC
         api = CLAP_WINDOW_API_COCOA;
+#endif
+#if LIN
+        api = CLAP_WINDOW_API_X11;
 #endif
 
       if (!_ext._gui->is_api_supported(_plugin, api, false))
