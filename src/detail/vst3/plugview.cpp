@@ -28,6 +28,9 @@ void WrappedView::ensure_ui()
 #if WIN
      api = CLAP_WINDOW_API_WIN32;
 #endif
+#if LIN
+      api = CLAP_WINDOW_API_X11;
+#endif
 
      if (_extgui->is_api_supported(_plugin, api, false))
       _extgui->create(_plugin, api, false);
@@ -82,6 +85,11 @@ tresult PLUGIN_API WrappedView::attached(void* parent, FIDString type)
 
 #if MAC
    _window = { CLAP_WINDOW_API_COCOA, parent };
+#endif
+
+
+#if LIN
+    _window = { CLAP_WINDOW_API_X11, parent };
 #endif
 
   ensure_ui();
