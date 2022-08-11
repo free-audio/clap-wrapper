@@ -41,3 +41,6 @@ cmake-build-*
 
 #baconpaul habit
 ignore/
+#df habit
+build/
+out/
