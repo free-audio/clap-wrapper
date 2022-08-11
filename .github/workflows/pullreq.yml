@@ -39,5 +39,5 @@ jobs:
       - name: Build project
         run: |
           cmake -S . -B ./build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCLAP_SDK_ROOT=deps/clap -DVST3_SDK_ROOT=deps/vst3sdk
-          cmake --build ./build --config Debug 
+          cmake --build ./build --config Debug
 

@@ -1,4 +1,5 @@
 
+#if WIN
 #include <Windows.h>
 #include <stdio.h>
 
@@ -72,3 +73,10 @@ int main(void*)
   return 0;
 
 }
+#else
+#include <iostream>
+int main(int argc, char **argv)
+{
+   std::cout << "MAIN does not yet work on this platform" << std::endl;
+}
+#endif

@@ -69,11 +69,11 @@ target_link_libraries(${project} PRIVATE clap-core sdk)
 target_include_directories(${project} PUBLIC ${VST3_SDK_ROOT})
 
 if (APPLE)
-	target_link_libraries (${project} PRIVATE "-framework Foundation" "-framework CoreFoundation")
+	target_link_libraries (${project} PUBLIC "-framework Foundation" "-framework CoreFoundation")
 endif()
 
 if (UNIX AND NOT APPLE)
-	target_link_libraries (${project} PRIVATE "-ldl")
+	target_link_libraries (${project} PUBLIC "-ldl")
 endif()
 
 # a debuggable executable to test - will be removed later and disabled by default
@@ -85,6 +85,15 @@ add_executable(${project}_as_executable
 )
 target_link_libraries(${project}_as_executable PRIVATE clap-core sdk)
 target_include_directories(${project}_as_executable PUBLIC ${VST3_SDK_ROOT})
+
+if (APPLE)
+	target_link_libraries (${project}_as_executable PUBLIC "-framework Foundation" "-framework CoreFoundation")
+endif()
+
+if (UNIX AND NOT APPLE)
+	target_link_libraries (${project}_as_executable PUBLIC "-ldl")
+endif()
+
 endif()
 
 # smtg_target_configure_version_file(${project})
