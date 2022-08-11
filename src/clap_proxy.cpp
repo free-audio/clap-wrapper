@@ -28,7 +28,7 @@ namespace Clap
 
     void rescan(const clap_host_t* host, clap_param_rescan_flags flags)
     {
-
+      self(host)->param_rescan(flags);
     }
 
     // Clears references to a parameter.
@@ -334,6 +334,21 @@ namespace Clap
   {
       return Raise(this->_audio_thread_override); 
   }
+
+  void Plugin::param_rescan(clap_param_rescan_flags flags)
+  {
+    _parentHost->param_rescan(flags);
+  }
+
+  void Plugin::param_clear(clap_id param, clap_param_clear_flags flags)
+  {
+    _parentHost->param_clear(param, flags);
+  }
+  void Plugin::param_request_flush()
+  {
+    _parentHost->param_request_flush();
+  }
+
 
   // Query an extension.
   // [thread-safe]

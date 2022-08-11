@@ -67,7 +67,12 @@ public:
 	void setupAudioBusses(const clap_plugin_t* plugin, const clap_plugin_audio_ports_t* audioports) override;
 	void setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_note_ports_t* noteports) override;
   void setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params) override;
-	void mark_dirty() override;
+
+	void param_rescan(clap_param_rescan_flags flags) override;
+	void param_clear(clap_id param, clap_param_clear_flags flags) override;
+	void param_request_flush() override;
+
+		void mark_dirty() override;
 	void schnick() override;
 
 private:

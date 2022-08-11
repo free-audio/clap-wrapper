@@ -25,6 +25,10 @@ namespace Clap
     virtual void setupAudioBusses(const clap_plugin_t* plugin, const clap_plugin_audio_ports_t* audioports) = 0;   // called from initialize() to allow the setup of audio ports
     virtual void setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_note_ports_t* noteports) = 0;      // called from initialize() to allow the setup of MIDI ports
     virtual void setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params) = 0;
+
+    virtual void param_rescan(clap_param_rescan_flags flags) = 0;                                                  // ext_host_params
+    virtual void param_clear(clap_id param, clap_param_clear_flags flags) = 0;
+    virtual void param_request_flush() = 0;
   };
 
   struct ClapPluginExtensions;
@@ -90,6 +94,11 @@ namespace Clap
     // threadcheck
     bool is_main_thread() const;
     bool is_audio_thread() const;
+
+    // param
+    void param_rescan(clap_param_rescan_flags flags);
+    void param_clear(clap_id param, clap_param_clear_flags flags);
+    void param_request_flush();
 
   private:
     CLAP_NODISCARD Raise AlwaysAudioThread();
