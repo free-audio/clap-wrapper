@@ -1,6 +1,6 @@
 #include "plugview.h"
 #include <clap/clap.h>
-#include <crtdbg.h>
+// #include <crtdbg.h>
 #include <cassert>
 
 WrappedView::WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui)
@@ -21,7 +21,17 @@ void WrappedView::ensure_ui()
 {
   if (!_created)
   {
-    _extgui->create(_plugin, CLAP_WINDOW_API_WIN32, false);
+     const char* api{nullptr};
+#if MAC
+     api = CLAP_WINDOW_API_COCOA;
+#endif
+#if WIN
+     api = CLAP_WINDOW_API_WIN32;
+#endif
+
+     if (_extgui->is_api_supported(_plugin, api, false))
+      _extgui->create(_plugin, api, false);
+
     _created = true;
   }
 }
@@ -65,8 +75,14 @@ tresult PLUGIN_API WrappedView::isPlatformTypeSupported(FIDString type)
 }
 
 tresult PLUGIN_API WrappedView::attached(void* parent, FIDString type)
-{  
+{
+#if WIN
   _window = { CLAP_WINDOW_API_WIN32, parent };
+#endif
+
+#if MAC
+   _window = { CLAP_WINDOW_API_COCOA, parent };
+#endif
 
   ensure_ui();
   _extgui->set_parent(_plugin, &_window);

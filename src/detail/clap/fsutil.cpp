@@ -4,6 +4,9 @@
 #include <Windows.h>
 #endif
 
+#if MAC
+#include <CoreFoundation/CoreFoundation.h>
+#endif
 
 
 namespace Clap
@@ -13,7 +16,9 @@ namespace Clap
     std::vector<std::filesystem::path> res;
 
 #if MAC
-    getSystemPaths(res);
+    extern std::vector<std::filesystem::path> getMacCLAPSearchPaths();
+    res = getMacCLAPSearchPaths();
+    // getSystemPaths(res);
 #endif
 
 #if LIN
@@ -64,6 +69,29 @@ namespace Clap
 
   bool Library::load(const char* name)
   {
+#if MAC
+     _pluginEntry = nullptr;
+
+     auto cs = CFStringCreateWithBytes(kCFAllocatorDefault, (uint8_t *)name, strlen(name),
+                                       kCFStringEncodingUTF8, false);
+     auto bundleURL =
+             CFURLCreateWithFileSystemPath(kCFAllocatorDefault, cs, kCFURLPOSIXPathStyle, true);
+
+     auto bundle = CFBundleCreate(kCFAllocatorDefault, bundleURL);
+
+     auto db = CFBundleGetDataPointerForName(bundle, CFSTR("clap_entry"));
+
+     CFRelease(bundle);
+     CFRelease(bundleURL);
+     CFRelease(cs);
+
+     _pluginEntry = (const clap_plugin_entry *)db;
+
+     setupPluginsFromPluginEntry(name);
+     return _pluginEntry != nullptr;
+#endif
+
+#if WIN
     if (_handle && !_selfcontained)
     {
       FreeLibrary(_handle);
@@ -80,6 +108,7 @@ namespace Clap
       }
     }
     return _handle != 0;
+#endif
   }
 
 #if 0
@@ -98,6 +127,7 @@ namespace Clap
 
 #endif 
 
+#if WIN
   bool Library::getEntryFunction(HMODULE handle, const char* path)
   {
     if (handle)
@@ -105,39 +135,39 @@ namespace Clap
       _pluginEntry = reinterpret_cast<const clap_plugin_entry*>(GetProcAddress(handle, "clap_entry"));
       if (_pluginEntry)
       {
-        if (clap_version_is_compatible(_pluginEntry->clap_version))
-        {
-          if (_pluginEntry->init(path))
-          {
-            _pluginFactory =
-              static_cast<const clap_plugin_factory*>(_pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_ID));
-
-            auto count = _pluginFactory->get_plugin_count(_pluginFactory);
-
-            for (decltype(count) i = 0; i < count; ++i)
-            {
-              auto desc = _pluginFactory->get_plugin_descriptor(_pluginFactory, i);
-              if (clap_version_is_compatible(desc->clap_version)) {
-                plugins.push_back(desc);
-              }
-              else
-              {
-                // incompatible
-              }
-            }
-          }
-        }
+         setupPluginsFromPluginEntry(path);
       }
     }
     return (_pluginEntry && !plugins.empty());
   }
+#endif
 
+  bool Library::setupPluginsFromPluginEntry(const char* path) {
+     if (clap_version_is_compatible(_pluginEntry->clap_version)) {
+        if (_pluginEntry->init(path)) {
+           _pluginFactory =
+                   static_cast<const clap_plugin_factory *>(_pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_ID));
+
+           auto count = _pluginFactory->get_plugin_count(_pluginFactory);
+
+           for (decltype(count) i = 0; i < count; ++i) {
+              auto desc = _pluginFactory->get_plugin_descriptor(_pluginFactory, i);
+              if (clap_version_is_compatible(desc->clap_version)) {
+                 plugins.push_back(desc);
+              } else {
+                 // incompatible
+              }
+           }
+        }
+     }
+  }
   static void ffeomwe()
   {}
   static char modulename[2048];
 
   Library::Library()
   {
+#if WIN
     HMODULE selfmodule;
     if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCSTR)ffeomwe, &selfmodule))
     {
@@ -150,6 +180,7 @@ namespace Clap
         _selfcontained = true;
       }
     }
+#endif
   }
 
   Library::~Library()
@@ -160,7 +191,9 @@ namespace Clap
     }
     if (_handle && !_selfcontained)
     {
+#if WIN
       FreeLibrary(_handle);
+#endif
     }
   }
 

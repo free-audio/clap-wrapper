@@ -10,6 +10,7 @@
 
 namespace Clap
 {
+
   std::vector<std::filesystem::path> getValidCLAPSearchPaths();
   class Plugin;
   class IHost;
@@ -28,8 +29,16 @@ namespace Clap
     const clap_plugin_factory* _pluginFactory = nullptr;
     std::vector<const clap_plugin_descriptor_t*> plugins;
   private:
+#if MAC
+      int64_t _handle{0};
+#endif
+
+#if WIN
     HMODULE _handle = 0;
     bool getEntryFunction(HMODULE handle, const char* path);
+#endif
+
+    bool setupPluginsFromPluginEntry(const char* p);
     bool _selfcontained = false;
   };
 

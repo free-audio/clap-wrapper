@@ -2,6 +2,11 @@
 #include "detail/clap/fsutil.h"
 #include "public.sdk/source/main/pluginfactory.h"
 
+#if MAC
+#include <iostream>
+#define OutputDebugString(x) std::cout << __FILE__ << ":" << __LINE__ << " " << x << std::endl;
+#endif
+
 namespace Clap
 {
   namespace HostExt
@@ -147,7 +152,15 @@ namespace Clap
 
     if (_ext._gui)
     {
-      if (!_ext._gui->is_api_supported(_plugin, CLAP_WINDOW_API_WIN32, false))
+       const char* api;
+#if WIN
+       api = CLAP_WINDOW_API_WIN32;
+#endif
+#if MAC
+        api = CLAP_WINDOW_API_COCOA;
+#endif
+
+      if (!_ext._gui->is_api_supported(_plugin, api, false))
       {
         // disable GUI if not win32
         _ext._gui = nullptr;
