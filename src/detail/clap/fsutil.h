@@ -8,6 +8,10 @@
 #include <Windows.h>
 #endif
 
+#if MAC
+#include <CoreFoundation/CoreFoundation.h>
+#endif
+
 namespace Clap
 {
 
@@ -47,7 +51,7 @@ namespace Clap
   private:
 #if MAC
     // FIXME keep a bundle ref around
-      int64_t _handle{0};
+   CFBundleRef bundle{nullptr};
 #endif
 
 #if LIN

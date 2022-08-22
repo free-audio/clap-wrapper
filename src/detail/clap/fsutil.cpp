@@ -82,12 +82,14 @@ namespace Clap
              CFURLCreateWithFileSystemPath(kCFAllocatorDefault, cs, kCFURLPOSIXPathStyle, true);
 
      auto bundle = CFBundleCreate(kCFAllocatorDefault, bundleURL);
-
-     auto db = CFBundleGetDataPointerForName(bundle, CFSTR("clap_entry"));
-
-     CFRelease(bundle);
      CFRelease(bundleURL);
      CFRelease(cs);
+
+     if (!bundle) {
+        return false;
+     }
+
+     auto db = CFBundleGetDataPointerForName(bundle, CFSTR("clap_entry"));
 
      _pluginEntry = (const clap_plugin_entry *)db;
 
@@ -182,7 +184,6 @@ namespace Clap
            }
         }
      }
-     return true;
   }
   static void ffeomwe()
   {}
@@ -214,6 +215,8 @@ namespace Clap
     }
 #if MAC
     // FIXME keep the bundle ref and free it here
+    if (bundle)
+      CFRelease(bundle);
 #endif
 
 #if LIN
