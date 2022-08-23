@@ -29,6 +29,7 @@ namespace Clap
     virtual void param_rescan(clap_param_rescan_flags flags) = 0;                                                  // ext_host_params
     virtual void param_clear(clap_id param, clap_param_clear_flags flags) = 0;
     virtual void param_request_flush() = 0;
+
   };
 
   struct ClapPluginExtensions;

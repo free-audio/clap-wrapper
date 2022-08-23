@@ -339,6 +339,7 @@ namespace Clap
       return Raise(this->_audio_thread_override); 
   }
 
+
   void Plugin::param_rescan(clap_param_rescan_flags flags)
   {
     _parentHost->param_rescan(flags);
@@ -353,14 +354,16 @@ namespace Clap
     _parentHost->param_request_flush();
   }
 
-
   // Query an extension.
   // [thread-safe]
   const void* Plugin::clapExtension(const clap_host* host, const char* extension)
   {
     Plugin* self = reinterpret_cast<Plugin*>(host->host_data);
 
+#if WIN32
     OutputDebugStringA(extension); OutputDebugStringA("\n");
+#endif
+
     if (!strcmp(extension, CLAP_EXT_LOG)) 
       return &HostExt::log;
     if (!strcmp(extension, CLAP_EXT_PARAMS)) 

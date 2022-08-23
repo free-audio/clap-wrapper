@@ -293,6 +293,7 @@ void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
 	}
 }
 
+
 void ClapAsVst3::param_rescan(clap_param_rescan_flags flags)
 {
 }
@@ -304,6 +305,7 @@ void ClapAsVst3::param_clear(clap_id param, clap_param_clear_flags flags)
 void ClapAsVst3::param_request_flush()
 {
 }
+
 
 void ClapAsVst3::mark_dirty()
 {
