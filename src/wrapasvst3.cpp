@@ -295,6 +295,10 @@ void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
 
 void ClapAsVst3::param_rescan(clap_param_rescan_flags flags)
 {
+	if (flags & CLAP_PARAM_RESCAN_ALL)
+	{
+		this->componentHandler->restartComponent(Vst::RestartFlags::kParamValuesChanged);
+	}	
 }
 
 void ClapAsVst3::param_clear(clap_id param, clap_param_clear_flags flags)
@@ -308,6 +312,8 @@ void ClapAsVst3::param_request_flush()
 void ClapAsVst3::mark_dirty()
 {
 	// OutputDebugString("Mark Dirty!");
+	if ( componentHandler2)
+		componentHandler2->setDirty(true);
 }
 
 void ClapAsVst3::schnick()
