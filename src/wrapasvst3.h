@@ -72,7 +72,8 @@ public:
 	void param_clear(clap_id param, clap_param_clear_flags flags) override;
 	void param_request_flush() override;
 
-		void mark_dirty() override;
+	void mark_dirty() override;
+
 	void schnick() override;
 
 private:

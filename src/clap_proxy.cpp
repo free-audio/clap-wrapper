@@ -2,9 +2,10 @@
 #include "detail/clap/fsutil.h"
 #include "public.sdk/source/main/pluginfactory.h"
 
-#if MAC
+#if MAC || LIN
 #include <iostream>
 #define OutputDebugString(x) std::cout << __FILE__ << ":" << __LINE__ << " " << x << std::endl;
+#define OutputDebugStringA(x) std::cout << __FILE__ << ":" << __LINE__ << " " << x << std::endl;
 #endif
 
 namespace Clap
@@ -158,6 +159,9 @@ namespace Clap
 #endif
 #if MAC
         api = CLAP_WINDOW_API_COCOA;
+#endif
+#if LIN
+        api = CLAP_WINDOW_API_X11;
 #endif
 
       if (!_ext._gui->is_api_supported(_plugin, api, false))
@@ -335,6 +339,7 @@ namespace Clap
       return Raise(this->_audio_thread_override); 
   }
 
+
   void Plugin::param_rescan(clap_param_rescan_flags flags)
   {
     _parentHost->param_rescan(flags);
@@ -349,14 +354,16 @@ namespace Clap
     _parentHost->param_request_flush();
   }
 
-
   // Query an extension.
   // [thread-safe]
   const void* Plugin::clapExtension(const clap_host* host, const char* extension)
   {
     Plugin* self = reinterpret_cast<Plugin*>(host->host_data);
 
+#if WIN32
     OutputDebugStringA(extension); OutputDebugStringA("\n");
+#endif
+
     if (!strcmp(extension, CLAP_EXT_LOG)) 
       return &HostExt::log;
     if (!strcmp(extension, CLAP_EXT_PARAMS)) 

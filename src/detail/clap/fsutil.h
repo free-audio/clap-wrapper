@@ -8,6 +8,10 @@
 #include <Windows.h>
 #endif
 
+#if MAC
+#include <CoreFoundation/CoreFoundation.h>
+#endif
+
 namespace Clap
 {
 
@@ -22,16 +26,38 @@ namespace Clap
     ~Library();
     // bool isSelfContained() const { return _selfcontained; }
     bool load(const char* name);
-    bool hasEntryPoint() const { return _handle != 0 || _selfcontained; }
     // bool isLoaded() const { return _handle != 0; }
     
     const clap_plugin_entry* _pluginEntry = nullptr;
     const clap_plugin_factory* _pluginFactory = nullptr;
     std::vector<const clap_plugin_descriptor_t*> plugins;
+
+    bool hasEntryPoint() const {
+#if WIN
+        return _handle != 0 || _selfcontained;
+#endif
+
+#if MAC
+        // fixme
+        return false;
+#endif
+
+#if LIN
+        return _handle != nullptr;
+#endif
+
+    }
+
   private:
 #if MAC
-      int64_t _handle{0};
+    // FIXME keep a bundle ref around
+   CFBundleRef bundle{nullptr};
 #endif
+
+#if LIN
+    void *_handle{nullptr};
+#endif
+
 
 #if WIN
     HMODULE _handle = 0;

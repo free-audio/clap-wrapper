@@ -9,7 +9,7 @@ The CLAP community calls this a PALCer.
 
 ## Status
 
-Currently this only works on Windows and it will always load the clap-saw example CLAP. One of the next steps is to use the clap-scanner from clap-info and make this truely cross platform.
+Currently this works on Windows, macOS and Linux and it will always load the clap-saw example CLAP. 
 
 ## But the vendor specifics I am using...
 

@@ -8,6 +8,10 @@
 #include <CoreFoundation/CoreFoundation.h>
 #endif
 
+#if LIN
+#include <dlfcn.h>
+#endif
+
 
 namespace Clap
 {
@@ -78,12 +82,14 @@ namespace Clap
              CFURLCreateWithFileSystemPath(kCFAllocatorDefault, cs, kCFURLPOSIXPathStyle, true);
 
      auto bundle = CFBundleCreate(kCFAllocatorDefault, bundleURL);
-
-     auto db = CFBundleGetDataPointerForName(bundle, CFSTR("clap_entry"));
-
-     CFRelease(bundle);
      CFRelease(bundleURL);
      CFRelease(cs);
+
+     if (!bundle) {
+        return false;
+     }
+
+     auto db = CFBundleGetDataPointerForName(bundle, CFSTR("clap_entry"));
 
      _pluginEntry = (const clap_plugin_entry *)db;
 
@@ -107,7 +113,25 @@ namespace Clap
         _handle = NULL;
       }
     }
+
+    setupPluginsFromPluginEntry(name);
     return _handle != 0;
+#endif
+
+#if LIN
+      int *iptr;
+
+      _handle = dlopen(name, RTLD_LOCAL | RTLD_LAZY);
+      if (!_handle)
+          return false;
+
+      iptr = (int *)dlsym(_handle, "clap_entry");
+      if (!iptr)
+          return false;
+
+      _pluginEntry = (const clap_plugin_entry_t *)iptr;
+      setupPluginsFromPluginEntry(name);
+      return true;
 #endif
   }
 
@@ -189,12 +213,26 @@ namespace Clap
     {
       _pluginEntry->deinit();
     }
+#if MAC
+    // FIXME keep the bundle ref and free it here
+    if (bundle)
+      CFRelease(bundle);
+#endif
+
+#if LIN
+    if (_handle)
+    {
+        dlclose(_handle);
+        _handle = nullptr;
+    }
+#endif
+
+#if WIN
     if (_handle && !_selfcontained)
     {
-#if WIN
       FreeLibrary(_handle);
-#endif
     }
+#endif
   }
 
 }
