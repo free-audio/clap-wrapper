@@ -90,5 +90,6 @@ private:
 
 	// plugin state
 	bool _active = false;
+	bool _processing = false;
 
 };

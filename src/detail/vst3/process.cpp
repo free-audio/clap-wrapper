@@ -9,9 +9,10 @@
 
 using namespace Steinberg;
 
-void ProcessAdapter::setupProcessing(size_t numInputs, size_t numOutputs, size_t numEventInputs, size_t numEventOutputs, Steinberg::Vst::ParameterContainer& params)
+void ProcessAdapter::setupProcessing(size_t numInputs, size_t numOutputs, size_t numEventInputs, size_t numEventOutputs, Steinberg::Vst::ParameterContainer& params, Steinberg::Vst::IComponentHandler* componenthandler)
 {
   parameters = &params;
+  _componentHandler = componenthandler;
 
   _processData.audio_inputs_count = numInputs;
   if (numInputs > 0)
@@ -145,10 +146,13 @@ void ProcessAdapter::process(Steinberg::Vst::ProcessData& data, const clap_plugi
   _processData.audio_outputs_count = _vstdata->numOutputs;
   _processData.audio_outputs->channel_count = _vstdata->outputs->numChannels;
   _processData.audio_outputs->data32 = _vstdata->outputs->channelBuffers32;
-  _processData.audio_outputs->constant_mask = 3;
+  _processData.audio_outputs->constant_mask = 0;
   _processData.audio_outputs->latency = 0;
 
   _processData.audio_inputs_count = 0;
+
+  // TODO: Silent Flags -> _processData.audio_outputs->constant_mask
+  // if ( _vstdata->inputs->silenceFlags)
 
   // always clear
   _events.clear();
@@ -265,7 +269,14 @@ void ProcessAdapter::process(Steinberg::Vst::ProcessData& data, const clap_plugi
   );
   plugin->process(plugin, &_processData);
   
+  processOutputParams(data, plugin);
+
   _vstdata = nullptr;
+}
+
+void ProcessAdapter::processOutputParams(Steinberg::Vst::ProcessData& data, const clap_plugin_t* plugin)
+{
+  
 }
 
 uint32_t ProcessAdapter::input_events_size(const struct clap_input_events* list)
@@ -295,5 +306,95 @@ bool ProcessAdapter::output_events_try_push(const struct clap_output_events* lis
   auto self = static_cast<ProcessAdapter*>(list->ctx);
   // mainly used for CLAP_EVENT_NOTE_CHOKE and CLAP_EVENT_NOTE_END
   // but also for parameter changes
-  return true;
+  return self->enqueueOutputEvent(event);
+}
+
+bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
+{
+  switch (event->type)
+  {
+  case CLAP_EVENT_NOTE_ON:
+  case CLAP_EVENT_NOTE_OFF:
+  case CLAP_EVENT_NOTE_CHOKE:
+  case CLAP_EVENT_NOTE_END:
+    return true;
+    break;
+  case CLAP_EVENT_NOTE_EXPRESSION:
+    return true;
+    break;
+  case CLAP_EVENT_PARAM_VALUE:
+    {
+      auto ev = (clap_event_param_value*)event;
+      auto param = (Vst3Parameter*)this->parameters->getParameter(ev->param_id);
+      if (param)
+      {
+#if 0
+         _componentHandler->performEdit(param->id, param->asVst3Value(ev->value));
+#else
+        Steinberg::int32 index = 0;
+        // addParameterData() does check if there is already a queue and returns it,
+        // actually, it should be called getParameterQueue()
+        auto list = _vstdata->outputParameterChanges->addParameterData(param->id, index);
+        
+        // the implementation of addParameterData() in the SDK always returns a queue, but Cubase 12 (perhaps others, too)
+        // sometimes don't return a queue object during the first bunch of process calls. I (df) haven't figured out, why.
+        if (list)
+        {
+          Steinberg::int32 index2 = 0;
+          list->addPoint(ev->header.time, param->asVst3Value(ev->value), index2);
+        }
+        else
+        {
+          return false;
+        }
+#endif
+      }
+
+    }
+    return true;
+    break;
+  case CLAP_EVENT_PARAM_MOD:
+    return true;
+    break;
+#if 0
+  case CLAP_EVENT_PARAM_GESTURE_BEGIN:
+    if (_componentHandler)
+    {
+      auto ev = (clap_event_param_gesture*)event;
+      auto param = (Vst3Parameter*)this->parameters->getParameter(ev->param_id);
+      if (param)
+      {
+        _componentHandler->beginEdit(ev->param_id);
+        return true;
+      }
+    }
+    return false;
+    break;
+  case CLAP_EVENT_PARAM_GESTURE_END:
+    if (_componentHandler)
+    {
+      auto ev = (clap_event_param_gesture*)event;
+      auto param = (Vst3Parameter*)this->parameters->getParameter(ev->param_id);
+      if (param)
+      {
+        _componentHandler->endEdit(ev->param_id);
+        return true;
+      }
+    }
+    return false;
+    break;
+#else
+  case CLAP_EVENT_PARAM_GESTURE_BEGIN:
+  case CLAP_EVENT_PARAM_GESTURE_END:
+    return true;
+#endif
+  case CLAP_EVENT_MIDI:
+  case CLAP_EVENT_MIDI_SYSEX:
+  case CLAP_EVENT_MIDI2:
+    return true;
+    break;
+  default:
+    break;
+  }
+  return false;
 }

@@ -113,11 +113,13 @@ tresult PLUGIN_API ClapAsVst3::setProcessing(TBool state)
 {
 	if (state)
 	{
-		processAdapter->setupProcessing(this->audioInputs.size(), this->audioOutputs.size(), this->eventInputs.size(), this->eventOutputs.size(), parameters);
+		_processing = true;
+		processAdapter->setupProcessing(this->audioInputs.size(), this->audioOutputs.size(), this->eventInputs.size(), this->eventOutputs.size(), parameters, componentHandler);
 		return (_plugin->start_processing() ? Steinberg::kResultOk : Steinberg::kResultFalse);
 	}
 	else
 	{
+		_processing = false;
 		_plugin->stop_processing();
 		return kResultOk;
 	}
@@ -296,18 +298,26 @@ void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
 
 void ClapAsVst3::param_rescan(clap_param_rescan_flags flags)
 {
-	if (flags & CLAP_PARAM_RESCAN_ALL)
+	auto vstflags = 0u;
+	vstflags |= ((flags & CLAP_PARAM_RESCAN_VALUES) ? Vst::RestartFlags::kParamValuesChanged : 0u);
+	vstflags |= ((flags & CLAP_PARAM_RESCAN_INFO) ? Vst::RestartFlags::kParamValuesChanged|Vst::RestartFlags::kParamTitlesChanged : 0u);
+	if (vstflags != 0)
 	{
-		this->componentHandler->restartComponent(Vst::RestartFlags::kParamValuesChanged);
-	}	
+		this->componentHandler->restartComponent(vstflags);
+	}
+
 }
 
 void ClapAsVst3::param_clear(clap_id param, clap_param_clear_flags flags)
-{
+{	
 }
 
 void ClapAsVst3::param_request_flush()
 {
+	if (!this->_processing)
+	{
+		// _plugin->_ext._params->flush(_plugin->_plugin, in, out);
+	}
 }
 
 

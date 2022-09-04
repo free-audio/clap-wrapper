@@ -9,6 +9,9 @@
 #include "pluginterfaces/vst/ivstaudioprocessor.h"
 #include "public.sdk/source/common/memorystream.h"
 
+HINSTANCE ghInst = nullptr;
+void* moduleHandle = nullptr;
+
 int main(void*)
 {
     // loaded

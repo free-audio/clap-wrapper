@@ -107,9 +107,14 @@ set(vst3sources
 )
 
 
+if(WIN32)
+	set(os_wrappersources src/detail/os/windows.cpp)
+endif()
+
 if (APPLE)
 	set(os_wrappersources src/detail/clap/mac_helpers.mm)
 endif()
+
 set(wrappersources
 	src/clap_proxy.h
 	src/clap_proxy.cpp

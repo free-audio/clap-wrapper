@@ -18,8 +18,9 @@ public:
 		clap_event_param_value_t param;
   } clap_multi_event_t;
 
-  void setupProcessing(size_t numInputs, size_t numOutputs, size_t numEventInputs, size_t numEventOutputs, Steinberg::Vst::ParameterContainer& params);
+  void setupProcessing(size_t numInputs, size_t numOutputs, size_t numEventInputs, size_t numEventOutputs, Steinberg::Vst::ParameterContainer& params, Steinberg::Vst::IComponentHandler* componenthandler);
   void process(Steinberg::Vst::ProcessData& data, const clap_plugin_t* plugin);
+	void processOutputParams(Steinberg::Vst::ProcessData& data, const clap_plugin_t* plugin);
 
 	// C callbacks
 	static uint32_t input_events_size(const struct clap_input_events* list);
@@ -27,7 +28,9 @@ public:
 
 	static bool output_events_try_push(const struct clap_output_events* list, const clap_event_header_t* event);
 private:
+	bool enqueueOutputEvent(const clap_event_header_t* event);
 	Steinberg::Vst::ParameterContainer* parameters = nullptr;
+	Steinberg::Vst::IComponentHandler* _componentHandler = nullptr;
 
 	clap_audio_buffer_t _inputs;
 	clap_audio_buffer_t _outputs;
