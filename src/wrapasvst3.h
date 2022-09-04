@@ -12,6 +12,7 @@
 #include "public.sdk/source/vst/vstsinglecomponenteffect.h"
 #include "detail/vst3/plugview.h"
 #include "wrapasvst3_version.h"
+#include "detail/os/osutil.h"
 
 using namespace Steinberg;
 
@@ -20,6 +21,7 @@ class ProcessAdapter;
 
 class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect
 	, public Clap::IHost
+	, public os::IPlugObject
 {
 public:
 	using super = Steinberg::Vst::SingleComponentEffect;
@@ -75,6 +77,9 @@ public:
 	void mark_dirty() override;
 
 	void schnick() override;
+
+	//----from IPlugObject
+	void onIdle() override;
 
 private:
 	// helper functions

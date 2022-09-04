@@ -1,6 +1,6 @@
 #define NOMINMAX 1
 
-/*
+/**
 *		the windows helper
 * 
 *		provides services for all plugin instances regarding Windows
@@ -12,11 +12,12 @@
 #include <Windows.h>
 #include <tchar.h>
 #include "public.sdk/source/main/moduleinit.h"
+#include "osutil.h"
 
 // from dllmain.cpp of the VST3 SDK
 extern HINSTANCE ghInst;
 
-namespace ClapAsVst3Detail
+namespace os
 {
 
 	class WindowsHelper
@@ -24,11 +25,14 @@ namespace ClapAsVst3Detail
 	public:
 		void init();
 		void terminate();
+		void attach(IPlugObject* plugobject);
+		void detach(IPlugObject* plugobject);
 	private:
 		void executeDefered();
 		static LRESULT Wndproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 		HWND _msgWin = 0;
 		UINT_PTR _timer = 0;
+		std::vector<IPlugObject*> _plugs;
 	} gWindowsHelper;
 
 	static Steinberg::ModuleInitializer createMessageWindow([] { gWindowsHelper.init(); });
@@ -86,6 +90,35 @@ namespace ClapAsVst3Detail
 
 	void WindowsHelper::executeDefered()
 	{
-		// TODO: execute all things to be scheduled in the UI thread
+		for (auto p : _plugs)
+		{
+			p->onIdle();
+		}
+	}
+
+	void WindowsHelper::attach(IPlugObject* plugobject)
+	{
+		_plugs.push_back(plugobject);
+	}
+
+	void WindowsHelper::detach(IPlugObject * plugobject)
+	{
+		_plugs.erase(std::remove(_plugs.begin(), _plugs.end(), plugobject), _plugs.end());
+	}
+
+}
+
+namespace os
+{
+	// [UI Thread]
+	void attach(IPlugObject* plugobject)
+	{
+		gWindowsHelper.attach(plugobject);
+	}
+
+	// [UI Thread]
+	void detach(IPlugObject* plugobject)
+	{
+		gWindowsHelper.detach(plugobject);
 	}
 }

@@ -135,6 +135,7 @@ set(wrappersources
 	src/detail/sha1.cpp
 	src/detail/clap/fsutil.h
 	src/detail/clap/fsutil.cpp
+	src/detail/os/osutil.h
 	${os_wrappersources}
 PARENT_SCOPE)
 

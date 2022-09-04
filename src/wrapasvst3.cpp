@@ -332,3 +332,8 @@ void ClapAsVst3::schnick()
 {
 	// OutputDebugString("Schnick!");
 }
+
+void ClapAsVst3::onIdle()
+{
+
+}
