@@ -90,7 +90,9 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 			auto paths = Clap::getValidCLAPSearchPaths();
 			for (auto& i : paths)
 			{
-				auto k = i / "clap-saw-demo.clap";
+				 auto k = i / "clap-saw-demo.clap";
+				// auto k = i / "u-he" / "Diva.clap";
+				// auto k = i / "Audiority" / "Space Station UM282.clap";
 				if (gClapLibrary.load(k.u8string().c_str()))
 				{
 					break;
@@ -178,7 +180,8 @@ FUnknown* ClapAsVst3::createInstance(void* context)
 		auto paths = Clap::getValidCLAPSearchPaths();
 		for (auto& i : paths)
 		{
-			auto k = i / "clap-saw-demo.clap";			
+			auto k = i / "clap-saw-demo.clap";
+			// auto k = i / "u-he" / "Diva.clap";
 			if (ctx->lib->load(k.u8string().c_str()))
 			{
 				break;

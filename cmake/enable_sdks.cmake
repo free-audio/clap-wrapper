@@ -136,6 +136,7 @@ set(wrappersources
 	src/detail/clap/fsutil.h
 	src/detail/clap/fsutil.cpp
 	src/detail/os/osutil.h
+	src/detail/clap/automation.h
 	${os_wrappersources}
 PARENT_SCOPE)
 

@@ -13,17 +13,74 @@
 #include "detail/vst3/plugview.h"
 #include "wrapasvst3_version.h"
 #include "detail/os/osutil.h"
+#include "detail/clap/automation.h"
 
 using namespace Steinberg;
 
 struct ClapHostExtensions;
-class ProcessAdapter;
+namespace Clap
+{
+	class ProcessAdapter;
+}
+
+class queueEvent
+{
+public:
+	typedef enum class type
+	{
+		editstart,
+		editvalue,
+		editend,
+		flushrequest
+	} type_t;
+	type_t _type;
+	union
+	{
+		clap_id _id;
+		clap_event_param_value_t _value;
+	} _data;
+};
+
+class beginEvent : public queueEvent
+{
+public:
+	beginEvent(clap_id id)
+		: queueEvent()
+	{
+		this->_type = type::editstart;
+		_data._id = id;
+	}
+};
+
+class endEvent : public queueEvent
+{
+public:
+	endEvent(clap_id id)
+		: queueEvent()
+	{
+		this->_type = type::editend;
+		_data._id = id;
+	}
+};
+
+class valueEvent : public queueEvent
+{
+public:
+	valueEvent(const clap_event_param_value_t* value)
+		: queueEvent()
+	{
+		_type = type::editvalue;
+		_data._value = *value;
+	}
+};
 
 class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect
 	, public Clap::IHost
 	, public os::IPlugObject
+	, public Clap::IAutomation
 {
 public:
+
 	using super = Steinberg::Vst::SingleComponentEffect;
 
 	static FUnknown* createInstance(void* context);
@@ -81,6 +138,11 @@ public:
 	//----from IPlugObject
 	void onIdle() override;
 
+
+	// from Clap::IAutomation
+	void beginEdit(clap_id id) override;
+	void performEdit(const clap_event_param_value_t* value) override;
+	void endEdit(clap_id id) override;
 private:
 	// helper functions
 	void addAudioBusFrom(const clap_audio_port_info_t* info, bool is_input);
@@ -89,12 +151,14 @@ private:
 	int _libraryIndex = 0;
 	std::shared_ptr<Clap::Plugin> _plugin;
 	ClapHostExtensions* _hostextensions = nullptr;
-	ProcessAdapter* processAdapter = nullptr;
+	Clap::ProcessAdapter* processAdapter = nullptr;
 
 	void* _creationcontext;																		// context from the CLAP library
 
 	// plugin state
 	bool _active = false;
 	bool _processing = false;
+
+	util::fixedqueue<queueEvent, 8192> _queueToUI;
 
 };

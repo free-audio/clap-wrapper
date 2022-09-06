@@ -55,10 +55,12 @@ tresult PLUGIN_API ClapAsVst3::setActive(TBool state)
 		if (!_plugin->activate())
 			return kResultFalse;
 		_active = true;
-		processAdapter = new ProcessAdapter;
+		processAdapter = new Clap::ProcessAdapter();
+		os::attach(this);
 	}	
 	if (!state)
 	{
+		os::detach(this);
 		if (_active)
 		{
 			_plugin->deactivate();
@@ -114,7 +116,7 @@ tresult PLUGIN_API ClapAsVst3::setProcessing(TBool state)
 	if (state)
 	{
 		_processing = true;
-		processAdapter->setupProcessing(this->audioInputs.size(), this->audioOutputs.size(), this->eventInputs.size(), this->eventOutputs.size(), parameters, componentHandler);
+		processAdapter->setupProcessing(this->audioInputs.size(), this->audioOutputs.size(), this->eventInputs.size(), this->eventOutputs.size(), parameters, componentHandler, this);
 		return (_plugin->start_processing() ? Steinberg::kResultOk : Steinberg::kResultFalse);
 	}
 	else
@@ -333,7 +335,45 @@ void ClapAsVst3::schnick()
 	// OutputDebugString("Schnick!");
 }
 
+void ClapAsVst3::beginEdit(clap_id id) 
+{
+	// receive beginEdit and pass it to the internal queue
+	_queueToUI.push( beginEvent(id) );
+	
+}
+void ClapAsVst3::performEdit(const clap_event_param_value_t* value)
+{
+	// receive a value change and pass it to the internal queue
+	_queueToUI.push(valueEvent(value));
+}
+void ClapAsVst3::endEdit(clap_id id) 
+{
+	_queueToUI.push(endEvent(id));
+
+}
+
 void ClapAsVst3::onIdle()
 {
+	queueEvent n;
+	while (_queueToUI.pop(n))
+	{
+		switch (n._type)
+		{
+		case queueEvent::type_t::editstart:
+			componentHandler->beginEdit(n._data._id);
+			break;
+		case queueEvent::type_t::editvalue:
+		{
+			auto param = (Vst3Parameter*)(parameters.getParameter(n._data._value.param_id));
+			auto v = n._data._value.value;
+			componentHandler->performEdit(n._data._value.param_id, param->asVst3Value(v));
+		}
+			break;
+		case queueEvent::type_t::editend:
+			componentHandler->endEdit(n._data._id);
+			break;
 
+
+		}
+	}
 }
