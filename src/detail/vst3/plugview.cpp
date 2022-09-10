@@ -106,6 +106,7 @@ tresult PLUGIN_API WrappedView::attached(void* parent, FIDString type)
     }
     _extgui->set_size(_plugin, w , h);
   }
+  _extgui->show(_plugin);
   return kResultOk;
 }
 

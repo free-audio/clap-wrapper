@@ -30,6 +30,8 @@ namespace Clap
     virtual void param_clear(clap_id param, clap_param_clear_flags flags) = 0;
     virtual void param_request_flush() = 0;
 
+    virtual void gui_request_resize(uint32_t width, uint32_t height) = 0;
+
   };
 
   struct ClapPluginExtensions;
@@ -100,6 +102,26 @@ namespace Clap
     void param_rescan(clap_param_rescan_flags flags);
     void param_clear(clap_id param, clap_param_clear_flags flags);
     void param_request_flush();
+
+    // hostgui
+    void resize_hints_changed()
+    {
+    }
+    bool request_resize(uint32_t width, uint32_t height)
+    {
+      return false;
+    }
+    bool request_show()
+    {
+      return false;
+    }
+    bool request_hide()
+    {
+      return false;
+    }
+    void closed(bool was_destroyed)
+    {    }
+
 
   private:
     CLAP_NODISCARD Raise AlwaysAudioThread();

@@ -15,6 +15,9 @@ struct ClapHostExtensions
 	}
 	static void mark_dirty(const clap_host_t* host) { self(host)->schnick(); }
 	const clap_host_state_t _state = { mark_dirty};
+
+
+
 };
 
 
@@ -202,7 +205,7 @@ void ClapAsVst3::addAudioBusFrom(const clap_audio_port_info_t* info, bool is_inp
 
 void ClapAsVst3::addMIDIBusFrom(const clap_note_port_info_t* info, bool is_input)
 {
-	if (info->supported_dialects & CLAP_NOTE_DIALECT_MIDI)
+	if ((info->supported_dialects & CLAP_NOTE_DIALECT_MIDI) || (info->supported_dialects & CLAP_NOTE_DIALECT_CLAP) )
 	{
 		Steinberg::char16 name16[256];
 		Steinberg::str8ToStr16(&name16[0], info->name, 256);
@@ -320,6 +323,11 @@ void ClapAsVst3::param_request_flush()
 	{
 		// _plugin->_ext._params->flush(_plugin->_plugin, in, out);
 	}
+}
+
+void ClapAsVst3::gui_request_resize(uint32_t width, uint32_t height)
+{
+	
 }
 
 

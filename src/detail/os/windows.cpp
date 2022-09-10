@@ -78,7 +78,7 @@ namespace os
 
 		_msgWin = ::CreateWindowEx(0, modulename, NULL, 0, 0, 0, 0, 0, HWND_MESSAGE, 0, 0, 0);
 		::SetWindowLongW(_msgWin, GWLP_WNDPROC, (LONG_PTR)&Wndproc);
-		_timer = ::SetTimer(_msgWin, 0, 10, NULL);
+		_timer = ::SetTimer(_msgWin, 0, 20, NULL);
 	}
 
 	void WindowsHelper::terminate()

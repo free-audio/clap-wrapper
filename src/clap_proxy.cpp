@@ -75,6 +75,30 @@ namespace Clap
       is_main_thread, is_audio_thread
     };
 
+    static void resize_hints_changed(const clap_host_t* host)
+    {
+      self(host)->resize_hints_changed();
+    }
+    static bool request_resize(const clap_host_t* host, uint32_t width, uint32_t height)
+    {      
+      return self(host)->request_resize(width, height);
+    }
+    static bool request_show(const clap_host_t* host)
+    {
+      return self(host)->request_show();
+    }
+    static bool request_hide(const clap_host_t* host)
+    {
+      return self(host)->request_hide();
+    }
+    static void closed(const clap_host_t* host, bool was_destroyed)
+    {
+      self(host)->closed(was_destroyed);
+    }
+
+    const clap_host_gui hostgui = {
+    resize_hints_changed,request_resize,request_show,request_hide,closed };
+
   }
 
   class Raise
@@ -372,6 +396,8 @@ namespace Clap
     {
       return &HostExt::threadcheck;
     }
+    if (!strcmp(extension, CLAP_EXT_GUI))
+      return &HostExt::hostgui;
 
     return nullptr;
   }

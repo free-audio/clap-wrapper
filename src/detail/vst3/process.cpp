@@ -196,11 +196,11 @@ namespace Clap
             n.note.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
             n.note.header.time = vstevent.sampleOffset;
             n.note.header.size = sizeof(clap_event_note);
-            n.note.channel = vstevent.noteOn.channel;
-            n.note.note_id = vstevent.noteOn.noteId;
+            n.note.channel = vstevent.noteOff.channel;
+            n.note.note_id = vstevent.noteOff.noteId;
             n.note.port_index = 0;
-            n.note.velocity = vstevent.noteOn.velocity;
-            n.note.key = vstevent.noteOn.pitch;
+            n.note.velocity = vstevent.noteOff.velocity;
+            n.note.key = vstevent.noteOff.pitch;
             _eventindices.push_back(_events.size());
             _events.push_back(n);
           }
@@ -335,11 +335,14 @@ namespace Clap
       if (param)
       {
         auto param_id = ev->param_id;
+        // if the parameter is marked as being edited in the UI, pass the value
+        // to the queue so it can be given to the IComponentHandler
         if (std::find(_automatedParameters.begin(), _automatedParameters.end(), param_id) != _automatedParameters.end())
         {
           _automation->performEdit(ev);
         }
 
+        // it also needs to be communicated to the audio thread,otherwise the parameter jumps back to the original value
         Steinberg::int32 index = 0;
         // addParameterData() does check if there is already a queue and returns it,
         // actually, it should be called getParameterQueue()
