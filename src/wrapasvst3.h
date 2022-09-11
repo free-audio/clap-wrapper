@@ -142,9 +142,9 @@ public:
 
 
 	// from Clap::IAutomation
-	void beginEdit(clap_id id) override;
-	void performEdit(const clap_event_param_value_t* value) override;
-	void endEdit(clap_id id) override;
+	void onBeginEdit(clap_id id) override;
+	void onPerformEdit(const clap_event_param_value_t* value) override;
+	void onEndEdit(clap_id id) override;
 private:
 	// helper functions
 	void addAudioBusFrom(const clap_audio_port_info_t* info, bool is_input);

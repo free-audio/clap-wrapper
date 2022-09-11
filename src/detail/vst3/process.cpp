@@ -339,7 +339,7 @@ namespace Clap
         // to the queue so it can be given to the IComponentHandler
         if (std::find(_automatedParameters.begin(), _automatedParameters.end(), param_id) != _automatedParameters.end())
         {
-          _automation->performEdit(ev);
+          _automation->onPerformEdit(ev);
         }
 
         // it also needs to be communicated to the audio thread,otherwise the parameter jumps back to the original value
@@ -368,7 +368,7 @@ namespace Clap
       {
         auto ev = (clap_event_param_gesture*)event;
         _automatedParameters.push_back(ev->param_id);
-        _automation->beginEdit(ev->param_id);
+        _automation->onBeginEdit(ev->param_id);
       }
       return true;
 
@@ -376,7 +376,7 @@ namespace Clap
     case CLAP_EVENT_PARAM_GESTURE_END:
       {
         auto ev = (clap_event_param_gesture*)event;
-        _automation->endEdit(ev->param_id);
+        _automation->onEndEdit(ev->param_id);
         _automatedParameters.erase(std::remove(_automatedParameters.begin(), _automatedParameters.end(), ev->param_id));
       }
       return true;

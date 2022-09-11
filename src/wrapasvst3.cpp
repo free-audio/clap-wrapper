@@ -343,18 +343,18 @@ void ClapAsVst3::schnick()
 	// OutputDebugString("Schnick!");
 }
 
-void ClapAsVst3::beginEdit(clap_id id) 
+void ClapAsVst3::onBeginEdit(clap_id id) 
 {
 	// receive beginEdit and pass it to the internal queue
 	_queueToUI.push( beginEvent(id) );
 	
 }
-void ClapAsVst3::performEdit(const clap_event_param_value_t* value)
+void ClapAsVst3::onPerformEdit(const clap_event_param_value_t* value)
 {
 	// receive a value change and pass it to the internal queue
 	_queueToUI.push(valueEvent(value));
 }
-void ClapAsVst3::endEdit(clap_id id) 
+void ClapAsVst3::onEndEdit(clap_id id) 
 {
 	_queueToUI.push(endEvent(id));
 
@@ -368,20 +368,18 @@ void ClapAsVst3::onIdle()
 		switch (n._type)
 		{
 		case queueEvent::type_t::editstart:
-			componentHandler->beginEdit(n._data._id);
+			beginEdit(n._data._id);
 			break;
 		case queueEvent::type_t::editvalue:
 		{
 			auto param = (Vst3Parameter*)(parameters.getParameter(n._data._value.param_id));
 			auto v = n._data._value.value;
-			componentHandler->performEdit(n._data._value.param_id, param->asVst3Value(v));
+			performEdit(n._data._value.param_id, param->asVst3Value(v));
 		}
 			break;
 		case queueEvent::type_t::editend:
-			componentHandler->endEdit(n._data._id);
+			endEdit(n._data._id);
 			break;
-
-
 		}
 	}
 }
