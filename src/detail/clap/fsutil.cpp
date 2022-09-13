@@ -114,7 +114,6 @@ namespace Clap
       }
     }
 
-    setupPluginsFromPluginEntry(name);
     return _handle != 0;
 #endif
 
