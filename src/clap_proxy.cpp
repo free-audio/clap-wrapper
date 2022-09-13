@@ -249,7 +249,6 @@ namespace Clap
 
   bool Plugin::load(const clap_istream_t* stream)
   {
-    return false;
     if (_ext._state)
     {
       return _ext._state->load(_plugin, stream);

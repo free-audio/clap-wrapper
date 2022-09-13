@@ -301,13 +301,34 @@ void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
 }
 
 
-void ClapAsVst3::param_rescan(clap_param_rescan_flags flags)
+void ClapAsVst3::param_rescan(clap_param_rescan_flags flags) 
 {
 	auto vstflags = 0u;
+	if (flags & CLAP_PARAM_RESCAN_ALL)
+	{
+		// rebuild tree?
+	}
+
 	vstflags |= ((flags & CLAP_PARAM_RESCAN_VALUES) ? Vst::RestartFlags::kParamValuesChanged : 0u);
 	vstflags |= ((flags & CLAP_PARAM_RESCAN_INFO) ? Vst::RestartFlags::kParamValuesChanged|Vst::RestartFlags::kParamTitlesChanged : 0u);
 	if (vstflags != 0)
 	{
+		// update parameter values in our own tree
+		auto len = parameters.getParameterCount();
+		for (decltype(len) i = 0; i < len; ++i)
+		{
+			auto p = parameters.getParameterByIndex(i);
+			auto p1 = static_cast<Vst3Parameter*>(p);
+			double val;
+			if (_plugin->_ext._params->get_value(_plugin->_plugin, p1->id, &val))
+			{
+				auto newval = p1->asVst3Value(val);
+				if (p1->getNormalized() != newval)
+				{
+					p1->setNormalized(newval);
+				}
+			}
+		}
 		this->componentHandler->restartComponent(vstflags);
 	}
 
