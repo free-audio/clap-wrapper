@@ -3,7 +3,7 @@
 // #include <crtdbg.h>
 #include <cassert>
 
-WrappedView::WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui)
+WrappedView::WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui, std::function<void()> onDestroy)
   : FObject()
   , IPlugView()
   , _plugin(plugin)
@@ -14,6 +14,10 @@ WrappedView::WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* g
 
 WrappedView::~WrappedView()
 {
+  if (_onDestroy)
+  {
+    _onDestroy();
+  }
   drop_ui();
 }
 
@@ -128,7 +132,7 @@ tresult PLUGIN_API WrappedView::onKeyDown(char16 key, int16 keyCode, int16 modif
 }
 
 tresult PLUGIN_API WrappedView::onKeyUp(char16 key, int16 keyCode, int16 modifiers)
-{
+{  
   return kResultOk;
 }
 
@@ -217,4 +221,18 @@ tresult PLUGIN_API WrappedView::checkSizeConstraint(ViewRect* rect)
     return kResultOk;
   }
   return kResultFalse;
+}
+
+bool WrappedView::request_resize(uint32_t width, uint32_t height)
+{
+  auto oldrect = _rect;
+  _rect.right = _rect.left + (int32)width;
+  _rect.bottom = _rect.top + (int32)height;
+  
+  if (!_plugFrame->resizeView(this, &_rect))
+  {
+    _rect = oldrect;
+    return false;
+  }
+  return true;
 }

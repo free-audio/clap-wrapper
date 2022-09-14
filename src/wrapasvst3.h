@@ -76,8 +76,8 @@ public:
 
 class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect
 	, public Clap::IHost
-	, public os::IPlugObject
 	, public Clap::IAutomation
+	, public os::IPlugObject
 {
 public:
 
@@ -131,7 +131,10 @@ public:
 	void param_clear(clap_id param, clap_param_clear_flags flags) override;
 	void param_request_flush() override;
 
-	void gui_request_resize(uint32_t width, uint32_t height) override;
+	bool gui_can_resize() override;
+	bool gui_request_resize(uint32_t width, uint32_t height) override;
+	bool gui_request_show();
+	bool gui_request_hide();
 
 	void mark_dirty() override;
 
@@ -153,7 +156,8 @@ private:
 	int _libraryIndex = 0;
 	std::shared_ptr<Clap::Plugin> _plugin;
 	ClapHostExtensions* _hostextensions = nullptr;
-	Clap::ProcessAdapter* processAdapter = nullptr;
+	Clap::ProcessAdapter* _processAdapter = nullptr;
+	WrappedView* _wrappedview = nullptr;
 
 	void* _creationcontext;																		// context from the CLAP library
 

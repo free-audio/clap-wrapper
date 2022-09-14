@@ -58,7 +58,7 @@ tresult PLUGIN_API ClapAsVst3::setActive(TBool state)
 		if (!_plugin->activate())
 			return kResultFalse;
 		_active = true;
-		processAdapter = new Clap::ProcessAdapter();
+		_processAdapter = new Clap::ProcessAdapter();
 		os::attach(this);
 	}	
 	if (!state)
@@ -69,15 +69,15 @@ tresult PLUGIN_API ClapAsVst3::setActive(TBool state)
 			_plugin->deactivate();
 		}
 		_active = false;
-		delete processAdapter;
-		processAdapter = nullptr;
+		delete _processAdapter;
+		_processAdapter = nullptr;
 	}
 	return super::setActive(state);
 }
 
 tresult PLUGIN_API ClapAsVst3::process(Vst::ProcessData& data)
 {
-	this->processAdapter->process(data, _plugin->_plugin);
+	this->_processAdapter->process(data, _plugin->_plugin);
 	
   return kResultOk;
 }
@@ -93,7 +93,6 @@ tresult PLUGIN_API ClapAsVst3::canProcessSampleSize(int32 symbolicSampleSize)
 
 tresult PLUGIN_API ClapAsVst3::setState(IBStream* state)
 {
-	// return Steinberg::kResultOk;
 	return ( _plugin->load(CLAPVST3StreamAdapter(state)) ? Steinberg::kResultOk : Steinberg::kResultFalse);
 }
 
@@ -110,8 +109,6 @@ tresult PLUGIN_API ClapAsVst3::setupProcessing(Vst::ProcessSetup& newSetup)
 	_plugin->setSampleRate(newSetup.sampleRate);
 	_plugin->setBlockSizes(newSetup.maxSamplesPerBlock, newSetup.maxSamplesPerBlock);	
 
-	
-
 	return kResultOk;
 }
 tresult PLUGIN_API ClapAsVst3::setProcessing(TBool state)
@@ -119,7 +116,7 @@ tresult PLUGIN_API ClapAsVst3::setProcessing(TBool state)
 	if (state)
 	{
 		_processing = true;
-		processAdapter->setupProcessing(this->audioInputs.size(), this->audioOutputs.size(), this->eventInputs.size(), this->eventOutputs.size(), parameters, componentHandler, this);
+		_processAdapter->setupProcessing(this->audioInputs.size(), this->audioOutputs.size(), this->eventInputs.size(), this->eventOutputs.size(), parameters, componentHandler, this);
 		return (_plugin->start_processing() ? Steinberg::kResultOk : Steinberg::kResultFalse);
 	}
 	else
@@ -147,7 +144,9 @@ IPlugView* PLUGIN_API ClapAsVst3::createView(FIDString name)
 {
 	if (_plugin->_ext._gui)
 	{
-		return new WrappedView(_plugin->_plugin, _plugin->_ext._gui);
+		_wrappedview = new WrappedView(_plugin->_plugin, _plugin->_ext._gui,
+			[&] {_wrappedview = nullptr; });
+		return _wrappedview;
 	}
 	return nullptr;
 }
@@ -247,7 +246,6 @@ void ClapAsVst3::setupAudioBusses(const clap_plugin_t* plugin, const clap_plugin
     if (audioports->get(plugin, i, false, &info))
     {
       addAudioBusFrom(&info, false);
-
     }
   }
 }
@@ -346,9 +344,27 @@ void ClapAsVst3::param_request_flush()
 	}
 }
 
-void ClapAsVst3::gui_request_resize(uint32_t width, uint32_t height)
+bool ClapAsVst3::gui_can_resize()
 {
-	
+	// the plugin asks if the host can do a resize
+	return (componentHandler2 != nullptr);
+}
+
+bool ClapAsVst3::gui_request_resize(uint32_t width, uint32_t height)
+{
+	return _wrappedview->request_resize(width, height);
+}
+
+bool ClapAsVst3::gui_request_show()
+{
+	if ( componentHandler2)
+		return (componentHandler2->requestOpenEditor() == kResultOk);
+	return false;
+}
+
+bool ClapAsVst3::gui_request_hide()
+{
+	return false;
 }
 
 

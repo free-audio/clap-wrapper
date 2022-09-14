@@ -30,7 +30,10 @@ namespace Clap
     virtual void param_clear(clap_id param, clap_param_clear_flags flags) = 0;
     virtual void param_request_flush() = 0;
 
-    virtual void gui_request_resize(uint32_t width, uint32_t height) = 0;
+    virtual bool gui_can_resize() = 0;
+    virtual bool gui_request_resize(uint32_t width, uint32_t height) = 0;
+    virtual bool gui_request_show() = 0;
+    virtual bool gui_request_hide() = 0;
 
   };
 
@@ -109,11 +112,16 @@ namespace Clap
     }
     bool request_resize(uint32_t width, uint32_t height)
     {
+      if (_parentHost->gui_can_resize())
+      {
+        _parentHost->gui_request_resize(width, height);
+        return true;
+      }
       return false;
     }
     bool request_show()
     {
-      return false;
+      return _parentHost->gui_request_show();
     }
     bool request_hide()
     {
