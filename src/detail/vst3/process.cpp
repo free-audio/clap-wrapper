@@ -237,31 +237,60 @@ namespace Clap
         auto k = _vstdata->inputParameterChanges->getParameterData(i);
 
         // get the Vst3Parameter
-        auto param = (Vst3Parameter*)parameters->getParameter(k->getParameterId());
-        auto nums = k->getPointCount();
+        auto paramid = k->getParameterId();
 
-        Vst::ParamValue value;
-        int32 offset;
-        if (k->getPoint(nums - 1, offset, value) == kResultOk)
+        auto param = (Vst3Parameter*)parameters->getParameter(paramid);
+        if (param->isMidi)
         {
-          clap_multi_event_t n;
-          n.param.header.type = CLAP_EVENT_PARAM_VALUE;
-          n.param.header.flags = 0;
-          n.param.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-          n.param.header.time = offset;
-          n.param.header.size = sizeof(clap_event_param_value);
-          n.param.param_id = param->id;
-          n.param.cookie = param->cookie;
+          auto nums = k->getPointCount();
 
-          // nothing note specific
-          n.param.note_id = -1;   // always global
-          n.param.port_index = -1;
-          n.param.channel = -1;
-          n.param.key = -1;
+          Vst::ParamValue value;
+          int32 offset;
+          if (k->getPoint(nums - 1, offset, value) == kResultOk)
+          {
+            // create MIDI event
+            clap_multi_event_t n;
+            n.param.header.type = CLAP_EVENT_MIDI;
+            n.param.header.flags = 0;
+            n.param.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+            n.param.header.time = offset;
+            n.param.header.size = sizeof(clap_event_midi_t);
 
-          n.param.value = param->asClapValue(value);
-          _eventindices.push_back(_events.size());
-          _events.push_back(n);
+            n.midi.port_index = 0;
+            n.midi.data[0] = 0xB0 | param->channel;
+            n.midi.data[1] = param->controller;
+            n.midi.data[2] = param->asClapValue(value);
+            _eventindices.push_back(_events.size());
+            _events.push_back(n);
+          }
+        }
+        else
+        {
+          auto nums = k->getPointCount();
+
+          Vst::ParamValue value;
+          int32 offset;
+          if (k->getPoint(nums - 1, offset, value) == kResultOk)
+          {
+            clap_multi_event_t n;
+            n.param.header.type = CLAP_EVENT_PARAM_VALUE;
+            n.param.header.flags = 0;
+            n.param.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+            n.param.header.time = offset;
+            n.param.header.size = sizeof(clap_event_param_value);
+            n.param.param_id = param->id;
+            n.param.cookie = param->cookie;
+
+            // nothing note specific
+            n.param.note_id = -1;   // always global
+            n.param.port_index = -1;
+            n.param.channel = -1;
+            n.param.key = -1;
+
+            n.param.value = param->asClapValue(value);
+            _eventindices.push_back(_events.size());
+            _events.push_back(n);
+          }
         }
 
       }

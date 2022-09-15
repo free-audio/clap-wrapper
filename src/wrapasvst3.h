@@ -9,9 +9,9 @@
 */
 
 #include "clap_proxy.h"
-#include "public.sdk/source/vst/vstsinglecomponenteffect.h"
+#include <pluginterfaces/vst/ivstmidicontrollers.h>
+#include <public.sdk/source/vst/vstsinglecomponenteffect.h>
 #include "detail/vst3/plugview.h"
-#include "wrapasvst3_version.h"
 #include "detail/os/osutil.h"
 #include "detail/clap/automation.h"
 
@@ -75,6 +75,7 @@ public:
 };
 
 class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect
+	, public Steinberg::Vst::IMidiMapping
 	, public Clap::IHost
 	, public Clap::IAutomation
 	, public os::IPlugObject
@@ -103,24 +104,21 @@ public:
 
 	uint32  PLUGIN_API getTailSamples() override;
 
-	tresult PLUGIN_API getControllerClassId(TUID classID) override 
-	{ 
-		// TUID lcid = INLINE_UID_FROM_FUID(ClapAsVst3UID); classid = lcid; return kResultOk; 
-		if (ClapAsVst3UID.isValid())
-		{
-			ClapAsVst3UID.toTUID(classID);
-			return kResultTrue;
-		}
-		return kResultFalse;
-	}
-
 	//----from IEditControllerEx1--------------------------------
 	IPlugView* PLUGIN_API createView(FIDString name) override;
 
+	//----from IMidiMapping--------------------------------------
+	tresult PLUGIN_API getMidiControllerAssignment(int32 busIndex, int16 channel,
+		Vst::CtrlNumber midiControllerNumber, Vst::ParamID& id/*out*/) override;
+
 	//---Interface---------
 	OBJ_METHODS(ClapAsVst3, SingleComponentEffect)
-		tresult PLUGIN_API queryInterface(const TUID iid, void** obj) override;
+	DEFINE_INTERFACES
+	DEF_INTERFACE(IMidiMapping)
+	// tresult PLUGIN_API queryInterface(const TUID iid, void** obj) override;
+	END_DEFINE_INTERFACES(SingleComponentEffect)
 	REFCOUNT_METHODS(SingleComponentEffect);
+	
 
 	// Clap::IHost
 	void setupAudioBusses(const clap_plugin_t* plugin, const clap_plugin_audio_ports_t* audioports) override;
@@ -167,4 +165,7 @@ private:
 
 	util::fixedqueue<queueEvent, 8192> _queueToUI;
 
+	// for IMidiMapping
+	Vst::ParamID _IMidiMappingIDs[Vst::ControllerNumbers::kCountCtrlNumber] = { 0 };
+	bool _IMidiMappingEasy = true;
 };

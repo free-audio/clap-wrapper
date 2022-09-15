@@ -1,6 +1,6 @@
 #include "wrapasvst3.h"
 #include <pluginterfaces/base/ibstream.h>
-#include "pluginterfaces/vst/ivstevents.h"
+#include <pluginterfaces/vst/ivstevents.h>
 #include "detail/vst3/state.h"
 #include "detail/vst3/process.h"
 #include "detail/vst3/parameter.h"
@@ -13,7 +13,7 @@ struct ClapHostExtensions
 	{
 		return static_cast<ClapAsVst3*>(host->host_data);
 	}
-	static void mark_dirty(const clap_host_t* host) { self(host)->schnick(); }
+	static void mark_dirty(const clap_host_t* host) { self(host)->mark_dirty(); }
 	const clap_host_state_t _state = { mark_dirty};
 
 
@@ -152,11 +152,26 @@ IPlugView* PLUGIN_API ClapAsVst3::createView(FIDString name)
 }
 
 //-----------------------------------------------------------------------------
-tresult PLUGIN_API ClapAsVst3::queryInterface(const TUID iid, void** obj)
+
+tresult PLUGIN_API ClapAsVst3::getMidiControllerAssignment(int32 busIndex, int16 channel,
+	Vst::CtrlNumber midiControllerNumber, Vst::ParamID& id/*out*/)
 {
-	  // DEF_INTERFACE(IMidiMapping)
-		return SingleComponentEffect::queryInterface(iid, obj);
+	// for my first Event bus and for MIDI channel 0 and for MIDI CC Volume only
+	if (busIndex == 0 && channel == 0 ) // && midiControllerNumber == Vst::kCtrlVolume)
+	{
+		id = _IMidiMappingIDs[midiControllerNumber];
+		return kResultTrue;
+	}
+	return kResultFalse;
 }
+
+
+////-----------------------------------------------------------------------------
+//tresult PLUGIN_API ClapAsVst3::queryInterface(const TUID iid, void** obj)
+//{
+//	  DEF_INTERFACE(IMidiMapping)
+//		return SingleComponentEffect::queryInterface(iid, obj);
+//}
 
 static Vst::SpeakerArrangement speakerArrFromPortType(const char* port_type)
 {
@@ -286,6 +301,7 @@ void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
 {
 	if (!params) return;
 	auto numparams = params->count(plugin);
+	parameters.removeAll();
 	this->parameters.init(numparams);
 	for (decltype(numparams) i = 0; i < numparams; ++i)
 	{
@@ -296,6 +312,22 @@ void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
 			parameters.addParameter(p);
 		}
 	}
+	// find free tags for IMidiMapping
+	Vst::ParamID x = 0xb00000;
+	_IMidiMappingEasy = true;
+	for (int i = 0; i < Vst::ControllerNumbers::kCountCtrlNumber; ++i)
+	{
+		while (parameters.getParameter(x))
+		{
+			// if this happens there is a index clash between the parameter ids
+			// and the ones reserved for the IMidiMapping
+			_IMidiMappingEasy = false;
+			x++;
+		}
+		auto p = Vst3Parameter::create(0, i, x);
+		parameters.addParameter(p);
+		_IMidiMappingIDs[i] = x++;
+	}
 }
 
 
@@ -304,7 +336,8 @@ void ClapAsVst3::param_rescan(clap_param_rescan_flags flags)
 	auto vstflags = 0u;
 	if (flags & CLAP_PARAM_RESCAN_ALL)
 	{
-		// rebuild tree?
+		setupParameters(_plugin->_plugin,_plugin->_ext._params);
+		vstflags |= Vst::RestartFlags::kMidiCCAssignmentChanged;
 	}
 
 	vstflags |= ((flags & CLAP_PARAM_RESCAN_VALUES) ? Vst::RestartFlags::kParamValuesChanged : 0u);
@@ -370,7 +403,6 @@ bool ClapAsVst3::gui_request_hide()
 
 void ClapAsVst3::mark_dirty()
 {
-	// OutputDebugString("Mark Dirty!");
 	if ( componentHandler2)
 		componentHandler2->setDirty(true);
 }
