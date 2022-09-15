@@ -120,7 +120,6 @@ set(wrappersources
 	src/clap_proxy.cpp
 	src/wrapasvst3.h
 	src/wrapasvst3.cpp
-	src/wrapasvst3_version.h
 	src/wrapasvst3_entry.cpp
 	src/detail/vst3/parameter.h
 	src/detail/vst3/parameter.cpp
