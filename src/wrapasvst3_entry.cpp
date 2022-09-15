@@ -41,7 +41,6 @@
 //#include "version.h"	// for versioning
 #include "detail/sha1.h"
 #include "wrapasvst3.h"
-#include "wrapasvst3_version.h"
 #include "public.sdk/source/main/pluginfactory.h"
 
 
@@ -91,8 +90,6 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 			for (auto& i : paths)
 			{
 				 auto k = i / "clap-saw-demo.clap";
-				// auto k = i / "u-he" / "Diva.clap";
-				// auto k = i / "Audiority" / "Space Station UM282.clap";
 				if (gClapLibrary.load(k.u8string().c_str()))
 				{
 					break;
@@ -134,7 +131,7 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 		{
 			auto& clapdescr = gClapLibrary.plugins[ctr];
 			std::string n(clapdescr->name);
-			n.append(" (CLAPWRAP)");
+			n.append(" (CLAP->VST3)");
 			auto plugname = n.c_str(); //  clapdescr->name;
 			auto vendor = clapdescr->vendor;
 			if (vendor == nullptr || *vendor == 0)
