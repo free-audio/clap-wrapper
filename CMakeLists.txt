@@ -77,7 +77,7 @@ if (UNIX AND NOT APPLE)
 endif()
 
 # a debuggable executable to test - will be removed later and disabled by default
-if(TRUE)
+if(FALSE)
 add_executable(${project}_as_executable
 	src/wramain.cpp
 	${wrappersources}
