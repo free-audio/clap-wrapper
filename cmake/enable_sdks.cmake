@@ -112,7 +112,10 @@ if(WIN32)
 endif()
 
 if (APPLE)
-	set(os_wrappersources src/detail/clap/mac_helpers.mm)
+	set(os_wrappersources
+		src/detail/clap/mac_helpers.mm
+		src/detail/os/macos.mm
+	)
 endif()
 
 set(wrappersources

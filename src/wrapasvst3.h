@@ -131,8 +131,8 @@ public:
 
 	bool gui_can_resize() override;
 	bool gui_request_resize(uint32_t width, uint32_t height) override;
-	bool gui_request_show();
-	bool gui_request_hide();
+	bool gui_request_show() override;
+	bool gui_request_hide() override;
 
 	void mark_dirty() override;
 
