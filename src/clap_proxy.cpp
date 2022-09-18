@@ -98,6 +98,18 @@ namespace Clap
 
     const clap_host_gui hostgui = {
     resize_hints_changed,request_resize,request_show,request_hide,closed };
+    
+    static bool register_timer(const clap_host_t* host, uint32_t period_ms, clap_id* timer_id)
+    {
+      return  self(host)->register_timer(period_ms, timer_id);
+    }
+
+    static bool unregister_timer(const clap_host_t* host, clap_id timer_id)
+    {
+      return  self(host)->unregister_timer(timer_id);
+    }
+
+    const clap_host_timer_support hosttimer = { register_timer, unregister_timer };
 
   }
 
@@ -174,6 +186,7 @@ namespace Clap
     getExtension(_plugin, _ext._latency, CLAP_EXT_LATENCY);
     getExtension(_plugin, _ext._render, CLAP_EXT_RENDER);
     getExtension(_plugin, _ext._gui, CLAP_EXT_GUI);
+    getExtension(_plugin, _ext._timer, CLAP_EXT_TIMER_SUPPORT);
 
     if (_ext._gui)
     {
@@ -392,11 +405,11 @@ namespace Clap
     if (!strcmp(extension, CLAP_EXT_PARAMS)) 
       return &HostExt::params;
     if (!strcmp(extension, CLAP_EXT_THREAD_CHECK))
-    {
       return &HostExt::threadcheck;
-    }
     if (!strcmp(extension, CLAP_EXT_GUI))
       return &HostExt::hostgui;
+    if (!strcmp(extension, CLAP_EXT_TIMER_SUPPORT))
+      return &HostExt::hosttimer;
 
     return nullptr;
   }
@@ -425,4 +438,16 @@ namespace Clap
     // right now, I don't know how to communicate this to the host
   }
 
+  // Registers a periodic timer.
+// The host may adjust the period if it is under a certain threshold.
+// 30 Hz should be allowed.
+// [main-thread]
+  bool Plugin::register_timer(uint32_t period_ms, clap_id* timer_id)
+  {
+    return _parentHost->register_timer(period_ms, timer_id);
+  }
+  bool Plugin::unregister_timer(clap_id timer_id)
+  {
+    return _parentHost->unregister_timer(timer_id);
+  }
 }

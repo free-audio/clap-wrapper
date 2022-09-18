@@ -96,6 +96,11 @@ namespace os
 	// [UI Thread]
 	void detach(IPlugObject* plugobject)
 	{
-    gMacOSHelper.detach(plugobject);
+		gMacOSHelper.detach(plugobject);
+	}
+
+	uint64_t getTickInMS()
+	{
+		return ::clock() * 1000) / CLOCKS_PER_SEC;
 	}
 }

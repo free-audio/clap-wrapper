@@ -16,6 +16,7 @@ namespace Clap
   class Plugin;
   class Raise;
 
+  // the IHost interface is being implemented by the actual wrapper class
   class IHost
   {
   public:
@@ -34,6 +35,9 @@ namespace Clap
     virtual bool gui_request_resize(uint32_t width, uint32_t height) = 0;
     virtual bool gui_request_show() = 0;
     virtual bool gui_request_hide() = 0;
+
+    virtual bool register_timer(uint32_t period_ms, clap_id* timer_id) = 0;
+    virtual bool unregister_timer(clap_id timer_id) = 0;
 
   };
 
@@ -56,6 +60,7 @@ namespace Clap
     const clap_plugin_midi_mappings_t* _midimap = nullptr;
     const clap_plugin_latency_t* _latency = nullptr;
     const clap_plugin_render_t* _render = nullptr;
+    const clap_plugin_timer_support_t* _timer = nullptr;
   };
 
   /// <summary>
@@ -130,7 +135,9 @@ namespace Clap
     void closed(bool was_destroyed)
     {    }
 
-
+    // clap_timer support
+    bool register_timer(uint32_t period_ms, clap_id* timer_id);
+    bool unregister_timer(clap_id timer_id);
   private:
     CLAP_NODISCARD Raise AlwaysAudioThread();
     

@@ -138,6 +138,10 @@ public:
 
 	void schnick() override;
 
+	// clap_timer support
+	bool register_timer(uint32_t period_ms, clap_id* timer_id);
+	bool unregister_timer(clap_id timer_id);
+
 	//----from IPlugObject
 	void onIdle() override;
 
@@ -168,4 +172,13 @@ private:
 	// for IMidiMapping
 	Vst::ParamID _IMidiMappingIDs[Vst::ControllerNumbers::kCountCtrlNumber] = { 0 };
 	bool _IMidiMappingEasy = true;
+
+	// for timer
+	struct TimerObject
+	{
+		uint32_t period = 0;		// if period is 0 the entry is unused (and can be reused)
+		uint64_t nexttick = 0;
+		clap_id timer_id = 0;
+	};
+	std::vector<TimerObject> _timersObjects;
 };

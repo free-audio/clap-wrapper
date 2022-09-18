@@ -121,4 +121,9 @@ namespace os
 	{
 		gWindowsHelper.detach(plugobject);
 	}
+
+	uint64_t getTickInMS()
+	{
+		return GetTickCount64();
+	}
 }

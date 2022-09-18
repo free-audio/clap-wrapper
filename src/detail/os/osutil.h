@@ -12,6 +12,7 @@ namespace os
 	};
 	void attach(IPlugObject* plugobject);
 	void detach(IPlugObject* plugobject);
+	uint64_t getTickInMS();
 }
 
 namespace util
