@@ -13,6 +13,16 @@ Vst3Parameter::Vst3Parameter(const Steinberg::Vst::ParameterInfo& vst3info, cons
   // 
 }
 
+Vst3Parameter::Vst3Parameter(const Steinberg::Vst::ParameterInfo& vst3info, uint8_t bus, uint8_t cc)
+	: Steinberg::Vst::Parameter(vst3info)
+	, id(vst3info.id)	
+	, min_value(0)
+	, max_value(127)
+	, isMidi(true)
+	, controller(cc)
+{
+
+}
 Vst3Parameter::~Vst3Parameter()
 {
 }
@@ -61,6 +71,42 @@ Vst3Parameter* Vst3Parameter::create(const clap_param_info_t* info)
 		v.stepCount = 0;
 
 	auto result = new Vst3Parameter(v, info);
+	result->addRef();	// ParameterContainer doesn't add the ref -> but we don't have copies
+	return result;
+}
+
+Vst3Parameter* Vst3Parameter::create(uint8_t bus, uint8_t cc, Vst::ParamID id)
+{
+	Vst::ParameterInfo v;
+
+	v.id = id;
+
+	auto name = "controller";
+	// the long name might contain the module name
+	// this will change when we split the module to units
+	std::string fullname("MIDI");
+	if (!fullname.empty())
+	{
+		fullname.append("/");
+	}
+	fullname.append("controller");
+	if (fullname.size() >= str16BufferSize(v.title))
+	{
+		fullname = "controller";
+	}
+	str8ToStr16(v.title, fullname.c_str(), str16BufferSize(v.title));
+	// TODO: string shrink algorithm shortening the string a bit
+	str8ToStr16(v.shortTitle, name, str16BufferSize(v.shortTitle));
+	v.units[0] = 0;  // unfortunately, CLAP has no unit for parameter values
+	v.unitId = 0;
+
+	v.defaultNormalizedValue = 0;
+	v.flags = Vst::ParameterInfo::kNoFlags;
+
+	v.defaultNormalizedValue = 0;
+	v.stepCount = 128;
+
+	auto result = new Vst3Parameter(v,bus,cc);
 	result->addRef();	// ParameterContainer doesn't add the ref -> but we don't have copies
 	return result;
 }

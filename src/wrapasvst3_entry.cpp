@@ -41,8 +41,6 @@
 //#include "version.h"	// for versioning
 #include "detail/sha1.h"
 #include "wrapasvst3.h"
-#include "wrapasvst3_version.h"
-
 #include "public.sdk/source/main/pluginfactory.h"
 
 
@@ -66,7 +64,6 @@ using namespace Steinberg::Vst;
 #include "detail/clap/fsutil.h"
 #include "detail/vst3/categories.h"
 #include "clap_proxy.h"
-
 
 struct CreationContext
 {
@@ -92,7 +89,7 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 			auto paths = Clap::getValidCLAPSearchPaths();
 			for (auto& i : paths)
 			{
-				auto k = i / "clap-saw-demo.clap";
+				 auto k = i / "clap-saw-demo.clap";
 				if (gClapLibrary.load(k.u8string().c_str()))
 				{
 					break;
@@ -133,7 +130,9 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 		for (size_t ctr = 0; ctr < gClapLibrary.plugins.size(); ++ctr)
 		{
 			auto& clapdescr = gClapLibrary.plugins[ctr];
-			auto plugname = clapdescr->name;
+			std::string n(clapdescr->name);
+			n.append(" (CLAP->VST3)");
+			auto plugname = n.c_str(); //  clapdescr->name;
 			auto vendor = clapdescr->vendor;
 			if (vendor == nullptr || *vendor == 0)
 			{
@@ -179,6 +178,7 @@ FUnknown* ClapAsVst3::createInstance(void* context)
 		for (auto& i : paths)
 		{
 			auto k = i / "clap-saw-demo.clap";
+			// auto k = i / "u-he" / "Diva.clap";
 			if (ctx->lib->load(k.u8string().c_str()))
 			{
 				break;

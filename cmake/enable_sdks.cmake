@@ -60,7 +60,7 @@ function(DetectVST3SDK)
 	endif()
 
 	if(VST3_SDK_ROOT STREQUAL "")
-		message(FATAL_ERROR "Unable to detect VST3 SDK!")
+		message(FATAL_ERROR "Unable to detect VST3 SDK. Have you set -DVST3_SDK_ROOT=/path/to/sdk?")
 	endif()
   
   endif()
@@ -106,12 +106,23 @@ set(vst3sources
 	PARENT_SCOPE
 )
 
+
+if(WIN32)
+	set(os_wrappersources src/detail/os/windows.cpp)
+endif()
+
+if (APPLE)
+	set(os_wrappersources
+		src/detail/clap/mac_helpers.mm
+		src/detail/os/macos.mm
+	)
+endif()
+
 set(wrappersources
 	src/clap_proxy.h
 	src/clap_proxy.cpp
 	src/wrapasvst3.h
 	src/wrapasvst3.cpp
-	src/wrapasvst3_version.h
 	src/wrapasvst3_entry.cpp
 	src/detail/vst3/parameter.h
 	src/detail/vst3/parameter.cpp
@@ -126,7 +137,11 @@ set(wrappersources
 	src/detail/sha1.cpp
 	src/detail/clap/fsutil.h
 	src/detail/clap/fsutil.cpp
+	src/detail/os/osutil.h
+	src/detail/clap/automation.h
+	${os_wrappersources}
 PARENT_SCOPE)
+
 
 endfunction(DefineVST3Sources)
 

@@ -16,6 +16,7 @@ namespace Clap
   class Plugin;
   class Raise;
 
+  // the IHost interface is being implemented by the actual wrapper class
   class IHost
   {
   public:
@@ -25,6 +26,19 @@ namespace Clap
     virtual void setupAudioBusses(const clap_plugin_t* plugin, const clap_plugin_audio_ports_t* audioports) = 0;   // called from initialize() to allow the setup of audio ports
     virtual void setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_note_ports_t* noteports) = 0;      // called from initialize() to allow the setup of MIDI ports
     virtual void setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params) = 0;
+
+    virtual void param_rescan(clap_param_rescan_flags flags) = 0;                                                  // ext_host_params
+    virtual void param_clear(clap_id param, clap_param_clear_flags flags) = 0;
+    virtual void param_request_flush() = 0;
+
+    virtual bool gui_can_resize() = 0;
+    virtual bool gui_request_resize(uint32_t width, uint32_t height) = 0;
+    virtual bool gui_request_show() = 0;
+    virtual bool gui_request_hide() = 0;
+
+    virtual bool register_timer(uint32_t period_ms, clap_id* timer_id) = 0;
+    virtual bool unregister_timer(clap_id timer_id) = 0;
+
   };
 
   struct ClapPluginExtensions;
@@ -46,6 +60,7 @@ namespace Clap
     const clap_plugin_midi_mappings_t* _midimap = nullptr;
     const clap_plugin_latency_t* _latency = nullptr;
     const clap_plugin_render_t* _render = nullptr;
+    const clap_plugin_timer_support_t* _timer = nullptr;
   };
 
   /// <summary>
@@ -91,6 +106,38 @@ namespace Clap
     bool is_main_thread() const;
     bool is_audio_thread() const;
 
+    // param
+    void param_rescan(clap_param_rescan_flags flags);
+    void param_clear(clap_id param, clap_param_clear_flags flags);
+    void param_request_flush();
+
+    // hostgui
+    void resize_hints_changed()
+    {
+    }
+    bool request_resize(uint32_t width, uint32_t height)
+    {
+      if (_parentHost->gui_can_resize())
+      {
+        _parentHost->gui_request_resize(width, height);
+        return true;
+      }
+      return false;
+    }
+    bool request_show()
+    {
+      return _parentHost->gui_request_show();
+    }
+    bool request_hide()
+    {
+      return false;
+    }
+    void closed(bool was_destroyed)
+    {    }
+
+    // clap_timer support
+    bool register_timer(uint32_t period_ms, clap_id* timer_id);
+    bool unregister_timer(clap_id timer_id);
   private:
     CLAP_NODISCARD Raise AlwaysAudioThread();
     

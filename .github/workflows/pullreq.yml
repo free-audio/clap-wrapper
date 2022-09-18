@@ -1,0 +1,44 @@
+name: Pull Request Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+      - next
+
+jobs:
+  build_feature:
+    name: Build feature
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest]
+        #os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+        #  - os: ubuntu-latest
+        #    name: linux
+          - os: macos-latest
+            name: mac
+          - os: windows-latest
+            name: win
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          submodules: recursive
+
+      - name: Get Dependencies
+        run: |
+          mkdir deps
+          cd deps
+          git clone https://github.com/free-audio/clap
+          git clone https://github.com/steinbergmedia/vst3sdk
+          cd vst3sdk
+          git submodule update --init --recursive
+          cd ../..
+
+      - name: Build project
+        run: |
+          cmake -S . -B ./build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCLAP_SDK_ROOT=deps/clap -DVST3_SDK_ROOT=deps/vst3sdk
+          cmake --build ./build --config Debug
+

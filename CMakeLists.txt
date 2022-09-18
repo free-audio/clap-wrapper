@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.20)
 cmake_policy(SET CMP0091 NEW)
 
 #
@@ -54,21 +54,30 @@ set(project "clapasvst3")
 add_definitions(-D${PLATFORM}=1)
 
 message(STATUS "platform is ${PLATFORM}")
-# 
+#
+smtg_enable_vst3_sdk()
 smtg_add_vst3plugin(${project}
 	${wrappersources}
 	${VST3_SDK_ROOT}/public.sdk/source/vst/vstsinglecomponenteffect.cpp
 	${VST3_SDK_ROOT}/public.sdk/source/vst/vstsinglecomponenteffect.h
 )
 
-
+smtg_target_add_library_main(${project})
 
 # link both SDKs
 target_link_libraries(${project} PRIVATE clap-core sdk)
 target_include_directories(${project} PUBLIC ${VST3_SDK_ROOT})
 
+if (APPLE)
+	target_link_libraries (${project} PUBLIC "-framework Foundation" "-framework CoreFoundation")
+endif()
+
+if (UNIX AND NOT APPLE)
+	target_link_libraries (${project} PUBLIC "-ldl")
+endif()
+
 # a debuggable executable to test - will be removed later and disabled by default
-if(TRUE)
+if(FALSE)
 add_executable(${project}_as_executable
 	src/wramain.cpp
 	${wrappersources}
@@ -76,6 +85,15 @@ add_executable(${project}_as_executable
 )
 target_link_libraries(${project}_as_executable PRIVATE clap-core sdk)
 target_include_directories(${project}_as_executable PUBLIC ${VST3_SDK_ROOT})
+
+if (APPLE)
+	target_link_libraries (${project}_as_executable PUBLIC "-framework Foundation" "-framework CoreFoundation")
+endif()
+
+if (UNIX AND NOT APPLE)
+	target_link_libraries (${project}_as_executable PUBLIC "-ldl")
+endif()
+
 endif()
 
 # smtg_target_configure_version_file(${project})

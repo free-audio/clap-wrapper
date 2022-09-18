@@ -1,6 +1,7 @@
 #include "base/source/fobject.h"
 #include <pluginterfaces/gui/iplugview.h>
 #include <clap/clap.h>
+#include <functional>
 
 using namespace Steinberg;
 
@@ -9,9 +10,11 @@ class WrappedView : public Steinberg::IPlugView, public Steinberg::FObject
 
 public:
 
-	WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui);
+	WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui, std::function<void()> onDestroy);
 	~WrappedView();
 
+
+	// IPlugView interface
 	tresult PLUGIN_API isPlatformTypeSupported(FIDString type) override;
 
 	/** The parent window of the view has been created, the (platform) representation of the view
@@ -72,11 +75,15 @@ public:
 		DEF_INTERFACE(IPlugView)
 		END_DEFINE_INTERFACES(FObject)
 		REFCOUNT_METHODS(FObject)
+
+  // wrapper needed interfaces
+	bool request_resize(uint32_t width, uint32_t height);
 private:
 	void ensure_ui();
 	void drop_ui();
 	const clap_plugin_t* _plugin = nullptr;
-	const clap_plugin_gui_t* _extgui = nullptr;
+	const clap_plugin_gui_t* _extgui = nullptr;	
+	std::function<void()> _onDestroy = nullptr;
   clap_window_t _window = { nullptr,nullptr };
 	IPlugFrame* _plugFrame = nullptr;
 	ViewRect _rect = {0,0,0,0};

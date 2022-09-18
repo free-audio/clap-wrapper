@@ -1,9 +1,9 @@
 #include "plugview.h"
 #include <clap/clap.h>
-#include <crtdbg.h>
+// #include <crtdbg.h>
 #include <cassert>
 
-WrappedView::WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui)
+WrappedView::WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui, std::function<void()> onDestroy)
   : FObject()
   , IPlugView()
   , _plugin(plugin)
@@ -14,6 +14,10 @@ WrappedView::WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* g
 
 WrappedView::~WrappedView()
 {
+  if (_onDestroy)
+  {
+    _onDestroy();
+  }
   drop_ui();
 }
 
@@ -21,7 +25,20 @@ void WrappedView::ensure_ui()
 {
   if (!_created)
   {
-    _extgui->create(_plugin, CLAP_WINDOW_API_WIN32, false);
+     const char* api{nullptr};
+#if MAC
+     api = CLAP_WINDOW_API_COCOA;
+#endif
+#if WIN
+     api = CLAP_WINDOW_API_WIN32;
+#endif
+#if LIN
+      api = CLAP_WINDOW_API_X11;
+#endif
+
+     if (_extgui->is_api_supported(_plugin, api, false))
+      _extgui->create(_plugin, api, false);
+
     _created = true;
   }
 }
@@ -65,16 +82,35 @@ tresult PLUGIN_API WrappedView::isPlatformTypeSupported(FIDString type)
 }
 
 tresult PLUGIN_API WrappedView::attached(void* parent, FIDString type)
-{  
+{
+#if WIN
   _window = { CLAP_WINDOW_API_WIN32, parent };
+#endif
+
+#if MAC
+   _window = { CLAP_WINDOW_API_COCOA, parent };
+#endif
+
+
+#if LIN
+    _window = { CLAP_WINDOW_API_X11, parent };
+#endif
 
   ensure_ui();
   _extgui->set_parent(_plugin, &_window);
   _attached = true;
   if (_extgui->can_resize(_plugin))
   {
-    _extgui->set_size(_plugin, _rect.getWidth(), _rect.getHeight());
+    uint32_t w = _rect.getWidth();
+    uint32_t h = _rect.getHeight();
+    if (_extgui->adjust_size(_plugin, &w, &h))
+    {
+      _rect.right = _rect.left + w +1;
+      _rect.bottom = _rect.top + h +1;
+    }
+    _extgui->set_size(_plugin, w , h);
   }
+  _extgui->show(_plugin);
   return kResultOk;
 }
 
@@ -96,7 +132,7 @@ tresult PLUGIN_API WrappedView::onKeyDown(char16 key, int16 keyCode, int16 modif
 }
 
 tresult PLUGIN_API WrappedView::onKeyUp(char16 key, int16 keyCode, int16 modifiers)
-{
+{  
   return kResultOk;
 }
 
@@ -130,7 +166,14 @@ tresult PLUGIN_API WrappedView::onSize(ViewRect* newSize)
     {
       if (_extgui->can_resize(_plugin))
       {
-        if (_extgui->set_size(_plugin, newSize->getWidth(), newSize->getHeight()))
+        uint32_t w = _rect.getWidth();
+        uint32_t h = _rect.getHeight();
+        if (_extgui->adjust_size(_plugin, &w, &h))
+        {
+          _rect.right = _rect.left + w;
+          _rect.bottom = _rect.top + h;
+        }
+        if (_extgui->set_size(_plugin, w, h))
         {
           return kResultOk;
         }
@@ -178,4 +221,18 @@ tresult PLUGIN_API WrappedView::checkSizeConstraint(ViewRect* rect)
     return kResultOk;
   }
   return kResultFalse;
+}
+
+bool WrappedView::request_resize(uint32_t width, uint32_t height)
+{
+  auto oldrect = _rect;
+  _rect.right = _rect.left + (int32)width;
+  _rect.bottom = _rect.top + (int32)height;
+  
+  if (!_plugFrame->resizeView(this, &_rect))
+  {
+    _rect = oldrect;
+    return false;
+  }
+  return true;
 }

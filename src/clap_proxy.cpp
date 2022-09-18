@@ -2,6 +2,12 @@
 #include "detail/clap/fsutil.h"
 #include "public.sdk/source/main/pluginfactory.h"
 
+#if MAC || LIN
+#include <iostream>
+#define OutputDebugString(x) std::cout << __FILE__ << ":" << __LINE__ << " " << x << std::endl;
+#define OutputDebugStringA(x) std::cout << __FILE__ << ":" << __LINE__ << " " << x << std::endl;
+#endif
+
 namespace Clap
 {
   namespace HostExt
@@ -23,7 +29,7 @@ namespace Clap
 
     void rescan(const clap_host_t* host, clap_param_rescan_flags flags)
     {
-
+      self(host)->param_rescan(flags);
     }
 
     // Clears references to a parameter.
@@ -68,6 +74,42 @@ namespace Clap
     {
       is_main_thread, is_audio_thread
     };
+
+    static void resize_hints_changed(const clap_host_t* host)
+    {
+      self(host)->resize_hints_changed();
+    }
+    static bool request_resize(const clap_host_t* host, uint32_t width, uint32_t height)
+    {      
+      return self(host)->request_resize(width, height);
+    }
+    static bool request_show(const clap_host_t* host)
+    {
+      return self(host)->request_show();
+    }
+    static bool request_hide(const clap_host_t* host)
+    {
+      return self(host)->request_hide();
+    }
+    static void closed(const clap_host_t* host, bool was_destroyed)
+    {
+      self(host)->closed(was_destroyed);
+    }
+
+    const clap_host_gui hostgui = {
+    resize_hints_changed,request_resize,request_show,request_hide,closed };
+    
+    static bool register_timer(const clap_host_t* host, uint32_t period_ms, clap_id* timer_id)
+    {
+      return  self(host)->register_timer(period_ms, timer_id);
+    }
+
+    static bool unregister_timer(const clap_host_t* host, clap_id timer_id)
+    {
+      return  self(host)->unregister_timer(timer_id);
+    }
+
+    const clap_host_timer_support hosttimer = { register_timer, unregister_timer };
 
   }
 
@@ -144,10 +186,22 @@ namespace Clap
     getExtension(_plugin, _ext._latency, CLAP_EXT_LATENCY);
     getExtension(_plugin, _ext._render, CLAP_EXT_RENDER);
     getExtension(_plugin, _ext._gui, CLAP_EXT_GUI);
+    getExtension(_plugin, _ext._timer, CLAP_EXT_TIMER_SUPPORT);
 
     if (_ext._gui)
     {
-      if (!_ext._gui->is_api_supported(_plugin, CLAP_WINDOW_API_WIN32, false))
+       const char* api;
+#if WIN
+       api = CLAP_WINDOW_API_WIN32;
+#endif
+#if MAC
+        api = CLAP_WINDOW_API_COCOA;
+#endif
+#if LIN
+        api = CLAP_WINDOW_API_X11;
+#endif
+
+      if (!_ext._gui->is_api_supported(_plugin, api, false))
       {
         // disable GUI if not win32
         _ext._gui = nullptr;
@@ -208,7 +262,6 @@ namespace Clap
 
   bool Plugin::load(const clap_istream_t* stream)
   {
-    return false;
     if (_ext._state)
     {
       return _ext._state->load(_plugin, stream);
@@ -291,15 +344,15 @@ namespace Clap
     case CLAP_LOG_HOST_MISBEHAVING:
       n.append("PLUGIN: HOST MISBEHAVING: ");
 #if WIN32
-      OutputDebugString(msg);
+      OutputDebugStringA(msg);
       _CrtDbgBreak();
 #endif
       break;
     }
     n.append(msg);
 #if WIN32
-    OutputDebugString(n.c_str());
-    OutputDebugString("\n");
+    OutputDebugStringA(n.c_str());
+    OutputDebugStringA("\n");
 #endif
   }
 
@@ -322,21 +375,41 @@ namespace Clap
       return Raise(this->_audio_thread_override); 
   }
 
+
+  void Plugin::param_rescan(clap_param_rescan_flags flags)
+  {
+    _parentHost->param_rescan(flags);
+  }
+
+  void Plugin::param_clear(clap_id param, clap_param_clear_flags flags)
+  {
+    _parentHost->param_clear(param, flags);
+  }
+  void Plugin::param_request_flush()
+  {
+    _parentHost->param_request_flush();
+  }
+
   // Query an extension.
   // [thread-safe]
   const void* Plugin::clapExtension(const clap_host* host, const char* extension)
   {
     Plugin* self = reinterpret_cast<Plugin*>(host->host_data);
 
-    OutputDebugString(extension); OutputDebugString("\n");
+#if WIN32
+    OutputDebugStringA(extension); OutputDebugStringA("\n");
+#endif
+
     if (!strcmp(extension, CLAP_EXT_LOG)) 
       return &HostExt::log;
     if (!strcmp(extension, CLAP_EXT_PARAMS)) 
       return &HostExt::params;
     if (!strcmp(extension, CLAP_EXT_THREAD_CHECK))
-    {
       return &HostExt::threadcheck;
-    }
+    if (!strcmp(extension, CLAP_EXT_GUI))
+      return &HostExt::hostgui;
+    if (!strcmp(extension, CLAP_EXT_TIMER_SUPPORT))
+      return &HostExt::hosttimer;
 
     return nullptr;
   }
@@ -365,4 +438,16 @@ namespace Clap
     // right now, I don't know how to communicate this to the host
   }
 
+  // Registers a periodic timer.
+// The host may adjust the period if it is under a certain threshold.
+// 30 Hz should be allowed.
+// [main-thread]
+  bool Plugin::register_timer(uint32_t period_ms, clap_id* timer_id)
+  {
+    return _parentHost->register_timer(period_ms, timer_id);
+  }
+  bool Plugin::unregister_timer(clap_id timer_id)
+  {
+    return _parentHost->unregister_timer(timer_id);
+  }
 }

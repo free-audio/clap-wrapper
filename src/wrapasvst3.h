@@ -9,19 +9,79 @@
 */
 
 #include "clap_proxy.h"
-#include "public.sdk/source/vst/vstsinglecomponenteffect.h"
+#include <pluginterfaces/vst/ivstmidicontrollers.h>
+#include <public.sdk/source/vst/vstsinglecomponenteffect.h>
 #include "detail/vst3/plugview.h"
-#include "wrapasvst3_version.h"
+#include "detail/os/osutil.h"
+#include "detail/clap/automation.h"
 
 using namespace Steinberg;
 
 struct ClapHostExtensions;
-class ProcessAdapter;
+namespace Clap
+{
+	class ProcessAdapter;
+}
 
-class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect
-	, public Clap::IHost
+class queueEvent
 {
 public:
+	typedef enum class type
+	{
+		editstart,
+		editvalue,
+		editend,
+		flushrequest
+	} type_t;
+	type_t _type;
+	union
+	{
+		clap_id _id;
+		clap_event_param_value_t _value;
+	} _data;
+};
+
+class beginEvent : public queueEvent
+{
+public:
+	beginEvent(clap_id id)
+		: queueEvent()
+	{
+		this->_type = type::editstart;
+		_data._id = id;
+	}
+};
+
+class endEvent : public queueEvent
+{
+public:
+	endEvent(clap_id id)
+		: queueEvent()
+	{
+		this->_type = type::editend;
+		_data._id = id;
+	}
+};
+
+class valueEvent : public queueEvent
+{
+public:
+	valueEvent(const clap_event_param_value_t* value)
+		: queueEvent()
+	{
+		_type = type::editvalue;
+		_data._value = *value;
+	}
+};
+
+class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect
+	, public Steinberg::Vst::IMidiMapping
+	, public Clap::IHost
+	, public Clap::IAutomation
+	, public os::IPlugObject
+{
+public:
+
 	using super = Steinberg::Vst::SingleComponentEffect;
 
 	static FUnknown* createInstance(void* context);
@@ -44,32 +104,52 @@ public:
 
 	uint32  PLUGIN_API getTailSamples() override;
 
-	tresult PLUGIN_API getControllerClassId(TUID classID) override 
-	{ 
-		// TUID lcid = INLINE_UID_FROM_FUID(ClapAsVst3UID); classid = lcid; return kResultOk; 
-		if (ClapAsVst3UID.isValid())
-		{
-			ClapAsVst3UID.toTUID(classID);
-			return kResultTrue;
-		}
-		return kResultFalse;
-	}
-
 	//----from IEditControllerEx1--------------------------------
 	IPlugView* PLUGIN_API createView(FIDString name) override;
 
+	//----from IMidiMapping--------------------------------------
+	tresult PLUGIN_API getMidiControllerAssignment(int32 busIndex, int16 channel,
+		Vst::CtrlNumber midiControllerNumber, Vst::ParamID& id/*out*/) override;
+
 	//---Interface---------
 	OBJ_METHODS(ClapAsVst3, SingleComponentEffect)
-		tresult PLUGIN_API queryInterface(const TUID iid, void** obj) override;
+	DEFINE_INTERFACES
+	DEF_INTERFACE(IMidiMapping)
+	// tresult PLUGIN_API queryInterface(const TUID iid, void** obj) override;
+	END_DEFINE_INTERFACES(SingleComponentEffect)
 	REFCOUNT_METHODS(SingleComponentEffect);
+	
 
 	// Clap::IHost
 	void setupAudioBusses(const clap_plugin_t* plugin, const clap_plugin_audio_ports_t* audioports) override;
 	void setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_note_ports_t* noteports) override;
   void setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params) override;
+
+	void param_rescan(clap_param_rescan_flags flags) override;
+	void param_clear(clap_id param, clap_param_clear_flags flags) override;
+	void param_request_flush() override;
+
+	bool gui_can_resize() override;
+	bool gui_request_resize(uint32_t width, uint32_t height) override;
+	bool gui_request_show() override;
+	bool gui_request_hide() override;
+
 	void mark_dirty() override;
+
 	void schnick() override;
 
+	// clap_timer support
+	bool register_timer(uint32_t period_ms, clap_id* timer_id);
+	bool unregister_timer(clap_id timer_id);
+
+	//----from IPlugObject
+	void onIdle() override;
+
+
+	// from Clap::IAutomation
+	void onBeginEdit(clap_id id) override;
+	void onPerformEdit(const clap_event_param_value_t* value) override;
+	void onEndEdit(clap_id id) override;
 private:
 	// helper functions
 	void addAudioBusFrom(const clap_audio_port_info_t* info, bool is_input);
@@ -78,11 +158,27 @@ private:
 	int _libraryIndex = 0;
 	std::shared_ptr<Clap::Plugin> _plugin;
 	ClapHostExtensions* _hostextensions = nullptr;
-	ProcessAdapter* processAdapter = nullptr;
+	Clap::ProcessAdapter* _processAdapter = nullptr;
+	WrappedView* _wrappedview = nullptr;
 
 	void* _creationcontext;																		// context from the CLAP library
 
 	// plugin state
 	bool _active = false;
+	bool _processing = false;
 
+	util::fixedqueue<queueEvent, 8192> _queueToUI;
+
+	// for IMidiMapping
+	Vst::ParamID _IMidiMappingIDs[Vst::ControllerNumbers::kCountCtrlNumber] = { 0 };
+	bool _IMidiMappingEasy = true;
+
+	// for timer
+	struct TimerObject
+	{
+		uint32_t period = 0;		// if period is 0 the entry is unused (and can be reused)
+		uint64_t nexttick = 0;
+		clap_id timer_id = 0;
+	};
+	std::vector<TimerObject> _timersObjects;
 };

@@ -34,3 +34,13 @@
 #vs
 .vs
 out
+
+#clion
+.idea
+cmake-build-*
+
+#baconpaul habit
+ignore/
+#df habit
+build/
+out/

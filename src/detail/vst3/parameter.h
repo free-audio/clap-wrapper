@@ -23,6 +23,7 @@ class Vst3Parameter : public Steinberg::Vst::Parameter
 {
 protected:
   Vst3Parameter(const Steinberg::Vst::ParameterInfo& vst3info, const clap_param_info_t* clapinfo);
+  Vst3Parameter(const Steinberg::Vst::ParameterInfo& vst3info, uint8_t bus, uint8_t cc);
 public:
   virtual ~Vst3Parameter();
   inline double asClapValue(double vst3value) const
@@ -34,10 +35,15 @@ public:
     return (clapvalue - min_value) / (max_value - min_value);
   }
   static Vst3Parameter* create(const clap_param_info_t* info);
+  static Vst3Parameter* create(uint8_t bus, uint8_t cc, Steinberg::Vst::ParamID id);
   // copies from the clap_param_info_t
   clap_id id;
   void* cookie;
   double min_value;     // minimum plain value
   double max_value;     // maximum plain value
+  // or it was MIDI
+  bool isMidi = false;
+  uint8_t channel = 0;
+  uint8_t controller = 0;
 
 };

@@ -1,4 +1,5 @@
 
+#if WIN
 #include <Windows.h>
 #include <stdio.h>
 
@@ -7,6 +8,9 @@
 #include "pluginterfaces/base/ftypes.h"
 #include "pluginterfaces/vst/ivstaudioprocessor.h"
 #include "public.sdk/source/common/memorystream.h"
+
+HINSTANCE ghInst = nullptr;
+void* moduleHandle = nullptr;
 
 int main(void*)
 {
@@ -72,3 +76,10 @@ int main(void*)
   return 0;
 
 }
+#else
+#include <iostream>
+int main(int argc, char **argv)
+{
+   std::cout << "MAIN does not yet work on this platform" << std::endl;
+}
+#endif
