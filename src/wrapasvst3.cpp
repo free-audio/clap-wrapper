@@ -429,8 +429,52 @@ void ClapAsVst3::onEndEdit(clap_id id)
 
 }
 
+bool ClapAsVst3::register_timer(uint32_t period_ms, clap_id* timer_id)
+{	
+	// restricting the callbacks to ~30 Hz
+	if (period_ms < 30)
+	{
+		period_ms = 30;
+	}
+	auto l = _timersObjects.size();
+	for ( decltype(l) i = 0 ; i < l ; ++i)
+	{
+		auto& to = _timersObjects[i];
+		if (to.period == 0)
+		{
+			// reuse timer object
+			to.timer_id = i;
+			to.period = period_ms;
+			to.nexttick = os::getTickInMS() + period_ms;
+			// pass the id to the plugin
+			*timer_id = to.timer_id;
+			return true;
+		}
+	}
+	// create a new timer object
+	auto newid = (clap_id)l;
+	TimerObject f{ period_ms, os::getTickInMS() + period_ms, newid };
+	*timer_id = newid;
+	_timersObjects.push_back(f);
+	return true;
+}
+bool ClapAsVst3::unregister_timer(clap_id timer_id)
+{
+	for (auto& to : _timersObjects)
+	{
+		if (to.timer_id == timer_id)
+		{
+			to.period = 0;
+			to.nexttick = 0;
+			return true;
+		}
+	}
+	return false;
+}
+
 void ClapAsVst3::onIdle()
 {
+	// handling queued events
 	queueEvent n;
 	while (_queueToUI.pop(n))
 	{
@@ -449,6 +493,20 @@ void ClapAsVst3::onIdle()
 		case queueEvent::type_t::editend:
 			endEdit(n._data._id);
 			break;
+		}
+	}
+
+	// handling timerobjects
+	auto now = os::getTickInMS();
+	for (auto&& to : _timersObjects)
+	{
+		if (to.period > 0)
+		{
+			if (to.nexttick < now)
+			{
+				to.nexttick = now + to.period;
+				this->_plugin->_ext._timer->on_timer(_plugin->_plugin, to.timer_id);
+			}
 		}
 	}
 }
