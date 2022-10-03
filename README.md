@@ -9,7 +9,9 @@ The CLAP community calls this a PALCer.
 
 ## Status
 
-Currently this works on Windows, macOS and Linux and it will always load the clap-saw example CLAP.
+Currently this works on Windows, macOS and Linux and it will always try to load a .clap with the same name as the .vst3 from the CLAP folders.
+If not found, it tries to load the clap-saw example CLAP. 
+
 Things currently missing:
 
 - ext-latency (this is really necessary)
