@@ -7,7 +7,7 @@ cmake_policy(SET CMP0091 NEW)
 
 project(clap-as-vst3 
 	LANGUAGES C CXX
-	VERSION 0.0.1
+	VERSION 0.0.3
 	DESCRIPTION "CLAP as VST3"
 )
 
@@ -49,7 +49,12 @@ message(STATUS "executing at ${CMAKE_CURRENT_SOURCE_DIR}")
 # ------------------------------------------------------------------------------
 
 # this will be a CMake argument
+if(WRAPPER_OUTPUT_NAME STREQUAL "")
 set(project "clapasvst3")
+else()
+set(project ${WRAPPER_OUTPUT_NAME})
+message(STATUS "plugin name is ${WRAPPER_OUTPUT_NAME}")
+endif()
 
 add_definitions(-D${PLATFORM}=1)
 

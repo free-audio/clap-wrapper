@@ -4,6 +4,7 @@
 # 2022 defiant nerd
 #
 # options
+set(WRAPPER_OUTPUT_NAME "" CACHE STRING "The output name of the dynamic wrapped plugin")
 set(CLAP_SDK_ROOT "" CACHE STRING "Path to CLAP SDK")
 set(VST3_SDK_ROOT "" CACHE STRING "Path to VST3 SDK")
 
