@@ -1,5 +1,5 @@
 #include "fsutil.h"
-
+#include <cassert>
 #if WIN
 #include <Windows.h>
 #endif
@@ -134,21 +134,14 @@ namespace Clap
 #endif
   }
 
-#if 0
-  std::shared_ptr<Plugin> Library::createInstance(IHost* host, size_t index)
+  const clap_plugin_as_vst3_t* Library::get_vst3_info(uint32_t index)
   {
-    if (plugins.size() > index)
+    if (_pluginFactoryVst3Info && _pluginFactoryVst3Info->get_vst3_info)
     {
-      auto plug = std::shared_ptr<Plugin>(new Plugin(host));
-      auto instance = this->_pluginFactory->create_plugin(this->_pluginFactory, plug->getClapHostInterface(), plugins[index]->id);
-      plug->connectClap(instance);
-
-      return plug;
+      return _pluginFactoryVst3Info->get_vst3_info(_pluginFactoryVst3Info, index);
     }
     return nullptr;
   }
-
-#endif 
 
 #if WIN
   bool Library::getEntryFunction(HMODULE handle, const char* path)
@@ -170,6 +163,14 @@ namespace Clap
         if (_pluginEntry->init(path)) {
            _pluginFactory =
                    static_cast<const clap_plugin_factory *>(_pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_ID));
+           _pluginFactoryVst3Info =
+                  static_cast<const clap_plugin_factory_as_vst3*>(_pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_VST3));
+
+           // detect plugins that do not check the CLAP_PLUGIN_FACTORY_ID
+           if ((void*)_pluginFactory == (void*)_pluginFactoryVst3Info)
+           {
+             _pluginFactoryVst3Info = nullptr;
+           }
 
            auto count = _pluginFactory->get_plugin_count(_pluginFactory);
 

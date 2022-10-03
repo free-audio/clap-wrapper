@@ -1,5 +1,6 @@
 #pragma once
 
-#include <string>
+// see categories.cpp for details
 
+#include <string>
 std::string clapCategoriesToVST3(const char** clap_categories);

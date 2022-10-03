@@ -56,8 +56,9 @@ add_definitions(-D${PLATFORM}=1)
 message(STATUS "platform is ${PLATFORM}")
 #
 smtg_enable_vst3_sdk()
+
 smtg_add_vst3plugin(${project}
-	${wrappersources}
+	${wrappersources_vst3}
 	${VST3_SDK_ROOT}/public.sdk/source/vst/vstsinglecomponenteffect.cpp
 	${VST3_SDK_ROOT}/public.sdk/source/vst/vstsinglecomponenteffect.h
 )
@@ -66,6 +67,8 @@ smtg_target_add_library_main(${project})
 
 # link both SDKs
 target_link_libraries(${project} PRIVATE clap-core sdk)
+message(STATUS " current source dir: ${CMAKE_CURRENT_SOURCE_DIR} ")
+target_include_directories(${project} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_include_directories(${project} PUBLIC ${VST3_SDK_ROOT})
 
 if (APPLE)
@@ -80,7 +83,7 @@ endif()
 if(FALSE)
 add_executable(${project}_as_executable
 	src/wramain.cpp
-	${wrappersources}
+	${wrappersources_vst3}
 	${vst3sources}
 )
 target_link_libraries(${project}_as_executable PRIVATE clap-core sdk)

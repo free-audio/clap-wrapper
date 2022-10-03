@@ -72,6 +72,27 @@ struct CreationContext
 	PClassInfo2 classinfo;
 };
 
+bool findPlugin(Clap::Library& lib, const std::string& pluginfilename)
+{
+	auto paths = Clap::getValidCLAPSearchPaths();
+
+	// for a clap with the same name as this binary
+	for (auto& i : paths)
+	{
+		// auto k = i / "clap-saw-demo.clap";
+		auto k = i / pluginfilename;
+		if (std::filesystem::exists(k))
+		{
+			if (lib.load(k.u8string().c_str()))
+			{
+				return true;
+			}
+		}
+		// TODO: enumerate folders
+	}
+	return false;
+}
+
 SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 
 #if SMTG_OS_WINDOWS
@@ -82,18 +103,20 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 	static Clap::Library gClapLibrary;
 
 	static std::vector<CreationContext> gCreationContexts;
+
+	// if there is no ClapLibrary yet
 	if (!gClapLibrary._pluginFactory)
 	{
+		// if this binary does not already contain a CLAP entrypoint
 		if (!gClapLibrary.hasEntryPoint())
 		{
-			auto paths = Clap::getValidCLAPSearchPaths();
-			for (auto& i : paths)
+			// try to find a clap which filename stem matches our own
+			auto plugname = os::getBinaryName();
+			plugname.append(".clap");
+
+			if (!findPlugin(gClapLibrary, plugname))
 			{
-				 auto k = i / "clap-saw-demo.clap";
-				if (gClapLibrary.load(k.u8string().c_str()))
-				{
-					break;
-				}
+				findPlugin(gClapLibrary, "clap-saw-demo.clap");
 			}
 		}
 	}
@@ -112,10 +135,18 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 	// we need at least one plugin to obtain vendor/name etc.
 	auto* vendor = gClapLibrary.plugins[0]->vendor;
 	auto* vendor_url = gClapLibrary.plugins[0]->url;
-		
 	// TODO: extract the domain and prefix with info@
 	auto* contact = "info@";
-	
+
+	// override for VST3 specifics
+	if (gClapLibrary._pluginFactoryVst3Info)
+	{
+		auto& v3 = gClapLibrary._pluginFactoryVst3Info;
+		if (v3->vendor)vendor = v3->vendor;
+		if (v3->vendor_url) vendor_url = v3->vendor_url;
+		if (v3->email_contact) contact = v3->email_contact;
+	}
+
 	if (!gPluginFactory)
 	{
 		static PFactoryInfo factoryInfo(
@@ -127,30 +158,55 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 		gPluginFactory = new Steinberg::CPluginFactory(factoryInfo);		
 		// resize the classInfo vector
 		gCreationContexts.reserve(gClapLibrary.plugins.size());
-		for (size_t ctr = 0; ctr < gClapLibrary.plugins.size(); ++ctr)
+		for (uint32_t ctr = 0; ctr < gClapLibrary.plugins.size(); ++ctr)
 		{
 			auto& clapdescr = gClapLibrary.plugins[ctr];
+			const clap_plugin_as_vst3* vst3info = gClapLibrary.get_vst3_info(ctr);
+
 			std::string n(clapdescr->name);
+#ifdef _DEBUG
 			n.append(" (CLAP->VST3)");
+#endif
 			auto plugname = n.c_str(); //  clapdescr->name;
+
+			// get vendor -------------------------------------
 			auto vendor = clapdescr->vendor;
-			if (vendor == nullptr || *vendor == 0)
-			{
-				vendor = "Unspecified Vendor";
-			}
+			if (vendor == nullptr || *vendor == 0) vendor = "Unspecified Vendor";
+			if (vst3info && vst3info->vendor) vendor = vst3info->vendor;
+
+			// make id or take it from vst3 info --------------
 			std::string id(clapdescr->id);
-			auto g = Crypto::create_sha1_guid_from_name(id.c_str(), id.size());
+			Crypto::uuid_object g;
+			if (vst3info && vst3info->componentId)
+			{
+				memcpy(&g, vst3info->componentId, sizeof(g));
+			}
+			else
+			{
+				g = Crypto::create_sha1_guid_from_name(id.c_str(), id.size());
+			}
 
 			TUID lcid;			
 			memcpy(&lcid, &g, sizeof(TUID));
 			
+			// features ----------------------------------------
+			std::string features;
+			if (vst3info && vst3info->features)
+			{
+				features = vst3info->features;
+			}
+			else
+			{
+				features = clapCategoriesToVST3(clapdescr->features);
+			}
+
 			gCreationContexts.push_back({ &gClapLibrary, ctr, PClassInfo2(
 				lcid,
 				PClassInfo::kManyInstances,
 				kVstAudioEffectClass,
 				plugname,
 				0		/* the only flag is usually Vst:kDistributable, but CLAPs aren't distributable */,
-				clapCategoriesToVST3(clapdescr->features).c_str(),
+				features.c_str(),
 				vendor,
 				clapdescr->version,
 				kVstVersionString)

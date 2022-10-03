@@ -20,8 +20,8 @@ namespace Crypto
     uint8_t   clock_seq_hi_and_reserved;
     uint8_t   clock_seq_low;
     uint8_t   node[6];
-  } uuid_t;  
+  } uuid_object;  
 
-  uuid_t create_sha1_guid_from_name(const char* name, size_t namelen);
+  uuid_object create_sha1_guid_from_name(const char* name, size_t namelen);
 }
 
