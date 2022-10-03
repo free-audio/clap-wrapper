@@ -1,3 +1,5 @@
+#define NOMINMAX 1
+
 /**
 *		the macos helper
 * 

@@ -89,7 +89,7 @@ namespace os
 	}
 
 	void WindowsHelper::init()
-	{		
+	{
 		auto modulename = getModuleName();
 		WNDCLASSEX wc;
 		memset(&wc, 0, sizeof(wc));
