@@ -1,11 +1,10 @@
-#define NOMINMAX 1
-
 /**
 *		the macos helper
 * 
 *		provides services for all plugin instances regarding macos
-*		- global timer object
-*		- dispatch to UI thread
+*        - global timer object
+*        - dispatch to UI thread
+*        - get the bundle name
 * 
 */
 
@@ -13,6 +12,7 @@
 #include "public.sdk/source/main/moduleinit.h"
 #include "osutil.h"
 #include <vector>
+#include <filesystem>
 
 namespace os
 {
@@ -85,6 +85,15 @@ namespace os
 
 }
 
+// the dummy class so we can use NSBundle bundleForClass
+@interface clapwrapper_dummy_object_to_trick_the_os : NSObject
+- (void) fun;
+@end
+
+@implementation clapwrapper_dummy_object_to_trick_the_os
+- (void) fun{}
+@end
+
 namespace os
 {
 	// [UI Thread]
@@ -103,4 +112,15 @@ namespace os
 	{
 		return (::clock() * 1000) / CLOCKS_PER_SEC;
 	}
+
+  std::string getBinaryName()
+  {
+    // this is useless
+    // NSString* identifier = [[NSBundle mainBundle] bundleIdentifier];
+    
+    // this is needed:
+    NSString* identifier = [[NSBundle bundleForClass:[clapwrapper_dummy_object_to_trick_the_os class]] bundlePath];
+    std::filesystem::path k = [identifier UTF8String];
+    return k.stem();
+  }
 }
