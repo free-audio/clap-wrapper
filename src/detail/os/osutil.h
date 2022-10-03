@@ -1,6 +1,7 @@
 #pragma once
 
 #include<atomic>
+#include <string>
 
 namespace os
 {
@@ -13,6 +14,8 @@ namespace os
 	void attach(IPlugObject* plugobject);
 	void detach(IPlugObject* plugobject);
 	uint64_t getTickInMS();
+
+	std::string getBinaryName();
 }
 
 namespace util

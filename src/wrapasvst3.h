@@ -139,8 +139,8 @@ public:
 	void schnick() override;
 
 	// clap_timer support
-	bool register_timer(uint32_t period_ms, clap_id* timer_id);
-	bool unregister_timer(clap_id timer_id);
+	bool register_timer(uint32_t period_ms, clap_id* timer_id) override;
+	bool unregister_timer(clap_id timer_id) override;
 
 	//----from IPlugObject
 	void onIdle() override;

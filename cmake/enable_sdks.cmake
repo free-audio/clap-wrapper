@@ -72,75 +72,75 @@ function(DetectVST3SDK)
 endfunction()
 
 function(DefineVST3Sources)
-set(vst3sources
-	${VST3_SDK_ROOT}/public.sdk/source/main/pluginfactory.cpp
+	set(vst3sources
+		${VST3_SDK_ROOT}/public.sdk/source/main/pluginfactory.cpp
 
-	${VST3_SDK_ROOT}/public.sdk/source/common/commoniids.cpp
-	${VST3_SDK_ROOT}/public.sdk/source/common/memorystream.cpp
-	${VST3_SDK_ROOT}/public.sdk/source/common/pluginview.cpp
+		${VST3_SDK_ROOT}/public.sdk/source/common/commoniids.cpp
+		${VST3_SDK_ROOT}/public.sdk/source/common/memorystream.cpp
+		${VST3_SDK_ROOT}/public.sdk/source/common/pluginview.cpp
 
-	${VST3_SDK_ROOT}/public.sdk/source/vst/vstinitiids.cpp
-	${VST3_SDK_ROOT}/public.sdk/source/vst/vstaudioeffect.cpp
-	${VST3_SDK_ROOT}/public.sdk/source/vst/vstcomponentbase.cpp
-	${VST3_SDK_ROOT}/public.sdk/source/vst/vstcomponent.cpp
-	${VST3_SDK_ROOT}/public.sdk/source/vst/vstsinglecomponenteffect.cpp
-	${VST3_SDK_ROOT}/public.sdk/source/vst/vstsinglecomponenteffect.h
-	#${VST3_SDK_ROOT}/public.sdk/source/vst/vsteditcontroller.cpp
-	${VST3_SDK_ROOT}/public.sdk/source/vst/vstbus.cpp
-	${VST3_SDK_ROOT}/public.sdk/source/vst/vstparameters.cpp
+		${VST3_SDK_ROOT}/public.sdk/source/vst/vstinitiids.cpp
+		${VST3_SDK_ROOT}/public.sdk/source/vst/vstaudioeffect.cpp
+		${VST3_SDK_ROOT}/public.sdk/source/vst/vstcomponentbase.cpp
+		${VST3_SDK_ROOT}/public.sdk/source/vst/vstcomponent.cpp
+		${VST3_SDK_ROOT}/public.sdk/source/vst/vstsinglecomponenteffect.cpp
+		${VST3_SDK_ROOT}/public.sdk/source/vst/vstsinglecomponenteffect.h
+		#${VST3_SDK_ROOT}/public.sdk/source/vst/vsteditcontroller.cpp
+		${VST3_SDK_ROOT}/public.sdk/source/vst/vstbus.cpp
+		${VST3_SDK_ROOT}/public.sdk/source/vst/vstparameters.cpp
 
-	${VST3_SDK_ROOT}/pluginterfaces/base/funknown.cpp
-	${VST3_SDK_ROOT}/pluginterfaces/base/coreiids.cpp
-	${VST3_SDK_ROOT}/pluginterfaces/base/ustring.cpp
+		${VST3_SDK_ROOT}/pluginterfaces/base/funknown.cpp
+		${VST3_SDK_ROOT}/pluginterfaces/base/coreiids.cpp
+		${VST3_SDK_ROOT}/pluginterfaces/base/ustring.cpp
 
-	${VST3_SDK_ROOT}/base/source/baseiids.cpp
-	${VST3_SDK_ROOT}/base/source/fobject.cpp
-	${VST3_SDK_ROOT}/base/source/fstring.cpp
-	${VST3_SDK_ROOT}/base/source/fbuffer.cpp
-	${VST3_SDK_ROOT}/base/source/fdynlib.cpp
-	${VST3_SDK_ROOT}/base/source/fdebug.cpp
-	${VST3_SDK_ROOT}/base/source/updatehandler.cpp
-	${VST3_SDK_ROOT}/base/thread/source/flock.cpp
-	${VST3_SDK_ROOT}/base/thread/source/fcondition.cpp
+		${VST3_SDK_ROOT}/base/source/baseiids.cpp
+		${VST3_SDK_ROOT}/base/source/fobject.cpp
+		${VST3_SDK_ROOT}/base/source/fstring.cpp
+		${VST3_SDK_ROOT}/base/source/fbuffer.cpp
+		${VST3_SDK_ROOT}/base/source/fdynlib.cpp
+		${VST3_SDK_ROOT}/base/source/fdebug.cpp
+		${VST3_SDK_ROOT}/base/source/updatehandler.cpp
+		${VST3_SDK_ROOT}/base/thread/source/flock.cpp
+		${VST3_SDK_ROOT}/base/thread/source/fcondition.cpp
 	
-	PARENT_SCOPE
-)
-
-
-if(WIN32)
-	set(os_wrappersources src/detail/os/windows.cpp)
-endif()
-
-if (APPLE)
-	set(os_wrappersources
-		src/detail/clap/mac_helpers.mm
-		src/detail/os/macos.mm
+		PARENT_SCOPE
 	)
-endif()
 
-set(wrappersources
-	src/clap_proxy.h
-	src/clap_proxy.cpp
-	src/wrapasvst3.h
-	src/wrapasvst3.cpp
-	src/wrapasvst3_entry.cpp
-	src/detail/vst3/parameter.h
-	src/detail/vst3/parameter.cpp
-	src/detail/vst3/plugview.h
-	src/detail/vst3/plugview.cpp
-	src/detail/vst3/state.h
-	src/detail/vst3/process.h
-	src/detail/vst3/process.cpp
-	src/detail/vst3/categories.h
-	src/detail/vst3/categories.cpp
-	src/detail/sha1.h
-	src/detail/sha1.cpp
-	src/detail/clap/fsutil.h
-	src/detail/clap/fsutil.cpp
-	src/detail/os/osutil.h
-	src/detail/clap/automation.h
-	${os_wrappersources}
-PARENT_SCOPE)
+	if(WIN32)
+		set(os_wrappersources src/detail/os/windows.cpp)
+	endif()
+
+	if (APPLE)
+		set(os_wrappersources
+			src/detail/clap/mac_helpers.mm
+			src/detail/os/macos.mm
+		)
+
+	endif()
+
+	set(wrappersources_vst3
+		src/clap_proxy.h
+		src/clap_proxy.cpp
+		src/wrapasvst3.h
+		src/wrapasvst3.cpp
+		src/wrapasvst3_entry.cpp
+		src/detail/vst3/parameter.h
+		src/detail/vst3/parameter.cpp
+		src/detail/vst3/plugview.h
+		src/detail/vst3/plugview.cpp
+		src/detail/vst3/state.h
+		src/detail/vst3/process.h
+		src/detail/vst3/process.cpp
+		src/detail/vst3/categories.h
+		src/detail/vst3/categories.cpp
+		src/detail/sha1.h
+		src/detail/sha1.cpp
+		src/detail/clap/fsutil.h
+		src/detail/clap/fsutil.cpp
+		src/detail/os/osutil.h
+		src/detail/clap/automation.h
+		${os_wrappersources}
+	PARENT_SCOPE)
 
 
 endfunction(DefineVST3Sources)

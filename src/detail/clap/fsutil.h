@@ -8,6 +8,8 @@
 #include <Windows.h>
 #endif
 
+#include "clapwrapper/vst3.h"
+
 #if MAC
 #include <CoreFoundation/CoreFoundation.h>
 #endif
@@ -24,13 +26,13 @@ namespace Clap
   public:
     Library();
     ~Library();
-    // bool isSelfContained() const { return _selfcontained; }
     bool load(const char* name);
-    // bool isLoaded() const { return _handle != 0; }
     
-    const clap_plugin_entry* _pluginEntry = nullptr;
-    const clap_plugin_factory* _pluginFactory = nullptr;
+    const clap_plugin_entry_t* _pluginEntry = nullptr;
+    const clap_plugin_factory_t* _pluginFactory = nullptr;
+    const clap_plugin_factory_as_vst3* _pluginFactoryVst3Info = nullptr;
     std::vector<const clap_plugin_descriptor_t*> plugins;
+    const clap_plugin_as_vst3_t* get_vst3_info(uint32_t index);
 
     bool hasEntryPoint() const {
 #if WIN
