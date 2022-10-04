@@ -33,7 +33,7 @@ mkdir build
 cmake -B build -DCLAP_SDK_ROOT={path to clap sdk} -DVST3_SDK_ROOT={path to vst3 sdk}
 ```
 
-You can also determine the output name of the resulting VST3 plugin by using the WRAPPER_OUTPUT_NAME CMake variable.
+You can also determine the output name of the resulting VST3 plugin by using the `WRAPPER_OUTPUT_NAME` CMake variable.
 
 The CLAP_SDK_ROOT and VST3_SDK_ROOT arguments can be omitted, if the SDKs are present in the parent folder, the same folder or in a ./libs folder.
 In this case the cmake script will detect them accordingly.
