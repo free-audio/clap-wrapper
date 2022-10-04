@@ -16,7 +16,7 @@ namespace Clap
   {
     parameters = &params;
     _componentHandler = componenthandler;
-    _automation = automation;
+    _automation = automation;    
 
     _processData.audio_inputs_count = numInputs;
     if (numInputs > 0)

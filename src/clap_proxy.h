@@ -39,6 +39,8 @@ namespace Clap
     virtual bool register_timer(uint32_t period_ms, clap_id* timer_id) = 0;
     virtual bool unregister_timer(clap_id timer_id) = 0;
 
+    virtual void latency_changed() = 0;
+
   };
 
   struct ClapPluginExtensions;
@@ -110,6 +112,9 @@ namespace Clap
     void param_rescan(clap_param_rescan_flags flags);
     void param_clear(clap_id param, clap_param_clear_flags flags);
     void param_request_flush();
+
+    // latency
+    void latency_changed();
 
     // hostgui
     void resize_hints_changed()

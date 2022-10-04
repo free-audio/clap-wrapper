@@ -96,6 +96,7 @@ public:
 	tresult PLUGIN_API canProcessSampleSize(int32 symbolicSampleSize) override;
 	tresult PLUGIN_API setState(IBStream* state) override;
 	tresult PLUGIN_API getState(IBStream* state) override;
+	uint32 PLUGIN_API getLatencySamples() override;
 	tresult PLUGIN_API setupProcessing(Vst::ProcessSetup& newSetup) override;
 	tresult PLUGIN_API setProcessing(TBool state) override;
 	tresult PLUGIN_API setBusArrangements(Vst::SpeakerArrangement* inputs, int32 numIns,
@@ -133,6 +134,8 @@ public:
 	bool gui_request_resize(uint32_t width, uint32_t height) override;
 	bool gui_request_show() override;
 	bool gui_request_hide() override;
+
+	void latency_changed() override;
 
 	void mark_dirty() override;
 
