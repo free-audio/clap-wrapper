@@ -1,6 +1,7 @@
 #include "wrapasvst3.h"
 #include <pluginterfaces/base/ibstream.h>
 #include <pluginterfaces/vst/ivstevents.h>
+#include <pluginterfaces/base/ustring.h>
 #include "detail/vst3/state.h"
 #include "detail/vst3/process.h"
 #include "detail/vst3/parameter.h"
@@ -176,6 +177,42 @@ tresult PLUGIN_API ClapAsVst3::getMidiControllerAssignment(int32 busIndex, int16
   return kResultFalse;
 }
 
+#if 1
+//----from INoteExpressionController-------------------------
+  /** Returns number of supported note change types for event bus index and channel. */
+int32 ClapAsVst3::getNoteExpressionCount(int32 busIndex, int16 channel)
+{
+  if (busIndex == 0 && channel == 0)
+  {
+    return _noteExpressions.getNoteExpressionCount();
+  }
+  return 0;
+  
+}
+
+/** Returns note change type info. */
+tresult ClapAsVst3::getNoteExpressionInfo(int32 busIndex, int16 channel, int32 noteExpressionIndex, Vst::NoteExpressionTypeInfo& info /*out*/)
+{
+  if (busIndex == 0 && channel == 0)
+  {
+    return _noteExpressions.getNoteExpressionInfo(noteExpressionIndex, info);
+  }
+  return Steinberg::kResultFalse;
+}
+
+/** Gets a user readable representation of the normalized note change value. */
+tresult ClapAsVst3::getNoteExpressionStringByValue(int32 busIndex, int16 channel, Vst::NoteExpressionTypeID id, Vst::NoteExpressionValue valueNormalized /*in*/, Vst::String128 string /*out*/)
+{
+  return _noteExpressions.getNoteExpressionStringByValue(id, valueNormalized, string);
+}
+
+/** Converts the user readable representation to the normalized note change value. */
+tresult ClapAsVst3::getNoteExpressionValueByString(int32 busIndex, int16 channel, Vst::NoteExpressionTypeID id, const Vst::TChar* string /*in*/, Vst::NoteExpressionValue& valueNormalized /*out*/) 
+{
+  return _noteExpressions.getNoteExpressionValueByString(id, string,  valueNormalized);
+}
+
+#endif
 
 ////-----------------------------------------------------------------------------
 //tresult PLUGIN_API ClapAsVst3::queryInterface(const TUID iid, void** obj)
@@ -340,6 +377,22 @@ void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
     parameters.addParameter(p);
     _IMidiMappingIDs[i] = x++;
   }
+
+  // setting up noteexpression
+
+  _noteExpressions.addNoteExpressionType(
+    new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kVolumeTypeID,
+      L"Vohlume", L"Vol", L"", 0, nullptr, 0)
+  );
+  _noteExpressions.addNoteExpressionType(
+    new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kTuningTypeID,
+      L"Peetch", L"Tun", L"", 0, nullptr, 0)
+  );
+
+  _noteExpressions.addNoteExpressionType(
+    new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kPanTypeID,
+      L"Pfanorama", L"Pan", L"", 0, nullptr, 0)
+  );
 }
 
 
@@ -385,7 +438,9 @@ void ClapAsVst3::param_request_flush()
 {
   if (!this->_processing)
   {
-    // _plugin->_ext._params->flush(_plugin->_plugin, in, out);
+    //const clap_input_events_t* in;
+    //const clap_output_events_t* out;
+    //_plugin->_ext._params->flush(_plugin->_plugin, in, out);
   }
 }
 
@@ -446,6 +501,7 @@ void ClapAsVst3::onEndEdit(clap_id id)
 
 }
 
+// ext-timer
 bool ClapAsVst3::register_timer(uint32_t period_ms, clap_id* timer_id)
 {
   // restricting the callbacks to ~30 Hz
@@ -490,7 +546,10 @@ bool ClapAsVst3::unregister_timer(clap_id timer_id)
 }
 
 void ClapAsVst3::onIdle()
-{
+{  
+  // todo: if the CLAP requested a "in UI" callback, do it here..
+  // is needed for plugin->flush()
+
   // handling queued events
   queueEvent n;
   while (_queueToUI.pop(n))
@@ -526,4 +585,7 @@ void ClapAsVst3::onIdle()
       }
     }
   }
+
+  
+
 }

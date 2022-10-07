@@ -10,7 +10,9 @@
 
 #include "clap_proxy.h"
 #include <pluginterfaces/vst/ivstmidicontrollers.h>
+#include <pluginterfaces/vst/ivstnoteexpression.h>
 #include <public.sdk/source/vst/vstsinglecomponenteffect.h>
+#include <public.sdk/source/vst/vstnoteexpressiontypes.h>
 #include "detail/vst3/plugview.h"
 #include "detail/os/osutil.h"
 #include "detail/clap/automation.h"
@@ -76,6 +78,7 @@ public:
 
 class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect
 	, public Steinberg::Vst::IMidiMapping
+	, public Steinberg::Vst::INoteExpressionController
 	, public Clap::IHost
 	, public Clap::IAutomation
 	, public os::IPlugObject
@@ -86,7 +89,13 @@ public:
 
 	static FUnknown* createInstance(void* context);
 
-	ClapAsVst3(Clap::Library* lib, int number, void* context) : super(), _library(lib), _libraryIndex(number), _creationcontext(context) {}
+	ClapAsVst3(Clap::Library* lib, int number, void* context) 
+		: super()
+		, Steinberg::Vst::IMidiMapping()
+ 		, Steinberg::Vst::INoteExpressionController()
+		, _library(lib)
+		, _libraryIndex(number)
+		, _creationcontext(context) {}
 
 	//---from IComponent-----------------------
 	tresult PLUGIN_API initialize(FUnknown* context) override;
@@ -112,14 +121,30 @@ public:
 	tresult PLUGIN_API getMidiControllerAssignment(int32 busIndex, int16 channel,
 		Vst::CtrlNumber midiControllerNumber, Vst::ParamID& id/*out*/) override;
 
-	//---Interface---------
+#if 1
+	//----from INoteExpressionController-------------------------
+		/** Returns number of supported note change types for event bus index and channel. */
+	int32 PLUGIN_API getNoteExpressionCount(int32 busIndex, int16 channel);
+
+	/** Returns note change type info. */
+	tresult PLUGIN_API getNoteExpressionInfo(int32 busIndex, int16 channel, int32 noteExpressionIndex, Vst::NoteExpressionTypeInfo& info /*out*/);
+
+	/** Gets a user readable representation of the normalized note change value. */
+	tresult PLUGIN_API getNoteExpressionStringByValue(int32 busIndex, int16 channel, Vst::NoteExpressionTypeID id, Vst::NoteExpressionValue valueNormalized /*in*/, Vst::String128 string /*out*/);
+
+	/** Converts the user readable representation to the normalized note change value. */
+	tresult PLUGIN_API getNoteExpressionValueByString(int32 busIndex, int16 channel, Vst::NoteExpressionTypeID id, const Vst::TChar* string /*in*/, Vst::NoteExpressionValue& valueNormalized /*out*/);
+#endif
+	//---Interface-------------------------------------------
 	OBJ_METHODS(ClapAsVst3, SingleComponentEffect)
 	DEFINE_INTERFACES
 	DEF_INTERFACE(IMidiMapping)
+	DEF_INTERFACE(INoteExpressionController)
 	// tresult PLUGIN_API queryInterface(const TUID iid, void** obj) override;
 	END_DEFINE_INTERFACES(SingleComponentEffect)
 	REFCOUNT_METHODS(SingleComponentEffect);
 	
+
 
 	// Clap::IHost
 	void setupAudioBusses(const clap_plugin_t* plugin, const clap_plugin_audio_ports_t* audioports) override;
@@ -148,7 +173,6 @@ public:
 	//----from IPlugObject
 	void onIdle() override;
 
-
 	// from Clap::IAutomation
 	void onBeginEdit(clap_id id) override;
 	void onPerformEdit(const clap_event_param_value_t* value) override;
@@ -157,6 +181,7 @@ private:
 	// helper functions
 	void addAudioBusFrom(const clap_audio_port_info_t* info, bool is_input);
 	void addMIDIBusFrom(const clap_note_port_info_t* info, bool is_input);
+	Vst::NoteExpressionTypeContainer _noteExpressions;
 	Clap::Library* _library = nullptr;
 	int _libraryIndex = 0;
 	std::shared_ptr<Clap::Plugin> _plugin;
