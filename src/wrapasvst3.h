@@ -135,7 +135,7 @@ public:
 	/** Converts the user readable representation to the normalized note change value. */
 	tresult PLUGIN_API getNoteExpressionValueByString(int32 busIndex, int16 channel, Vst::NoteExpressionTypeID id, const Vst::TChar* string /*in*/, Vst::NoteExpressionValue& valueNormalized /*out*/);
 #endif
-	//---Interface-------------------------------------------
+	//---Interface--------------------------------------------------------------------------
 	OBJ_METHODS(ClapAsVst3, SingleComponentEffect)
 	DEFINE_INTERFACES
 	DEF_INTERFACE(IMidiMapping)
@@ -146,7 +146,10 @@ public:
 	
 
 
-	// Clap::IHost
+	//---Clap::IHost------------------------------------------------------------------------
+
+	void setupWrapperSpecifics(const clap_plugin_t* plugin) override;
+
 	void setupAudioBusses(const clap_plugin_t* plugin, const clap_plugin_audio_ports_t* audioports) override;
 	void setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_note_ports_t* noteports) override;
   void setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params) override;

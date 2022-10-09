@@ -23,9 +23,10 @@ set(SMTG_CREATE_BUNDLE_FOR_WINDOWS OFF)
 # not now - but can be useful to activate
 set(SMTG_RUN_VST_VALIDATOR OFF)
 
-# THIS we want.
+# create plugin link
 set(SMTG_CREATE_PLUGIN_LINK ON)
 
+# discover the plugin paths and enable them
 include(cmake/enable_sdks.cmake)
 
 # ------------------------------------------------------------------------------
@@ -45,6 +46,11 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 message(STATUS "executing at ${CMAKE_CURRENT_SOURCE_DIR}")
+
+# ------------------------------------------------------------------------------
+
+add_library(clap-as-vst3-extensions INTERFACE)
+target_include_directories(clap-as-vst3-extensions INTERFACE include)
 
 # ------------------------------------------------------------------------------
 
@@ -70,11 +76,10 @@ smtg_add_vst3plugin(${project}
 
 smtg_target_add_library_main(${project})
 
-# link both SDKs
-target_link_libraries(${project} PRIVATE clap-core sdk)
+# link both SDKs, CLAP and VST3
+target_link_libraries(${project} PRIVATE clap-core sdk clap-as-vst3-extensions)
 message(STATUS " current source dir: ${CMAKE_CURRENT_SOURCE_DIR} ")
 target_include_directories(${project} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
-target_include_directories(${project} PUBLIC ${VST3_SDK_ROOT})
 
 if (APPLE)
 	target_link_libraries (${project} PUBLIC "-framework Foundation" "-framework CoreFoundation")

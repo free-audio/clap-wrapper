@@ -4,13 +4,13 @@
 # 2022 defiant nerd
 #
 # options
-set(WRAPPER_OUTPUT_NAME "" CACHE STRING "The output name of the dynamic wrapped plugin")
+set(WRAPPER_OUTPUT_NAME "" CACHE STRING "The output name of the dynamically wrapped plugin")
 set(CLAP_SDK_ROOT "" CACHE STRING "Path to CLAP SDK")
 set(VST3_SDK_ROOT "" CACHE STRING "Path to VST3 SDK")
 
 function(DetectCLAP)
   if(CLAP_SDK_ROOT STREQUAL "")
-	message(STATUS "searching CLAP SDK in ´${CMAKE_CURRENT_SOURCE_DIR}´...")
+	message(STATUS "searching CLAP SDK in \"${CMAKE_CURRENT_SOURCE_DIR}\"...")
 
 	if ( CLAP_SDK_ROOT STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libs/clap")
 	  set(CLAP_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/libs/clap")
@@ -19,7 +19,7 @@ function(DetectCLAP)
 
 		if ( CLAP_SDK_ROOT STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/clap")
 	  set(CLAP_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/clap")
-	  message(STATUS "CLAP SDK detected in libs subdirectory")
+	  message(STATUS "CLAP SDK detected in subdirectory")
 	endif()
 	
 	if ( CLAP_SDK_ROOT STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../clap")
@@ -28,7 +28,7 @@ function(DetectCLAP)
 	endif()
 
 	if(CLAP_SDK_ROOT STREQUAL "")
-		message(FATAL_ERROR "Unable to detect CLAP SDK!")
+		message(FATAL_ERROR "Unable to detect CLAP SDK! Have you set -DCLAP_SDK_ROOT=/path/to/sdk?")
 	endif()
 
 	cmake_path(CONVERT "${CLAP_SDK_ROOT}" TO_CMAKE_PATH_LIST CLAP_SDK_ROOT)
@@ -43,7 +43,7 @@ endfunction(DetectCLAP)
 function(DetectVST3SDK)
   
   if(VST3_SDK_ROOT STREQUAL "")
-	message(STATUS "searching VST3 SDK in ´${CMAKE_CURRENT_SOURCE_DIR}´...")
+	message(STATUS "searching VST3 SDK in \"${CMAKE_CURRENT_SOURCE_DIR}\"...")
 
 	if ( VST3_SDK_ROOT STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libs/vst3sdk")
 	  set(VST3_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/libs/vst3sdk")
@@ -72,7 +72,7 @@ function(DetectVST3SDK)
 
 endfunction()
 
-function(DefineVST3Sources)
+function(DefineCLAPASVST3Sources)
 	set(vst3sources
 		${VST3_SDK_ROOT}/public.sdk/source/main/pluginfactory.cpp
 
@@ -144,12 +144,17 @@ function(DefineVST3Sources)
 	PARENT_SCOPE)
 
 
-endfunction(DefineVST3Sources)
+endfunction(DefineCLAPASVST3Sources)
 
 ##################### 
 
 DetectCLAP()
 
+if(NOT EXISTS "${CLAP_SDK_ROOT}/include/clap/clap.h")
+    message(FATAL_ERROR "There is no CLAP SDK at ${CLAP_SDK_ROOT} ")
+endif()
+
+message(STATUS "Configuring CLAP SDK")
 add_subdirectory(${CLAP_SDK_ROOT} ${CMAKE_BINARY_DIR}/clap EXCLUDE_FROM_ALL)
 
 DetectVST3SDK()
@@ -158,9 +163,10 @@ if(NOT EXISTS "${VST3_SDK_ROOT}/public.sdk")
     message(FATAL_ERROR "There is no VST3 SDK at ${VST3_SDK_ROOT} ")
 endif()
 
+message(STATUS "Configuring VST3 SDK")
 add_subdirectory(${VST3_SDK_ROOT}  ${CMAKE_BINARY_DIR}/vst3sdk EXCLUDE_FROM_ALL)
 
-DefineVST3Sources()
+DefineCLAPASVST3Sources() 
 
 #####################
 

@@ -5,6 +5,7 @@
 #include "detail/vst3/state.h"
 #include "detail/vst3/process.h"
 #include "detail/vst3/parameter.h"
+#include <locale>
 
 // Clap::Library gClapLibrary;
 
@@ -16,9 +17,6 @@ struct ClapHostExtensions
   }
   static void mark_dirty(const clap_host_t* host) { self(host)->mark_dirty(); }
   const clap_host_state_t _state = { mark_dirty };
-
-
-
 };
 
 
@@ -280,6 +278,11 @@ void ClapAsVst3::addMIDIBusFrom(const clap_note_port_info_t* info, bool is_input
 }
 
 // Clap::IHost
+
+void ClapAsVst3::setupWrapperSpecifics(const clap_plugin_t* plugin)
+{
+  auto k = plugin->get_extension(plugin, CLAP_PLUGIN_AS_VST3);
+}
 
 void ClapAsVst3::setupAudioBusses(const clap_plugin_t* plugin, const clap_plugin_audio_ports_t* audioports)
 {

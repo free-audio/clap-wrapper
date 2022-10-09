@@ -257,6 +257,15 @@ namespace Clap
                   case Vst::NoteExpressionTypeIDs::kTuningTypeID:
                     n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_TUNING;
                     break;
+                  case Vst::NoteExpressionTypeIDs::kVibratoTypeID:
+                    n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_VIBRATO;
+                    break;
+                  case Vst::NoteExpressionTypeIDs::kExpressionTypeID:
+                    n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_EXPRESSION;
+                    break;
+                  case Vst::NoteExpressionTypeIDs::kBrightnessTypeID:
+                    n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_BRIGHTNESS;
+                    break;
                   default:
                   continue;
                 }
@@ -282,6 +291,7 @@ namespace Clap
         auto param = (Vst3Parameter*)parameters->getParameter(paramid);
         if (param->isMidi)
         {
+          // TODO: check polyphonic aftertouch
           auto nums = k->getPointCount();
 
           Vst::ParamValue value;
