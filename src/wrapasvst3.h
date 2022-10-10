@@ -124,16 +124,16 @@ public:
 #if 1
 	//----from INoteExpressionController-------------------------
 		/** Returns number of supported note change types for event bus index and channel. */
-	int32 PLUGIN_API getNoteExpressionCount(int32 busIndex, int16 channel);
+	int32 PLUGIN_API getNoteExpressionCount(int32 busIndex, int16 channel) override;
 
 	/** Returns note change type info. */
-	tresult PLUGIN_API getNoteExpressionInfo(int32 busIndex, int16 channel, int32 noteExpressionIndex, Vst::NoteExpressionTypeInfo& info /*out*/);
+	tresult PLUGIN_API getNoteExpressionInfo(int32 busIndex, int16 channel, int32 noteExpressionIndex, Vst::NoteExpressionTypeInfo& info /*out*/) override;
 
 	/** Gets a user readable representation of the normalized note change value. */
-	tresult PLUGIN_API getNoteExpressionStringByValue(int32 busIndex, int16 channel, Vst::NoteExpressionTypeID id, Vst::NoteExpressionValue valueNormalized /*in*/, Vst::String128 string /*out*/);
+	tresult PLUGIN_API getNoteExpressionStringByValue(int32 busIndex, int16 channel, Vst::NoteExpressionTypeID id, Vst::NoteExpressionValue valueNormalized /*in*/, Vst::String128 string /*out*/) override;
 
 	/** Converts the user readable representation to the normalized note change value. */
-	tresult PLUGIN_API getNoteExpressionValueByString(int32 busIndex, int16 channel, Vst::NoteExpressionTypeID id, const Vst::TChar* string /*in*/, Vst::NoteExpressionValue& valueNormalized /*out*/);
+	tresult PLUGIN_API getNoteExpressionValueByString(int32 busIndex, int16 channel, Vst::NoteExpressionTypeID id, const Vst::TChar* string /*in*/, Vst::NoteExpressionValue& valueNormalized /*out*/ ) override;
 #endif
 	//---Interface--------------------------------------------------------------------------
 	OBJ_METHODS(ClapAsVst3, SingleComponentEffect)
