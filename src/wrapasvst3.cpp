@@ -11,7 +11,7 @@
 
 #if WIN
 #include <tchar.h>
-#define S16(x) _T(x)
+#define S16(x) reinterpret_cast<const Steinberg::Vst::TChar*>(_T(x))
 #endif
 #if MAC
 #define S16(x) u ## x
