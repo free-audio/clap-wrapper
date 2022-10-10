@@ -180,15 +180,17 @@ public:
 	void onBeginEdit(clap_id id) override;
 	void onPerformEdit(const clap_event_param_value_t* value) override;
 	void onEndEdit(clap_id id) override;
+
 private:
 	// helper functions
 	void addAudioBusFrom(const clap_audio_port_info_t* info, bool is_input);
-	void addMIDIBusFrom(const clap_note_port_info_t* info, bool is_input);
-	Vst::NoteExpressionTypeContainer _noteExpressions;
+	void addMIDIBusFrom(const clap_note_port_info_t* info, uint32_t index, bool is_input);
+
 	Clap::Library* _library = nullptr;
 	int _libraryIndex = 0;
 	std::shared_ptr<Clap::Plugin> _plugin;
 	ClapHostExtensions* _hostextensions = nullptr;
+	clap_plugin_as_vst3_t* _vst3specifics = nullptr;
 	Clap::ProcessAdapter* _processAdapter = nullptr;
 	WrappedView* _wrappedview = nullptr;
 
@@ -198,11 +200,13 @@ private:
 	bool _active = false;
 	bool _processing = false;
 
+	// the queue from audiothread to UI thread
 	util::fixedqueue<queueEvent, 8192> _queueToUI;
 
 	// for IMidiMapping
 	Vst::ParamID _IMidiMappingIDs[Vst::ControllerNumbers::kCountCtrlNumber] = { 0 };
 	bool _IMidiMappingEasy = true;
+	uint8_t _numMidiChannels = 16;
 
 	// for timer
 	struct TimerObject
@@ -212,4 +216,8 @@ private:
 		clap_id timer_id = 0;
 	};
 	std::vector<TimerObject> _timersObjects;
+
+	// INoteExpression
+	Vst::NoteExpressionTypeContainer _noteExpressions;
+	uint32_t _expressionmap = clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_PRESSURE;
 };

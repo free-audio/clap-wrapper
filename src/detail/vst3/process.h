@@ -26,7 +26,7 @@ namespace Clap
 			clap_event_note_expression_t noteexpression;
 		} clap_multi_event_t;
 
-		void setupProcessing(size_t numInputs, size_t numOutputs, size_t numEventInputs, size_t numEventOutputs, Steinberg::Vst::ParameterContainer& params, Steinberg::Vst::IComponentHandler* componenthandler, IAutomation* automation);
+		void setupProcessing(size_t numInputs, size_t numOutputs, size_t numEventInputs, size_t numEventOutputs, Steinberg::Vst::ParameterContainer& params, Steinberg::Vst::IComponentHandler* componenthandler, IAutomation* automation, bool enablePolyPressure);
 		void process(Steinberg::Vst::ProcessData& data, const clap_plugin_t* plugin);
 		void processOutputParams(Steinberg::Vst::ProcessData& data, const clap_plugin_t* plugin);
 
@@ -71,6 +71,7 @@ namespace Clap
 		std::vector<clap_multi_event_t> _events;
 		std::vector<size_t> _eventindices;
 
+		bool _supportsPolyPressure = false;
 
 	};
 

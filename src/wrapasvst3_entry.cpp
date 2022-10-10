@@ -206,24 +206,16 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 }
 
 /*
-*		creates an Instance from the creationContext. 
+*		creates an Instance from the creationContext.
+*		actually, there is always a valid entrypoint, otherwise no factory would have been provided.
 */
 FUnknown* ClapAsVst3::createInstance(void* context)
 {
 	auto ctx = static_cast<CreationContext*>(context);
-	if (!ctx->lib->hasEntryPoint())
+	if (ctx->lib->hasEntryPoint())
 	{
-		auto paths = Clap::getValidCLAPSearchPaths();
-		for (auto& i : paths)
-		{
-			auto k = i / "clap-saw-demo.clap";
-			// auto k = i / "u-he" / "Diva.clap";
-			if (ctx->lib->load(k.u8string().c_str()))
-			{
-				break;
-			}
-		}
+		return (IAudioProcessor*)new ClapAsVst3(ctx->lib, ctx->index, context);
 	}
-	return (IAudioProcessor*)new ClapAsVst3(ctx->lib, ctx->index, context);
+	return nullptr;	// this should never happen.
 	
 }

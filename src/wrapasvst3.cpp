@@ -125,7 +125,9 @@ tresult PLUGIN_API ClapAsVst3::setProcessing(TBool state)
   if (state)
   {
     _processing = true;
-    _processAdapter->setupProcessing(this->audioInputs.size(), this->audioOutputs.size(), this->eventInputs.size(), this->eventOutputs.size(), parameters, componentHandler, this);
+    auto supportsnoteexpression = (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_PRESSURE);
+    _processAdapter->setupProcessing(this->audioInputs.size(), this->audioOutputs.size(), this->eventInputs.size(), this->eventOutputs.size(), parameters, componentHandler, this,
+      supportsnoteexpression);
     return (_plugin->start_processing() ? Steinberg::kResultOk : Steinberg::kResultFalse);
   }
   else
@@ -263,17 +265,22 @@ void ClapAsVst3::addAudioBusFrom(const clap_audio_port_info_t* info, bool is_inp
 
 }
 
-void ClapAsVst3::addMIDIBusFrom(const clap_note_port_info_t* info, bool is_input)
+void ClapAsVst3::addMIDIBusFrom(const clap_note_port_info_t* info, uint32_t index, bool is_input)
 {
   if ((info->supported_dialects & CLAP_NOTE_DIALECT_MIDI) || (info->supported_dialects & CLAP_NOTE_DIALECT_CLAP))
   {
+    auto numchannels = 16;
+    if (_vst3specifics)
+    {
+      numchannels = _vst3specifics->getNumMIDIChannels(_plugin->_plugin, index);
+    }
+
     Steinberg::char16 name16[256];
     Steinberg::str8ToStr16(&name16[0], info->name, 256);
     if (is_input)
     {
-      addEventInput(name16, 1, Vst::BusTypes::kMain, Vst::BusInfo::kDefaultActive);
+      addEventInput(name16, numchannels, Vst::BusTypes::kMain, Vst::BusInfo::kDefaultActive);
     }
-
   }
 }
 
@@ -281,7 +288,12 @@ void ClapAsVst3::addMIDIBusFrom(const clap_note_port_info_t* info, bool is_input
 
 void ClapAsVst3::setupWrapperSpecifics(const clap_plugin_t* plugin)
 {
-  auto k = plugin->get_extension(plugin, CLAP_PLUGIN_AS_VST3);
+  _vst3specifics = (clap_plugin_as_vst3_t*) plugin->get_extension(plugin, CLAP_PLUGIN_AS_VST3);
+  if (_vst3specifics)
+  {
+    _numMidiChannels = _vst3specifics->getNumMIDIChannels(_plugin->_plugin, 0);
+    _expressionmap = _vst3specifics->supportedNoteExpressions(_plugin->_plugin);
+  }
 }
 
 void ClapAsVst3::setupAudioBusses(const clap_plugin_t* plugin, const clap_plugin_audio_ports_t* audioports)
@@ -335,7 +347,7 @@ void ClapAsVst3::setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_
     clap_note_port_info_t info;
     if (noteports->get(plugin, i, true, &info))
     {
-      addMIDIBusFrom(&info, true);
+      addMIDIBusFrom(&info, i, true);
     }
   }
   for (decltype(numMIDIOutPorts) i = 0; i < numMIDIOutPorts; ++i)
@@ -343,7 +355,7 @@ void ClapAsVst3::setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_
     clap_note_port_info_t info;
     if (noteports->get(plugin, i, false, &info))
     {
-      addMIDIBusFrom(&info, false);
+      addMIDIBusFrom(&info, i, false);
     }
   }
 }
@@ -367,35 +379,63 @@ void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
   // find free tags for IMidiMapping
   Vst::ParamID x = 0xb00000;
   _IMidiMappingEasy = true;
-  for (int i = 0; i < Vst::ControllerNumbers::kCountCtrlNumber; ++i)
+
+  for (uint8_t channel = 0; channel < _numMidiChannels; channel++)
   {
-    while (parameters.getParameter(x))
+    for (int i = 0; i < Vst::ControllerNumbers::kCountCtrlNumber; ++i)
     {
-      // if this happens there is a index clash between the parameter ids
-      // and the ones reserved for the IMidiMapping
-      _IMidiMappingEasy = false;
-      x++;
+      while (parameters.getParameter(x))
+      {
+        // if this happens there is a index clash between the parameter ids
+        // and the ones reserved for the IMidiMapping
+        _IMidiMappingEasy = false;
+        x++;
+      }
+      auto p = Vst3Parameter::create(0, channel, i, x);
+      parameters.addParameter(p);
+      _IMidiMappingIDs[i] = x++;
     }
-    auto p = Vst3Parameter::create(0, i, x);
-    parameters.addParameter(p);
-    _IMidiMappingIDs[i] = x++;
   }
 
   // setting up noteexpression
+  
+  if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_VOLUME)
+    _noteExpressions.addNoteExpressionType(
+      new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kVolumeTypeID,
+        L"Volume", L"Vol", L"", 0, nullptr, 0)
+    );
+  if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_PAN)
 
-  _noteExpressions.addNoteExpressionType(
-    new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kVolumeTypeID,
-      L"Vohlume", L"Vol", L"", 0, nullptr, 0)
-  );
-  _noteExpressions.addNoteExpressionType(
-    new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kTuningTypeID,
-      L"Peetch", L"Tun", L"", 0, nullptr, 0)
-  );
+    _noteExpressions.addNoteExpressionType(
+      new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kPanTypeID,
+        L"Panorama", L"Pan", L"", 0, nullptr, 0)
+    );
 
-  _noteExpressions.addNoteExpressionType(
-    new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kPanTypeID,
-      L"Pfanorama", L"Pan", L"", 0, nullptr, 0)
-  );
+  if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_TUNING)
+    _noteExpressions.addNoteExpressionType(
+      new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kTuningTypeID,
+        L"Tuning", L"Tun", L"", 0, nullptr, 0)
+    );
+
+  if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_VIBRATO)
+    _noteExpressions.addNoteExpressionType(
+      new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kVibratoTypeID,
+        L"Vibrato", L"Vib", L"", 0, nullptr, 0)
+    );
+
+  if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_EXPRESSION)
+    _noteExpressions.addNoteExpressionType(
+      new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kExpressionTypeID,
+        L"Expression", L"Expr", L"", 0, nullptr, 0)
+    );
+
+  if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_BRIGHTNESS)
+    _noteExpressions.addNoteExpressionType(
+      new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kBrightnessTypeID,
+        L"Brightness", L"Brit", L"", 0, nullptr, 0)
+    );
+
+    // PRESSURE is handled by IMidiMapping (-> Polypressure)
 }
 
 

@@ -21,7 +21,7 @@ typedef uint8_t array_of_16_bytes[16];
 /*
   clap_plugin_as_vst3
 
-  all members are optional and can be set to nullptr
+  all members are optional when set to nullptr
   if not provided, the wrapper code will use/generate appropriate values
 */
 
@@ -55,13 +55,13 @@ typedef struct clap_plugin_factory_as_vst3
 
 enum clap_supported_note_expressions
 {
-  VST3_NOTE_EXPRESSION_VOLUME       = 1 << 0,
-  VST3_NOTE_EXPRESSION_PAN          = 1 << 1,
-  VST3_NOTE_EXPRESSION_TUNING       = 1 << 2,
-  VST3_NOTE_EXPRESSION_VIBRATO      = 1 << 3,
-  VST3_NOTE_EXPRESSION_EXPRESSION   = 1 << 4,
-  VST3_NOTE_EXPRESSION_BRIGHTNESS   = 1 << 5,
-  VST3_NOTE_EXPRESSION_PRESSURE     = 1 << 6
+  AS_VST3_NOTE_EXPRESSION_VOLUME       = 1 << 0,
+  AS_VST3_NOTE_EXPRESSION_PAN          = 1 << 1,
+  AS_VST3_NOTE_EXPRESSION_TUNING       = 1 << 2,
+  AS_VST3_NOTE_EXPRESSION_VIBRATO      = 1 << 3,
+  AS_VST3_NOTE_EXPRESSION_EXPRESSION   = 1 << 4,
+  AS_VST3_NOTE_EXPRESSION_BRIGHTNESS   = 1 << 5,
+  AS_VST3_NOTE_EXPRESSION_PRESSURE     = 1 << 6
 };
 
 /*
@@ -70,7 +70,7 @@ enum clap_supported_note_expressions
 */
 typedef struct clap_plugin_as_vst3
 {
-  uint16_t (*getNumMIDIChannels) (const clap_plugin* plugin, uint32_t note_port); // return 1-16
-  uint16_t (*supportedNoteExpressions) (const clap_plugin* plugin); // returns a map of clap_supported_note_expressions
+  uint32_t (*getNumMIDIChannels) (const clap_plugin* plugin, uint32_t note_port); // return 1-16
+  uint32_t (*supportedNoteExpressions) (const clap_plugin* plugin); // returns a bitmap of clap_supported_note_expressions
 } clap_plugin_as_vst3_t;
 

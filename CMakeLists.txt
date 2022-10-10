@@ -49,8 +49,8 @@ message(STATUS "executing at ${CMAKE_CURRENT_SOURCE_DIR}")
 
 # ------------------------------------------------------------------------------
 
-add_library(clap-as-vst3-extensions INTERFACE)
-target_include_directories(clap-as-vst3-extensions INTERFACE include)
+add_library(clap-wrapper-extensions INTERFACE)
+target_include_directories(clap-wrapper-extensions INTERFACE include)
 
 # ------------------------------------------------------------------------------
 
@@ -77,7 +77,7 @@ smtg_add_vst3plugin(${project}
 smtg_target_add_library_main(${project})
 
 # link both SDKs, CLAP and VST3
-target_link_libraries(${project} PRIVATE clap-core sdk clap-as-vst3-extensions)
+target_link_libraries(${project} PRIVATE clap-core sdk clap-wrapper-extensions)
 message(STATUS " current source dir: ${CMAKE_CURRENT_SOURCE_DIR} ")
 target_include_directories(${project} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 

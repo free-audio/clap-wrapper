@@ -1,6 +1,7 @@
 #include "process.h"
 #include <pluginterfaces/vst/ivstevents.h>
 #include <pluginterfaces/vst/ivstparameterchanges.h>
+#include <pluginterfaces/vst/ivstmidicontrollers.h>
 #include "parameter.h"
 #include <algorithm>
 
@@ -12,7 +13,7 @@ namespace Clap
 {
   using namespace Steinberg;
 
-  void ProcessAdapter::setupProcessing(size_t numInputs, size_t numOutputs, size_t numEventInputs, size_t numEventOutputs, Steinberg::Vst::ParameterContainer& params, Steinberg::Vst::IComponentHandler* componenthandler, IAutomation* automation)
+  void ProcessAdapter::setupProcessing(size_t numInputs, size_t numOutputs, size_t numEventInputs, size_t numEventOutputs, Steinberg::Vst::ParameterContainer& params, Steinberg::Vst::IComponentHandler* componenthandler, IAutomation* automation, bool enablePolyPressure)
   {
     parameters = &params;
     _componentHandler = componenthandler;
@@ -52,6 +53,8 @@ namespace Clap
     _gesturedParameters.reserve(32);
 
     _activeNotes.reserve(64);
+
+    _supportsPolyPressure = enablePolyPressure;
 
   }
 
@@ -228,6 +231,30 @@ namespace Clap
               // there are no other event types yet
             }
           }
+          if (_supportsPolyPressure && vstevent.type == Vst::Event::kPolyPressureEvent)
+          {
+            clap_multi_event_t n;
+            auto& f = vstevent.noteExpressionValue;
+            n.noteexpression.header.type = CLAP_EVENT_NOTE_EXPRESSION;
+            n.noteexpression.header.flags = (vstevent.flags & Vst::Event::kIsLive) ? CLAP_EVENT_IS_LIVE : 0;
+            n.noteexpression.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+            n.noteexpression.header.time = vstevent.sampleOffset;
+            n.noteexpression.header.size = sizeof(clap_event_note_expression);
+            n.noteexpression.note_id = vstevent.polyPressure.noteId;
+            for (auto& i : _activeNotes)
+            {
+              if (i.used && i.note_id == vstevent.polyPressure.noteId)
+              {
+                n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_PRESSURE;
+                n.noteexpression.port_index = i.port_index;
+                n.noteexpression.key = i.key;   // should be the same as vstevent.polyPressure.pitch
+                n.noteexpression.channel = i.channel;
+                n.noteexpression.value = vstevent.polyPressure.pressure;
+              }
+            }
+            _eventindices.push_back(_events.size());
+            _events.push_back(n);
+          }
           if (vstevent.type == Vst::Event::kNoteExpressionValueEvent)
           {
             clap_multi_event_t n;
@@ -291,7 +318,7 @@ namespace Clap
         auto param = (Vst3Parameter*)parameters->getParameter(paramid);
         if (param->isMidi)
         {
-          // TODO: check polyphonic aftertouch
+
           auto nums = k->getPointCount();
 
           Vst::ParamValue value;
@@ -305,11 +332,31 @@ namespace Clap
             n.param.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
             n.param.header.time = offset;
             n.param.header.size = sizeof(clap_event_midi_t);
-
             n.midi.port_index = 0;
-            n.midi.data[0] = 0xB0 | param->channel;
-            n.midi.data[1] = param->controller;
-            n.midi.data[2] = param->asClapValue(value);
+
+            switch (param->controller)
+            {
+            case Vst::ControllerNumbers::kAfterTouch:
+              n.midi.data[0] = 0xD0 | param->channel;
+              n.midi.data[1] = param->asClapValue(value);
+              n.midi.data[2] = 0;
+              break;
+            case Vst::ControllerNumbers::kPitchBend:
+              {
+              auto val = (uint16_t) param->asClapValue(value);
+                n.midi.data[0] = 0xE0 | param->channel; // $Ec
+                n.midi.data[1] = (val & 0x7F);          // LSB
+                n.midi.data[2] = (val >> 7) & 0x7F;     // MSB
+              }
+              break;
+            default:
+              n.midi.data[0] = 0xB0 | param->channel;
+              n.midi.data[1] = param->controller;
+              n.midi.data[2] = param->asClapValue(value);
+              break;
+
+            }
+
             _eventindices.push_back(_events.size());
             _events.push_back(n);
           }
