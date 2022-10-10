@@ -8,9 +8,6 @@
 #include "detail/vst3/process.h"
 #include "detail/vst3/parameter.h"
 #include <locale>
-#include <tchar.h>
-// Clap::Library gClapLibrary;
-using namespace Steinberg;
 
 #if WIN
 #define S16(x) L ## x
@@ -419,7 +416,7 @@ void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
   if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_PAN)
 
     _noteExpressions.addNoteExpressionType(
-      new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kPanTypeID, S16("Panorama", ), S16("Pan"), S16(""), 0, nullptr, 0)
+      new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kPanTypeID, S16("Panorama"), S16("Pan"), S16(""), 0, nullptr, 0)
     );
 
   if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_TUNING)
