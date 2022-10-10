@@ -32,7 +32,7 @@ namespace Clap
     const clap_plugin_factory_t* _pluginFactory = nullptr;
     const clap_plugin_factory_as_vst3* _pluginFactoryVst3Info = nullptr;
     std::vector<const clap_plugin_descriptor_t*> plugins;
-    const clap_plugin_as_vst3_t* get_vst3_info(uint32_t index);
+    const clap_plugin_info_as_vst3_t* get_vst3_info(uint32_t index);
 
     bool hasEntryPoint() const {
 #if WIN

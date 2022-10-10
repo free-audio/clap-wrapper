@@ -7,7 +7,7 @@ cmake_policy(SET CMP0091 NEW)
 
 project(clap-as-vst3 
 	LANGUAGES C CXX
-	VERSION 0.0.1
+	VERSION 0.0.3
 	DESCRIPTION "CLAP as VST3"
 )
 
@@ -23,9 +23,10 @@ set(SMTG_CREATE_BUNDLE_FOR_WINDOWS OFF)
 # not now - but can be useful to activate
 set(SMTG_RUN_VST_VALIDATOR OFF)
 
-# THIS we want.
+# create plugin link
 set(SMTG_CREATE_PLUGIN_LINK ON)
 
+# discover the plugin paths and enable them
 include(cmake/enable_sdks.cmake)
 
 # ------------------------------------------------------------------------------
@@ -48,8 +49,18 @@ message(STATUS "executing at ${CMAKE_CURRENT_SOURCE_DIR}")
 
 # ------------------------------------------------------------------------------
 
+add_library(clap-wrapper-extensions INTERFACE)
+target_include_directories(clap-wrapper-extensions INTERFACE include)
+
+# ------------------------------------------------------------------------------
+
 # this will be a CMake argument
+if(WRAPPER_OUTPUT_NAME STREQUAL "")
 set(project "clapasvst3")
+else()
+set(project ${WRAPPER_OUTPUT_NAME})
+message(STATUS "plugin name is ${WRAPPER_OUTPUT_NAME}")
+endif()
 
 add_definitions(-D${PLATFORM}=1)
 
@@ -65,11 +76,10 @@ smtg_add_vst3plugin(${project}
 
 smtg_target_add_library_main(${project})
 
-# link both SDKs
-target_link_libraries(${project} PRIVATE clap-core sdk)
+# link both SDKs, CLAP and VST3
+target_link_libraries(${project} PRIVATE clap-core sdk clap-wrapper-extensions)
 message(STATUS " current source dir: ${CMAKE_CURRENT_SOURCE_DIR} ")
 target_include_directories(${project} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
-target_include_directories(${project} PUBLIC ${VST3_SDK_ROOT})
 
 if (APPLE)
 	target_link_libraries (${project} PUBLIC "-framework Foundation" "-framework CoreFoundation")

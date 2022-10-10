@@ -61,6 +61,21 @@ namespace os
 		return modulename;
 	}
 
+	std::string getParentFolderName()
+	{
+		std::filesystem::path n = getModuleNameA();
+		if (n.has_parent_path())
+		{
+			auto p = n.parent_path();
+			if (p.has_filename())
+			{
+				return p.filename().u8string();
+			}
+		}
+
+		return std::string();
+	}
+
 	std::string getBinaryName()
 	{
 		std::filesystem::path n = getModuleNameA();

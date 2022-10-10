@@ -1,6 +1,7 @@
 #include "process.h"
 #include <pluginterfaces/vst/ivstevents.h>
 #include <pluginterfaces/vst/ivstparameterchanges.h>
+#include <pluginterfaces/vst/ivstmidicontrollers.h>
 #include "parameter.h"
 #include <algorithm>
 
@@ -12,11 +13,11 @@ namespace Clap
 {
   using namespace Steinberg;
 
-  void ProcessAdapter::setupProcessing(size_t numInputs, size_t numOutputs, size_t numEventInputs, size_t numEventOutputs, Steinberg::Vst::ParameterContainer& params, Steinberg::Vst::IComponentHandler* componenthandler, IAutomation* automation)
+  void ProcessAdapter::setupProcessing(size_t numInputs, size_t numOutputs, size_t numEventInputs, size_t numEventOutputs, Steinberg::Vst::ParameterContainer& params, Steinberg::Vst::IComponentHandler* componenthandler, IAutomation* automation, bool enablePolyPressure)
   {
     parameters = &params;
     _componentHandler = componenthandler;
-    _automation = automation;
+    _automation = automation;    
 
     _processData.audio_inputs_count = numInputs;
     if (numInputs > 0)
@@ -49,7 +50,11 @@ namespace Clap
 
     _out_events.ctx = this;
 
-    _automatedParameters.reserve(32);
+    _gesturedParameters.reserve(32);
+
+    _activeNotes.reserve(64);
+
+    _supportsPolyPressure = enablePolyPressure;
 
   }
 
@@ -187,6 +192,7 @@ namespace Clap
             n.note.key = vstevent.noteOn.pitch;
             _eventindices.push_back(_events.size());
             _events.push_back(n);
+            addToActiveNotes(&n.note);
           }
           if (vstevent.type == Vst::Event::kNoteOffEvent)
           {
@@ -225,6 +231,76 @@ namespace Clap
               // there are no other event types yet
             }
           }
+          if (_supportsPolyPressure && vstevent.type == Vst::Event::kPolyPressureEvent)
+          {
+            clap_multi_event_t n;
+            auto& f = vstevent.noteExpressionValue;
+            n.noteexpression.header.type = CLAP_EVENT_NOTE_EXPRESSION;
+            n.noteexpression.header.flags = (vstevent.flags & Vst::Event::kIsLive) ? CLAP_EVENT_IS_LIVE : 0;
+            n.noteexpression.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+            n.noteexpression.header.time = vstevent.sampleOffset;
+            n.noteexpression.header.size = sizeof(clap_event_note_expression);
+            n.noteexpression.note_id = vstevent.polyPressure.noteId;
+            for (auto& i : _activeNotes)
+            {
+              if (i.used && i.note_id == vstevent.polyPressure.noteId)
+              {
+                n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_PRESSURE;
+                n.noteexpression.port_index = i.port_index;
+                n.noteexpression.key = i.key;   // should be the same as vstevent.polyPressure.pitch
+                n.noteexpression.channel = i.channel;
+                n.noteexpression.value = vstevent.polyPressure.pressure;
+              }
+            }
+            _eventindices.push_back(_events.size());
+            _events.push_back(n);
+          }
+          if (vstevent.type == Vst::Event::kNoteExpressionValueEvent)
+          {
+            clap_multi_event_t n;
+            auto& f = vstevent.noteExpressionValue;
+            n.noteexpression.header.type = CLAP_EVENT_NOTE_EXPRESSION;
+            n.noteexpression.header.flags = (vstevent.flags & Vst::Event::kIsLive) ? CLAP_EVENT_IS_LIVE : 0;
+            n.noteexpression.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+            n.noteexpression.header.time = vstevent.sampleOffset;
+            n.noteexpression.header.size = sizeof(clap_event_note_expression);
+            n.noteexpression.note_id = vstevent.noteExpressionValue.noteId;
+            for (auto& i : _activeNotes)
+            {
+              if (i.used && i.note_id == vstevent.noteExpressionValue.noteId)
+              {
+                n.noteexpression.port_index = i.port_index;
+                n.noteexpression.key = i.key;
+                n.noteexpression.channel = i.channel;
+                n.noteexpression.value = vstevent.noteExpressionValue.value;
+                switch (vstevent.noteExpressionValue.typeId)
+                {
+                  case Vst::NoteExpressionTypeIDs::kVolumeTypeID:
+                    n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_VOLUME;
+                    break;
+                  case Vst::NoteExpressionTypeIDs::kPanTypeID:
+                    n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_PAN;
+                    break;
+                  case Vst::NoteExpressionTypeIDs::kTuningTypeID:
+                    n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_TUNING;
+                    break;
+                  case Vst::NoteExpressionTypeIDs::kVibratoTypeID:
+                    n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_VIBRATO;
+                    break;
+                  case Vst::NoteExpressionTypeIDs::kExpressionTypeID:
+                    n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_EXPRESSION;
+                    break;
+                  case Vst::NoteExpressionTypeIDs::kBrightnessTypeID:
+                    n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_BRIGHTNESS;
+                    break;
+                  default:
+                  continue;
+                }
+                _eventindices.push_back(_events.size());
+                _events.push_back(n);
+              }
+            }
+          }
         }
       }
     }
@@ -242,6 +318,7 @@ namespace Clap
         auto param = (Vst3Parameter*)parameters->getParameter(paramid);
         if (param->isMidi)
         {
+
           auto nums = k->getPointCount();
 
           Vst::ParamValue value;
@@ -255,11 +332,31 @@ namespace Clap
             n.param.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
             n.param.header.time = offset;
             n.param.header.size = sizeof(clap_event_midi_t);
-
             n.midi.port_index = 0;
-            n.midi.data[0] = 0xB0 | param->channel;
-            n.midi.data[1] = param->controller;
-            n.midi.data[2] = param->asClapValue(value);
+
+            switch (param->controller)
+            {
+            case Vst::ControllerNumbers::kAfterTouch:
+              n.midi.data[0] = 0xD0 | param->channel;
+              n.midi.data[1] = param->asClapValue(value);
+              n.midi.data[2] = 0;
+              break;
+            case Vst::ControllerNumbers::kPitchBend:
+              {
+              auto val = (uint16_t) param->asClapValue(value);
+                n.midi.data[0] = 0xE0 | param->channel; // $Ec
+                n.midi.data[1] = (val & 0x7F);          // LSB
+                n.midi.data[2] = (val >> 7) & 0x7F;     // MSB
+              }
+              break;
+            default:
+              n.midi.data[0] = 0xB0 | param->channel;
+              n.midi.data[1] = param->controller;
+              n.midi.data[2] = param->asClapValue(value);
+              break;
+
+            }
+
             _eventindices.push_back(_events.size());
             _events.push_back(n);
           }
@@ -350,8 +447,10 @@ namespace Clap
     {
     case CLAP_EVENT_NOTE_ON:
     case CLAP_EVENT_NOTE_OFF:
-    case CLAP_EVENT_NOTE_CHOKE:
+      return true;
     case CLAP_EVENT_NOTE_END:
+    case CLAP_EVENT_NOTE_CHOKE:
+      removeFromActiveNotes((const clap_event_note*)(event));
       return true;
       break;
     case CLAP_EVENT_NOTE_EXPRESSION:
@@ -366,7 +465,7 @@ namespace Clap
         auto param_id = ev->param_id;
         // if the parameter is marked as being edited in the UI, pass the value
         // to the queue so it can be given to the IComponentHandler
-        if (std::find(_automatedParameters.begin(), _automatedParameters.end(), param_id) != _automatedParameters.end())
+        if (std::find(_gesturedParameters.begin(), _gesturedParameters.end(), param_id) != _gesturedParameters.end())
         {
           _automation->onPerformEdit(ev);
         }
@@ -379,6 +478,7 @@ namespace Clap
 
         // the implementation of addParameterData() in the SDK always returns a queue, but Cubase 12 (perhaps others, too)
         // sometimes don't return a queue object during the first bunch of process calls. I (df) haven't figured out, why.
+        // therefore we have to check if there is an output queue at all
         if (list)
         {
           Steinberg::int32 index2 = 0;
@@ -396,7 +496,7 @@ namespace Clap
     case CLAP_EVENT_PARAM_GESTURE_BEGIN:
       {
         auto ev = (clap_event_param_gesture*)event;
-        _automatedParameters.push_back(ev->param_id);
+        _gesturedParameters.push_back(ev->param_id);
         _automation->onBeginEdit(ev->param_id);
       }
       return true;
@@ -406,7 +506,7 @@ namespace Clap
       {
         auto ev = (clap_event_param_gesture*)event;
         _automation->onEndEdit(ev->param_id);
-        _automatedParameters.erase(std::remove(_automatedParameters.begin(), _automatedParameters.end(), ev->param_id));
+        _gesturedParameters.erase(std::remove(_gesturedParameters.begin(), _gesturedParameters.end(), ev->param_id));
       }
       return true;
       break;
@@ -421,4 +521,36 @@ namespace Clap
     }
     return false;
   }
+
+  void ProcessAdapter::addToActiveNotes(const clap_event_note* note)
+  {
+    for (auto& i : _activeNotes)
+    {
+      if (!i.used)
+      {
+        i.note_id = note->note_id;
+        i.port_index = note->port_index;
+        i.channel = note->channel;
+        i.key = note->key;
+        i.used = true;
+        return;
+      }
+    }
+    _activeNotes.push_back({true,note->note_id, note->port_index, note->channel, note->key});
+  }
+
+  void ProcessAdapter::removeFromActiveNotes(const clap_event_note * note)
+  {
+    for (auto& i : _activeNotes)
+    {
+      if (i.used
+        && i.port_index == note->port_index 
+        && i.channel == note->channel 
+        && i.note_id == note->note_id)
+      {
+        i.used = false;
+      }
+    }
+  }
+
 }

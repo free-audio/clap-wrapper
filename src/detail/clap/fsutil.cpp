@@ -134,7 +134,7 @@ namespace Clap
 #endif
   }
 
-  const clap_plugin_as_vst3_t* Library::get_vst3_info(uint32_t index)
+  const clap_plugin_info_as_vst3_t* Library::get_vst3_info(uint32_t index)
   {
     if (_pluginFactoryVst3Info && _pluginFactoryVst3Info->get_vst3_info)
     {

@@ -111,6 +111,13 @@ namespace Clap
 
     const clap_host_timer_support hosttimer = { register_timer, unregister_timer };
 
+    static void latency_changed(const clap_host_t* host)
+    {
+      self(host)->latency_changed();
+    }
+
+    const clap_host_latency latency = { latency_changed };
+
   }
 
   class Raise
@@ -318,6 +325,11 @@ namespace Clap
     return nullptr;
   }
 
+  void Plugin::latency_changed()
+  {
+    this->_parentHost->latency_changed();
+  }
+
   void Plugin::log(clap_log_severity severity, const char* msg)
   {
     std::string n;
@@ -410,6 +422,8 @@ namespace Clap
       return &HostExt::hostgui;
     if (!strcmp(extension, CLAP_EXT_TIMER_SUPPORT))
       return &HostExt::hosttimer;
+    if (!strcmp(extension, CLAP_EXT_LATENCY))
+      return &HostExt::latency;
 
     return nullptr;
   }

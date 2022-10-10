@@ -15,12 +15,12 @@ jobs:
         os: [windows-latest]
         #os: [ubuntu-latest, macos-latest, windows-latest]
         include:
-        #  - os: ubuntu-latest
-        #    name: linux
-          - os: macos-latest
-            name: mac
           - os: windows-latest
             name: win
+          - os: macos-latest
+            name: mac
+        #  - os: ubuntu-latest
+        #    name: linux
     steps:
       - name: Checkout code
         uses: actions/checkout@v2

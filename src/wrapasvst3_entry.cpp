@@ -1,56 +1,13 @@
-//------------------------------------------------------------------------
-// Project     : VST SDK
-//
-// Category    : Examples
-// Filename    : public.sdk/samples/vst/again/source/againentry.cpp
-// Created by  : Steinberg, 04/2005
-// Description : AGain Example for VST 3
-//
-//-----------------------------------------------------------------------------
-// LICENSE
-// (c) 2022, Steinberg Media Technologies GmbH, All Rights Reserved
-//-----------------------------------------------------------------------------
-// Redistribution and use in source and binary forms, with or without modification,
-// are permitted provided that the following conditions are met:
-// 
-//   * Redistributions of source code must retain the above copyright notice, 
-//     this list of conditions and the following disclaimer.
-//   * Redistributions in binary form must reproduce the above copyright notice,
-//     this list of conditions and the following disclaimer in the documentation 
-//     and/or other materials provided with the distribution.
-//   * Neither the name of the Steinberg Media Technologies nor the names of its
-//     contributors may be used to endorse or promote products derived from this 
-//     software without specific prior written permission.
-// 
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-// ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
-// WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
-// IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
-// INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
-// BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, 
-// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF 
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE 
-// OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
-// OF THE POSSIBILITY OF SUCH DAMAGE.
-//-----------------------------------------------------------------------------
+/*
 
-//#include "again.h"	// for AGain
-//#include "againsidechain.h"	// for AGain SideChain
-//#include "againcontroller.h" // for AGainController
-//#include "againcids.h"	// for class ids and categrory
-//#include "version.h"	// for versioning
+		CLAP AS VST3
+
+		(c) 2022 defiant nerd
+
+*/
 #include "detail/sha1.h"
 #include "wrapasvst3.h"
 #include "public.sdk/source/main/pluginfactory.h"
-
-
-// #define stringPluginName "CLAP as VST3"
-// #define stringPluginSideChainName "AGain SideChain VST3"
-
-#if TARGET_OS_IPHONE
-#include "public.sdk/source/vst/vstguieditor.h"
-extern void* moduleHandle;
-#endif
 
 using namespace Steinberg::Vst;
 
@@ -74,21 +31,44 @@ struct CreationContext
 
 bool findPlugin(Clap::Library& lib, const std::string& pluginfilename)
 {
+	auto parentfolder = os::getParentFolderName();
 	auto paths = Clap::getValidCLAPSearchPaths();
 
-	// for a clap with the same name as this binary
+	// Strategy 1: look for a clap with the same name as this binary
 	for (auto& i : paths)
 	{
-		// auto k = i / "clap-saw-demo.clap";
-		auto k = i / pluginfilename;
-		if (std::filesystem::exists(k))
+		// try to find it the CLAP folder immediately
+		auto k1 = i / pluginfilename;
+		if (std::filesystem::exists(k1))
 		{
-			if (lib.load(k.u8string().c_str()))
+			if (lib.load(k1.u8string().c_str()))
 			{
 				return true;
 			}
 		}
-		// TODO: enumerate folders
+
+		// Strategy 2: try to locate "CLAP/vendorX/plugY.clap"  - derived from "VST3/vendorX/plugY.vst3"
+		auto k2 = i / parentfolder / pluginfilename;
+		if (std::filesystem::exists(k2))
+		{
+			if (lib.load(k2.u8string().c_str()))
+			{
+				return true;
+			}
+		}
+
+		// Strategy 3: enumerate folders in CLAP folder and try to locate the plugin in any sub folder (only one level)
+		for (const auto& subdir : std::filesystem::directory_iterator(i))
+		{
+			auto k3 = i / subdir / pluginfilename;
+			if (std::filesystem::exists(k3))
+			{
+				if (lib.load(k3.u8string().c_str()))
+				{
+					return true;
+				}
+			}
+		}
 	}
 	return false;
 }
@@ -111,11 +91,14 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 		if (!gClapLibrary.hasEntryPoint())
 		{
 			// try to find a clap which filename stem matches our own
+			auto kx = os::getParentFolderName();
 			auto plugname = os::getBinaryName();
 			plugname.append(".clap");
 
+
 			if (!findPlugin(gClapLibrary, plugname))
 			{
+				// findPlugin(gClapLibrary, "clap-saw-demo.clap");
 				findPlugin(gClapLibrary, "clap-saw-demo.clap");
 			}
 		}
@@ -142,9 +125,9 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 	if (gClapLibrary._pluginFactoryVst3Info)
 	{
 		auto& v3 = gClapLibrary._pluginFactoryVst3Info;
-		if (v3->vendor)vendor = v3->vendor;
-		if (v3->vendor_url) vendor_url = v3->vendor_url;
-		if (v3->email_contact) contact = v3->email_contact;
+    if (v3->vendor) vendor = v3->vendor;
+    if (v3->vendor_url) vendor_url = v3->vendor_url;
+    if (v3->email_contact) contact = v3->email_contact;
 	}
 
 	if (!gPluginFactory)
@@ -161,7 +144,7 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 		for (uint32_t ctr = 0; ctr < gClapLibrary.plugins.size(); ++ctr)
 		{
 			auto& clapdescr = gClapLibrary.plugins[ctr];
-			const clap_plugin_as_vst3* vst3info = gClapLibrary.get_vst3_info(ctr);
+			auto vst3info = gClapLibrary.get_vst3_info(ctr);
 
 			std::string n(clapdescr->name);
 #ifdef _DEBUG
@@ -223,24 +206,16 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 }
 
 /*
-*		creates an Instance from the creationContext. 
+*		creates an Instance from the creationContext.
+*		actually, there is always a valid entrypoint, otherwise no factory would have been provided.
 */
 FUnknown* ClapAsVst3::createInstance(void* context)
 {
 	auto ctx = static_cast<CreationContext*>(context);
-	if (!ctx->lib->hasEntryPoint())
+	if (ctx->lib->hasEntryPoint())
 	{
-		auto paths = Clap::getValidCLAPSearchPaths();
-		for (auto& i : paths)
-		{
-			auto k = i / "clap-saw-demo.clap";
-			// auto k = i / "u-he" / "Diva.clap";
-			if (ctx->lib->load(k.u8string().c_str()))
-			{
-				break;
-			}
-		}
+		return (IAudioProcessor*)new ClapAsVst3(ctx->lib, ctx->index, context);
 	}
-	return (IAudioProcessor*)new ClapAsVst3(ctx->lib, ctx->index, context);
+	return nullptr;	// this should never happen.
 	
 }

@@ -3,9 +3,14 @@ Wrappers for other plugin formats to the CLAP audio plugin format (see https://g
 
 ## General Idea
 
-This project will provide a library that is statically linked to a CLAP plugin. It exposes the entrypoints for different Audio Plugin standards and their interfaces and maps them quite immediately to the CLAP in the same binary (this might be dynamic later on). The code locates the CLAP entrypoint and uses it from a host perspective.
+This project will provide:
+- a standalone wrapper that dynamically loads an installed CLAP
+- a library that is statically linked to a CLAP plugin.
+- a CMAKE library to make use of wrapper specific extensions
 
-The CLAP community calls this a PALCer.
+It exposes the entrypoints for different Audio Plugin standards and their interfaces and maps them quite immediately to the CLAP in the same binary (this might be dynamic later on). The code locates the CLAP entrypoint and uses it from a host perspective.
+
+The CLAP community calls this a PALCer or a CLAP-as-X wrapper.
 
 ## Status
 
@@ -14,18 +19,16 @@ If not found, it tries to load the clap-saw example CLAP.
 
 Things currently missing:
 
-- ext-latency (this is really necessary)
-- timer support on linux
-- INoteExpression mapping
 - CMake function to link to clap project
-- CMake function to set the output name of the `.vst3` file
 
 a first release is near.
 
 ## But the vendor specifics I am using...
 
 The wrapper will only use CLAP features and should be sufficent for 99% of the plugins out there, but sometimes vendor specific contracts have to be exposed. Therefore there will be clap extensions to optionally access things like property inquiries. (TODO: naming of those extensions). If present, the wrapper will call those extensions and pass information into and outof the plugin.
-There is already a draft for a VST3 extension to support the declaration of already published VST3 UUIDs.
+There are already VST3 specific extension to support the declaration of already published VST3 UUIDs, number of MIDI channels and other things.
+
+Adding the 
 
 ## How to build
 
@@ -35,8 +38,20 @@ mkdir build
 cmake -B build -DCLAP_SDK_ROOT={path to clap sdk} -DVST3_SDK_ROOT={path to vst3 sdk}
 ```
 
-The CLAP_SDK_ROOT and VST3_SDK_ROOT arguments can be omitted, if the SDKs are present in the parent folder, the same folder or in a ./libs folder.
-In this case the cmake script will detect them accordingly.
+You can also determine the output name of the resulting VST3 plugin by using the `WRAPPER_OUTPUT_NAME` CMake variable:
+
+Build it for your clap, assuming it is named "fruit":
+
+```c++
+git clone https://github.com/defiantnerd/clap-wrapper.git
+mkdir build
+cmake -B build -DCLAP_SDK_ROOT={path to clap sdk} -DVST3_SDK_ROOT={path to vst3 sdk} -DWRAPPER_OUTPUT_NAME=fruit
+```
+
+Renaming the resulting binary will also work, the name is not being used anywhere in the code, just for the binary output name.
+
+The `CLAP_SDK_ROOT` and `VST3_SDK_ROOT` arguments can be omitted if the SDKs are present in the **parent folder**, the **same base folder** or in a **./libs folder**.
+In this case the cmake script will detect and use them automatically.
 
 ## But...
 

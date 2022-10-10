@@ -1,5 +1,6 @@
 #include "parameter.h"
 #include <string>
+#include <pluginterfaces/vst/ivstmidicontrollers.h>
 
 using namespace Steinberg;
 
@@ -13,15 +14,20 @@ Vst3Parameter::Vst3Parameter(const Steinberg::Vst::ParameterInfo& vst3info, cons
   // 
 }
 
-Vst3Parameter::Vst3Parameter(const Steinberg::Vst::ParameterInfo& vst3info, uint8_t bus, uint8_t cc)
+Vst3Parameter::Vst3Parameter(const Steinberg::Vst::ParameterInfo& vst3info, uint8_t bus, uint8_t channel, uint8_t cc)
 	: Steinberg::Vst::Parameter(vst3info)
-	, id(vst3info.id)	
+	, id(vst3info.id)
+	, cookie(nullptr)
 	, min_value(0)
 	, max_value(127)
 	, isMidi(true)
+	, channel(channel)
 	, controller(cc)
 {
-
+	if (channel == Vst::ControllerNumbers::kPitchBend)
+	{
+		max_value = 16383;
+	}
 }
 Vst3Parameter::~Vst3Parameter()
 {
@@ -57,7 +63,7 @@ Vst3Parameter* Vst3Parameter::create(const clap_param_info_t* info)
 		| ((info->flags & CLAP_PARAM_IS_BYPASS) ? Vst::ParameterInfo::kIsBypass : 0)
 		| ((info->flags & CLAP_PARAM_IS_AUTOMATABLE) ? Vst::ParameterInfo::kCanAutomate : 0)
 		| ((info->flags & CLAP_PARAM_IS_READONLY) ? Vst::ParameterInfo::kIsReadOnly : 0)
-		| ((info->flags & CLAP_PARAM_IS_READONLY) ? Vst::ParameterInfo::kIsReadOnly : 0)
+		// | ((info->flags & CLAP_PARAM_IS_READONLY) ? Vst::ParameterInfo::kIsReadOnly : 0)
 
 		;
 
@@ -75,7 +81,7 @@ Vst3Parameter* Vst3Parameter::create(const clap_param_info_t* info)
 	return result;
 }
 
-Vst3Parameter* Vst3Parameter::create(uint8_t bus, uint8_t cc, Vst::ParamID id)
+Vst3Parameter* Vst3Parameter::create(uint8_t bus, uint8_t channel, uint8_t cc, Vst::ParamID id)
 {
 	Vst::ParameterInfo v;
 
@@ -106,7 +112,12 @@ Vst3Parameter* Vst3Parameter::create(uint8_t bus, uint8_t cc, Vst::ParamID id)
 	v.defaultNormalizedValue = 0;
 	v.stepCount = 128;
 
-	auto result = new Vst3Parameter(v,bus,cc);
+	if (cc == Vst::ControllerNumbers::kPitchBend)
+	{
+		v.stepCount = 16384;
+	}
+
+	auto result = new Vst3Parameter(v,bus, channel, cc);
 	result->addRef();	// ParameterContainer doesn't add the ref -> but we don't have copies
 	return result;
 }

@@ -115,6 +115,22 @@ namespace os
 		return (::clock() * 1000) / CLOCKS_PER_SEC;
 	}
 
+  std::string getParentFolderName()
+  {
+    NSString* identifier = [[NSBundle bundleForClass:[clapwrapper_dummy_object_to_trick_the_os class]] bundlePath];
+    std::filesystem::path n = [identifier UTF8String];
+    if (n.has_parent_path())
+    {
+      auto p = n.parent_path();
+      if (p.has_filename())
+      {
+        return p.filename().u8string();
+      }
+    }
+    
+    return std::string();
+  }
+
   std::string getBinaryName()
   {
     // this is useless

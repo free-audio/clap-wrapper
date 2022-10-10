@@ -14,7 +14,7 @@ namespace os
 	void attach(IPlugObject* plugobject);
 	void detach(IPlugObject* plugobject);
 	uint64_t getTickInMS();
-
+	std::string getParentFolderName();
 	std::string getBinaryName();
 }
 

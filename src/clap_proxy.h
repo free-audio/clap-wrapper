@@ -9,6 +9,7 @@
 #if WIN
 #include <Windows.h>
 #endif
+
 #include "detail/clap/fsutil.h"
 
 namespace Clap
@@ -22,6 +23,8 @@ namespace Clap
   public:
     virtual void mark_dirty() = 0;
     virtual void schnick() = 0;
+
+    virtual void setupWrapperSpecifics(const clap_plugin_t* plugin) = 0;                                           // called when a wrapper could scan for wrapper specific plugins
 
     virtual void setupAudioBusses(const clap_plugin_t* plugin, const clap_plugin_audio_ports_t* audioports) = 0;   // called from initialize() to allow the setup of audio ports
     virtual void setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_note_ports_t* noteports) = 0;      // called from initialize() to allow the setup of MIDI ports
@@ -38,6 +41,8 @@ namespace Clap
 
     virtual bool register_timer(uint32_t period_ms, clap_id* timer_id) = 0;
     virtual bool unregister_timer(clap_id timer_id) = 0;
+
+    virtual void latency_changed() = 0;
 
   };
 
@@ -110,6 +115,9 @@ namespace Clap
     void param_rescan(clap_param_rescan_flags flags);
     void param_clear(clap_id param, clap_param_clear_flags flags);
     void param_request_flush();
+
+    // latency
+    void latency_changed();
 
     // hostgui
     void resize_hints_changed()
