@@ -44,7 +44,7 @@ namespace util
 			return true;
 		}
 	private:
-		T _elements[Q];
+		T _elements[Q] = { };
 		std::atomic_uint32_t _head = 0u;
 		std::atomic_uint32_t _tail = 0u;
 	};

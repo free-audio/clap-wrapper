@@ -58,11 +58,11 @@ namespace Clap
 		};
 		std::vector<ActiveNote> _activeNotes;
 
-		clap_audio_buffer_t _inputs;
-		clap_audio_buffer_t _outputs;
-		clap_event_transport_t _transport;
-		clap_input_events_t _in_events;
-		clap_output_events_t _out_events;
+		clap_audio_buffer_t _inputs = {};
+		clap_audio_buffer_t _outputs = {};
+		clap_event_transport_t _transport = {};
+		clap_input_events_t _in_events = {};
+		clap_output_events_t _out_events = {};
 
 		clap_process_t _processData = { -1, 0, &_transport, &_inputs, &_outputs, 0, 0, &_in_events, &_out_events };
 
