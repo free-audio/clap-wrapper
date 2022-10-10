@@ -2,12 +2,25 @@
 #include <pluginterfaces/base/ibstream.h>
 #include <pluginterfaces/vst/ivstevents.h>
 #include <pluginterfaces/base/ustring.h>
+#include <pluginterfaces/vst/ivstnoteexpression.h>
+#include <public.sdk/source/vst/utility/stringconvert.h>
 #include "detail/vst3/state.h"
 #include "detail/vst3/process.h"
 #include "detail/vst3/parameter.h"
 #include <locale>
-
+#include <tchar.h>
 // Clap::Library gClapLibrary;
+using namespace Steinberg;
+
+#if WIN
+#define S16(x) L ## x
+#endif
+#if MAC
+#define S16(x) u ## x
+#endif
+#if LIN
+#define S16(x) u ## x
+#endif
 
 struct ClapHostExtensions
 {
@@ -401,38 +414,32 @@ void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
   
   if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_VOLUME)
     _noteExpressions.addNoteExpressionType(
-      new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kVolumeTypeID,
-        L"Volume", L"Vol", L"", 0, nullptr, 0)
+      new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kVolumeTypeID, S16("Volume"), S16("Vol"), S16(""), 0, nullptr, 0)
     );
   if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_PAN)
 
     _noteExpressions.addNoteExpressionType(
-      new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kPanTypeID,
-        L"Panorama", L"Pan", L"", 0, nullptr, 0)
+      new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kPanTypeID, S16("Panorama", ), S16("Pan"), S16(""), 0, nullptr, 0)
     );
 
   if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_TUNING)
     _noteExpressions.addNoteExpressionType(
-      new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kTuningTypeID,
-        L"Tuning", L"Tun", L"", 0, nullptr, 0)
+      new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kTuningTypeID, S16("Tuning"), S16("Tun"), S16(""), 0, nullptr, 0)
     );
 
   if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_VIBRATO)
     _noteExpressions.addNoteExpressionType(
-      new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kVibratoTypeID,
-        L"Vibrato", L"Vib", L"", 0, nullptr, 0)
+      new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kVibratoTypeID, S16("Vibrato"), S16("Vib"), S16(""), 0, nullptr, 0)
     );
 
   if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_EXPRESSION)
     _noteExpressions.addNoteExpressionType(
-      new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kExpressionTypeID,
-        L"Expression", L"Expr", L"", 0, nullptr, 0)
+      new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kExpressionTypeID, S16("Expression"), S16("Expr"), S16(""), 0, nullptr, 0)
     );
 
   if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_BRIGHTNESS)
     _noteExpressions.addNoteExpressionType(
-      new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kBrightnessTypeID,
-        L"Brightness", L"Brit", L"", 0, nullptr, 0)
+      new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kBrightnessTypeID, S16("Brightness"), S16("Brit"), S16(""), 0, nullptr, 0)
     );
 
     // PRESSURE is handled by IMidiMapping (-> Polypressure)
