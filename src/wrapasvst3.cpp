@@ -10,7 +10,8 @@
 #include <locale>
 
 #if WIN
-#define S16(x) L ## x
+#include <tchar.h>
+#define S16(x) _T(x)
 #endif
 #if MAC
 #define S16(x) u ## x
