@@ -148,19 +148,41 @@ namespace Clap
     // setting up transport
     _processData.frames_count = _vstdata->numSamples;
 
+    clap_audio_buffer_t ins;
     clap_audio_buffer_t outs;
 
     // setting up buffers
-    _processData.audio_inputs = nullptr;
-    _processData.audio_inputs_count = 0;
+    if (_vstdata->numInputs > 0 && _vstdata->inputs)
+    {
+      _processData.audio_inputs = &ins;
+      _processData.audio_inputs_count = _vstdata->numInputs;
+      ins.channel_count = _vstdata->inputs->numChannels;
+      ins.data32 = _vstdata->inputs->channelBuffers32;
+      ins.constant_mask = 0;
+      ins.latency = 0;
+    }
+    else
+    {
+      _processData.audio_inputs = nullptr;
+      _processData.audio_inputs_count = 0;
+    }
+
     _processData.audio_outputs = &outs;
     _processData.audio_outputs_count = _vstdata->numOutputs;
-    _processData.audio_outputs->channel_count = _vstdata->outputs->numChannels;
-    _processData.audio_outputs->data32 = _vstdata->outputs->channelBuffers32;
-    _processData.audio_outputs->constant_mask = 0;
-    _processData.audio_outputs->latency = 0;
-
-    _processData.audio_inputs_count = 0;
+    if (_vstdata->outputs)
+    {
+      _processData.audio_outputs->channel_count = _vstdata->outputs->numChannels;
+      _processData.audio_outputs->data32 = _vstdata->outputs->channelBuffers32;
+      _processData.audio_outputs->constant_mask = 0;
+      _processData.audio_outputs->latency = 0;
+    }
+    else
+    {
+      _processData.audio_outputs->channel_count = 0;
+      _processData.audio_outputs->data32 = 0;
+      _processData.audio_outputs->constant_mask = 0;
+      _processData.audio_outputs->latency = 0;
+    }    
 
     // TODO: Silent Flags -> _processData.audio_outputs->constant_mask
     // if ( _vstdata->inputs->silenceFlags)
