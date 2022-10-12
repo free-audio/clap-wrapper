@@ -8,6 +8,7 @@
 #include "detail/sha1.h"
 #include "wrapasvst3.h"
 #include "public.sdk/source/main/pluginfactory.h"
+#include <iostream>
 
 using namespace Steinberg::Vst;
 
@@ -37,8 +38,12 @@ bool findPlugin(Clap::Library& lib, const std::string& pluginfilename)
 	// Strategy 1: look for a clap with the same name as this binary
 	for (auto& i : paths)
 	{
+		if ( !std::filesystem::exists(i) )
+		 continue;
 		// try to find it the CLAP folder immediately
 		auto k1 = i / pluginfilename;
+		std::cout << "scanning for " << k1 << std::endl;
+		
 		if (std::filesystem::exists(k1))
 		{
 			if (lib.load(k1.u8string().c_str()))
@@ -83,6 +88,7 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 	static Clap::Library gClapLibrary;
 
 	static std::vector<CreationContext> gCreationContexts;
+	std::cout << "I am here!!\n";
 
 	// if there is no ClapLibrary yet
 	if (!gClapLibrary._pluginFactory)
@@ -91,10 +97,12 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 		if (!gClapLibrary.hasEntryPoint())
 		{
 			// try to find a clap which filename stem matches our own
+			std::cout << "huhu!" << std::endl;
 			auto kx = os::getParentFolderName();
 			auto plugname = os::getBinaryName();
 			plugname.append(".clap");
 
+			std::cout << "plugname: " << plugname << std::endl;
 
 			if (!findPlugin(gClapLibrary, plugname))
 			{
