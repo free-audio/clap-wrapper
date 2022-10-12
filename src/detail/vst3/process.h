@@ -26,9 +26,10 @@ namespace Clap
 			clap_event_note_expression_t noteexpression;
 		} clap_multi_event_t;
 
-		void setupProcessing(size_t numInputs, size_t numOutputs, size_t numEventInputs, size_t numEventOutputs, Steinberg::Vst::ParameterContainer& params, Steinberg::Vst::IComponentHandler* componenthandler, IAutomation* automation, bool enablePolyPressure);
-		void process(Steinberg::Vst::ProcessData& data, const clap_plugin_t* plugin);
-		void processOutputParams(Steinberg::Vst::ProcessData& data, const clap_plugin_t* plugin);
+		void setupProcessing(const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params, size_t numInputs, size_t numOutputs, size_t numEventInputs, size_t numEventOutputs, Steinberg::Vst::ParameterContainer& params, Steinberg::Vst::IComponentHandler* componenthandler, IAutomation* automation, bool enablePolyPressure);
+		void process(Steinberg::Vst::ProcessData& data);
+		void flush();
+		void processOutputParams(Steinberg::Vst::ProcessData& data);
 
 		// C callbacks
 		static uint32_t input_events_size(const struct clap_input_events* list);
@@ -36,9 +37,16 @@ namespace Clap
 
 		static bool output_events_try_push(const struct clap_output_events* list, const clap_event_header_t* event);
 	private:
+		void sortEventIndices();
+		void processInputEvents(Steinberg::Vst::IEventList* eventlist);
+
 		bool enqueueOutputEvent(const clap_event_header_t* event);
 		void addToActiveNotes(const clap_event_note* note);
 		void removeFromActiveNotes(const clap_event_note* note);
+
+		// the plugin
+		const clap_plugin_t* _plugin = nullptr;
+		const clap_plugin_params_t* _ext_params = nullptr;
 
 		Steinberg::Vst::ParameterContainer* parameters = nullptr;
 		Steinberg::Vst::IComponentHandler* _componentHandler = nullptr;

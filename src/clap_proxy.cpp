@@ -51,7 +51,7 @@ namespace Clap
     // [thread-safe,!audio-thread]
     void request_flush(const clap_host_t* host)
     {
-
+      self(host)->param_request_flush();
     }
     clap_host_params_t params =
     {
@@ -432,7 +432,8 @@ namespace Clap
   // [thread-safe]
   void Plugin::clapRequestCallback(const clap_host* host)
   {
-    // this->scheduleUIThread();
+    auto self = static_cast<Plugin*>(host->host_data);
+    self->_parentHost->request_callback();
   }
 
   // Request the host to deactivate and then reactivate the plugin.

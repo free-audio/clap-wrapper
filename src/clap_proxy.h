@@ -23,6 +23,7 @@ namespace Clap
   public:
     virtual void mark_dirty() = 0;
     virtual void schnick() = 0;
+    virtual void request_callback() = 0;
 
     virtual void setupWrapperSpecifics(const clap_plugin_t* plugin) = 0;                                           // called when a wrapper could scan for wrapper specific plugins
 
