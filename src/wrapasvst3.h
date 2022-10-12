@@ -16,6 +16,7 @@
 #include "detail/vst3/plugview.h"
 #include "detail/os/osutil.h"
 #include "detail/clap/automation.h"
+#include <mutex>
 
 using namespace Steinberg;
 
@@ -33,7 +34,6 @@ public:
 		editstart,
 		editvalue,
 		editend,
-		flushrequest
 	} type_t;
 	type_t _type;
 	union
@@ -199,6 +199,9 @@ private:
 	// plugin state
 	bool _active = false;
 	bool _processing = false;
+	std::mutex _processingLock;
+	std::atomic_bool _requestedFlush = false;
+	std::atomic_bool _requestUICallback = false;
 
 	// the queue from audiothread to UI thread
 	util::fixedqueue<queueEvent, 8192> _queueToUI;

@@ -51,7 +51,7 @@ namespace Clap
     // [thread-safe,!audio-thread]
     void request_flush(const clap_host_t* host)
     {
-
+      self(host)->param_request_flush();
     }
     clap_host_params_t params =
     {

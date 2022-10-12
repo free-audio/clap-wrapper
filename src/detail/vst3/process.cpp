@@ -13,8 +13,11 @@ namespace Clap
 {
   using namespace Steinberg;
 
-  void ProcessAdapter::setupProcessing(size_t numInputs, size_t numOutputs, size_t numEventInputs, size_t numEventOutputs, Steinberg::Vst::ParameterContainer& params, Steinberg::Vst::IComponentHandler* componenthandler, IAutomation* automation, bool enablePolyPressure)
+  void ProcessAdapter::setupProcessing(const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params, size_t numInputs, size_t numOutputs, size_t numEventInputs, size_t numEventOutputs, Steinberg::Vst::ParameterContainer& params, Steinberg::Vst::IComponentHandler* componenthandler, IAutomation* automation, bool enablePolyPressure)
   {
+    _plugin = plugin;
+    _ext_params = ext_params;
+
     parameters = &params;
     _componentHandler = componenthandler;
     _automation = automation;    
@@ -69,8 +72,21 @@ namespace Clap
   }
 
 
+  void ProcessAdapter::flush()
+  {
+    // minimal processing if _ext_params is existent
+    if (_ext_params)
+    {
+      _events.clear();
+      _eventindices.clear();
+      
+      // sortEventIndices(); call only if there would be any input event
+      _ext_params->flush(_plugin, _processData.in_events, _processData.out_events);
+    }
+  }
+
   // this converts the ProcessContext data from VST to CLAP
-  void ProcessAdapter::process(Steinberg::Vst::ProcessData& data, const clap_plugin_t* plugin)
+  void ProcessAdapter::process(Steinberg::Vst::ProcessData& data)
   {
     // remember the ProcessData pointer during process
     _vstdata = &data;
@@ -186,18 +202,177 @@ namespace Clap
 
     // TODO: Silent Flags -> _processData.audio_outputs->constant_mask
     // if ( _vstdata->inputs->silenceFlags)
-
     // always clear
     _events.clear();
     _eventindices.clear();
 
-    if (_vstdata->inputEvents)
+    processInputEvents(_vstdata->inputEvents);
+
+    if (_vstdata->inputParameterChanges)
+    {
+      auto numPevent = _vstdata->inputParameterChanges->getParameterCount();
+      for (decltype(numPevent) i = 0; i < numPevent; ++i)
+      {
+        auto k = _vstdata->inputParameterChanges->getParameterData(i);
+
+        // get the Vst3Parameter
+        auto paramid = k->getParameterId();
+
+        auto param = (Vst3Parameter*)parameters->getParameter(paramid);
+        if (param->isMidi)
+        {
+
+          auto nums = k->getPointCount();
+
+          Vst::ParamValue value;
+          int32 offset;
+          if (k->getPoint(nums - 1, offset, value) == kResultOk)
+          {
+            // create MIDI event
+            clap_multi_event_t n;
+            n.param.header.type = CLAP_EVENT_MIDI;
+            n.param.header.flags = 0;
+            n.param.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+            n.param.header.time = offset;
+            n.param.header.size = sizeof(clap_event_midi_t);
+            n.midi.port_index = 0;
+
+            switch (param->controller)
+            {
+            case Vst::ControllerNumbers::kAfterTouch:
+              n.midi.data[0] = 0xD0 | param->channel;
+              n.midi.data[1] = param->asClapValue(value);
+              n.midi.data[2] = 0;
+              break;
+            case Vst::ControllerNumbers::kPitchBend:
+              {
+              auto val = (uint16_t) param->asClapValue(value);
+                n.midi.data[0] = 0xE0 | param->channel; // $Ec
+                n.midi.data[1] = (val & 0x7F);          // LSB
+                n.midi.data[2] = (val >> 7) & 0x7F;     // MSB
+              }
+              break;
+            default:
+              n.midi.data[0] = 0xB0 | param->channel;
+              n.midi.data[1] = param->controller;
+              n.midi.data[2] = param->asClapValue(value);
+              break;
+
+            }
+
+            _eventindices.push_back(_events.size());
+            _events.push_back(n);
+          }
+        }
+        else
+        {
+          auto nums = k->getPointCount();
+
+          Vst::ParamValue value;
+          int32 offset;
+          if (k->getPoint(nums - 1, offset, value) == kResultOk)
+          {
+            clap_multi_event_t n;
+            n.param.header.type = CLAP_EVENT_PARAM_VALUE;
+            n.param.header.flags = 0;
+            n.param.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+            n.param.header.time = offset;
+            n.param.header.size = sizeof(clap_event_param_value);
+            n.param.param_id = param->id;
+            n.param.cookie = param->cookie;
+
+            // nothing note specific
+            n.param.note_id = -1;   // always global
+            n.param.port_index = -1;
+            n.param.channel = -1;
+            n.param.key = -1;
+
+            n.param.value = param->asClapValue(value);
+            _eventindices.push_back(_events.size());
+            _events.push_back(n);
+          }
+        }
+
+      }
+    }
+
+    sortEventIndices();
+
+    if (_vstdata->numSamples > 0)
+    {
+      _plugin->process(_plugin, &_processData);
+    }
+    else
+    {
+      if (_ext_params)
+      {
+        _ext_params->flush(_plugin, _processData.in_events, _processData.out_events);
+      }
+      else
+      {
+        // something was now very very wrong here..
+      }
+    }
+
+    processOutputParams(data);
+
+    _vstdata = nullptr;
+  }
+
+  void ProcessAdapter::processOutputParams(Steinberg::Vst::ProcessData& data)
+  {
+
+  }
+
+  uint32_t ProcessAdapter::input_events_size(const struct clap_input_events* list)
+  {
+    auto self = static_cast<ProcessAdapter*>(list->ctx);
+    return self->_events.size();
+    // return self->_vstdata->inputEvents->getEventCount();
+  }
+
+  // returns the pointer to an event in the list. The index accessed is not the position in the event list itself
+  // since all events indices were sorted by timestamp
+  const clap_event_header_t* ProcessAdapter::input_events_get(const struct clap_input_events* list, uint32_t index)
+  {
+    auto self = static_cast<ProcessAdapter*>(list->ctx);
+    if (self->_events.size() > index)
+    {
+      // we can safely return the note.header also for other event types
+      // since they are at the same memory address
+      auto realindex = self->_eventindices[index];
+      return &(self->_events[realindex].header);
+    }
+    return nullptr;
+  }
+
+  bool ProcessAdapter::output_events_try_push(const struct clap_output_events* list, const clap_event_header_t* event)
+  {
+    auto self = static_cast<ProcessAdapter*>(list->ctx);
+    // mainly used for CLAP_EVENT_NOTE_CHOKE and CLAP_EVENT_NOTE_END
+    // but also for parameter changes
+    return self->enqueueOutputEvent(event);
+  }
+
+  void ProcessAdapter::sortEventIndices()
+  {
+    // just sorting the index
+    std::sort(_eventindices.begin(), _eventindices.end(), [&](size_t const& a, size_t const& b)
+      {
+        return _events[a].header.time < _events[b].header.time;
+      }
+    );
+  }
+
+  void ProcessAdapter::processInputEvents(Steinberg::Vst::IEventList* eventlist)
+  {
+    if (eventlist)
     {
       Vst::Event vstevent;
-      auto numev = _vstdata->inputEvents->getEventCount();
+      auto numev = eventlist->getEventCount();
       for (decltype(numev) i = 0; i < numev; ++i)
       {
-        if (_vstdata->inputEvents->getEvent(i, vstevent) == kResultOk)
+        if (eventlist->getEvent(i, vstevent) == kResultOk)
         {
           if (vstevent.type == Vst::Event::kNoteOnEvent)
           {
@@ -297,25 +472,25 @@ namespace Clap
                 n.noteexpression.value = vstevent.noteExpressionValue.value;
                 switch (vstevent.noteExpressionValue.typeId)
                 {
-                  case Vst::NoteExpressionTypeIDs::kVolumeTypeID:
-                    n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_VOLUME;
-                    break;
-                  case Vst::NoteExpressionTypeIDs::kPanTypeID:
-                    n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_PAN;
-                    break;
-                  case Vst::NoteExpressionTypeIDs::kTuningTypeID:
-                    n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_TUNING;
-                    break;
-                  case Vst::NoteExpressionTypeIDs::kVibratoTypeID:
-                    n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_VIBRATO;
-                    break;
-                  case Vst::NoteExpressionTypeIDs::kExpressionTypeID:
-                    n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_EXPRESSION;
-                    break;
-                  case Vst::NoteExpressionTypeIDs::kBrightnessTypeID:
-                    n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_BRIGHTNESS;
-                    break;
-                  default:
+                case Vst::NoteExpressionTypeIDs::kVolumeTypeID:
+                  n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_VOLUME;
+                  break;
+                case Vst::NoteExpressionTypeIDs::kPanTypeID:
+                  n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_PAN;
+                  break;
+                case Vst::NoteExpressionTypeIDs::kTuningTypeID:
+                  n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_TUNING;
+                  break;
+                case Vst::NoteExpressionTypeIDs::kVibratoTypeID:
+                  n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_VIBRATO;
+                  break;
+                case Vst::NoteExpressionTypeIDs::kExpressionTypeID:
+                  n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_EXPRESSION;
+                  break;
+                case Vst::NoteExpressionTypeIDs::kBrightnessTypeID:
+                  n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_BRIGHTNESS;
+                  break;
+                default:
                   continue;
                 }
                 _eventindices.push_back(_events.size());
@@ -326,141 +501,6 @@ namespace Clap
         }
       }
     }
-
-    if (_vstdata->inputParameterChanges)
-    {
-      auto numPevent = _vstdata->inputParameterChanges->getParameterCount();
-      for (decltype(numPevent) i = 0; i < numPevent; ++i)
-      {
-        auto k = _vstdata->inputParameterChanges->getParameterData(i);
-
-        // get the Vst3Parameter
-        auto paramid = k->getParameterId();
-
-        auto param = (Vst3Parameter*)parameters->getParameter(paramid);
-        if (param->isMidi)
-        {
-
-          auto nums = k->getPointCount();
-
-          Vst::ParamValue value;
-          int32 offset;
-          if (k->getPoint(nums - 1, offset, value) == kResultOk)
-          {
-            // create MIDI event
-            clap_multi_event_t n;
-            n.param.header.type = CLAP_EVENT_MIDI;
-            n.param.header.flags = 0;
-            n.param.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-            n.param.header.time = offset;
-            n.param.header.size = sizeof(clap_event_midi_t);
-            n.midi.port_index = 0;
-
-            switch (param->controller)
-            {
-            case Vst::ControllerNumbers::kAfterTouch:
-              n.midi.data[0] = 0xD0 | param->channel;
-              n.midi.data[1] = param->asClapValue(value);
-              n.midi.data[2] = 0;
-              break;
-            case Vst::ControllerNumbers::kPitchBend:
-              {
-              auto val = (uint16_t) param->asClapValue(value);
-                n.midi.data[0] = 0xE0 | param->channel; // $Ec
-                n.midi.data[1] = (val & 0x7F);          // LSB
-                n.midi.data[2] = (val >> 7) & 0x7F;     // MSB
-              }
-              break;
-            default:
-              n.midi.data[0] = 0xB0 | param->channel;
-              n.midi.data[1] = param->controller;
-              n.midi.data[2] = param->asClapValue(value);
-              break;
-
-            }
-
-            _eventindices.push_back(_events.size());
-            _events.push_back(n);
-          }
-        }
-        else
-        {
-          auto nums = k->getPointCount();
-
-          Vst::ParamValue value;
-          int32 offset;
-          if (k->getPoint(nums - 1, offset, value) == kResultOk)
-          {
-            clap_multi_event_t n;
-            n.param.header.type = CLAP_EVENT_PARAM_VALUE;
-            n.param.header.flags = 0;
-            n.param.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-            n.param.header.time = offset;
-            n.param.header.size = sizeof(clap_event_param_value);
-            n.param.param_id = param->id;
-            n.param.cookie = param->cookie;
-
-            // nothing note specific
-            n.param.note_id = -1;   // always global
-            n.param.port_index = -1;
-            n.param.channel = -1;
-            n.param.key = -1;
-
-            n.param.value = param->asClapValue(value);
-            _eventindices.push_back(_events.size());
-            _events.push_back(n);
-          }
-        }
-
-      }
-    }
-
-    // just sorting the index
-    std::sort(_eventindices.begin(), _eventindices.end(), [&](size_t const& a, size_t const& b)
-      {
-        return _events[a].header.time < _events[b].header.time;
-      }
-    );
-    plugin->process(plugin, &_processData);
-
-    processOutputParams(data, plugin);
-
-    _vstdata = nullptr;
-  }
-
-  void ProcessAdapter::processOutputParams(Steinberg::Vst::ProcessData& data, const clap_plugin_t* plugin)
-  {
-
-  }
-
-  uint32_t ProcessAdapter::input_events_size(const struct clap_input_events* list)
-  {
-    auto self = static_cast<ProcessAdapter*>(list->ctx);
-    return self->_events.size();
-    // return self->_vstdata->inputEvents->getEventCount();
-  }
-
-  // returns the pointer to an event in the list. The index accessed is not the position in the event list itself
-  // since all events indices were sorted by timestamp
-  const clap_event_header_t* ProcessAdapter::input_events_get(const struct clap_input_events* list, uint32_t index)
-  {
-    auto self = static_cast<ProcessAdapter*>(list->ctx);
-    if (self->_events.size() > index)
-    {
-      // we can safely return the note.header also for other event types
-      // since they are at the same memory address
-      auto realindex = self->_eventindices[index];
-      return &(self->_events[realindex].header);
-    }
-    return nullptr;
-  }
-
-  bool ProcessAdapter::output_events_try_push(const struct clap_output_events* list, const clap_event_header_t* event)
-  {
-    auto self = static_cast<ProcessAdapter*>(list->ctx);
-    // mainly used for CLAP_EVENT_NOTE_CHOKE and CLAP_EVENT_NOTE_END
-    // but also for parameter changes
-    return self->enqueueOutputEvent(event);
   }
 
   bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
