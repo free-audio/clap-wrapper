@@ -86,7 +86,8 @@ if (APPLE)
 endif()
 
 if (UNIX AND NOT APPLE)
-	target_link_libraries (${project} PUBLIC "-ldl")
+	target_link_libraries(${project} PUBLIC "-ldl")
+	target_link_libraries(${project} PRIVATE "-Wl,--no-undefined")
 endif()
 
 # a debuggable executable to test - will be removed later and disabled by default

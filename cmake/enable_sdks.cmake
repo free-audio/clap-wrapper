@@ -116,7 +116,12 @@ function(DefineCLAPASVST3Sources)
 			src/detail/clap/mac_helpers.mm
 			src/detail/os/macos.mm
 		)
+	endif()
 
+	if(UNIX AND NOT APPLE)
+	set(os_wrappersources
+		src/detail/os/linux.cpp
+	)
 	endif()
 
 	set(wrappersources_vst3
