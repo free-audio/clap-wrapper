@@ -529,6 +529,11 @@ void ClapAsVst3::mark_dirty()
     componentHandler2->setDirty(true);
 }
 
+void ClapAsVst3::request_callback()
+{
+  _requestUICallback = true;
+}
+
 void ClapAsVst3::schnick()
 {
   // OutputDebugString("Schnick!");
@@ -634,6 +639,12 @@ void ClapAsVst3::onIdle()
       pa.setupProcessing(_plugin->_plugin, _plugin->_ext._params, 0, 0, 0, 0, this->parameters, componentHandler, nullptr, false);
       pa.flush();
     }
+  }
+
+  if (_requestUICallback)
+  {
+    _requestUICallback = false;
+    _plugin->_plugin->on_main_thread(_plugin->_plugin);
   }
 
   // handling timerobjects

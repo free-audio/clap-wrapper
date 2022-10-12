@@ -169,6 +169,8 @@ public:
 
 	void schnick() override;
 
+	void request_callback() override;
+
 	// clap_timer support
 	bool register_timer(uint32_t period_ms, clap_id* timer_id) override;
 	bool unregister_timer(clap_id timer_id) override;

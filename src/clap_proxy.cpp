@@ -432,7 +432,8 @@ namespace Clap
   // [thread-safe]
   void Plugin::clapRequestCallback(const clap_host* host)
   {
-    // this->scheduleUIThread();
+    auto self = static_cast<Plugin*>(host->host_data);
+    self->_parentHost->request_callback();
   }
 
   // Request the host to deactivate and then reactivate the plugin.
