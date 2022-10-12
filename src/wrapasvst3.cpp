@@ -87,7 +87,7 @@ tresult PLUGIN_API ClapAsVst3::setActive(TBool state)
 
 tresult PLUGIN_API ClapAsVst3::process(Vst::ProcessData& data)
 {
-  this->_processAdapter->process(data, _plugin->_plugin);
+  this->_processAdapter->process(data);
 
   return kResultOk;
 }
@@ -133,11 +133,17 @@ tresult PLUGIN_API ClapAsVst3::setupProcessing(Vst::ProcessSetup& newSetup)
 }
 tresult PLUGIN_API ClapAsVst3::setProcessing(TBool state)
 {
+  std::lock_guard x(_processingLock);
   if (state)
   {
     _processing = true;
     auto supportsnoteexpression = (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_PRESSURE);
-    _processAdapter->setupProcessing(this->audioInputs.size(), this->audioOutputs.size(), this->eventInputs.size(), this->eventOutputs.size(), parameters, componentHandler, this,
+
+    // the processAdapter needs to know a few things to intercommunicate between VST3 host and CLAP plugin.
+    _processAdapter->setupProcessing(_plugin->_plugin, _plugin->_ext._params, 
+      this->audioInputs.size(), this->audioOutputs.size(), 
+      this->eventInputs.size(), this->eventOutputs.size(), 
+      parameters, componentHandler, this,
       supportsnoteexpression);
     return (_plugin->start_processing() ? Steinberg::kResultOk : Steinberg::kResultFalse);
   }
@@ -482,14 +488,10 @@ void ClapAsVst3::param_clear(clap_id param, clap_param_clear_flags flags)
 {
 }
 
+// request_flush requests a defered call to flush if there is no processing
 void ClapAsVst3::param_request_flush()
 {
-  if (!this->_processing)
-  {
-    //const clap_input_events_t* in;
-    //const clap_output_events_t* out;
-    //_plugin->_ext._params->flush(_plugin->_plugin, in, out);
-  }
+  _requestedFlush = true;
 }
 
 bool ClapAsVst3::gui_can_resize()
@@ -525,6 +527,11 @@ void ClapAsVst3::mark_dirty()
 {
   if (componentHandler2)
     componentHandler2->setDirty(true);
+}
+
+void ClapAsVst3::request_callback()
+{
+  _requestUICallback = true;
 }
 
 void ClapAsVst3::schnick()
@@ -618,6 +625,26 @@ void ClapAsVst3::onIdle()
       endEdit(n._data._id);
       break;
     }
+  }
+
+  if (_requestedFlush)
+  {
+    std::lock_guard n(_processingLock);
+
+    _requestedFlush = false;
+    if (!_processing)
+    {
+      // setup a ProcessAdapter just for flush with no audio
+      Clap::ProcessAdapter pa;
+      pa.setupProcessing(_plugin->_plugin, _plugin->_ext._params, 0, 0, 0, 0, this->parameters, componentHandler, nullptr, false);
+      pa.flush();
+    }
+  }
+
+  if (_requestUICallback)
+  {
+    _requestUICallback = false;
+    _plugin->_plugin->on_main_thread(_plugin->_plugin);
   }
 
   // handling timerobjects
