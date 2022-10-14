@@ -45,6 +45,8 @@ namespace Clap
 
     virtual void latency_changed() = 0;
 
+    virtual void tail_changed() = 0;
+
   };
 
   struct ClapPluginExtensions;
@@ -66,6 +68,7 @@ namespace Clap
     const clap_plugin_midi_mappings_t* _midimap = nullptr;
     const clap_plugin_latency_t* _latency = nullptr;
     const clap_plugin_render_t* _render = nullptr;
+    const clap_plugin_tail_t* _tail = nullptr;
     const clap_plugin_timer_support_t* _timer = nullptr;
   };
 
@@ -119,6 +122,9 @@ namespace Clap
 
     // latency
     void latency_changed();
+
+    // tail
+    void tail_changed();
 
     // hostgui
     void resize_hints_changed()
