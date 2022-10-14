@@ -24,18 +24,6 @@ Things currently missing:
 
 - CMake function to link to clap project
 
-## But the vendor specifics I am using...
-
-The wrapper will only use CLAP features and should be sufficent for 99% of the plugins out there, but sometimes vendor specific contracts have to be exposed. Therefore there will be clap extensions to optionally access things like property inquiries. (TODO: naming of those extensions). If present, the wrapper will call those extensions and pass information into and outof the plugin.
-There are already VST3 specific extension to support the declaration of already published VST3 UUIDs, number of MIDI channels and other things.
-
-As a plugin developer, you can use the extensions by adding the `clap-wrapper-extensions` library by adding this to your own CMakeLists.txt:
-
-```cmake
-add_subdirectory("clap-wrapper" EXCLUDE_FROM_ALL)
-target_link_libraries(${project} PRIVATE clap-wrapper-extensions)
-```
-
 ## How to build
 
 ```c++
@@ -64,6 +52,18 @@ In this case the cmake script will detect and use them automatically.
 The VST3 binary can be placed into the VST3 plugin folders. When the VST3 host opens the plugin, the wrapper will try to find a CLAP plugin
 with the exact same name in the CLAP folders. If the binary is placed as `{VST3-Pluginfolder}/vendorname/plugin.vst3` it will look 
 at `{CLAP-Pluginfolder}/plugin.clap` and also `{CLAP-Pluginfolder}/vendorname/plugin.clap`. It automatically translates all functions to VST3 then.
+
+## But the vendor specifics I am using...
+
+The wrapper will only use CLAP features and should be sufficent for 99% of the plugins out there, but sometimes vendor specific contracts have to be exposed. Therefore there will be clap extensions to optionally access things like property inquiries. (TODO: naming of those extensions). If present, the wrapper will call those extensions and pass information into and outof the plugin.
+There are already VST3 specific extension to support the declaration of already published VST3 UUIDs, number of MIDI channels and other things.
+
+As a plugin developer, you can use the extensions by adding the `clap-wrapper-extensions` library by adding this to your own CMakeLists.txt:
+
+```cmake
+add_subdirectory("clap-wrapper" EXCLUDE_FROM_ALL)
+target_link_libraries(${project} PRIVATE clap-wrapper-extensions)
+```
 
 ## But...
 
