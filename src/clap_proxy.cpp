@@ -2,6 +2,12 @@
 #include "detail/clap/fsutil.h"
 #include "public.sdk/source/main/pluginfactory.h"
 
+#if MAC || LIN
+#include <iostream>
+#define OutputDebugString(x) std::cout << __FILE__ << ":" << __LINE__ << " " << x << std::endl;
+#define OutputDebugStringA(x) std::cout << __FILE__ << ":" << __LINE__ << " " << x << std::endl;
+#endif
+
 namespace Clap
 {
   namespace HostExt
