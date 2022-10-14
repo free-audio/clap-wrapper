@@ -120,6 +120,21 @@ uint32 PLUGIN_API ClapAsVst3::getLatencySamples()
   return 0;
 }
 
+uint32 PLUGIN_API ClapAsVst3::getTailSamples()
+{
+  // options would be kNoTail, number of samples or kInfiniteTail  
+  if (this->_plugin->_ext._tail)
+  {
+    auto tailsize = this->_plugin->_ext._tail->get(_plugin->_plugin);
+
+    // Any value greater or equal to INT32_MAX implies infinite tail.
+    if (tailsize >= INT32_MAX)
+      return Vst::kInfiniteTail;
+    return tailsize;
+  }
+  return super::getTailSamples();
+}
+
 tresult PLUGIN_API ClapAsVst3::setupProcessing(Vst::ProcessSetup& newSetup)
 {
   if (newSetup.symbolicSampleSize != Vst::kSample32)
@@ -161,13 +176,6 @@ tresult PLUGIN_API ClapAsVst3::setBusArrangements(Vst::SpeakerArrangement* input
 {
   return kResultOk;
 };
-
-uint32 PLUGIN_API ClapAsVst3::getTailSamples()
-{
-  // options would be kNoTail, number of samples or kInfiniteTail
-  // TODO: check how CLAP is handling this
-  return Vst::kInfiniteTail;
-}
 
 IPlugView* PLUGIN_API ClapAsVst3::createView(FIDString name)
 {
@@ -433,7 +441,7 @@ void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
 
   if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_VIBRATO)
     _noteExpressions.addNoteExpressionType(
-      new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kVibratoTypeID, S16("Vibrato"), S16("Vib"), S16(""), 0, nullptr, 0)
+      new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kVibratoTypeID, S16("Vibrato"), S16("Vibr"), S16(""), 0, nullptr, 0)
     );
 
   if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_EXPRESSION)
@@ -521,6 +529,12 @@ void ClapAsVst3::latency_changed()
 {
   if (this->componentHandler)
     this->componentHandler->restartComponent(Vst::RestartFlags::kLatencyChanged);
+}
+
+void ClapAsVst3::tail_changed()
+{
+  // TODO: this could also be kIoChanged, we have to check this
+  this->componentHandler->restartComponent(Vst::RestartFlags::kLatencyChanged);
 }
 
 void ClapAsVst3::mark_dirty()
