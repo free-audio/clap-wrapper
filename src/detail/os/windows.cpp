@@ -128,10 +128,7 @@ namespace os
 
 	void WindowsHelper::executeDefered()
 	{
-		for (auto p : _plugs)
-		{
-			p->onIdle();
-		}
+		for (auto p : _plugs) p->onIdle();
 	}
 
 	void WindowsHelper::attach(IPlugObject* plugobject)
@@ -144,10 +141,6 @@ namespace os
 		_plugs.erase(std::remove(_plugs.begin(), _plugs.end(), plugobject), _plugs.end());
 	}
 
-}
-
-namespace os
-{
 	// [UI Thread]
 	void attach(IPlugObject* plugobject)
 	{

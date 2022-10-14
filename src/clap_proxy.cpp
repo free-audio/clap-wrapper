@@ -192,6 +192,7 @@ namespace Clap
     getExtension(_plugin, _ext._midimap, CLAP_EXT_MIDI_MAPPINGS);
     getExtension(_plugin, _ext._latency, CLAP_EXT_LATENCY);
     getExtension(_plugin, _ext._render, CLAP_EXT_RENDER);
+    getExtension(_plugin, _ext._tail, CLAP_EXT_TAIL);
     getExtension(_plugin, _ext._gui, CLAP_EXT_GUI);
     getExtension(_plugin, _ext._timer, CLAP_EXT_TIMER_SUPPORT);
 
@@ -327,7 +328,12 @@ namespace Clap
 
   void Plugin::latency_changed()
   {
-    this->_parentHost->latency_changed();
+    _parentHost->latency_changed();
+  }
+
+  void Plugin::tail_changed()
+  {
+    _parentHost->tail_changed();
   }
 
   void Plugin::log(clap_log_severity severity, const char* msg)
@@ -408,10 +414,6 @@ namespace Clap
   {
     Plugin* self = reinterpret_cast<Plugin*>(host->host_data);
 
-#if WIN32
-    OutputDebugStringA(extension); OutputDebugStringA("\n");
-#endif
-
     if (!strcmp(extension, CLAP_EXT_LOG)) 
       return &HostExt::log;
     if (!strcmp(extension, CLAP_EXT_PARAMS)) 
@@ -424,6 +426,14 @@ namespace Clap
       return &HostExt::hosttimer;
     if (!strcmp(extension, CLAP_EXT_LATENCY))
       return &HostExt::latency;
+    if (!strcmp(extension, CLAP_EXT_TAIL))
+    {
+      // TODO: implement CLAP_EXT_TAIL
+    }
+    if (!strcmp(extension, CLAP_EXT_RENDER))
+    {
+      // TODO: implement CLAP_EXT_RENDER
+    }
 
     return nullptr;
   }
@@ -451,6 +461,7 @@ namespace Clap
   void Plugin::clapRequestProcess(const clap_host* host)
   {
     // right now, I don't know how to communicate this to the host
+    // in VST3 you can't force processing...
   }
 
   // Registers a periodic timer.

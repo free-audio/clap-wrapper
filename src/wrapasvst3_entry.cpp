@@ -88,7 +88,6 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 	static Clap::Library gClapLibrary;
 
 	static std::vector<CreationContext> gCreationContexts;
-	std::cout << "I am here!!\n";
 
 	// if there is no ClapLibrary yet
 	if (!gClapLibrary._pluginFactory)
@@ -97,17 +96,13 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 		if (!gClapLibrary.hasEntryPoint())
 		{
 			// try to find a clap which filename stem matches our own
-			std::cout << "huhu!" << std::endl;
 			auto kx = os::getParentFolderName();
 			auto plugname = os::getBinaryName();
 			plugname.append(".clap");
 
-			std::cout << "plugname: " << plugname << std::endl;
-
 			if (!findPlugin(gClapLibrary, plugname))
 			{
-				// findPlugin(gClapLibrary, "clap-saw-demo.clap");
-				findPlugin(gClapLibrary, "clap-saw-demo.clap");
+				return nullptr;
 			}
 		}
 	}
@@ -123,23 +118,24 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 		return nullptr;
 	}
 
-	// we need at least one plugin to obtain vendor/name etc.
-	auto* vendor = gClapLibrary.plugins[0]->vendor;
-	auto* vendor_url = gClapLibrary.plugins[0]->url;
-	// TODO: extract the domain and prefix with info@
-	auto* contact = "info@";
-
-	// override for VST3 specifics
-	if (gClapLibrary._pluginFactoryVst3Info)
-	{
-		auto& v3 = gClapLibrary._pluginFactoryVst3Info;
-    if (v3->vendor) vendor = v3->vendor;
-    if (v3->vendor_url) vendor_url = v3->vendor_url;
-    if (v3->email_contact) contact = v3->email_contact;
-	}
-
 	if (!gPluginFactory)
 	{
+
+		// we need at least one plugin to obtain vendor/name etc.
+		auto* vendor = gClapLibrary.plugins[0]->vendor;
+		auto* vendor_url = gClapLibrary.plugins[0]->url;
+		// TODO: extract the domain and prefix with info@
+		auto* contact = "info@";
+
+		// override for VST3 specifics
+		if (gClapLibrary._pluginFactoryVst3Info)
+		{
+			auto& v3 = gClapLibrary._pluginFactoryVst3Info;
+			if (v3->vendor) vendor = v3->vendor;
+			if (v3->vendor_url) vendor_url = v3->vendor_url;
+			if (v3->email_contact) contact = v3->email_contact;
+		}
+
 		static PFactoryInfo factoryInfo(
 			vendor, 
 			vendor_url, 

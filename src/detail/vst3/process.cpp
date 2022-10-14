@@ -257,7 +257,6 @@ namespace Clap
               n.midi.data[1] = param->controller;
               n.midi.data[2] = param->asClapValue(value);
               break;
-
             }
 
             _eventindices.push_back(_events.size());
