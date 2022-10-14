@@ -102,7 +102,7 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 
 			if (!findPlugin(gClapLibrary, plugname))
 			{
-				return false;
+				return nullptr;
 			}
 		}
 	}
