@@ -128,7 +128,7 @@ namespace os
 
 	void WindowsHelper::executeDefered()
 	{
-		for (auto p : _plugs) p->onIdle();
+		for (auto&&   p : _plugs) p->onIdle();
 	}
 
 	void WindowsHelper::attach(IPlugObject* plugobject)

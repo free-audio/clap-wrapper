@@ -454,7 +454,7 @@ void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
       new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kBrightnessTypeID, S16("Brightness"), S16("Brit"), S16(""), 0, nullptr, 0)
     );
 
-    // PRESSURE is handled by IMidiMapping (-> Polypressure)
+  // PRESSURE is handled by IMidiMapping (-> Polypressure)
 }
 
 
@@ -548,9 +548,9 @@ void ClapAsVst3::request_callback()
   _requestUICallback = true;
 }
 
-void ClapAsVst3::schnick()
-{
-  // OutputDebugString("Schnick!");
+void ClapAsVst3::restartPlugin()
+{  
+  if (componentHandler) componentHandler->restartComponent(Vst::RestartFlags::kReloadComponent);
 }
 
 void ClapAsVst3::onBeginEdit(clap_id id)

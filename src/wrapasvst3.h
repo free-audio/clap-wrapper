@@ -169,7 +169,7 @@ public:
 
 	void mark_dirty() override;
 
-	void schnick() override;
+	void restartPlugin() override;
 
 	void request_callback() override;
 
