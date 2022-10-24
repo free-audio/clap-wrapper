@@ -127,22 +127,6 @@ namespace Clap
 
   }
 
-  class Raise
-  {
-  public:
-    Raise(std::atomic<uint32_t>& counter)
-      : ctx(counter)
-    {
-      ++ctx;
-    }
-    ~Raise()
-    {
-      ctx--;
-    }
-  private:
-    std::atomic<uint32_t>& ctx;
-  };
-
   std::shared_ptr<Plugin> Plugin::createInstance(Clap::Library& library, size_t index, IHost* host)
   {
     if (library.plugins.size() > index)
@@ -155,6 +139,7 @@ namespace Clap
     }
     return nullptr;
   }
+
   Plugin::Plugin(IHost* host)
     : _host{
           CLAP_VERSION,

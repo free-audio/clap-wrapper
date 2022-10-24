@@ -190,6 +190,9 @@ private:
 	void addAudioBusFrom(const clap_audio_port_info_t* info, bool is_input);
 	void addMIDIBusFrom(const clap_note_port_info_t* info, uint32_t index, bool is_input);
 
+	Vst::UnitID getUnitInfo(const char* modulename);
+	std::map<std::string, Vst::UnitID> _moduleToUnit;
+
 	Clap::Library* _library = nullptr;
 	int _libraryIndex = 0;
 	std::shared_ptr<Clap::Plugin> _plugin;

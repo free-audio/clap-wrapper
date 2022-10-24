@@ -1,6 +1,7 @@
 #include "parameter.h"
 #include <string>
 #include <pluginterfaces/vst/ivstmidicontrollers.h>
+#include <pluginterfaces/vst/ivstunits.h>
 
 using namespace Steinberg;
 
@@ -33,7 +34,7 @@ Vst3Parameter::~Vst3Parameter()
 {
 }
 
-Vst3Parameter* Vst3Parameter::create(const clap_param_info_t* info)
+Vst3Parameter* Vst3Parameter::create(const clap_param_info_t* info, std::function<Steinberg::Vst::UnitID(const char* modulepath)> getUnitId)
 {
 	Vst::ParameterInfo v;
 
@@ -41,21 +42,33 @@ Vst3Parameter* Vst3Parameter::create(const clap_param_info_t* info)
 
 	// the long name might contain the module name
 	// this will change when we split the module to units
-	std::string fullname(info->module);
-	if (!fullname.empty())
+	std::string fullname;
+	Vst::UnitID unit = 0;
+
+	// if there is a module and a lambda
+	if (info->module && info->module[0] != 0 && getUnitId)
 	{
-		fullname.append("/");
-	}
-	fullname.append(info->name);
-	if (fullname.size() >= str16BufferSize(v.title))
-	{
+		unit = getUnitId(info->module);
 		fullname = info->name;
 	}
+	else
+	{
+		if (!fullname.empty())
+		{
+			fullname.append("/");
+		}
+		fullname.append(info->name);
+		if (fullname.size() >= str16BufferSize(v.title))
+		{
+			fullname = info->name;
+		}
+	}
+	
 	str8ToStr16(v.title, fullname.c_str(), str16BufferSize(v.title));
 	// TODO: string shrink algorithm shortening the string a bit
 	str8ToStr16(v.shortTitle, info->name, str16BufferSize(v.shortTitle));
 	v.units[0] = 0;  // unfortunately, CLAP has no unit for parameter values
-	v.unitId = 0;
+	v.unitId = unit;
 
 	v.defaultNormalizedValue = info->default_value;
 	v.flags = Vst::ParameterInfo::kNoFlags
@@ -64,7 +77,6 @@ Vst3Parameter* Vst3Parameter::create(const clap_param_info_t* info)
 		| ((info->flags & CLAP_PARAM_IS_AUTOMATABLE) ? Vst::ParameterInfo::kCanAutomate : 0)
 		| ((info->flags & CLAP_PARAM_IS_READONLY) ? Vst::ParameterInfo::kIsReadOnly : 0)
 		// | ((info->flags & CLAP_PARAM_IS_READONLY) ? Vst::ParameterInfo::kIsReadOnly : 0)
-
 		;
 
 	v.defaultNormalizedValue = info->default_value / info->max_value;

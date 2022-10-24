@@ -18,6 +18,7 @@
 
 #include <clap/ext/params.h>
 #include <public.sdk/source/vst/vstparameters.h>
+#include <functional>
 
 class Vst3Parameter : public Steinberg::Vst::Parameter
 {
@@ -34,7 +35,7 @@ public:
   {
     return (clapvalue - min_value) / (max_value - min_value);
   }
-  static Vst3Parameter* create(const clap_param_info_t* info);
+  static Vst3Parameter* create(const clap_param_info_t* info, std::function<Steinberg::Vst::UnitID(const char* modulepath)> getUnitId);
   static Vst3Parameter* create(uint8_t bus, uint8_t channel, uint8_t cc, Steinberg::Vst::ParamID id);
   // copies from the clap_param_info_t
   clap_id id = 0;
