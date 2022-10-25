@@ -68,10 +68,15 @@ message(STATUS "platform is ${PLATFORM}")
 #
 smtg_enable_vst3_sdk()
 
-smtg_add_vst3plugin(${pluginname} PACKAGE_NAME ${WRAPPER_OUTPUT_NAME}
+set(SRCLIST 
 	${wrappersources_vst3}
 	${VST3_SDK_ROOT}/public.sdk/source/vst/vstsinglecomponenteffect.cpp
 	${VST3_SDK_ROOT}/public.sdk/source/vst/vstsinglecomponenteffect.h
+)
+
+smtg_add_vst3plugin(${pluginname} 
+	PACKAGE_NAME ${WRAPPER_OUTPUT_NAME}
+	SOURCES_LIST ${SRCLIST}
 )
 
 smtg_target_add_library_main(${pluginname})
