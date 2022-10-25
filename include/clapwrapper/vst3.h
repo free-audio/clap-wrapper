@@ -10,6 +10,11 @@
     versions.
 */
 
+// CLAP_ABI was introduced in CLAP 1.1.2, for older versions we make it transparent
+#ifndef CLAP_ABI
+#define CLAP_ABI
+#endif
+
 // the factory extension
 static const CLAP_CONSTEXPR char CLAP_PLUGIN_FACTORY_INFO_VST3[] = "clap.plugin-factory-info-as-vst3.draft0";
 
@@ -50,7 +55,7 @@ typedef struct clap_plugin_factory_as_vst3
 
   // retrieve additional information for the Steinberg::PClassInfo2 struct by pointer to clap_plugin_as_vst3
   // returns nullptr if no additional information is provided or can be a nullptr itself
-  const clap_plugin_info_as_vst3_t* (*get_vst3_info)(const clap_plugin_factory_as_vst3* factory, uint32_t index);
+  const clap_plugin_info_as_vst3_t* (CLAP_ABI *get_vst3_info)(const clap_plugin_factory_as_vst3* factory, uint32_t index);
 } clap_plugin_factory_as_vst3_t;
 
 enum clap_supported_note_expressions
@@ -70,7 +75,7 @@ enum clap_supported_note_expressions
 */
 typedef struct clap_plugin_as_vst3
 {
-  uint32_t (*getNumMIDIChannels) (const clap_plugin* plugin, uint32_t note_port); // return 1-16
-  uint32_t (*supportedNoteExpressions) (const clap_plugin* plugin); // returns a bitmap of clap_supported_note_expressions
+  uint32_t (CLAP_ABI *getNumMIDIChannels) (const clap_plugin* plugin, uint32_t note_port); // return 1-16
+  uint32_t (CLAP_ABI *supportedNoteExpressions) (const clap_plugin* plugin); // returns a bitmap of clap_supported_note_expressions
 } clap_plugin_as_vst3_t;
 

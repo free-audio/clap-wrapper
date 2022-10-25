@@ -56,10 +56,11 @@ target_include_directories(clap-wrapper-extensions INTERFACE include)
 
 # this will be a CMake argument
 if(WRAPPER_OUTPUT_NAME STREQUAL "")
-set(project "clapasvst3")
+  set(pluginname "clapasvst3")
+  message(WARNING "WRAPPER_OUTPUT_NAME not set - continuing with a default name 'clapasvst3'")
 else()
-set(project ${WRAPPER_OUTPUT_NAME})
-message(STATUS "plugin name is ${WRAPPER_OUTPUT_NAME}")
+  string(MAKE_C_IDENTIFIER ${WRAPPER_OUTPUT_NAME} pluginname)  
+  message(STATUS "plugin name is ${WRAPPER_OUTPUT_NAME}")
 endif()
 
 add_definitions(-D${PLATFORM}=1)
@@ -68,48 +69,57 @@ message(STATUS "platform is ${PLATFORM}")
 #
 smtg_enable_vst3_sdk()
 
-smtg_add_vst3plugin(${project}
+set(SRCLIST 
 	${wrappersources_vst3}
 	${VST3_SDK_ROOT}/public.sdk/source/vst/vstsinglecomponenteffect.cpp
 	${VST3_SDK_ROOT}/public.sdk/source/vst/vstsinglecomponenteffect.h
 )
 
-smtg_target_add_library_main(${project})
+smtg_add_vst3plugin(${pluginname} 
+	PACKAGE_NAME ${WRAPPER_OUTPUT_NAME}
+	SOURCES_LIST ${SRCLIST}
+)
+
+smtg_target_add_library_main(${pluginname})
+
+if(WIN32)
+set_target_properties(${pluginname} PROPERTIES LIBRARY_OUTPUT_NAME "${WRAPPER_OUTPUT_NAME}")
+endif(WIN32)
 
 # link both SDKs, CLAP and VST3
-target_link_libraries(${project} PRIVATE clap-core sdk clap-wrapper-extensions)
+target_link_libraries(${pluginname} PRIVATE clap-core sdk clap-wrapper-extensions)
 message(STATUS " current source dir: ${CMAKE_CURRENT_SOURCE_DIR} ")
-target_include_directories(${project} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_include_directories(${pluginname} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 if (APPLE)
-	target_link_libraries (${project} PUBLIC "-framework Foundation" "-framework CoreFoundation")
+	target_link_libraries (${pluginname} PUBLIC "-framework Foundation" "-framework CoreFoundation")
 endif()
 
 if (UNIX AND NOT APPLE)
-	target_link_libraries(${project} PUBLIC "-ldl")
-	target_link_libraries(${project} PRIVATE "-Wl,--no-undefined")
+	target_link_libraries(${pluginname} PUBLIC "-ldl")
+	target_link_libraries(${pluginname} PRIVATE "-Wl,--no-undefined")
 endif()
 
 # a debuggable executable to test - will be removed later and disabled by default
 if(FALSE)
-add_executable(${project}_as_executable
+add_executable(${pluginname}_as_executable
 	src/wramain.cpp
 	${wrappersources_vst3}
 	${vst3sources}
 )
-target_link_libraries(${project}_as_executable PRIVATE clap-core sdk)
-target_include_directories(${project}_as_executable PUBLIC ${VST3_SDK_ROOT})
+target_link_libraries(${pluginname}_as_executable PRIVATE clap-core sdk)
+target_include_directories(${pluginname}_as_executable PUBLIC ${VST3_SDK_ROOT})
 
 if (APPLE)
-	target_link_libraries (${project}_as_executable PUBLIC "-framework Foundation" "-framework CoreFoundation")
+	target_link_libraries (${pluginname}_as_executable PUBLIC "-framework Foundation" "-framework CoreFoundation")
 endif()
 
 if (UNIX AND NOT APPLE)
-	target_link_libraries (${project}_as_executable PUBLIC "-ldl")
+	target_link_libraries (${pluginname}_as_executable PUBLIC "-ldl")
 endif()
 
 endif()
 
-# smtg_target_configure_version_file(${project})
+# smtg_target_configure_version_file(${pluginname})
 
 

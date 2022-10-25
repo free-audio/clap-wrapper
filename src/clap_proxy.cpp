@@ -118,23 +118,14 @@ namespace Clap
 
     const clap_host_latency latency = { latency_changed };
 
-  }
+    static void tail_changed(const clap_host_t* host)
+    {
+      self(host)->tail_changed();
+    }
 
-  class Raise
-  {
-  public:
-    Raise(std::atomic<uint32_t>& counter)
-      : ctx(counter)
-    {
-      ++ctx;
-    }
-    ~Raise()
-    {
-      ctx--;
-    }
-  private:
-    std::atomic<uint32_t>& ctx;
-  };
+    const clap_host_tail tail = { tail_changed };
+
+  }
 
   std::shared_ptr<Plugin> Plugin::createInstance(Clap::Library& library, size_t index, IHost* host)
   {
@@ -148,6 +139,7 @@ namespace Clap
     }
     return nullptr;
   }
+
   Plugin::Plugin(IHost* host)
     : _host{
           CLAP_VERSION,
@@ -428,7 +420,7 @@ namespace Clap
       return &HostExt::latency;
     if (!strcmp(extension, CLAP_EXT_TAIL))
     {
-      // TODO: implement CLAP_EXT_TAIL
+      return &HostExt::tail;
     }
     if (!strcmp(extension, CLAP_EXT_RENDER))
     {
@@ -452,7 +444,7 @@ namespace Clap
   void Plugin::clapRequestRestart(const clap_host* host)
   {
     auto self = static_cast<Plugin*>(host->host_data);
-    self->_parentHost->schnick();
+    self->_parentHost->restartPlugin();
   }
 
   // Request the host to activate and start processing the plugin.

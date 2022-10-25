@@ -22,7 +22,7 @@ namespace Clap
   {
   public:
     virtual void mark_dirty() = 0;
-    virtual void schnick() = 0;
+    virtual void restartPlugin() = 0;
     virtual void request_callback() = 0;
 
     virtual void setupWrapperSpecifics(const clap_plugin_t* plugin) = 0;                                           // called when a wrapper could scan for wrapper specific plugins
@@ -70,6 +70,22 @@ namespace Clap
     const clap_plugin_render_t* _render = nullptr;
     const clap_plugin_tail_t* _tail = nullptr;
     const clap_plugin_timer_support_t* _timer = nullptr;
+  };
+
+  class Raise
+  {
+  public:
+    Raise(std::atomic<uint32_t>& counter)
+      : ctx(counter)
+    {
+      ++ctx;
+    }
+    ~Raise()
+    {
+      ctx--;
+    }
+  private:
+    std::atomic<uint32_t>& ctx;
   };
 
   /// <summary>
@@ -153,8 +169,8 @@ namespace Clap
     // clap_timer support
     bool register_timer(uint32_t period_ms, clap_id* timer_id);
     bool unregister_timer(clap_id timer_id);
-  private:
     CLAP_NODISCARD Raise AlwaysAudioThread();
+  private:
     
     static const void* clapExtension(const clap_host* host, const char* extension);
     static void clapRequestCallback(const clap_host* host);

@@ -1,13 +1,15 @@
 #include "wrapasvst3.h"
 #include <pluginterfaces/base/ibstream.h>
-#include <pluginterfaces/vst/ivstevents.h>
 #include <pluginterfaces/base/ustring.h>
+#include <pluginterfaces/vst/ivstevents.h>
 #include <pluginterfaces/vst/ivstnoteexpression.h>
 #include <public.sdk/source/vst/utility/stringconvert.h>
 #include "detail/vst3/state.h"
 #include "detail/vst3/process.h"
 #include "detail/vst3/parameter.h"
+#include "detail/clap/fsutil.h"
 #include <locale>
+#include <sstream>
 
 #if WIN
 #include <tchar.h>
@@ -87,8 +89,8 @@ tresult PLUGIN_API ClapAsVst3::setActive(TBool state)
 
 tresult PLUGIN_API ClapAsVst3::process(Vst::ProcessData& data)
 {
+  auto thisFn = _plugin->AlwaysAudioThread();
   this->_processAdapter->process(data);
-
   return kResultOk;
 }
 
@@ -309,6 +311,71 @@ void ClapAsVst3::addMIDIBusFrom(const clap_note_port_info_t* info, uint32_t inde
   }
 }
 
+static std::vector<std::string> split(const std::string& s, char delimiter)
+{
+  std::vector<std::string> tokens;
+  std::string token;
+  std::istringstream tokenStream(s);
+  while (std::getline(tokenStream, token, delimiter))
+  {
+    tokens.push_back(token);
+  }
+  return tokens;
+}
+
+Vst::UnitID ClapAsVst3::getUnitInfo(const char* modulename)
+{
+  // lookup the modulename fast and return the unitID
+  auto loc = _moduleToUnit.find(modulename);
+  if (loc != _moduleToUnit.end())
+  {
+    return loc->second;
+  }
+
+  // a leading `/`is wrong
+  while (modulename[0] == '/')
+  {
+    modulename++;
+  }
+
+  // the module name is not yet present as unit, so
+  // we will ensure that it is being created one by one
+  auto path = split(modulename,'/');
+  std::string curpath;
+  Vst::UnitID id = Vst::kRootUnitId;  // there is already a root element
+  size_t i = 0;
+  while (path.size() > i)
+  {
+    auto loc = _moduleToUnit.find(path[i]);
+    if (loc != _moduleToUnit.end())
+    {
+      if (!curpath.empty())
+      {
+        curpath.append("/");
+      }
+      curpath.append(path[i]);
+      id = loc->second;
+      ++i;
+    }
+    else
+    {
+      // the unit needs to be created
+      Steinberg::Vst::String128 name;
+      std::string u8name(path[i]);
+      if (VST3::StringConvert::convert(u8name, name))
+      {
+        Vst::UnitID newid = units.size();
+        Vst::Unit* newunit = new Vst::Unit(name, newid, id);  // a new unit without a program list
+        addUnit(newunit);
+        _moduleToUnit[u8name] = newid;
+        id = newid;
+      }
+      ++i;
+    }
+  }
+  return id;
+}
+
 // Clap::IHost
 
 void ClapAsVst3::setupWrapperSpecifics(const clap_plugin_t* plugin)
@@ -388,6 +455,17 @@ void ClapAsVst3::setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_
 void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params)
 {
   if (!params) return;
+
+  // clear the units, they will be rebuild during the parameter conversion
+  _moduleToUnit.clear();
+  units.clear();
+
+  {
+    Vst::String128 rootname(STR16("root"));
+    Vst::Unit* newunit = new Vst::Unit(rootname, Vst::kNoParentUnitId, Vst::kRootUnitId);  // a new unit without a program list
+    addUnit(newunit);
+  }
+
   auto numparams = params->count(plugin);
   parameters.removeAll();
   this->parameters.init(numparams);
@@ -396,7 +474,11 @@ void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
     clap_param_info info;
     if (params->get_info(plugin, i, &info))
     {
-      auto p = Vst3Parameter::create(&info);
+      auto p = Vst3Parameter::create(&info, [&](const char* modstring) 
+        {
+          return this->getUnitInfo(modstring);
+        });
+      // auto p = Vst3Parameter::create(&info,nullptr);
       parameters.addParameter(p);
     }
   }
@@ -454,7 +536,7 @@ void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
       new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kBrightnessTypeID, S16("Brightness"), S16("Brit"), S16(""), 0, nullptr, 0)
     );
 
-    // PRESSURE is handled by IMidiMapping (-> Polypressure)
+  // PRESSURE is handled by IMidiMapping (-> Polypressure)
 }
 
 
@@ -477,13 +559,16 @@ void ClapAsVst3::param_rescan(clap_param_rescan_flags flags)
     {
       auto p = parameters.getParameterByIndex(i);
       auto p1 = static_cast<Vst3Parameter*>(p);
-      double val;
-      if (_plugin->_ext._params->get_value(_plugin->_plugin, p1->id, &val))
+      if (!p1->isMidi)
       {
-        auto newval = p1->asVst3Value(val);
-        if (p1->getNormalized() != newval)
+        double val;
+        if (_plugin->_ext._params->get_value(_plugin->_plugin, p1->id, &val))
         {
-          p1->setNormalized(newval);
+          auto newval = p1->asVst3Value(val);
+          if (p1->getNormalized() != newval)
+          {
+            p1->setNormalized(newval);
+          }
         }
       }
     }
@@ -548,9 +633,9 @@ void ClapAsVst3::request_callback()
   _requestUICallback = true;
 }
 
-void ClapAsVst3::schnick()
-{
-  // OutputDebugString("Schnick!");
+void ClapAsVst3::restartPlugin()
+{  
+  if (componentHandler) componentHandler->restartComponent(Vst::RestartFlags::kReloadComponent);
 }
 
 void ClapAsVst3::onBeginEdit(clap_id id)
