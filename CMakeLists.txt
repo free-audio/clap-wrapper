@@ -55,13 +55,15 @@ target_include_directories(clap-wrapper-extensions INTERFACE include)
 # ------------------------------------------------------------------------------
 
 # this will be a CMake argument
-if(WRAPPER_OUTPUT_NAME STREQUAL "")
+if(CLAP_WRAPPER_OUTPUT_NAME STREQUAL "")
   set(pluginname "clapasvst3")
-  message(WARNING "WRAPPER_OUTPUT_NAME not set - continuing with a default name 'clapasvst3'")
+  message(WARNING "CLAP_WRAPPER_OUTPUT_NAME not set - continuing with a default name 'clapasvst3'")
 else()
-  string(MAKE_C_IDENTIFIER ${WRAPPER_OUTPUT_NAME} pluginname)  
-  message(STATUS "plugin name is ${WRAPPER_OUTPUT_NAME}")
+  string(MAKE_C_IDENTIFIER ${CLAP_WRAPPER_OUTPUT_NAME} pluginname)  
+  message(STATUS "plugin name is ${CLAP_WRAPPER_OUTPUT_NAME}")
 endif()
+
+set(pluginname ${pluginname}_as_vst3)
 
 add_definitions(-D${PLATFORM}=1)
 
@@ -76,14 +78,14 @@ set(SRCLIST
 )
 
 smtg_add_vst3plugin(${pluginname} 
-	PACKAGE_NAME ${WRAPPER_OUTPUT_NAME}
+	PACKAGE_NAME ${CLAP_WRAPPER_OUTPUT_NAME}
 	SOURCES_LIST ${SRCLIST}
 )
 
 smtg_target_add_library_main(${pluginname})
 
 if(WIN32)
-set_target_properties(${pluginname} PROPERTIES LIBRARY_OUTPUT_NAME "${WRAPPER_OUTPUT_NAME}")
+set_target_properties(${pluginname} PROPERTIES LIBRARY_OUTPUT_NAME "${CLAP_WRAPPER_OUTPUT_NAME}")
 endif(WIN32)
 
 # link both SDKs, CLAP and VST3
@@ -99,27 +101,5 @@ if (UNIX AND NOT APPLE)
 	target_link_libraries(${pluginname} PUBLIC "-ldl")
 	target_link_libraries(${pluginname} PRIVATE "-Wl,--no-undefined")
 endif()
-
-# a debuggable executable to test - will be removed later and disabled by default
-if(FALSE)
-add_executable(${pluginname}_as_executable
-	src/wramain.cpp
-	${wrappersources_vst3}
-	${vst3sources}
-)
-target_link_libraries(${pluginname}_as_executable PRIVATE clap-core sdk)
-target_include_directories(${pluginname}_as_executable PUBLIC ${VST3_SDK_ROOT})
-
-if (APPLE)
-	target_link_libraries (${pluginname}_as_executable PUBLIC "-framework Foundation" "-framework CoreFoundation")
-endif()
-
-if (UNIX AND NOT APPLE)
-	target_link_libraries (${pluginname}_as_executable PUBLIC "-ldl")
-endif()
-
-endif()
-
-# smtg_target_configure_version_file(${pluginname})
 
 

@@ -4,7 +4,7 @@
 # 2022 defiant nerd
 #
 # options
-set(WRAPPER_OUTPUT_NAME "" CACHE STRING "The output name of the dynamically wrapped plugin")
+# set(CLAP_WRAPPER_OUTPUT_NAME "" CACHE STRING "The output name of the dynamically wrapped plugin")
 set(CLAP_SDK_ROOT "" CACHE STRING "Path to CLAP SDK")
 set(VST3_SDK_ROOT "" CACHE STRING "Path to VST3 SDK")
 
@@ -153,14 +153,18 @@ endfunction(DefineCLAPASVST3Sources)
 
 ##################### 
 
-DetectCLAP()
+# if clap-core is already existent as target, there is no need to do this here
+if (NOT TARGET clap-core)
+	DetectCLAP()
 
-if(NOT EXISTS "${CLAP_SDK_ROOT}/include/clap/clap.h")
-    message(FATAL_ERROR "There is no CLAP SDK at ${CLAP_SDK_ROOT} ")
+	if(NOT EXISTS "${CLAP_SDK_ROOT}/include/clap/clap.h")
+		message(FATAL_ERROR "There is no CLAP SDK at ${CLAP_SDK_ROOT} ")
+	endif()
+
+	message(STATUS "Configuring CLAP SDK")
+	add_subdirectory(${CLAP_SDK_ROOT} clap EXCLUDE_FROM_ALL)
 endif()
 
-message(STATUS "Configuring CLAP SDK")
-add_subdirectory(${CLAP_SDK_ROOT} ${CMAKE_BINARY_DIR}/clap EXCLUDE_FROM_ALL)
 
 DetectVST3SDK()
 
@@ -169,7 +173,7 @@ if(NOT EXISTS "${VST3_SDK_ROOT}/public.sdk")
 endif()
 
 message(STATUS "Configuring VST3 SDK")
-add_subdirectory(${VST3_SDK_ROOT}  ${CMAKE_BINARY_DIR}/vst3sdk EXCLUDE_FROM_ALL)
+add_subdirectory(${VST3_SDK_ROOT} vst3sdk EXCLUDE_FROM_ALL) 
 
 DefineCLAPASVST3Sources() 
 
