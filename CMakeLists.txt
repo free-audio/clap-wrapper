@@ -84,9 +84,7 @@ smtg_add_vst3plugin(${pluginname}
 
 smtg_target_add_library_main(${pluginname})
 
-if(WIN32)
 set_target_properties(${pluginname} PROPERTIES LIBRARY_OUTPUT_NAME "${CLAP_WRAPPER_OUTPUT_NAME}")
-endif(WIN32)
 
 # link both SDKs, CLAP and VST3
 target_link_libraries(${pluginname} PRIVATE clap-core sdk clap-wrapper-extensions)
