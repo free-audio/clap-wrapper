@@ -26,26 +26,34 @@ Things currently missing:
 
 ## How to build
 
-```c++
+```bash
 git clone https://github.com/defiantnerd/clap-wrapper.git
 mkdir build
 cmake -B build -DCLAP_SDK_ROOT={path to clap sdk} -DVST3_SDK_ROOT={path to vst3 sdk}
 ```
 
-You can also determine the output name of the resulting VST3 plugin by using the `WRAPPER_OUTPUT_NAME` CMake variable:
+You can also determine the output name of the resulting VST3 plugin by using the `CLAP_WRAPPER_OUTPUT_NAME` CMake variable:
 
 Build it for your clap, assuming it is named "fruit":
 
-```c++
+```bash
 git clone https://github.com/defiantnerd/clap-wrapper.git
 mkdir build
-cmake -B build -DCLAP_SDK_ROOT={path to clap sdk} -DVST3_SDK_ROOT={path to vst3 sdk} -DWRAPPER_OUTPUT_NAME=fruit
+cmake -B build -DCLAP_SDK_ROOT={path to clap sdk} -DVST3_SDK_ROOT={path to vst3 sdk} -DCLAP_WRAPPER_OUTPUT_NAME=fruit
 ```
 
 Renaming the resulting binary will also work, the name is not being used anywhere in the code, just for the binary output name.
 
 The `CLAP_SDK_ROOT` and `VST3_SDK_ROOT` arguments can be omitted if the SDKs are present in the **parent folder**, the **same base folder** or in a **./libs folder**.
 In this case the cmake script will detect and use them automatically.
+
+You can also add the wrapper(s) to your existing project. Assume you've added the `clap-wrapper` repository into a `libs` subdirectory, you can just add these lines to your `CMakeLists.txt` file:
+
+```cmake
+# this assumes that ${PROJECT_NAME} is set to the actual plugin final filename 
+set(CLAP_WRAPPER_OUTPUT_NAME ${PROJECT_NAME})
+add_subdirectory(libs/clap-wrapper )
+```
 
 ## How to use
 
