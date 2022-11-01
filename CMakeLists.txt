@@ -54,10 +54,10 @@ target_include_directories(clap-wrapper-extensions INTERFACE include)
 
 # ------------------------------------------------------------------------------
 
-# this will be a CMake argument
-if(CLAP_WRAPPER_OUTPUT_NAME STREQUAL "")
+# provide the CLAP_WRAPPER_OUTPUT_NAME to specify the matching plugin name
+if((NOT CLAP_WRAPPER_OUTPUT_NAME ) OR (CLAP_WRAPPER_OUTPUT_NAME STREQUAL ""))
   set(pluginname "clapasvst3")
-  message(WARNING "CLAP_WRAPPER_OUTPUT_NAME not set - continuing with a default name 'clapasvst3'")
+  message(WARNING "CLAP_WRAPPER_OUTPUT_NAME not set - continuing with a default name `clapasvst3`")
 else()
   string(MAKE_C_IDENTIFIER ${CLAP_WRAPPER_OUTPUT_NAME} pluginname)  
   message(STATUS "plugin name is ${CLAP_WRAPPER_OUTPUT_NAME}")
