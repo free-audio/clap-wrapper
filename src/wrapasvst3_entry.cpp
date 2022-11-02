@@ -120,7 +120,7 @@ bool findPlugin(Clap::Library& lib, const std::string& pluginfilename)
 
 SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 
-	MessageBoxA(NULL,"halt","me",MB_OK);
+// MessageBoxA(NULL,"halt","me",MB_OK); <- enable this on Windows to get a debug attachment to vstscanner.exe (subprocess of cbse)
 #if SMTG_OS_WINDOWS
 // #pragma comment(linker, "/EXPORT:" __FUNCTION__ "=" __FUNCDNAME__)
 #endif
