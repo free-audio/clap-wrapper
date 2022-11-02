@@ -1,8 +1,48 @@
 /*
 
-		CLAP AS VST3
+		CLAP AS VST3 - Entrypoint
 
-		(c) 2022 defiant nerd
+		Copyright (c) 2022 Timo Kaluza (defiantnerd)
+
+		This file is part of the clap-wrappers project which is released under MIT License.
+		See file LICENSE or go to https://github.com/defiantnerd/clap-wrapper for full license details.
+
+		Provides the entry function for the VST3 flavor of the wrapped plugin.
+
+		When the VST3 factory is being scanned, this tries to locate a clap_entry function
+		in the following order and stops if a .clap binary has been found:
+
+		1) checks for exported `clap_enty` in this binary itself (statically linked wrapper)
+		2) determines it's own filename without the .vst3 ending and determines a list of all valid CLAP search paths (see below) and
+		   a) checks each CLAP search path for a matching .clap
+			 b) checks it's own parent folder name and tries to add it to the .clap path. This allows a vst3 wrapper placed in
+					{any VST3 Folder}/mevendor/myplugin.vst3 to match {any CLAP folder}/mevendor/myplugin.clap
+			 c) checks all subfolders in the CLAP folders for a matching .clap.
+		
+		Valid CLAP search paths are also documented in clap/include/clap/entry.h:
+
+		// CLAP plugins standard search path:
+
+    Linux
+      - ~/.clap
+      - /usr/lib/clap
+   
+    Windows
+      - %CommonFilesFolder%/CLAP/
+      - %LOCALAPPDATA%/Programs/Common/CLAP/
+   
+    MacOS
+      - /Library/Audio/Plug-Ins/CLAP
+      - ~/Library/Audio/Plug-Ins/CLAP
+   
+    In addition to the OS-specific default locations above, a CLAP host must query the environment
+    for a CLAP_PATH variable, which is a list of directories formatted in the same manner as the host
+    OS binary search path (PATH on Unix, separated by `:` and Path on Windows, separated by ';', as
+    of this writing).
+   
+    Each directory should be recursively searched for files and/or bundles as appropriate in your OS
+    ending with the extension `.clap`.
+
 
 */
 #include "detail/sha1.h"
@@ -26,7 +66,7 @@ using namespace Steinberg::Vst;
 struct CreationContext
 {
 	Clap::Library* lib = nullptr;
-	size_t index = 0;
+	int index = 0;
 	PClassInfo2 classinfo;
 };
 
@@ -80,11 +120,12 @@ bool findPlugin(Clap::Library& lib, const std::string& pluginfilename)
 
 SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 
+	MessageBoxA(NULL,"halt","me",MB_OK);
 #if SMTG_OS_WINDOWS
 // #pragma comment(linker, "/EXPORT:" __FUNCTION__ "=" __FUNCDNAME__)
 #endif
 
-	static IPtr<Steinberg::CPluginFactory> gPluginFactory = nullptr;
+	// static IPtr<Steinberg::CPluginFactory> gPluginFactory = nullptr;
 	static Clap::Library gClapLibrary;
 
 	static std::vector<CreationContext> gCreationContexts;
@@ -111,7 +152,6 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 		// with no plugins there is nothing to do..
 		return nullptr;
 	}
-
 	if (!clap_version_is_compatible(gClapLibrary.plugins[0]->clap_version))
 	{
 		// CLAP version is not compatible -> eject
@@ -120,9 +160,8 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 
 	if (!gPluginFactory)
 	{
-
 		// we need at least one plugin to obtain vendor/name etc.
-		auto* vendor = gClapLibrary.plugins[0]->vendor;
+		auto* factoryvendor = gClapLibrary.plugins[0]->vendor;
 		auto* vendor_url = gClapLibrary.plugins[0]->url;
 		// TODO: extract the domain and prefix with info@
 		auto* contact = "info@";
@@ -131,13 +170,13 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 		if (gClapLibrary._pluginFactoryVst3Info)
 		{
 			auto& v3 = gClapLibrary._pluginFactoryVst3Info;
-			if (v3->vendor) vendor = v3->vendor;
+			if (v3->vendor) factoryvendor = v3->vendor;
 			if (v3->vendor_url) vendor_url = v3->vendor_url;
 			if (v3->email_contact) contact = v3->email_contact;
 		}
 
 		static PFactoryInfo factoryInfo(
-			vendor, 
+			factoryvendor, 
 			vendor_url, 
 			contact,
 			Vst::kDefaultFactoryFlags);
@@ -145,7 +184,8 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 		gPluginFactory = new Steinberg::CPluginFactory(factoryInfo);		
 		// resize the classInfo vector
 		gCreationContexts.reserve(gClapLibrary.plugins.size());
-		for (uint32_t ctr = 0; ctr < gClapLibrary.plugins.size(); ++ctr)
+		int numPlugins = static_cast<int>(gClapLibrary.plugins.size());
+		for (int ctr = 0; ctr < numPlugins; ++ctr)
 		{
 			auto& clapdescr = gClapLibrary.plugins[ctr];
 			auto vst3info = gClapLibrary.get_vst3_info(ctr);
@@ -157,9 +197,9 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 			auto plugname = n.c_str(); //  clapdescr->name;
 
 			// get vendor -------------------------------------
-			auto vendor = clapdescr->vendor;
-			if (vendor == nullptr || *vendor == 0) vendor = "Unspecified Vendor";
-			if (vst3info && vst3info->vendor) vendor = vst3info->vendor;
+			auto pluginvendor = clapdescr->vendor;
+			if (pluginvendor == nullptr || *pluginvendor == 0) pluginvendor = "Unspecified Vendor";
+			if (vst3info && vst3info->vendor) pluginvendor = vst3info->vendor;
 
 			// make id or take it from vst3 info --------------
 			std::string id(clapdescr->id);
@@ -194,18 +234,17 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 				plugname,
 				0		/* the only flag is usually Vst:kDistributable, but CLAPs aren't distributable */,
 				features.c_str(),
-				vendor,
+				pluginvendor,
 				clapdescr->version,
 				kVstVersionString)
 				});
-
 			gPluginFactory->registerClass(&gCreationContexts.back().classinfo, ClapAsVst3::createInstance, &gCreationContexts.back());
 		}
 
 	}
 	else
 		gPluginFactory->addRef();
-
+	
 	return gPluginFactory; 
 }
 
@@ -214,7 +253,7 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 *		actually, there is always a valid entrypoint, otherwise no factory would have been provided.
 */
 FUnknown* ClapAsVst3::createInstance(void* context)
-{
+{	
 	auto ctx = static_cast<CreationContext*>(context);
 	if (ctx->lib->hasEntryPoint())
 	{

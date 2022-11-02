@@ -1,3 +1,12 @@
+/*
+
+		Copyright (c) 2022 Timo Kaluza (defiantnerd)
+
+		This file is part of the clap-wrappers project which is released under MIT License.
+		See file LICENSE or go to https://github.com/defiantnerd/clap-wrapper for full license details.
+
+*/
+
 #include "base/source/fobject.h"
 #include <pluginterfaces/gui/iplugview.h>
 #include <clap/clap.h>

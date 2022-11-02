@@ -1,5 +1,17 @@
 #pragma once
 
+/*
+	  VST3 process adapter
+
+		Copyright (c) 2022 Timo Kaluza (defiantnerd)
+
+		This file is part of the clap-wrappers project which is released under MIT License.
+		See file LICENSE or go to https://github.com/defiantnerd/clap-wrapper for full license details.
+
+
+		The process adapter is responible to translate events, timing information 
+
+*/
 #include <clap/clap.h>
 #include <pluginterfaces/vst/ivstevents.h>
 #include <pluginterfaces/vst/ivstaudioprocessor.h>
@@ -10,8 +22,6 @@
 
 namespace Clap
 {
-
-
 
 	class ProcessAdapter
 	{

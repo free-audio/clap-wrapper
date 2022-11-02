@@ -300,11 +300,11 @@ namespace Clap
     _plugin->stop_processing(_plugin);
   }
 
-  void Plugin::process(const clap_process_t* data)
-  {
-    auto thisFn = AlwaysAudioThread();
-    _plugin->process(_plugin, data);
-  }
+  //void Plugin::process(const clap_process_t* data)
+  //{
+  //  auto thisFn = AlwaysAudioThread();
+  //  _plugin->process(_plugin, data);
+  //}
 
   const clap_plugin_gui_t* Plugin::getUI()
   {

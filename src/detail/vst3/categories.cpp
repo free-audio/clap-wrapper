@@ -1,6 +1,11 @@
 /*
     converting CLAP categories to VST3 categories
-    2022 (c) defiant nerd
+    
+    Copyright (c) 2022 Timo Kaluza (defiantnerd)
+
+    This file is part of the clap-wrappers project which is released under MIT License.
+    See file LICENSE or go to https://github.com/defiantnerd/clap-wrapper for full license details.
+
 
     both, CLAP and VST3, use strings to describe the plugin type.
     CLAP uses 4 main categories and a bunch of sub categories, where there is no limit of that list.
@@ -26,6 +31,10 @@
     Additionally, the Steinberg::PClassInfo struct reserves 128 bytes for the subcategory string, so any
     category string that exceeds this limit won't be added anymore and no further strings will be added.
     Make sure that the two most important categories are always at the beginning of your CLAP descriptor.
+
+    Note: If you as a plugin developer want to set the VST3 categories explicitely, you can use the
+    CLAP_PLUGIN_AS_VST3 extension (see clap-wrapper/include/clapwrapper/vst3.h) to explicitely set
+    the category string.
 
 */
 
