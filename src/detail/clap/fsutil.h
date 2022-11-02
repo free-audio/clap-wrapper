@@ -40,8 +40,7 @@ namespace Clap
 #endif
 
 #if MAC
-        // fixme
-        return false;
+      return _bundle != 0 || _selfcontained;
 #endif
 
 #if LIN
@@ -53,7 +52,7 @@ namespace Clap
   private:
 #if MAC
     // FIXME keep a bundle ref around
-   CFBundleRef bundle{nullptr};
+   CFBundleRef _bundle{nullptr};
 #endif
 
 #if LIN
