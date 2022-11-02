@@ -15,6 +15,20 @@
 
 namespace Clap
 {
+#if WIN
+  std::string getEnvVariable(const char* varname)
+  {
+    char* val;
+    size_t len;
+    auto err = _dupenv_s(&val, &len, varname);
+    if (err) return std::string();
+    if (val == nullptr) return std::string();
+    std::string result(val);
+    free(val);
+    return result;      
+  }
+#endif
+
   std::vector<std::filesystem::path> getValidCLAPSearchPaths()
   {
     std::vector<std::filesystem::path> res;
@@ -33,30 +47,31 @@ namespace Clap
 #if WIN
     {
       // I think this should use SHGetKnownFilderLocation but I don't know windows well enough
-      auto p = getenv("COMMONPROGRAMFILES");
-      if (p)
+      auto p = getEnvVariable("COMMONPROGRAMFILES");
+      if (!p.empty())
       {
         res.emplace_back(std::filesystem::path{ p } / "CLAP");
       }
-      auto q = getenv("LOCALAPPDATA");
-      if (q)
+      auto q = getEnvVariable("LOCALAPPDATA");
+      if (!q.empty())
       {
         res.emplace_back(std::filesystem::path{ q } / "Programs" / "Common" / "CLAP");
       }
     }
-#endif
-
+    auto cp = getEnvVariable("CLAP_PATH");
+    auto sep = ';';
+#else
+    std::string cp;
     auto p = getenv("CLAP_PATH");
-
     if (p)
     {
-#if WIN
-      auto sep = ';';
-#else
-      auto sep = ':';
+      cp = std::string(p);
+    }
+    auto sep = ':';
 #endif
-      auto cp = std::string(p);
 
+    if (cp.empty())
+    {
       size_t pos;
       while ((pos = cp.find(sep)) != std::string::npos)
       {
@@ -81,15 +96,15 @@ namespace Clap
      auto bundleURL =
              CFURLCreateWithFileSystemPath(kCFAllocatorDefault, cs, kCFURLPOSIXPathStyle, true);
 
-     auto bundle = CFBundleCreate(kCFAllocatorDefault, bundleURL);
+     _bundle = CFBundleCreate(kCFAllocatorDefault, bundleURL);
      CFRelease(bundleURL);
      CFRelease(cs);
 
-     if (!bundle) {
+     if (!_bundle) {
         return false;
      }
 
-     auto db = CFBundleGetDataPointerForName(bundle, CFSTR("clap_entry"));
+     auto db = CFBundleGetDataPointerForName(_bundle, CFSTR("clap_entry"));
 
      _pluginEntry = (const clap_plugin_entry *)db;
 
@@ -196,6 +211,7 @@ namespace Clap
     if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCTSTR)ffeomwe, &selfmodule))
     {
       auto size = GetModuleFileName(selfmodule, modulename, 2048);
+      (void)size;
     }
     if (selfmodule)
     {
@@ -215,8 +231,11 @@ namespace Clap
     }
 #if MAC
     // FIXME keep the bundle ref and free it here
-    if (bundle)
-      CFRelease(bundle);
+    if (_bundle)
+    {
+      CFRelease(_bundle);
+      _bundle = nullptr;
+    }
 #endif
 
 #if LIN

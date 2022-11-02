@@ -300,11 +300,11 @@ namespace Clap
     _plugin->stop_processing(_plugin);
   }
 
-  void Plugin::process(const clap_process_t* data)
-  {
-    auto thisFn = AlwaysAudioThread();
-    _plugin->process(_plugin, data);
-  }
+  //void Plugin::process(const clap_process_t* data)
+  //{
+  //  auto thisFn = AlwaysAudioThread();
+  //  _plugin->process(_plugin, data);
+  //}
 
   const clap_plugin_gui_t* Plugin::getUI()
   {
@@ -357,12 +357,18 @@ namespace Clap
       OutputDebugStringA(msg);
       _CrtDbgBreak();
 #endif
+#if MAC
+        fprintf(stderr,"%s\n",msg);
+#endif
       break;
     }
     n.append(msg);
 #if WIN32
     OutputDebugStringA(n.c_str());
     OutputDebugStringA("\n");
+#endif
+#if MAC
+    fprintf(stderr,"%s\n",n.c_str());
 #endif
   }
 

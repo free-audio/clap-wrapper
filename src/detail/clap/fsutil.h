@@ -1,3 +1,12 @@
+/* 
+
+    Copyright (c) 2022 Timo Kaluza (defiantnerd)
+
+    This file is part of the clap-wrappers project which is released under MIT License.
+    See file LICENSE or go to https://github.com/defiantnerd/clap-wrapper for full license details.
+
+*/
+
 #pragma once
 
 #include <vector>
@@ -40,8 +49,7 @@ namespace Clap
 #endif
 
 #if MAC
-        // fixme
-        return false;
+        return _bundle != nullptr || _selfcontained;
 #endif
 
 #if LIN
@@ -53,7 +61,7 @@ namespace Clap
   private:
 #if MAC
     // FIXME keep a bundle ref around
-   CFBundleRef bundle{nullptr};
+   CFBundleRef _bundle{nullptr};
 #endif
 
 #if LIN

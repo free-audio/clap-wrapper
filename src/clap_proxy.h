@@ -1,4 +1,18 @@
+/*
+    CLAP Proxy
+
+    Copyright (c) 2022 Timo Kaluza (defiantnerd)
+
+    This file is part of the clap-wrappers project which is released under MIT License.
+    See file LICENSE or go to https://github.com/defiantnerd/clap-wrapper for full license details.
+
+    The CLAP Proxy class interfaces the actual CLAP plugin and the serves the IHost interface which
+    is implemented by the different wrapper flavors.
+
+*/
+
 #pragma once
+
 #include <clap/clap.h>
 #include <vector>
 #include <string>
@@ -120,7 +134,7 @@ namespace Clap
     void deactivate();
     bool start_processing();
     void stop_processing();
-    void process(const clap_process_t* data);
+    // void process(const clap_process_t* data);
     const clap_plugin_gui_t* getUI();
 
     ClapPluginExtensions _ext;
@@ -164,7 +178,8 @@ namespace Clap
       return false;
     }
     void closed(bool was_destroyed)
-    {    }
+    {    
+    }
 
     // clap_timer support
     bool register_timer(uint32_t period_ms, clap_id* timer_id);

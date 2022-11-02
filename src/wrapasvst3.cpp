@@ -346,7 +346,7 @@ Vst::UnitID ClapAsVst3::getUnitInfo(const char* modulename)
   size_t i = 0;
   while (path.size() > i)
   {
-    auto loc = _moduleToUnit.find(path[i]);
+    loc = _moduleToUnit.find(path[i]);
     if (loc != _moduleToUnit.end())
     {
       if (!curpath.empty())
@@ -364,7 +364,7 @@ Vst::UnitID ClapAsVst3::getUnitInfo(const char* modulename)
       std::string u8name(path[i]);
       if (VST3::StringConvert::convert(u8name, name))
       {
-        Vst::UnitID newid = units.size();
+        Vst::UnitID newid = static_cast<Steinberg::int32>(units.size());
         Vst::Unit* newunit = new Vst::Unit(name, newid, id);  // a new unit without a program list
         addUnit(newunit);
         _moduleToUnit[u8name] = newid;
@@ -670,7 +670,7 @@ bool ClapAsVst3::register_timer(uint32_t period_ms, clap_id* timer_id)
     if (to.period == 0)
     {
       // reuse timer object
-      to.timer_id = i;
+      to.timer_id = static_cast<clap_id>(i);
       to.period = period_ms;
       to.nexttick = os::getTickInMS() + period_ms;
       // pass the id to the plugin
@@ -728,7 +728,7 @@ void ClapAsVst3::onIdle()
 
   if (_requestedFlush)
   {
-    std::lock_guard n(_processingLock);
+    std::lock_guard lock(_processingLock);
 
     _requestedFlush = false;
     if (!_processing)

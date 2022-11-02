@@ -4,9 +4,6 @@
 #include <cassert>
 #include <string.h>
 
-#if WIN32
-#pragma warning( disable: 6386 )
-#endif
 
 static constexpr bool isBigEndian = false;
 

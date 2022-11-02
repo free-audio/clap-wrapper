@@ -3,17 +3,23 @@
 /*
     Vst3Parameter
 
+    Copyright (c) 2022 Timo Kaluza (defiantnerd)
+
+    This file is part of the clap-wrappers project which is released under MIT License.
+    See file LICENSE or go to https://github.com/defiantnerd/clap-wrapper for full license details.
+
     is being derived from Steinberg::Vst::Parameter and additionally stores
     information about the CLAP info (like the unique id of the CLAP parameter
     as well as the cookie pointer which is needed to address a parameter change
-    properly.
+    properly).
 
     Still, the wrapper will use the ParameterContainer (std::vector<IPtr<Parameter>>)
     to communicate with the VST3 host.
 
     call Vst3Parameter::create(clapinfo) to create a heap based instance of it.
 
-    The create function will apply everything necessary to the Vst::Parameter object.
+    The create function will apply everything necessary to the Vst::Parameter object in terms
+    of value range conversion.
 */
 
 #include <clap/ext/params.h>
