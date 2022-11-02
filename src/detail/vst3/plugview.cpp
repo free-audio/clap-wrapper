@@ -228,8 +228,8 @@ bool WrappedView::request_resize(uint32_t width, uint32_t height)
   auto oldrect = _rect;
   _rect.right = _rect.left + (int32)width;
   _rect.bottom = _rect.top + (int32)height;
-  
-  if (!_plugFrame->resizeView(this, &_rect))
+
+  if (_plugFrame && !_plugFrame->resizeView(this, &_rect))
   {
     _rect = oldrect;
     return false;
