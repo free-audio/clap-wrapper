@@ -357,12 +357,18 @@ namespace Clap
       OutputDebugStringA(msg);
       _CrtDbgBreak();
 #endif
+#if MAC
+        fprintf(stderr,"%s\n",msg);
+#endif
       break;
     }
     n.append(msg);
 #if WIN32
     OutputDebugStringA(n.c_str());
     OutputDebugStringA("\n");
+#endif
+#if MAC
+    fprintf(stderr,"%s\n",n.c_str());
 #endif
   }
 
