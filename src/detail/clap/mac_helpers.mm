@@ -1,4 +1,13 @@
+/* 
 
+    Copyright (c) 2022 Paul Walker
+                       Timo Kaluza (defiantnerd)
+                       
+
+    This file is part of the clap-wrappers project which is released under MIT License.
+    See file LICENSE or go to https://github.com/defiantnerd/clap-wrapper for full license details.
+
+*/
 
 #include <vector>
 #include <filesystem>
