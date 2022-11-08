@@ -1,16 +1,22 @@
+#
+#	clap-wrapper project
+#
+#   Copyright (c) 2022 Timo Kaluza (defiantnerd)
+#					   Paul Walker
+#
+#	
+
+
 cmake_minimum_required(VERSION 3.20)
 cmake_policy(SET CMP0091 NEW)
 
-#
-#		a lot of work in progress and things left todo
-#
-
-project(clap-as-vst3 
+project(clap-wrapper
 	LANGUAGES C CXX
-	VERSION 0.0.3
-	DESCRIPTION "CLAP as VST3"
+	VERSION 0.0.4
+	DESCRIPTION "CLAP-as-X wrappers"
 )
 
+## configuring VST3 SDK
 # plugin UI will be provided by the CLAP
 set(SMTG_ADD_VSTGUI OFF)
 
@@ -34,7 +40,7 @@ include(cmake/enable_sdks.cmake)
 set(CMAKE_CXX_STANDARD 17)
 
 # set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
-set(CMAKE_OSX_DEPLOYMENT_TARGET 10.13 CACHE STRING "Build for 10.13")
+set(CMAKE_OSX_DEPLOYMENT_TARGET 10.15 CACHE STRING "Build for 10.15")
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # ------------------------------------------------------------------------------

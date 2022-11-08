@@ -1,6 +1,7 @@
 /* 
 
     Copyright (c) 2022 Timo Kaluza (defiantnerd)
+                       Paul Walker
 
     This file is part of the clap-wrappers project which is released under MIT License.
     See file LICENSE or go to https://github.com/defiantnerd/clap-wrapper for full license details.
@@ -60,7 +61,6 @@ namespace Clap
 
   private:
 #if MAC
-    // FIXME keep a bundle ref around
    CFBundleRef _bundle{nullptr};
 #endif
 

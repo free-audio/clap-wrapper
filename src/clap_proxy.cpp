@@ -98,25 +98,13 @@ namespace Clap
 
     const clap_host_gui hostgui = {
     resize_hints_changed,request_resize,request_show,request_hide,closed };
-    
-    static bool register_timer(const clap_host_t* host, uint32_t period_ms, clap_id* timer_id)
-    {
-      return  self(host)->register_timer(period_ms, timer_id);
-    }
 
-    static bool unregister_timer(const clap_host_t* host, clap_id timer_id)
-    {
-      return  self(host)->unregister_timer(timer_id);
-    }
+    const clap_host_timer_support hosttimer = { 
+      /* register_timer */    [](const clap_host_t* host, uint32_t period_ms, clap_id* timer_id) -> bool { return  self(host)->register_timer(period_ms, timer_id); }, 
+      /* unregister_timer */  [](const clap_host_t* host, clap_id timer_id) -> bool { return  self(host)->unregister_timer(timer_id); }
+    };
 
-    const clap_host_timer_support hosttimer = { register_timer, unregister_timer };
-
-    static void latency_changed(const clap_host_t* host)
-    {
-      self(host)->latency_changed();
-    }
-
-    const clap_host_latency latency = { latency_changed };
+    const clap_host_latency latency = { [](const clap_host_t* host) -> void { self(host)->latency_changed(); } };
 
     static void tail_changed(const clap_host_t* host)
     {

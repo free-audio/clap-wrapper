@@ -1,5 +1,10 @@
 #pragma once
 
+/*
+		a minimalistic OS layer
+
+*/
+
 #include<atomic>
 #include <string>
 
