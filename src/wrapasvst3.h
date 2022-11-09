@@ -6,7 +6,7 @@
     Copyright (c) 2022 Timo Kaluza (defiantnerd)
 
 		This file is part of the clap-wrappers project which is released under MIT License.
-		See file LICENSE or go to https://github.com/defiantnerd/clap-wrapper for full license details.
+		See file LICENSE or go to https://github.com/free-audio/clap-wrapper for full license details.
 
 		This VST3 opens a CLAP plugin and matches all corresponding VST3 calls to it.
 		For the VST3 Host it is a VST3 plugin, for the CLAP plugin it is a CLAP host.
