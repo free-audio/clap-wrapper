@@ -246,7 +246,7 @@ namespace Crypto
 
   struct sha1hash Sha1::hash()
   {
-    paddmessage();
+    padmessage();
     
     struct sha1hash r;
     int i = 0;
