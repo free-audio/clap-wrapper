@@ -11,11 +11,16 @@
 #include "public.sdk/source/main/moduleinit.h"
 #include "osutil.h"
 #include <filesystem>
+#include <stdio.h>
 
 #include <dlfcn.h>
 
 namespace os
 {
+	void log(const char* text)
+	{
+		fprintf(stderr, "%s\n", text);
+	}
 
 	class LinuxHelper
 	{

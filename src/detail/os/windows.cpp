@@ -21,6 +21,11 @@ extern HINSTANCE ghInst;
 namespace os
 {
 
+	void log(const char* text)
+	{
+		OutputDebugStringA(text);
+	}
+
 	class WindowsHelper
 	{
 	public:

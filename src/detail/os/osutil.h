@@ -5,8 +5,12 @@
 
 */
 
-#include<atomic>
+#include <atomic>
 #include <string>
+#define FMT_HEADER_ONLY 1
+#include "fmt/format.h"
+#include "fmt/ranges.h"
+
 
 namespace os
 {
@@ -21,10 +25,39 @@ namespace os
 	uint64_t getTickInMS();
 	std::string getParentFolderName();
 	std::string getBinaryName();
+
+	template <typename... Args>
+	void log(const char* format_str, Args&&... args) {
+		fmt::memory_buffer buf;
+		fmt::format_to(std::back_inserter(buf), format_str, args...);
+		buf.push_back(0);
+		log(buf.data());
+	};
+	void log(const char* text);
 }
+
+#ifndef CLAP_WRAPPER_LOGLEVEL
+#define CLAP_WRAPPER_LOGLEVEL 2
+#endif
+
+#if (CLAP_WRAPPER_LOGLEVEL == 0)
+#define LOGINFO(...) (void(0))
+#define LOGDETAIL(...) (void(0))
+#endif
+
+#if (CLAP_WRAPPER_LOGLEVEL == 1)
+#define LOGINFO os::log
+#define LOGDETAIL(...) (void(0))
+#endif
+
+#if (CLAP_WRAPPER_LOGLEVEL == 2)
+#define LOGINFO os::log
+#define LOGDETAIL os::log
+#endif
 
 namespace util
 {
+
 	template<typename T, uint32_t Q>
 	class fixedqueue
 	{

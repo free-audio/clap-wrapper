@@ -15,9 +15,14 @@
 #include "osutil.h"
 #include <vector>
 #include <filesystem>
+#include <iostream>
 
 namespace os
 {
+	void log(const char* text)
+	{
+	  NSLog(@"%s", text);
+	}
 
 	class MacOSHelper
 	{

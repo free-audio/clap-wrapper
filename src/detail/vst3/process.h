@@ -16,13 +16,14 @@
 #include <pluginterfaces/vst/ivstevents.h>
 #include <pluginterfaces/vst/ivstaudioprocessor.h>
 #include <public.sdk/source/vst/vstparameters.h>
+#include <public.sdk/source/vst/vstbus.h>
 #include <vector>
+#include <memory>
 
 #include "../clap/automation.h"
 
 namespace Clap
 {
-
 	class ProcessAdapter
 	{
 	public:
@@ -36,16 +37,31 @@ namespace Clap
 			clap_event_note_expression_t noteexpression;
 		} clap_multi_event_t;
 
-		void setupProcessing(const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params, size_t numInputs, size_t numOutputs, size_t numEventInputs, size_t numEventOutputs, Steinberg::Vst::ParameterContainer& params, Steinberg::Vst::IComponentHandler* componenthandler, IAutomation* automation, bool enablePolyPressure);
+		// the bitly helpers
+		static void setbit(uint64_t& val, int bit, bool value)
+		{
+			if (value) val |= ((uint64_t)1 << bit); else val &= ~((uint64_t)1 << bit);
+		}
+		static void setbits(uint64_t& val, int pos, int nbits, bool value)
+		{
+			uint64_t mask = (((uint64_t)1 << nbits) - 1);
+			val &= ~(mask << pos);
+			if (value) val |= mask << pos;
+		}
+
+		void setupProcessing(const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params, 
+			Steinberg::Vst::BusList& numInputs, Steinberg::Vst::BusList& numOutputs,
+			uint32_t numSamples, size_t numEventInputs, size_t numEventOutputs, Steinberg::Vst::ParameterContainer& params, Steinberg::Vst::IComponentHandler* componenthandler, IAutomation* automation, bool enablePolyPressure);
 		void process(Steinberg::Vst::ProcessData& data);
 		void flush();
 		void processOutputParams(Steinberg::Vst::ProcessData& data);
+		void activateAudioBus(Steinberg::Vst::BusDirection dir, Steinberg::int32 index, Steinberg::TBool state);
 
 		// C callbacks
 		static uint32_t input_events_size(const struct clap_input_events* list);
 		static const clap_event_header_t* input_events_get(const struct clap_input_events* list, uint32_t index);
 
-		static bool output_events_try_push(const struct clap_output_events* list, const clap_event_header_t* event);
+		static bool output_events_try_push(const struct clap_output_events* list, const clap_event_header_t* event);		
 	private:
 		void sortEventIndices();
 		void processInputEvents(Steinberg::Vst::IEventList* eventlist);
@@ -61,6 +77,8 @@ namespace Clap
 		Steinberg::Vst::ParameterContainer* parameters = nullptr;
 		Steinberg::Vst::IComponentHandler* _componentHandler = nullptr;
 		IAutomation* _automation = nullptr;
+		Steinberg::Vst::BusList* _audioinputs = nullptr;
+		Steinberg::Vst::BusList* _audiooutputs = nullptr;
 
 		// for automation gestures
 		std::vector<clap_id> _gesturedParameters;
@@ -76,13 +94,17 @@ namespace Clap
 		};
 		std::vector<ActiveNote> _activeNotes;
 
-		clap_audio_buffer_t _inputs = {};
-		clap_audio_buffer_t _outputs = {};
+		clap_audio_buffer_t* _input_ports = nullptr;
+		clap_audio_buffer_t* _output_ports = nullptr;
 		clap_event_transport_t _transport = {};
 		clap_input_events_t _in_events = {};
 		clap_output_events_t _out_events = {};
 
-		clap_process_t _processData = { -1, 0, &_transport, &_inputs, &_outputs, 0, 0, &_in_events, &_out_events };
+		float* _silent_input = nullptr;
+		float* _silent_output = nullptr;
+
+		clap_process_t _processData = { -1, 0, &_transport, nullptr, nullptr, 0, 0, &_in_events, &_out_events };
+
 
 		Steinberg::Vst::ProcessData* _vstdata = nullptr;
 

@@ -146,6 +146,8 @@ tresult PLUGIN_API ClapAsVst3::setupProcessing(Vst::ProcessSetup& newSetup)
   _plugin->setSampleRate(newSetup.sampleRate);
   _plugin->setBlockSizes(newSetup.maxSamplesPerBlock, newSetup.maxSamplesPerBlock);
 
+  _largestBlocksize = newSetup.maxSamplesPerBlock;
+
   return kResultOk;
 }
 tresult PLUGIN_API ClapAsVst3::setProcessing(TBool state)
@@ -155,13 +157,18 @@ tresult PLUGIN_API ClapAsVst3::setProcessing(TBool state)
   {
     _processing = true;
     auto supportsnoteexpression = (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_PRESSURE);
-
+    
     // the processAdapter needs to know a few things to intercommunicate between VST3 host and CLAP plugin.
-    _processAdapter->setupProcessing(_plugin->_plugin, _plugin->_ext._params, 
-      this->audioInputs.size(), this->audioOutputs.size(), 
-      this->eventInputs.size(), this->eventOutputs.size(), 
+
+    _processAdapter->setupProcessing(_plugin->_plugin, _plugin->_ext._params,
+      this->audioInputs, this->audioOutputs,
+      this->_largestBlocksize,
+      this->eventInputs.size(), this->eventOutputs.size(),
       parameters, componentHandler, this,
       supportsnoteexpression);
+    updateAudioBusses();
+
+
     return (_plugin->start_processing() ? Steinberg::kResultOk : Steinberg::kResultFalse);
   }
   else
@@ -188,6 +195,11 @@ IPlugView* PLUGIN_API ClapAsVst3::createView(FIDString name)
     return _wrappedview;
   }
   return nullptr;
+}
+
+tresult PLUGIN_API ClapAsVst3::activateBus(Vst::MediaType type, Vst::BusDirection dir, int32 index, TBool state)
+{
+  return super::activateBus(type, dir, index, state);
 }
 
 //-----------------------------------------------------------------------------
@@ -309,6 +321,19 @@ void ClapAsVst3::addMIDIBusFrom(const clap_note_port_info_t* info, uint32_t inde
       addEventInput(name16, numchannels, Vst::BusTypes::kMain, Vst::BusInfo::kDefaultActive);
     }
   }
+}
+
+void ClapAsVst3::updateAudioBusses()
+{
+  for ( int i = 0 ; i < audioInputs.size() ; ++i)
+  {
+    _processAdapter->activateAudioBus(Vst::kInput, i,audioInputs[i]->isActive());
+  }
+  for (int i = 0; i < audioOutputs.size(); ++i)
+  {
+    _processAdapter->activateAudioBus(Vst::kOutput, i, audioOutputs[i]->isActive());
+  }
+
 }
 
 static std::vector<std::string> split(const std::string& s, char delimiter)
@@ -735,7 +760,7 @@ void ClapAsVst3::onIdle()
     {
       // setup a ProcessAdapter just for flush with no audio
       Clap::ProcessAdapter pa;
-      pa.setupProcessing(_plugin->_plugin, _plugin->_ext._params, 0, 0, 0, 0, this->parameters, componentHandler, nullptr, false);
+      pa.setupProcessing(_plugin->_plugin, _plugin->_ext._params, audioInputs, audioOutputs, 0, 0, 0, this->parameters, componentHandler, nullptr, false);
       pa.flush();
     }
   }
