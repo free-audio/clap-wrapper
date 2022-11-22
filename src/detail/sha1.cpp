@@ -275,7 +275,7 @@ namespace Crypto
     r.bytes[i++] = (H[4] >> 16) & 0xFF;
     r.bytes[i++] = (H[4] >> 8) & 0xFF;
     r.bytes[i++] = (H[4]) & 0xFF;
-
+    
     reset();
 
     return r;
