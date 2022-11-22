@@ -6,7 +6,7 @@
     Copyright (c) 2022 Timo Kaluza (defiantnerd)
 
 		This file is part of the clap-wrappers project which is released under MIT License.
-		See file LICENSE or go to https://github.com/defiantnerd/clap-wrapper for full license details.
+		See file LICENSE or go to https://github.com/free-audio/clap-wrapper for full license details.
 
 		This VST3 opens a CLAP plugin and matches all corresponding VST3 calls to it.
 		For the VST3 Host it is a VST3 plugin, for the CLAP plugin it is a CLAP host.
@@ -117,7 +117,8 @@ public:
 	tresult PLUGIN_API setBusArrangements(Vst::SpeakerArrangement* inputs, int32 numIns,
 		Vst::SpeakerArrangement* outputs,
 		int32 numOuts) override;
-
+	tresult PLUGIN_API activateBus(Vst::MediaType type, Vst::BusDirection dir, int32 index,
+		TBool state) override;
 
 	//----from IEditControllerEx1--------------------------------
 	IPlugView* PLUGIN_API createView(FIDString name) override;
@@ -194,6 +195,7 @@ private:
 	// helper functions
 	void addAudioBusFrom(const clap_audio_port_info_t* info, bool is_input);
 	void addMIDIBusFrom(const clap_note_port_info_t* info, uint32_t index, bool is_input);
+	void updateAudioBusses();
 
 	Vst::UnitID getUnitInfo(const char* modulename);
 	std::map<std::string, Vst::UnitID> _moduleToUnit;
@@ -222,6 +224,7 @@ private:
 	Vst::ParamID _IMidiMappingIDs[Vst::ControllerNumbers::kCountCtrlNumber] = { 0 };
 	bool _IMidiMappingEasy = true;
 	uint8_t _numMidiChannels = 16;
+	uint32_t _largestBlocksize = 0;
 
 	// for timer
 	struct TimerObject

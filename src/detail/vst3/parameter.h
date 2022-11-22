@@ -6,7 +6,7 @@
     Copyright (c) 2022 Timo Kaluza (defiantnerd)
 
     This file is part of the clap-wrappers project which is released under MIT License.
-    See file LICENSE or go to https://github.com/defiantnerd/clap-wrapper for full license details.
+    See file LICENSE or go to https://github.com/free-audio/clap-wrapper for full license details.
 
     is being derived from Steinberg::Vst::Parameter and additionally stores
     information about the CLAP info (like the unique id of the CLAP parameter

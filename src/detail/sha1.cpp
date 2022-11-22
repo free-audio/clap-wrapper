@@ -247,7 +247,7 @@ namespace Crypto
   struct sha1hash Sha1::hash()
   {
     padmessage();
-    
+
     struct sha1hash r;
     int i = 0;
 
@@ -277,6 +277,7 @@ namespace Crypto
     r.bytes[i++] = (H[4]) & 0xFF;
     
     reset();
+
     return r;
   }
 

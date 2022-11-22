@@ -2,6 +2,8 @@
 #include <pluginterfaces/vst/ivstevents.h>
 #include <pluginterfaces/vst/ivstparameterchanges.h>
 #include <pluginterfaces/vst/ivstmidicontrollers.h>
+#include <pluginterfaces/vst/ivstcomponent.h>
+
 #include "parameter.h"
 #include <algorithm>
 
@@ -13,27 +15,88 @@ namespace Clap
 {
   using namespace Steinberg;
 
-  void ProcessAdapter::setupProcessing(const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params, size_t numInputs, size_t numOutputs, size_t numEventInputs, size_t numEventOutputs, Steinberg::Vst::ParameterContainer& params, Steinberg::Vst::IComponentHandler* componenthandler, IAutomation* automation, bool enablePolyPressure)
+  void ProcessAdapter::setupProcessing(const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params,
+    Vst::BusList& audioinputs, Vst::BusList& audiooutputs,
+    uint32_t numSamples, size_t numEventInputs, size_t numEventOutputs, 
+    Steinberg::Vst::ParameterContainer& params, Steinberg::Vst::IComponentHandler* componenthandler,
+    IAutomation* automation, bool enablePolyPressure)
   {
     _plugin = plugin;
     _ext_params = ext_params;
+    _audioinputs = &audioinputs;
+    _audiooutputs = &audiooutputs;
 
     parameters = &params;
     _componentHandler = componenthandler;
     _automation = automation;    
 
-    _processData.audio_inputs_count = numInputs;
-    if (numInputs > 0)
+    if (numSamples > 0)
     {
-      _processData.audio_inputs = &_inputs;
+      delete[] _silent_input;
+      _silent_input = new float[numSamples];
+
+      delete[] _silent_output;
+      _silent_output = new float[numSamples];
+    }
+
+    auto numInputs = _audioinputs->size();
+    auto numOutputs = _audiooutputs->size();
+
+    _processData.audio_inputs_count = numInputs;
+    delete[] _input_ports;
+    _input_ports = nullptr;
+
+    if ( numInputs > 0)
+    {
+      _input_ports = new clap_audio_buffer_t[numInputs];
+      for (int i = 0; i < numInputs; ++i)
+      {
+        clap_audio_buffer_t& bus = _input_ports[i];
+        Vst::BusInfo info;
+        if (_audioinputs->at(i)->getInfo(info))
+        {
+          bus.channel_count = info.channelCount;
+          bus.constant_mask = 0;
+          bus.latency = 0;
+          bus.data64 = 0;
+          bus.data32 = 0;
+        }
+      }
+      _processData.audio_inputs = _input_ports;
+    }
+    else
+    {
+      _processData.audio_inputs = nullptr;
     }
 
     _processData.audio_outputs_count = numOutputs;
+    delete[] _output_ports;
+    _output_ports = nullptr;
+
+
     if (numOutputs > 0)
     {
-      _processData.audio_outputs = &_outputs;
+      _output_ports = new clap_audio_buffer_t[numOutputs];
+      for (int i = 0; i < numOutputs; ++i)
+      {
+        clap_audio_buffer_t& bus = _output_ports[i];
+        Vst::BusInfo info;
+        if (_audiooutputs->at(i)->getInfo(info))
+        {
+          bus.channel_count = info.channelCount;
+          bus.constant_mask = 0;
+          bus.latency = 0;
+          bus.data64 = 0;
+          bus.data32 = 0;
+        }
+      }
+      _processData.audio_outputs = _output_ports;
     }
-
+    else
+    {
+      _processData.audio_outputs = nullptr;
+    }
+    
     _processData.in_events = &_in_events;
     _processData.out_events = &_out_events;
 
@@ -59,6 +122,28 @@ namespace Clap
 
     _supportsPolyPressure = enablePolyPressure;
 
+  }  
+
+  void ProcessAdapter::activateAudioBus(Steinberg::Vst::BusDirection dir, int32 index, TBool state)
+  {
+    /*
+    if (dir == Vst::kInput)
+    {
+      auto& map = _bogus_buffers->_in_channelmap[index];
+      if (state)
+        _bogus_buffers->_active_mask_in |= map._bitmap;
+      else
+        _bogus_buffers->_active_mask_in &= ~map._bitmap;
+    }
+    if (dir == Vst::kOutput)
+    {
+      auto& map = _bogus_buffers->_out_channelmap[index];
+      if (state)
+        _bogus_buffers->_active_mask_out |= map._bitmap;
+      else
+        _bogus_buffers->_active_mask_out &= ~map._bitmap;
+    }
+    */
   }
 
   inline clap_beattime doubleToBeatTime(double t)
@@ -164,44 +249,6 @@ namespace Clap
     // setting up transport
     _processData.frames_count = _vstdata->numSamples;
 
-    clap_audio_buffer_t ins;
-    clap_audio_buffer_t outs;
-
-    // setting up buffers
-    if (_vstdata->numInputs > 0 && _vstdata->inputs)
-    {
-      _processData.audio_inputs = &ins;
-      _processData.audio_inputs_count = _vstdata->numInputs;
-      ins.channel_count = _vstdata->inputs->numChannels;
-      ins.data32 = _vstdata->inputs->channelBuffers32;
-      ins.constant_mask = 0;
-      ins.latency = 0;
-    }
-    else
-    {
-      _processData.audio_inputs = nullptr;
-      _processData.audio_inputs_count = 0;
-    }
-
-    _processData.audio_outputs = &outs;
-    _processData.audio_outputs_count = _vstdata->numOutputs;
-    if (_vstdata->outputs)
-    {
-      _processData.audio_outputs->channel_count = _vstdata->outputs->numChannels;
-      _processData.audio_outputs->data32 = _vstdata->outputs->channelBuffers32;
-      _processData.audio_outputs->constant_mask = 0;
-      _processData.audio_outputs->latency = 0;
-    }
-    else
-    {
-      _processData.audio_outputs->channel_count = 0;
-      _processData.audio_outputs->data32 = 0;
-      _processData.audio_outputs->constant_mask = 0;
-      _processData.audio_outputs->latency = 0;
-    }    
-
-    // TODO: Silent Flags -> _processData.audio_outputs->constant_mask
-    // if ( _vstdata->inputs->silenceFlags)
     // always clear
     _events.clear();
     _eventindices.clear();
@@ -296,6 +343,19 @@ namespace Clap
     }
 
     sortEventIndices();
+
+    // setting the buffers
+    auto inbusses = _audioinputs->size();
+    for (int i = 0; i < inbusses; ++i)
+    {
+      _input_ports[i].data32 = _vstdata->inputs[i].channelBuffers32;
+    }
+
+    auto outbusses = _audiooutputs->size();
+    for (int i = 0; i < outbusses; ++i)
+    {
+      _output_ports[i].data32 = _vstdata->outputs[i].channelBuffers32;
+    }
 
     if (_vstdata->numSamples > 0)
     {
@@ -613,5 +673,6 @@ namespace Clap
       }
     }
   }
+
 
 }

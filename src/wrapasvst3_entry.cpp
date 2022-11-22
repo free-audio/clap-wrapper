@@ -5,7 +5,7 @@
 		Copyright (c) 2022 Timo Kaluza (defiantnerd)
 
 		This file is part of the clap-wrappers project which is released under MIT License.
-		See file LICENSE or go to https://github.com/defiantnerd/clap-wrapper for full license details.
+		See file LICENSE or go to https://github.com/free-audio/clap-wrapper for full license details.
 
 		Provides the entry function for the VST3 flavor of the wrapped plugin.
 
@@ -49,6 +49,7 @@
 #include "wrapasvst3.h"
 #include "public.sdk/source/main/pluginfactory.h"
 #include <iostream>
+#include <array>
 
 using namespace Steinberg::Vst;
 
@@ -82,6 +83,7 @@ bool findPlugin(Clap::Library& lib, const std::string& pluginfilename)
 		 continue;
 		// try to find it the CLAP folder immediately
 		auto k1 = i / pluginfilename;
+		LOGDETAIL("scanning for binary: {}", k1.u8string().c_str());
 		std::cout << "scanning for " << k1 << std::endl;
 		
 		if (std::filesystem::exists(k1))
@@ -94,6 +96,7 @@ bool findPlugin(Clap::Library& lib, const std::string& pluginfilename)
 
 		// Strategy 2: try to locate "CLAP/vendorX/plugY.clap"  - derived from "VST3/vendorX/plugY.vst3"
 		auto k2 = i / parentfolder / pluginfilename;
+		LOGDETAIL("scanning for binary: {}", k2.u8string().c_str());
 		if (std::filesystem::exists(k2))
 		{
 			if (lib.load(k2.u8string().c_str()))
@@ -106,6 +109,7 @@ bool findPlugin(Clap::Library& lib, const std::string& pluginfilename)
 		for (const auto& subdir : std::filesystem::directory_iterator(i))
 		{
 			auto k3 = i / subdir / pluginfilename;
+			LOGDETAIL("scanning for binary: {}", k3.u8string().c_str());
 			if (std::filesystem::exists(k3))
 			{
 				if (lib.load(k3.u8string().c_str()))
@@ -120,7 +124,10 @@ bool findPlugin(Clap::Library& lib, const std::string& pluginfilename)
 
 SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 
-// MessageBoxA(NULL,"halt","me",MB_OK); <- enable this on Windows to get a debug attachment to vstscanner.exe (subprocess of cbse)
+#if _DEBUG
+  // MessageBoxA(NULL,"halt","me",MB_OK); // <- enable this on Windows to get a debug attachment to vstscanner.exe (subprocess of cbse)
+#endif
+
 #if SMTG_OS_WINDOWS
 // #pragma comment(linker, "/EXPORT:" __FUNCTION__ "=" __FUNCDNAME__)
 #endif
@@ -146,15 +153,22 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 				return nullptr;
 			}
 		}
+		else
+		{
+			LOGDETAIL("detected entrypoint in this binary");
+		}
 	}
 	if (gClapLibrary.plugins.empty())
 	{
 		// with no plugins there is nothing to do..
+		LOGINFO("no plugin has been found");
 		return nullptr;
 	}
+
 	if (!clap_version_is_compatible(gClapLibrary.plugins[0]->clap_version))
 	{
 		// CLAP version is not compatible -> eject
+		LOGINFO("CLAP version is not compatible");
 		return nullptr;
 	}
 
@@ -169,6 +183,8 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 		// override for VST3 specifics
 		if (gClapLibrary._pluginFactoryVst3Info)
 		{
+			
+			LOGDETAIL("detected extension `{}`", CLAP_PLUGIN_FACTORY_INFO_VST3);
 			auto& v3 = gClapLibrary._pluginFactoryVst3Info;
 			if (v3->vendor) factoryvendor = v3->vendor;
 			if (v3->vendor_url) vendor_url = v3->vendor_url;
@@ -181,14 +197,19 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 			contact,
 			Vst::kDefaultFactoryFlags);
 
+		LOGDETAIL("created factory for vendor '{}'", factoryvendor);
+
 		gPluginFactory = new Steinberg::CPluginFactory(factoryInfo);		
 		// resize the classInfo vector
 		gCreationContexts.reserve(gClapLibrary.plugins.size());
 		int numPlugins = static_cast<int>(gClapLibrary.plugins.size());
+		LOGDETAIL("number of plugins in factory: {}", numPlugins);
 		for (int ctr = 0; ctr < numPlugins; ++ctr)
 		{
 			auto& clapdescr = gClapLibrary.plugins[ctr];
 			auto vst3info = gClapLibrary.get_vst3_info(ctr);
+
+			LOGDETAIL("  plugin #{}: '{}'", ctr, clapdescr->name);
 
 			std::string n(clapdescr->name);
 #ifdef _DEBUG
@@ -199,7 +220,11 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 			// get vendor -------------------------------------
 			auto pluginvendor = clapdescr->vendor;
 			if (pluginvendor == nullptr || *pluginvendor == 0) pluginvendor = "Unspecified Vendor";
-			if (vst3info && vst3info->vendor) pluginvendor = vst3info->vendor;
+			if (vst3info && vst3info->vendor)
+			{
+				LOGDETAIL("  plugin supports extension '{}'", CLAP_PLUGIN_AS_VST3);
+				pluginvendor = vst3info->vendor;
+			}
 
 			// make id or take it from vst3 info --------------
 			std::string id(clapdescr->id);
@@ -213,9 +238,9 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 				g = Crypto::create_sha1_guid_from_name(id.c_str(), id.size());
 			}
 
-			TUID lcid;			
+			TUID lcid;
 			memcpy(&lcid, &g, sizeof(TUID));
-			
+
 			// features ----------------------------------------
 			std::string features;
 			if (vst3info && vst3info->features)
@@ -226,6 +251,25 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 			{
 				features = clapCategoriesToVST3(clapdescr->features);
 			}
+
+
+#if CLAP_WRAPPER_LOGLEVEL> 1
+			{
+				const uint8_t * v = reinterpret_cast<const uint8_t*>(&g);
+				char x[sizeof(g)*2+8];
+				char* o = x;
+				constexpr char hexchar[] = "0123456789ABCDEF";
+				for (int i = 0 ; i < sizeof(g) ; i++)
+				{
+					auto n = v[i];
+					*o++ = hexchar[(n >> 4) & 0xF];
+					*o++ = hexchar[n & 0xF];
+					if (!(i % 4)) *o++ = 32;
+				}
+				*o++ = 0;
+				LOGDETAIL("plugin id: {} -> {}", clapdescr->id,x);
+			}
+#endif
 
 			gCreationContexts.push_back({ &gClapLibrary, ctr, PClassInfo2(
 				lcid,
@@ -255,6 +299,8 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 FUnknown* ClapAsVst3::createInstance(void* context)
 {	
 	auto ctx = static_cast<CreationContext*>(context);
+	
+	LOGINFO("creating plugin {} (#{})", ctx->classinfo.name, ctx->index);
 	if (ctx->lib->hasEntryPoint())
 	{
 		return (IAudioProcessor*)new ClapAsVst3(ctx->lib, ctx->index, context);
