@@ -303,6 +303,7 @@ FUnknown* ClapAsVst3::createInstance(void* context)
 	LOGINFO("creating plugin {} (#{})", ctx->classinfo.name, ctx->index);
 	if (ctx->lib->hasEntryPoint())
 	{
+		// MessageBoxA(NULL, "halt", "create", MB_OK);
 		return (IAudioProcessor*)new ClapAsVst3(ctx->lib, ctx->index, context);
 	}
 	return nullptr;	// this should never happen.

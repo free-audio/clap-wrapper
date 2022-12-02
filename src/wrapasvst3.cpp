@@ -208,9 +208,9 @@ tresult PLUGIN_API ClapAsVst3::getMidiControllerAssignment(int32 busIndex, int16
   Vst::CtrlNumber midiControllerNumber, Vst::ParamID& id/*out*/)
 {
   // for my first Event bus and for MIDI channel 0 and for MIDI CC Volume only
-  if (busIndex == 0 && channel == 0) // && midiControllerNumber == Vst::kCtrlVolume)
+  if (busIndex == 0 ) // && channel == 0) // && midiControllerNumber == Vst::kCtrlVolume)
   {
-    id = _IMidiMappingIDs[midiControllerNumber];
+    id = _IMidiMappingIDs[channel][midiControllerNumber];
     return kResultTrue;
   }
   return kResultFalse;
@@ -525,7 +525,7 @@ void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
       }
       auto p = Vst3Parameter::create(0, channel, i, x);
       parameters.addParameter(p);
-      _IMidiMappingIDs[i] = x++;
+      _IMidiMappingIDs[channel][i] = x++;
     }
   }
 
