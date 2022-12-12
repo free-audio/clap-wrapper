@@ -87,9 +87,7 @@ Vst3Parameter* Vst3Parameter::create(const clap_param_info_t* info, std::functio
 
 			Denormalize :
 			int discreteValue = min (stepCount, normalized * (stepCount + 1));
-	*/
-
-	auto param_range = (info->max_value - info->min_value);
+	*/	
 
 	v.flags = Vst::ParameterInfo::kNoFlags
 		| ((info->flags & CLAP_PARAM_IS_HIDDEN) ? Vst::ParameterInfo::kIsHidden : 0)

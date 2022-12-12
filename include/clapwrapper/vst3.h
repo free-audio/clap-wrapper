@@ -23,6 +23,27 @@ static const CLAP_CONSTEXPR char CLAP_PLUGIN_AS_VST3[] = "clap.plugin-info-as-vs
 
 typedef uint8_t array_of_16_bytes[16];
 
+// VST3GUID allows you to provide the 4 uint32_t parts of the GUID and transforms them to the 16 byte array
+#define VST3GUID(g1, g2, g3, g4) \
+{                                \
+(uint8_t)((g1 >> 24) & 0xFF),    \
+(uint8_t)((g1 >> 16) & 0xFF),    \
+(uint8_t)((g1 >> 8) & 0xFF),     \
+(uint8_t)((g1) & 0xFF),          \
+(uint8_t)((g2 >> 24) & 0xFF),    \
+(uint8_t)((g2 >> 16) & 0xFF),    \
+(uint8_t)((g2 >> 8) & 0xFF),     \
+(uint8_t)((g2) & 0xFF),          \
+(uint8_t)((g3 >> 24) & 0xFF),    \
+(uint8_t)((g3 >> 16) & 0xFF),    \
+(uint8_t)((g3 >> 8) & 0xFF),     \
+(uint8_t)((g3) & 0xFF),          \
+(uint8_t)((g4 >> 24) & 0xFF),    \
+(uint8_t)((g4 >> 16) & 0xFF),    \
+(uint8_t)((g4 >> 8) & 0xFF),     \
+(uint8_t)((g4) & 0xFF),          \
+}
+
 /*
   clap_plugin_as_vst3
 
