@@ -104,7 +104,7 @@ static const struct _translate
   {nullptr, nullptr}
 };
 
-std::string clapCategoriesToVST3(const char** clap_categories)
+std::string clapCategoriesToVST3(const char* const* clap_categories)
 {
   std::vector<std::string> r;
   auto f = clap_categories;
