@@ -28,11 +28,13 @@
 
 class Vst3Parameter : public Steinberg::Vst::Parameter
 {
+  using super = Steinberg::Vst::Parameter;
 protected:
   Vst3Parameter(const Steinberg::Vst::ParameterInfo& vst3info, const clap_param_info_t* clapinfo);
   Vst3Parameter(const Steinberg::Vst::ParameterInfo& vst3info, uint8_t bus, uint8_t channel, uint8_t cc);
 public:
   virtual ~Vst3Parameter();
+  bool setNormalized(Steinberg::Vst::ParamValue v) override;
   inline double asClapValue(double vst3value) const
   {
     return vst3value * (max_value - min_value) + min_value;

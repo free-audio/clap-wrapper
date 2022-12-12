@@ -221,7 +221,7 @@ private:
 	util::fixedqueue<queueEvent, 8192> _queueToUI;
 
 	// for IMidiMapping
-	Vst::ParamID _IMidiMappingIDs[Vst::ControllerNumbers::kCountCtrlNumber] = { 0 };
+	Vst::ParamID _IMidiMappingIDs[16][Vst::ControllerNumbers::kCountCtrlNumber] = { 0 }; // 16 MappingIDs for 16 Channels
 	bool _IMidiMappingEasy = true;
 	uint8_t _numMidiChannels = 16;
 	uint32_t _largestBlocksize = 0;
