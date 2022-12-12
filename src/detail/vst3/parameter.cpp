@@ -34,6 +34,15 @@ Vst3Parameter::~Vst3Parameter()
 {
 }
 
+bool Vst3Parameter::setNormalized(Steinberg::Vst::ParamValue v)
+{
+	if (isMidi && info.flags & Steinberg::Vst::ParameterInfo::kIsProgramChange)
+	{
+		return true;
+	}
+	return super::setNormalized(v);
+}
+
 Vst3Parameter* Vst3Parameter::create(const clap_param_info_t* info, std::function<Steinberg::Vst::UnitID(const char* modulepath)> getUnitId)
 {
 	Vst::ParameterInfo v;
@@ -70,7 +79,18 @@ Vst3Parameter* Vst3Parameter::create(const clap_param_info_t* info, std::functio
 	v.units[0] = 0;  // unfortunately, CLAP has no unit for parameter values
 	v.unitId = unit;
 
-	v.defaultNormalizedValue = info->default_value;
+	/*
+			In the VST3 SDK the normalized value [0, 1] to discrete value and its inverse function discrete value to normalized value is defined like this:
+
+			Normalize:
+			double normalized = discreteValue / (double) stepCount;
+
+			Denormalize :
+			int discreteValue = min (stepCount, normalized * (stepCount + 1));
+	*/
+
+	auto param_range = (info->max_value - info->min_value);
+
 	v.flags = Vst::ParameterInfo::kNoFlags
 		| ((info->flags & CLAP_PARAM_IS_HIDDEN) ? Vst::ParameterInfo::kIsHidden : 0)
 		| ((info->flags & CLAP_PARAM_IS_BYPASS) ? Vst::ParameterInfo::kIsBypass : 0)
@@ -79,10 +99,12 @@ Vst3Parameter* Vst3Parameter::create(const clap_param_info_t* info, std::functio
 		// | ((info->flags & CLAP_PARAM_IS_READONLY) ? Vst::ParameterInfo::kIsReadOnly : 0)
 		;
 
-	v.defaultNormalizedValue = info->default_value / info->max_value;
+	auto param_range = (info->max_value - info->min_value);
+
+	v.defaultNormalizedValue = (info->default_value-info->min_value) / param_range;
 	if (info->flags & CLAP_PARAM_IS_STEPPED)
 	{
-		auto steps = (info->max_value - info->min_value) + 1;
+		auto steps = param_range + 1;
 		v.stepCount = steps;
 	}
 	else
@@ -116,10 +138,15 @@ Vst3Parameter* Vst3Parameter::create(uint8_t bus, uint8_t channel, uint8_t cc, V
 	// TODO: string shrink algorithm shortening the string a bit
 	str8ToStr16(v.shortTitle, name, str16BufferSize(v.shortTitle));
 	v.units[0] = 0;  // unfortunately, CLAP has no unit for parameter values
-	v.unitId = 0;
+	v.unitId = channel+1;
 
 	v.defaultNormalizedValue = 0;
 	v.flags = Vst::ParameterInfo::kNoFlags;
+	if (cc == Vst::ControllerNumbers::kCtrlProgramChange)
+	{
+		v.flags |= Vst::ParameterInfo::kIsProgramChange;
+		v.stepCount = 128;
+	}
 
 	v.defaultNormalizedValue = 0;
 	v.stepCount = 128;
