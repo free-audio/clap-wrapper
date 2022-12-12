@@ -25,6 +25,7 @@ namespace os
 	{
 		OutputDebugStringA(text);
 		OutputDebugStringA("\n");
+
 	}
 
 	class WindowsHelper
