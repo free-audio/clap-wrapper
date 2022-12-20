@@ -3,7 +3,7 @@
 #include "clap/private/macros.h"
 
 /*
-    Some information for the VST3 factory/plugin structures can not 
+    Some information for the VST3 factory/plugin structures can not
     be derived from the clap headers or structures. While in a pristine
     CLAP those information can be generated, you will need those informations
     fixed when maintaining compatibility with previously published
@@ -23,26 +23,50 @@ static const CLAP_CONSTEXPR char CLAP_PLUGIN_AS_VST3[] = "clap.plugin-info-as-vs
 
 typedef uint8_t array_of_16_bytes[16];
 
+
 // VST3GUID allows you to provide the 4 uint32_t parts of the GUID and transforms them to the 16 byte array
+#if WIN32
 #define VST3GUID(g1, g2, g3, g4) \
 {                                \
-(uint8_t)((g1 >> 24) & 0xFF),    \
-(uint8_t)((g1 >> 16) & 0xFF),    \
-(uint8_t)((g1 >> 8) & 0xFF),     \
-(uint8_t)((g1) & 0xFF),          \
-(uint8_t)((g2 >> 24) & 0xFF),    \
-(uint8_t)((g2 >> 16) & 0xFF),    \
-(uint8_t)((g2 >> 8) & 0xFF),     \
-(uint8_t)((g2) & 0xFF),          \
-(uint8_t)((g3 >> 24) & 0xFF),    \
-(uint8_t)((g3 >> 16) & 0xFF),    \
-(uint8_t)((g3 >> 8) & 0xFF),     \
-(uint8_t)((g3) & 0xFF),          \
-(uint8_t)((g4 >> 24) & 0xFF),    \
-(uint8_t)((g4 >> 16) & 0xFF),    \
-(uint8_t)((g4 >> 8) & 0xFF),     \
-(uint8_t)((g4) & 0xFF),          \
+(uint8_t)((g1 & 0x000000FF)      ),    \
+(uint8_t)((g1 & 0x0000FF00) >>  8),    \
+(uint8_t)((g1 & 0x00FF0000) >> 16),    \
+(uint8_t)((g1 & 0xFF000000) >> 24),    \
+(uint8_t)((g2 & 0x00FF0000) >> 16),    \
+(uint8_t)((g2 & 0xFF000000) >> 24),    \
+(uint8_t)((g2 & 0x000000FF)      ),    \
+(uint8_t)((g2 & 0x0000FF00) >>  8),    \
+(uint8_t)((g3 & 0xFF000000) >> 24),    \
+(uint8_t)((g3 & 0x00FF0000) >> 16),    \
+(uint8_t)((g3 & 0x0000FF00) >>  8),    \
+(uint8_t)((g3 & 0x000000FF)      ),    \
+(uint8_t)((g4 & 0xFF000000) >> 24),    \
+(uint8_t)((g4 & 0x00FF0000) >> 16),    \
+(uint8_t)((g4 & 0x0000FF00) >>  8),    \
+(uint8_t)((g4 & 0x000000FF)      ),    \
 }
+#else
+#define VST3GUID(g1, g2, g3, g4) \
+{                                \
+(uint8_t)((g1 & 0xFF000000) >> 24),    \
+(uint8_t)((g1 & 0x00FF0000) >> 16),    \
+(uint8_t)((g1 & 0x0000FF00) >>  8),    \
+(uint8_t)((g1 & 0x000000FF)      ),    \
+(uint8_t)((g2 & 0xFF000000) >> 24),    \
+(uint8_t)((g2 & 0x00FF0000) >> 16),    \
+(uint8_t)((g2 & 0x0000FF00) >>  8),    \
+(uint8_t)((g2 & 0x000000FF)      ),    \
+(uint8_t)((g3 & 0xFF000000) >> 24),    \
+(uint8_t)((g3 & 0x00FF0000) >> 16),    \
+(uint8_t)((g3 & 0x0000FF00) >>  8),    \
+(uint8_t)((g3 & 0x000000FF)      ),    \
+(uint8_t)((g4 & 0xFF000000) >> 24),    \
+(uint8_t)((g4 & 0x00FF0000) >> 16),    \
+(uint8_t)((g4 & 0x0000FF00) >>  8),    \
+(uint8_t)((g4 & 0x000000FF)      ),    \
+}
+
+#endif
 
 /*
   clap_plugin_as_vst3
@@ -76,18 +100,18 @@ typedef struct clap_plugin_factory_as_vst3
 
   // retrieve additional information for the Steinberg::PClassInfo2 struct by pointer to clap_plugin_as_vst3
   // returns nullptr if no additional information is provided or can be a nullptr itself
-  const clap_plugin_info_as_vst3_t* (CLAP_ABI *get_vst3_info)(const clap_plugin_factory_as_vst3* factory, uint32_t index);
+  const clap_plugin_info_as_vst3_t* (CLAP_ABI* get_vst3_info)(const clap_plugin_factory_as_vst3* factory, uint32_t index);
 } clap_plugin_factory_as_vst3_t;
 
 enum clap_supported_note_expressions
 {
-  AS_VST3_NOTE_EXPRESSION_VOLUME       = 1 << 0,
-  AS_VST3_NOTE_EXPRESSION_PAN          = 1 << 1,
-  AS_VST3_NOTE_EXPRESSION_TUNING       = 1 << 2,
-  AS_VST3_NOTE_EXPRESSION_VIBRATO      = 1 << 3,
-  AS_VST3_NOTE_EXPRESSION_EXPRESSION   = 1 << 4,
-  AS_VST3_NOTE_EXPRESSION_BRIGHTNESS   = 1 << 5,
-  AS_VST3_NOTE_EXPRESSION_PRESSURE     = 1 << 6
+  AS_VST3_NOTE_EXPRESSION_VOLUME = 1 << 0,
+  AS_VST3_NOTE_EXPRESSION_PAN = 1 << 1,
+  AS_VST3_NOTE_EXPRESSION_TUNING = 1 << 2,
+  AS_VST3_NOTE_EXPRESSION_VIBRATO = 1 << 3,
+  AS_VST3_NOTE_EXPRESSION_EXPRESSION = 1 << 4,
+  AS_VST3_NOTE_EXPRESSION_BRIGHTNESS = 1 << 5,
+  AS_VST3_NOTE_EXPRESSION_PRESSURE = 1 << 6
 };
 
 /*
@@ -96,7 +120,7 @@ enum clap_supported_note_expressions
 */
 typedef struct clap_plugin_as_vst3
 {
-  uint32_t (CLAP_ABI *getNumMIDIChannels) (const clap_plugin* plugin, uint32_t note_port); // return 1-16
-  uint32_t (CLAP_ABI *supportedNoteExpressions) (const clap_plugin* plugin); // returns a bitmap of clap_supported_note_expressions
+  uint32_t(CLAP_ABI* getNumMIDIChannels) (const clap_plugin* plugin, uint32_t note_port); // return 1-16
+  uint32_t(CLAP_ABI* supportedNoteExpressions) (const clap_plugin* plugin); // returns a bitmap of clap_supported_note_expressions
 } clap_plugin_as_vst3_t;
 
