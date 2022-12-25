@@ -191,7 +191,12 @@ IPlugView* PLUGIN_API ClapAsVst3::createView(FIDString name)
   if (_plugin->_ext._gui)
   {
     _wrappedview = new WrappedView(_plugin->_plugin, _plugin->_ext._gui,
-      [&] {_wrappedview = nullptr; });
+      [&] 
+      { 
+         // the host calls the destructor, the wrapper just removes its pointer
+        _wrappedview = nullptr; 
+      }
+      );
     return _wrappedview;
   }
   return nullptr;

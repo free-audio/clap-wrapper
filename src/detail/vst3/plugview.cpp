@@ -8,6 +8,7 @@ WrappedView::WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* g
   , IPlugView()
   , _plugin(plugin)
   , _extgui(gui)
+  , _onDestroy(onDestroy)
 {
   
 }
