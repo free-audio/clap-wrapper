@@ -266,76 +266,79 @@ namespace Clap
         auto paramid = k->getParameterId();
 
         auto param = (Vst3Parameter*)parameters->getParameter(paramid);
-        if (param->isMidi)
+        if (param)
         {
-
-          auto nums = k->getPointCount();
-
-          Vst::ParamValue value;
-          int32 offset;
-          if (k->getPoint(nums - 1, offset, value) == kResultOk)
+          if (param->isMidi)
           {
-            // create MIDI event
-            clap_multi_event_t n;
-            n.param.header.type = CLAP_EVENT_MIDI;
-            n.param.header.flags = 0;
-            n.param.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-            n.param.header.time = offset;
-            n.param.header.size = sizeof(clap_event_midi_t);
-            n.midi.port_index = 0;
 
-            switch (param->controller)
+            auto nums = k->getPointCount();
+
+            Vst::ParamValue value;
+            int32 offset;
+            if (k->getPoint(nums - 1, offset, value) == kResultOk)
             {
-            case Vst::ControllerNumbers::kAfterTouch:
-              n.midi.data[0] = 0xD0 | param->channel;
-              n.midi.data[1] = param->asClapValue(value);
-              n.midi.data[2] = 0;
-              break;
-            case Vst::ControllerNumbers::kPitchBend:
+              // create MIDI event
+              clap_multi_event_t n;
+              n.param.header.type = CLAP_EVENT_MIDI;
+              n.param.header.flags = 0;
+              n.param.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+              n.param.header.time = offset;
+              n.param.header.size = sizeof(clap_event_midi_t);
+              n.midi.port_index = 0;
+
+              switch (param->controller)
               {
-              auto val = (uint16_t) param->asClapValue(value);
+              case Vst::ControllerNumbers::kAfterTouch:
+                n.midi.data[0] = 0xD0 | param->channel;
+                n.midi.data[1] = param->asClapValue(value);
+                n.midi.data[2] = 0;
+                break;
+              case Vst::ControllerNumbers::kPitchBend:
+              {
+                auto val = (uint16_t)param->asClapValue(value);
                 n.midi.data[0] = 0xE0 | param->channel; // $Ec
                 n.midi.data[1] = (val & 0x7F);          // LSB
                 n.midi.data[2] = (val >> 7) & 0x7F;     // MSB
               }
               break;
-            default:
-              n.midi.data[0] = 0xB0 | param->channel;
-              n.midi.data[1] = param->controller;
-              n.midi.data[2] = param->asClapValue(value);
-              break;
+              default:
+                n.midi.data[0] = 0xB0 | param->channel;
+                n.midi.data[1] = param->controller;
+                n.midi.data[2] = param->asClapValue(value);
+                break;
+              }
+
+              _eventindices.push_back(_events.size());
+              _events.push_back(n);
             }
-
-            _eventindices.push_back(_events.size());
-            _events.push_back(n);
           }
-        }
-        else
-        {
-          auto nums = k->getPointCount();
-
-          Vst::ParamValue value;
-          int32 offset;
-          if (k->getPoint(nums - 1, offset, value) == kResultOk)
+          else
           {
-            clap_multi_event_t n;
-            n.param.header.type = CLAP_EVENT_PARAM_VALUE;
-            n.param.header.flags = 0;
-            n.param.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-            n.param.header.time = offset;
-            n.param.header.size = sizeof(clap_event_param_value);
-            n.param.param_id = param->id;
-            n.param.cookie = param->cookie;
+            auto nums = k->getPointCount();
 
-            // nothing note specific
-            n.param.note_id = -1;   // always global
-            n.param.port_index = -1;
-            n.param.channel = -1;
-            n.param.key = -1;
+            Vst::ParamValue value;
+            int32 offset;
+            if (k->getPoint(nums - 1, offset, value) == kResultOk)
+            {
+              clap_multi_event_t n;
+              n.param.header.type = CLAP_EVENT_PARAM_VALUE;
+              n.param.header.flags = 0;
+              n.param.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+              n.param.header.time = offset;
+              n.param.header.size = sizeof(clap_event_param_value);
+              n.param.param_id = param->id;
+              n.param.cookie = param->cookie;
 
-            n.param.value = param->asClapValue(value);
-            _eventindices.push_back(_events.size());
-            _events.push_back(n);
+              // nothing note specific
+              n.param.note_id = -1;   // always global
+              n.param.port_index = -1;
+              n.param.channel = -1;
+              n.param.key = -1;
+
+              n.param.value = param->asClapValue(value);
+              _eventindices.push_back(_events.size());
+              _events.push_back(n);
+            }
           }
         }
 
@@ -344,22 +347,37 @@ namespace Clap
 
     sortEventIndices();
 
-    // setting the buffers
-    auto inbusses = _audioinputs->size();
-    for (int i = 0; i < inbusses; ++i)
-    {
-      _input_ports[i].data32 = _vstdata->inputs[i].channelBuffers32;
-    }
+    bool doProcess = true;
 
-    auto outbusses = _audiooutputs->size();
-    for (int i = 0; i < outbusses; ++i)
+    if (_vstdata->numSamples > 0 )
     {
-      _output_ports[i].data32 = _vstdata->outputs[i].channelBuffers32;
-    }
+      // setting the buffers
+      auto inbusses = _audioinputs->size();
+      for (int i = 0; i < inbusses; ++i)
+      {
+        if (_vstdata->inputs[i].numChannels > 0)
+          _input_ports[i].data32 = _vstdata->inputs[i].channelBuffers32;
+        else
+          doProcess = false;
+      }
 
-    if (_vstdata->numSamples > 0)
-    {
-      _plugin->process(_plugin, &_processData);
+      auto outbusses = _audiooutputs->size();
+      for (int i = 0; i < outbusses; ++i)
+      {
+        if (_vstdata->outputs[i].numChannels > 0)
+          _output_ports[i].data32 = _vstdata->outputs[i].channelBuffers32;
+        else
+          doProcess = false;
+      }
+      if (doProcess)
+        _plugin->process(_plugin, &_processData);
+      else
+      {
+        if (_ext_params)
+        {
+          _ext_params->flush(_plugin, _processData.in_events, _processData.out_events);
+        }
+      }
     }
     else
     {

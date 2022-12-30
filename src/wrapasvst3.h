@@ -117,6 +117,7 @@ public:
 	tresult PLUGIN_API setBusArrangements(Vst::SpeakerArrangement* inputs, int32 numIns,
 		Vst::SpeakerArrangement* outputs,
 		int32 numOuts) override;
+	tresult PLUGIN_API getBusArrangement(Vst::BusDirection dir, int32 index, Vst::SpeakerArrangement& arr) override;
 	tresult PLUGIN_API activateBus(Vst::MediaType type, Vst::BusDirection dir, int32 index,
 		TBool state) override;
 
