@@ -125,6 +125,10 @@ namespace Clap
 #if WIN
     if (_handle && !_selfcontained)
     {
+      if (_pluginEntry)
+      {
+        _pluginEntry->deinit();
+      }
       FreeLibrary(_handle);
     }
     _handle = 0;

@@ -201,6 +201,7 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 
 		gPluginFactory = new Steinberg::CPluginFactory(factoryInfo);		
 		// resize the classInfo vector
+		gCreationContexts.clear();
 		gCreationContexts.reserve(gClapLibrary.plugins.size());
 		int numPlugins = static_cast<int>(gClapLibrary.plugins.size());
 		LOGDETAIL("number of plugins in factory: {}", numPlugins);

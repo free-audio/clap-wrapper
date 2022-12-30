@@ -153,45 +153,63 @@ tresult PLUGIN_API ClapAsVst3::setupProcessing(Vst::ProcessSetup& newSetup)
 tresult PLUGIN_API ClapAsVst3::setProcessing(TBool state)
 {
   std::lock_guard x(_processingLock);
+  tresult result = kResultOk;
+
   if (state)
   {
-    _processing = true;
-    auto supportsnoteexpression = (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_PRESSURE);
-    
-    // the processAdapter needs to know a few things to intercommunicate between VST3 host and CLAP plugin.
+    if (!_processing)
+    {
+      _processing = true;
+      auto supportsnoteexpression = (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_PRESSURE);
 
-    _processAdapter->setupProcessing(_plugin->_plugin, _plugin->_ext._params,
-      this->audioInputs, this->audioOutputs,
-      this->_largestBlocksize,
-      this->eventInputs.size(), this->eventOutputs.size(),
-      parameters, componentHandler, this,
-      supportsnoteexpression);
-    updateAudioBusses();
+      // the processAdapter needs to know a few things to intercommunicate between VST3 host and CLAP plugin.
+
+      _processAdapter->setupProcessing(_plugin->_plugin, _plugin->_ext._params,
+        this->audioInputs, this->audioOutputs,
+        this->_largestBlocksize,
+        this->eventInputs.size(), this->eventOutputs.size(),
+        parameters, componentHandler, this,
+        supportsnoteexpression);
+      updateAudioBusses();
 
 
-    return (_plugin->start_processing() ? Steinberg::kResultOk : Steinberg::kResultFalse);
+      result = (_plugin->start_processing() ? Steinberg::kResultOk : Steinberg::kResultFalse);
+    }
   }
   else
   {
-    _processing = false;
-    _plugin->stop_processing();
-    return kResultOk;
+    if (_processing)
+    {
+      _processing = false;
+      _plugin->stop_processing();
+    }
   }
+  return result;
 }
 
 tresult PLUGIN_API ClapAsVst3::setBusArrangements(Vst::SpeakerArrangement* inputs, int32 numIns,
   Vst::SpeakerArrangement* outputs,
   int32 numOuts)
 {
-  return kResultOk;
+  return super::setBusArrangements(inputs, numIns, outputs, numOuts);
 };
+
+tresult PLUGIN_API ClapAsVst3::getBusArrangement(Vst::BusDirection dir, int32 index, Vst::SpeakerArrangement& arr)
+{
+  return super::getBusArrangement(dir, index, arr);
+}
 
 IPlugView* PLUGIN_API ClapAsVst3::createView(FIDString name)
 {
   if (_plugin->_ext._gui)
   {
     _wrappedview = new WrappedView(_plugin->_plugin, _plugin->_ext._gui,
-      [&] {_wrappedview = nullptr; });
+      [&] 
+      { 
+         // the host calls the destructor, the wrapper just removes its pointer
+        _wrappedview = nullptr; 
+      }
+      );
     return _wrappedview;
   }
   return nullptr;
