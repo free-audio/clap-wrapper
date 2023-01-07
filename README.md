@@ -27,7 +27,7 @@ Things currently missing:
 ## How to build
 
 ```bash
-git clone https://github.com/defiantnerd/clap-wrapper.git
+git clone https://github.com/free-audio/clap-wrapper.git
 mkdir build
 cmake -B build -DCLAP_SDK_ROOT={path to clap sdk} -DVST3_SDK_ROOT={path to vst3 sdk}
 ```
@@ -37,7 +37,7 @@ You can also determine the output name of the resulting VST3 plugin by using the
 Build it for your clap, assuming it is named "fruit":
 
 ```bash
-git clone https://github.com/defiantnerd/clap-wrapper.git
+git clone https://github.com/free-audio/clap-wrapper.git
 mkdir build
 cmake -B build -DCLAP_SDK_ROOT={path to clap sdk} -DVST3_SDK_ROOT={path to vst3 sdk} -DCLAP_WRAPPER_OUTPUT_NAME=fruit
 ```
