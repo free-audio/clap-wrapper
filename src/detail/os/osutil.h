@@ -26,14 +26,15 @@ namespace os
 	std::string getParentFolderName();
 	std::string getBinaryName();
 
+	void log(const char* text);
+
 	template <typename... Args>
-	void log(const char* format_str, Args&&... args) {
+	void logfmt(const char* format_str, Args&&... args) {
 		fmt::memory_buffer buf;
 		fmt::format_to(std::back_inserter(buf), format_str, args...);
 		buf.push_back(0);
 		log(buf.data());
 	};
-	void log(const char* text);
 }
 
 #ifndef CLAP_WRAPPER_LOGLEVEL
@@ -51,8 +52,8 @@ namespace os
 #endif
 
 #if (CLAP_WRAPPER_LOGLEVEL == 2)
-#define LOGINFO os::log
-#define LOGDETAIL os::log
+#define LOGINFO os::logfmt
+#define LOGDETAIL os::logfmt
 #endif
 
 namespace util
