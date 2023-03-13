@@ -26,14 +26,15 @@ namespace os
 	std::string getParentFolderName();
 	std::string getBinaryName();
 
+	void log(const char* text);
+
 	template <typename... Args>
 	void log(const char* format_str, Args&&... args) {
 		fmt::memory_buffer buf;
 		fmt::format_to(std::back_inserter(buf), format_str, args...);
 		buf.push_back(0);
-		log(buf.data());
+		log((const char*)buf.data());
 	};
-	void log(const char* text);
 }
 
 #ifndef CLAP_WRAPPER_LOGLEVEL
