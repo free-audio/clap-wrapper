@@ -556,6 +556,8 @@ namespace Clap
                   n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_PAN;
                   break;
                 case Vst::NoteExpressionTypeIDs::kTuningTypeID:
+                  // VST3 has a 0...1 range; clap has a -120 ... 120 range
+                  n.noteexpression.value = (n.noteexpression.value - 0.5) * 120;
                   n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_TUNING;
                   break;
                 case Vst::NoteExpressionTypeIDs::kVibratoTypeID:
