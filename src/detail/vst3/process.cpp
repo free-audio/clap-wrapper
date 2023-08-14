@@ -598,10 +598,11 @@ namespace Clap
     case CLAP_EVENT_PARAM_VALUE:
     {
       auto ev = (clap_event_param_value*)event;
-      auto param = (Vst3Parameter*)this->parameters->getParameter(ev->param_id);
+      auto param = (Vst3Parameter*)this->parameters->getParameter(ev->param_id & 0x7FFFFFFF);
       if (param)
       {
-        auto param_id = ev->param_id;
+        auto param_id = param->getInfo().id;
+
         // if the parameter is marked as being edited in the UI, pass the value
         // to the queue so it can be given to the IComponentHandler
         if (std::find(_gesturedParameters.begin(), _gesturedParameters.end(), param_id) != _gesturedParameters.end())
@@ -613,7 +614,7 @@ namespace Clap
         Steinberg::int32 index = 0;
         // addParameterData() does check if there is already a queue and returns it,
         // actually, it should be called getParameterQueue()
-        auto list = _vstdata->outputParameterChanges->addParameterData(param->id, index);
+        auto list = _vstdata->outputParameterChanges->addParameterData(param_id, index);
 
         // the implementation of addParameterData() in the SDK always returns a queue, but Cubase 12 (perhaps others, too)
         // sometimes don't return a queue object during the first bunch of process calls. I (df) haven't figured out, why.
@@ -634,9 +635,10 @@ namespace Clap
       break;
     case CLAP_EVENT_PARAM_GESTURE_BEGIN:
       {
-        auto ev = (clap_event_param_gesture*)event;
-        _gesturedParameters.push_back(ev->param_id);
-        _automation->onBeginEdit(ev->param_id);
+         auto ev = (clap_event_param_gesture*)event;
+         auto param = (Vst3Parameter*)this->parameters->getParameter(ev->param_id & 0x7FFFFFFF);
+         _gesturedParameters.push_back(param->getInfo().id);
+        _automation->onBeginEdit(param->getInfo().id);
       }
       return true;
 
@@ -644,8 +646,10 @@ namespace Clap
     case CLAP_EVENT_PARAM_GESTURE_END:
       {
         auto ev = (clap_event_param_gesture*)event;
-        _automation->onEndEdit(ev->param_id);
-        _gesturedParameters.erase(std::remove(_gesturedParameters.begin(), _gesturedParameters.end(), ev->param_id));
+        auto param = (Vst3Parameter*)this->parameters->getParameter(ev->param_id & 0x7FFFFFFF);
+
+        _automation->onEndEdit(param->getInfo().id);
+        _gesturedParameters.erase(std::remove(_gesturedParameters.begin(), _gesturedParameters.end(), param->getInfo().id));
       }
       return true;
       break;

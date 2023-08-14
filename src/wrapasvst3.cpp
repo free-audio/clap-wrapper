@@ -758,9 +758,9 @@ void ClapAsVst3::onIdle()
       break;
     case queueEvent::type_t::editvalue:
       {
-        auto param = (Vst3Parameter*)(parameters.getParameter(n._data._value.param_id));
+        auto param = (Vst3Parameter*)(parameters.getParameter(n._data._value.param_id & 0x7FFFFFFF));
         auto v = n._data._value.value;
-        performEdit(n._data._value.param_id, param->asVst3Value(v));
+        performEdit(param->getInfo().id, param->asVst3Value(v));
       }
       break;
     case queueEvent::type_t::editend:
