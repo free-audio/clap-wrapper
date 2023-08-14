@@ -238,5 +238,13 @@ private:
 
 	// INoteExpression
 	Vst::NoteExpressionTypeContainer _noteExpressions;
-	uint32_t _expressionmap = clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_PRESSURE;
+
+   // add a copiler options for which NE to support
+	uint32_t _expressionmap =
+#if CLAP_SUPPORTS_ALL_NOTE_EXPRESSIONS
+           clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_ALL;
+#else
+            clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_PRESSURE;
+#endif
+
 };

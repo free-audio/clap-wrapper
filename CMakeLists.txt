@@ -10,6 +10,10 @@
 cmake_minimum_required(VERSION 3.20)
 cmake_policy(SET CMP0091 NEW)
 
+# If your clap supports note expressions you *can* implement the wrapper extension here or you
+# can just build with this turned on and it will forward all note expressions to your CLAP
+option(CLAP_SUPPORTS_ALL_NOTE_EXPRESSIONS "Does the underlying CLAP support note expressions" OFF)
+
 project(clap-wrapper
 	LANGUAGES C CXX
 	VERSION 0.0.4
@@ -96,6 +100,7 @@ set_target_properties(${pluginname} PROPERTIES LIBRARY_OUTPUT_NAME "${CLAP_WRAPP
 target_link_libraries(${pluginname} PRIVATE clap-core sdk clap-wrapper-extensions)
 message(STATUS " current source dir: ${CMAKE_CURRENT_SOURCE_DIR} ")
 target_include_directories(${pluginname} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_compile_options(${pluginname} PRIVATE -DCLAP_SUPPORTS_ALL_NOTE_EXPRESSIONS=$<IF:$<BOOL:${CLAP_SUPPORTS_ALL_NOTE_EXPRESSIONS}>,1,0>)
 
 if (APPLE)
 	target_link_libraries (${pluginname} PUBLIC "-framework Foundation" "-framework CoreFoundation")
