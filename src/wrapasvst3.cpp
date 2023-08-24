@@ -157,7 +157,12 @@ tresult PLUGIN_API ClapAsVst3::setProcessing(TBool state)
 
   if (state)
   {
-    if (!_processing)
+    if (_processing)
+    {
+      _processing = false;
+      _plugin->stop_processing();
+    }
+
     {
       _processing = true;
       auto supportsnoteexpression = (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_PRESSURE);
