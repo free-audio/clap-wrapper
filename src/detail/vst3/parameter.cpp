@@ -25,7 +25,7 @@ Vst3Parameter::Vst3Parameter(const Steinberg::Vst::ParameterInfo& vst3info, uint
 	, channel(channel)
 	, controller(cc)
 {
-	if (channel == Vst::ControllerNumbers::kPitchBend)
+	if (cc == Vst::ControllerNumbers::kPitchBend)
 	{
 		max_value = 16383;
 	}
