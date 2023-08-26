@@ -51,7 +51,9 @@ namespace Clap
 
 		void setupProcessing(const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params, 
 			Steinberg::Vst::BusList& numInputs, Steinberg::Vst::BusList& numOutputs,
-			uint32_t numSamples, size_t numEventInputs, size_t numEventOutputs, Steinberg::Vst::ParameterContainer& params, Steinberg::Vst::IComponentHandler* componenthandler, IAutomation* automation, bool enablePolyPressure);
+			uint32_t numSamples, size_t numEventInputs, size_t numEventOutputs,
+         Steinberg::Vst::ParameterContainer& params, Steinberg::Vst::IComponentHandler* componenthandler,
+         IAutomation* automation, bool enablePolyPressure, bool supportsTuningNoteExpression);
 		void process(Steinberg::Vst::ProcessData& data);
 		void flush();
 		void processOutputParams(Steinberg::Vst::ProcessData& data);
@@ -112,6 +114,7 @@ namespace Clap
 		std::vector<size_t> _eventindices;
 
 		bool _supportsPolyPressure = false;
+      bool _supportsTuningNoteExpression = false;
 
 	};
 

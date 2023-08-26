@@ -169,7 +169,7 @@ tresult PLUGIN_API ClapAsVst3::setProcessing(TBool state)
         this->_largestBlocksize,
         this->eventInputs.size(), this->eventOutputs.size(),
         parameters, componentHandler, this,
-        supportsnoteexpression);
+        supportsnoteexpression, _expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_TUNING);
       updateAudioBusses();
 
 
@@ -778,7 +778,7 @@ void ClapAsVst3::onIdle()
     {
       // setup a ProcessAdapter just for flush with no audio
       Clap::ProcessAdapter pa;
-      pa.setupProcessing(_plugin->_plugin, _plugin->_ext._params, audioInputs, audioOutputs, 0, 0, 0, this->parameters, componentHandler, nullptr, false);
+      pa.setupProcessing(_plugin->_plugin, _plugin->_ext._params, audioInputs, audioOutputs, 0, 0, 0, this->parameters, componentHandler, nullptr, false, false);
       pa.flush();
     }
   }

@@ -17,9 +17,9 @@ namespace Clap
 
   void ProcessAdapter::setupProcessing(const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params,
     Vst::BusList& audioinputs, Vst::BusList& audiooutputs,
-    uint32_t numSamples, size_t numEventInputs, size_t numEventOutputs, 
+    uint32_t numSamples, size_t numEventInputs, size_t numEventOutputs,
     Steinberg::Vst::ParameterContainer& params, Steinberg::Vst::IComponentHandler* componenthandler,
-    IAutomation* automation, bool enablePolyPressure)
+    IAutomation* automation, bool enablePolyPressure, bool supportsTuningNoteExpression)
   {
     _plugin = plugin;
     _ext_params = ext_params;
@@ -28,7 +28,7 @@ namespace Clap
 
     parameters = &params;
     _componentHandler = componenthandler;
-    _automation = automation;    
+    _automation = automation;
 
     if (numSamples > 0)
     {
@@ -96,7 +96,7 @@ namespace Clap
     {
       _processData.audio_outputs = nullptr;
     }
-    
+
     _processData.in_events = &_in_events;
     _processData.out_events = &_out_events;
 
@@ -121,8 +121,9 @@ namespace Clap
     _activeNotes.reserve(64);
 
     _supportsPolyPressure = enablePolyPressure;
+    _supportsTuningNoteExpression = supportsTuningNoteExpression;
 
-  }  
+  }
 
   void ProcessAdapter::activateAudioBus(Steinberg::Vst::BusDirection dir, int32 index, TBool state)
   {
@@ -164,7 +165,7 @@ namespace Clap
     {
       _events.clear();
       _eventindices.clear();
-      
+
       // sortEventIndices(); call only if there would be any input event
       _ext_params->flush(_plugin, _processData.in_events, _processData.out_events);
     }
@@ -204,15 +205,15 @@ namespace Clap
         // the rest of the flags has no meaning to CLAP
         // kSystemTimeValid = 1 << 8,		///< systemTime contains valid information
         // kContTimeValid = 1 << 17,	///< continousTimeSamples contains valid information
-        // 
+        //
         // kProjectTimeMusicValid = 1 << 9,///< projectTimeMusic contains valid information
         // kBarPositionValid = 1 << 11,	///< barPositionMusic contains valid information
         // kCycleValid = 1 << 12,	///< cycleStartMusic and barPositionMusic contain valid information
-        // 
+        //
         // kClockValid = 1 << 15		///< samplesToNextClock valid
         // kTimeSigValid = 1 << 13,	///< timeSigNumerator and timeSigDenominator contain valid information
         // kChordValid = 1 << 18,	///< chord contains valid information
-        // 
+        //
         // kSmpteValid = 1 << 14,	///< smpteOffset and frameRate contain valid information
 
         ;
@@ -467,6 +468,30 @@ namespace Clap
             _eventindices.push_back(_events.size());
             _events.push_back(n);
             addToActiveNotes(&n.note);
+
+            // CLAP doesn't support note-on retuning but does support note expressions so
+            // convert but only if your target clap supports note expressions
+            if (_supportsTuningNoteExpression && vstevent.noteOn.tuning != 0)
+            {
+               clap_multi_event_t n;
+               n.noteexpression.header.type = CLAP_EVENT_NOTE_EXPRESSION;
+               n.noteexpression.header.flags = (vstevent.flags & Vst::Event::kIsLive) ? CLAP_EVENT_IS_LIVE : 0;
+               n.noteexpression.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+               n.noteexpression.header.time = vstevent.sampleOffset;
+               n.noteexpression.header.size = sizeof(clap_event_note_expression);
+               n.noteexpression.note_id = vstevent.noteExpressionValue.noteId;
+               n.noteexpression.port_index = 0;
+               n.noteexpression.key = vstevent.noteOn.pitch;
+               n.noteexpression.channel = vstevent.noteOn.channel;
+               n.noteexpression.note_id = vstevent.noteOn.noteId;
+               n.noteexpression.value = vstevent.noteExpressionValue.value;
+
+               // VST3 Tuning is float in cents. We are in semitones. So
+               n.noteexpression.value = vstevent.noteOn.tuning * 0.01;
+               n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_TUNING;
+               _eventindices.push_back(_events.size());
+               _events.push_back(n);
+            }
           }
           if (vstevent.type == Vst::Event::kNoteOffEvent)
           {
@@ -689,8 +714,8 @@ namespace Clap
     for (auto& i : _activeNotes)
     {
       if (i.used
-        && i.port_index == note->port_index 
-        && i.channel == note->channel 
+        && i.port_index == note->port_index
+        && i.channel == note->channel
         && i.note_id == note->note_id)
       {
         i.used = false;
