@@ -22,6 +22,12 @@ project(clap-wrapper
 	DESCRIPTION "CLAP-as-X wrappers"
 )
 
+if (APPLE)
+	if (NOT (${CMAKE_GENERATOR} STREQUAL "Xcode"))
+		message(WARNING "Building the VST Wrapper on macOS with a generator other than Xcode creates invalid bundles. You selected ${CMAKE_GENERATOR}")
+	endif()
+endif()
+
 ## configuring VST3 SDK
 # plugin UI will be provided by the CLAP
 set(SMTG_ADD_VSTGUI OFF)
