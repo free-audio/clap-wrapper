@@ -108,7 +108,16 @@ set_target_properties(${pluginname} PROPERTIES LIBRARY_OUTPUT_NAME "${CLAP_WRAPP
 target_link_libraries(${pluginname} PRIVATE clap-core sdk clap-wrapper-extensions)
 message(STATUS " current source dir: ${CMAKE_CURRENT_SOURCE_DIR} ")
 target_include_directories(${pluginname} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
-target_compile_options(${pluginname} PRIVATE -DCLAP_SUPPORTS_ALL_NOTE_EXPRESSIONS=$<IF:$<BOOL:${CLAP_SUPPORTS_ALL_NOTE_EXPRESSIONS}>,1,0>)
+target_compile_options(${pluginname} PRIVATE
+		-DCLAP_SUPPORTS_ALL_NOTE_EXPRESSIONS=$<IF:$<BOOL:${CLAP_SUPPORTS_ALL_NOTE_EXPRESSIONS}>,1,0>
+		)
+
+if (NOT ${CLAP_VST3_TUID_STRING} STREQUAL "")
+	message(STATUS "Using cmake-specified VST3 TUID ${CLAP_VST3_TUID_STRING}")
+	target_compile_options(${pluginname} PRIVATE
+			-DCLAP_VST3_TUID_STRING="${CLAP_VST3_TUID_STRING}"
+			)
+endif()
 
 if (APPLE)
 	target_link_libraries (${pluginname} PUBLIC "-framework Foundation" "-framework CoreFoundation")
