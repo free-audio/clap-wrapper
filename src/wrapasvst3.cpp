@@ -43,6 +43,10 @@ tresult PLUGIN_API ClapAsVst3::initialize(FUnknown* context)
       _plugin = Clap::Plugin::createInstance(*_library, _libraryIndex, this);
     }
     result = (_plugin->initialize()) ? kResultOk : kResultFalse;
+    if ( result )
+    {
+      _useIMidiMapping = checkMIDIDialectSupport();
+    }
   }
   if (_plugin)
   {
@@ -432,6 +436,29 @@ void ClapAsVst3::setupWrapperSpecifics(const clap_plugin_t* plugin)
   }
 }
 
+bool ClapAsVst3::checkMIDIDialectSupport()
+{
+  // check if the plugin supports noteports and if one of the note ports supports MIDI dialect
+  auto noteports = _plugin->_ext._noteports;
+  if (noteports )
+  {
+    auto numMIDIInputs = noteports->count(_plugin->_plugin, true);
+    for (uint32_t i = 0 ; i < numMIDIInputs ; ++i )
+    {
+      clap_note_port_info_t info;
+      if ( noteports->get(_plugin->_plugin,i,true,&info) )
+      {
+        if ( info.supported_dialects & CLAP_NOTE_DIALECT_MIDI )
+        {
+          return true;
+        }
+      }
+    }
+  }
+  
+  return false;
+}
+
 void ClapAsVst3::setupAudioBusses(const clap_plugin_t* plugin, const clap_plugin_audio_ports_t* audioports)
 {
   if (!audioports) return;
@@ -527,24 +554,27 @@ void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
     }
   }
 
-  // find free tags for IMidiMapping
-  Vst::ParamID x = 0xb00000;
-  _IMidiMappingEasy = true;
-
-  for (uint8_t channel = 0; channel < _numMidiChannels; channel++)
+  if ( _useIMidiMapping )
   {
-    for (int i = 0; i < Vst::ControllerNumbers::kCountCtrlNumber; ++i)
+    // find free tags for IMidiMapping
+    Vst::ParamID x = 0xb00000;
+    _IMidiMappingEasy = true;
+    
+    for (uint8_t channel = 0; channel < _numMidiChannels; channel++)
     {
-      while (parameters.getParameter(x))
+      for (int i = 0; i < Vst::ControllerNumbers::kCountCtrlNumber; ++i)
       {
-        // if this happens there is a index clash between the parameter ids
-        // and the ones reserved for the IMidiMapping
-        _IMidiMappingEasy = false;
-        x++;
+        while (parameters.getParameter(x))
+        {
+          // if this happens there is a index clash between the parameter ids
+          // and the ones reserved for the IMidiMapping
+          _IMidiMappingEasy = false;
+          x++;
+        }
+        auto p = Vst3Parameter::create(0, channel, i, x);
+        parameters.addParameter(p);
+        _IMidiMappingIDs[channel][i] = x++;
       }
-      auto p = Vst3Parameter::create(0, channel, i, x);
-      parameters.addParameter(p);
-      _IMidiMappingIDs[channel][i] = x++;
     }
   }
 

@@ -145,7 +145,14 @@ public:
 	//---Interface--------------------------------------------------------------------------
 	OBJ_METHODS(ClapAsVst3, SingleComponentEffect)
 	DEFINE_INTERFACES
-	DEF_INTERFACE(IMidiMapping)
+  // since the macro above opens a local function, this code is being executed during QueryInterface() :)
+  if (::Steinberg::FUnknownPrivate::iidEqual (iid, IMidiMapping::iid))
+  {
+    // when queried for the IMididMapping interface, check if the CLAP supports MIDI dialect on the MIDI Input busses and only return IMidiMapping then
+    if (  _useIMidiMapping ) {
+      DEF_INTERFACE(IMidiMapping)
+    }
+  }
 	DEF_INTERFACE(INoteExpressionController)
 	// tresult PLUGIN_API queryInterface(const TUID iid, void** obj) override;
 	END_DEFINE_INTERFACES(SingleComponentEffect)
@@ -192,6 +199,8 @@ public:
 	void onPerformEdit(const clap_event_param_value_t* value) override;
 	void onEndEdit(clap_id id) override;
 
+  // information function to enable/disable the IMIDIMapping interface
+  bool checkMIDIDialectSupport();
 private:
 	// helper functions
 	void addAudioBusFrom(const clap_audio_port_info_t* info, bool is_input);
@@ -222,6 +231,7 @@ private:
 	util::fixedqueue<queueEvent, 8192> _queueToUI;
 
 	// for IMidiMapping
+  bool _useIMidiMapping = false;
 	Vst::ParamID _IMidiMappingIDs[16][Vst::ControllerNumbers::kCountCtrlNumber] = { 0 }; // 16 MappingIDs for 16 Channels
 	bool _IMidiMappingEasy = true;
 	uint8_t _numMidiChannels = 16;
