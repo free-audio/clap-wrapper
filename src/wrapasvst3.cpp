@@ -71,6 +71,19 @@ tresult PLUGIN_API ClapAsVst3::setActive(TBool state)
       return kResultFalse;
     _active = true;
     _processAdapter = new Clap::ProcessAdapter();
+    
+    auto supportsnoteexpression = (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_PRESSURE);
+
+    // the processAdapter needs to know a few things to intercommunicate between VST3 host and CLAP plugin.
+
+    _processAdapter->setupProcessing(_plugin->_plugin, _plugin->_ext._params,
+      this->audioInputs, this->audioOutputs,
+      this->_largestBlocksize,
+      this->eventInputs.size(), this->eventOutputs.size(),
+      parameters, componentHandler, this,
+      supportsnoteexpression);
+    updateAudioBusses();
+    
     os::attach(this);
   }
   if (!state)
@@ -160,18 +173,6 @@ tresult PLUGIN_API ClapAsVst3::setProcessing(TBool state)
     if (!_processing)
     {
       _processing = true;
-      auto supportsnoteexpression = (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_PRESSURE);
-
-      // the processAdapter needs to know a few things to intercommunicate between VST3 host and CLAP plugin.
-
-      _processAdapter->setupProcessing(_plugin->_plugin, _plugin->_ext._params,
-        this->audioInputs, this->audioOutputs,
-        this->_largestBlocksize,
-        this->eventInputs.size(), this->eventOutputs.size(),
-        parameters, componentHandler, this,
-        supportsnoteexpression);
-      updateAudioBusses();
-
 
       result = (_plugin->start_processing() ? Steinberg::kResultOk : Steinberg::kResultFalse);
     }
