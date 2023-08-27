@@ -227,20 +227,29 @@ SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
 				pluginvendor = vst3info->vendor;
 			}
 
-			// make id or take it from vst3 info --------------
-			std::string id(clapdescr->id);
-			Crypto::uuid_object g;
-			if (vst3info && vst3info->componentId)
-			{
-				memcpy(&g, vst3info->componentId, sizeof(g));
-			}
-			else
-			{
-				g = Crypto::create_sha1_guid_from_name(id.c_str(), id.size());
-			}
+         TUID lcid;
+         Crypto::uuid_object g;
 
-			TUID lcid;
-			memcpy(&lcid, &g, sizeof(TUID));
+#ifdef CLAP_VST3_TUID_STRING
+         Steinberg::FUID f;
+         if (f.fromString(CLAP_VST3_TUID_STRING))
+         {
+            memcpy(&g, f.toTUID(), sizeof(TUID));
+            memcpy(&lcid, &g, sizeof(TUID));
+         }
+         else
+#endif
+         {
+            // make id or take it from vst3 info --------------
+            std::string id(clapdescr->id);
+            if (vst3info && vst3info->componentId) {
+               memcpy(&g, vst3info->componentId, sizeof(g));
+            } else {
+               g = Crypto::create_sha1_guid_from_name(id.c_str(), id.size());
+            }
+
+            memcpy(&lcid, &g, sizeof(TUID));
+         }
 
 			// features ----------------------------------------
 			std::string features;
