@@ -35,10 +35,15 @@ project(clap-wrapper
 	DESCRIPTION "CLAP-as-X wrappers"
 )
 
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
+
+if(${CMAKE_SIZEOF_VOID_P} EQUAL 4)
+	message(FATAL_ERROR "Clap Wrapper requires a 64 bit build")
+endif()
 
 # discover the plugin paths and enable them
 include(cmake/enable_sdks.cmake)
@@ -116,13 +121,13 @@ elseif(UNIX)
 
 
 else()
-	set_target_properties(${pluginname_vst3} PROPERTIES
-			LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${clapname}.vst3/Contents/x86_64-win"
-			SUFFIX ".vst3")
 	add_custom_command(TARGET ${pluginname_vst3} PRE_BUILD
 			WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 			COMMAND ${CMAKE_COMMAND} -E make_directory "${clapname}.vst3/Contents/x86_64-win"
 			)
+	set_target_properties(${pluginname_vst3} PROPERTIES
+			LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${clapname}.vst3/Contents/x86_64-win"
+			SUFFIX ".vst3")
 endif()
 
 
