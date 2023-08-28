@@ -119,7 +119,15 @@ elseif(UNIX)
 	target_link_libraries(${pluginname_vst3} PUBLIC "-ldl")
 	target_link_libraries(${pluginname_vst3} PRIVATE "-Wl,--no-undefined")
 
+	target_compile_options(${pluginname_vst3} PRIVATE $<IF:$<CONFIG:Debug>,-DDEVELOPMENT=1,-DRELEASE=1>) # work through steinbergs alternate choices for these
 
+	add_custom_command(TARGET ${pluginname_vst3} PRE_BUILD
+			WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+			COMMAND ${CMAKE_COMMAND} -E make_directory "${clapname}.vst3/Contents/x86_64-linux"
+	)
+	set_target_properties(${pluginname_vst3} PROPERTIES
+			LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${clapname}.vst3/Contents/x86_64-linux"
+			SUFFIX ".so" PREFIX "")
 else()
 	add_custom_command(TARGET ${pluginname_vst3} PRE_BUILD
 			WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
