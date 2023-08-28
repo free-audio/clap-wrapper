@@ -73,39 +73,44 @@ function(DetectVST3SDK)
 endfunction()
 
 function(DefineCLAPASVST3Sources)
+	file(GLOB VST3_GLOB
+			${VST3_SDK_ROOT}/base/source/*.cpp
+			${VST3_SDK_ROOT}/base/thread/source/*.cpp
+			${VST3_SDK_ROOT}/public.sdk/source/common/*.cpp
+			${VST3_SDK_ROOT}/pluginterfaces/base/*.cpp
+			)
+
+	if (APPLE)
+		set(vst3platform ${VST3_SDK_ROOT}/public.sdk/source/main/macmain.cpp)
+	elseif (UNIX)
+		set(vst3platform ${VST3_SDK_ROOT}/public.sdk/source/main/linuxmain.cpp)
+	else()
+		set(vst3platform ${VST3_SDK_ROOT}/public.sdk/source/main/dllmain.cpp)
+	endif()
+
 	set(vst3sources
-		${VST3_SDK_ROOT}/public.sdk/source/main/pluginfactory.cpp
+			${VST3_GLOB}
+			${vst3platform}
+			${VST3_SDK_ROOT}/public.sdk/source/main/pluginfactory.cpp
+			${VST3_SDK_ROOT}/public.sdk/source/main/moduleinit.cpp
+			${VST3_SDK_ROOT}/public.sdk/source/vst/vstinitiids.cpp
+			${VST3_SDK_ROOT}/public.sdk/source/vst/vstnoteexpressiontypes.cpp
+			${VST3_SDK_ROOT}/public.sdk/source/vst/vstsinglecomponenteffect.cpp
+			${VST3_SDK_ROOT}/public.sdk/source/vst/vstaudioeffect.cpp
+			${VST3_SDK_ROOT}/public.sdk/source/vst/vstcomponent.cpp
+			${VST3_SDK_ROOT}/public.sdk/source/vst/vstsinglecomponenteffect.cpp
+			${VST3_SDK_ROOT}/public.sdk/source/vst/vstcomponentbase.cpp
+			${VST3_SDK_ROOT}/public.sdk/source/vst/vstbus.cpp
+			${VST3_SDK_ROOT}/public.sdk/source/vst/vstparameters.cpp
+			${VST3_SDK_ROOT}/public.sdk/source/vst/utility/stringconvert.cpp
+			PARENT_SCOPE
+			)
 
-		${VST3_SDK_ROOT}/public.sdk/source/common/commoniids.cpp
-		${VST3_SDK_ROOT}/public.sdk/source/common/memorystream.cpp
-		${VST3_SDK_ROOT}/public.sdk/source/common/pluginview.cpp
-
-		${VST3_SDK_ROOT}/public.sdk/source/vst/vstinitiids.cpp
-		${VST3_SDK_ROOT}/public.sdk/source/vst/vstaudioeffect.cpp
-		${VST3_SDK_ROOT}/public.sdk/source/vst/vstcomponentbase.cpp
-		${VST3_SDK_ROOT}/public.sdk/source/vst/vstcomponent.cpp
-		${VST3_SDK_ROOT}/public.sdk/source/vst/vstsinglecomponenteffect.cpp
-		${VST3_SDK_ROOT}/public.sdk/source/vst/vstsinglecomponenteffect.h
-		#${VST3_SDK_ROOT}/public.sdk/source/vst/vsteditcontroller.cpp
-		${VST3_SDK_ROOT}/public.sdk/source/vst/vstbus.cpp
-		${VST3_SDK_ROOT}/public.sdk/source/vst/vstparameters.cpp
-
-		${VST3_SDK_ROOT}/pluginterfaces/base/funknown.cpp
-		${VST3_SDK_ROOT}/pluginterfaces/base/coreiids.cpp
-		${VST3_SDK_ROOT}/pluginterfaces/base/ustring.cpp
-
-		${VST3_SDK_ROOT}/base/source/baseiids.cpp
-		${VST3_SDK_ROOT}/base/source/fobject.cpp
-		${VST3_SDK_ROOT}/base/source/fstring.cpp
-		${VST3_SDK_ROOT}/base/source/fbuffer.cpp
-		${VST3_SDK_ROOT}/base/source/fdynlib.cpp
-		${VST3_SDK_ROOT}/base/source/fdebug.cpp
-		${VST3_SDK_ROOT}/base/source/updatehandler.cpp
-		${VST3_SDK_ROOT}/base/thread/source/flock.cpp
-		${VST3_SDK_ROOT}/base/thread/source/fcondition.cpp
-	
-		PARENT_SCOPE
-	)
+	if( UNIX AND NOT APPLE )
+		# Sigh - ${VST3_SDK_ROOT} ships with non-working code if you has it
+		get_filename_component(full_path_test_cpp ${VST3_SDK_ROOT}/base/source/timer.cpp ABSOLUTE)
+		list(REMOVE_ITEM vst3sources "${full_path_test_cpp}")
+	endif()
 
 	if(WIN32)
 		set(os_wrappersources src/detail/os/windows.cpp)
@@ -171,9 +176,6 @@ DetectVST3SDK()
 if(NOT EXISTS "${VST3_SDK_ROOT}/public.sdk")
     message(FATAL_ERROR "There is no VST3 SDK at ${VST3_SDK_ROOT} ")
 endif()
-
-message(STATUS "Configuring VST3 SDK")
-add_subdirectory(${VST3_SDK_ROOT} vst3sdk EXCLUDE_FROM_ALL) 
 
 DefineCLAPASVST3Sources() 
 
