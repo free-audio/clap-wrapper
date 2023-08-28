@@ -107,14 +107,16 @@ namespace Clap
              CFURLCreateWithFileSystemPath(kCFAllocatorDefault, cs, kCFURLPOSIXPathStyle, true);
 
      _bundle = CFBundleCreate(kCFAllocatorDefault, bundleURL);
-     CFRelease(bundleURL);
-     CFRelease(cs);
 
      if (!_bundle) {
-        return false;
+         CFRelease(bundleURL);
+         CFRelease(cs);
+         return false;
      }
 
      auto db = CFBundleGetDataPointerForName(_bundle, CFSTR("clap_entry"));
+     CFRelease(bundleURL);
+     CFRelease(cs);
 
      _pluginEntry = (const clap_plugin_entry *)db;
 
