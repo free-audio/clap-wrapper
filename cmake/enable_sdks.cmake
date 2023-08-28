@@ -163,7 +163,7 @@ if (NOT TARGET clap-core)
 	DetectCLAP()
 
 	if(NOT EXISTS "${CLAP_SDK_ROOT}/include/clap/clap.h")
-		message(FATAL_ERROR "There is no CLAP SDK at ${CLAP_SDK_ROOT} ")
+		message(FATAL_ERROR "There is no CLAP SDK at ${CLAP_SDK_ROOT}. Please set CLAP_SDK_ROOT appropriately ")
 	endif()
 
 	message(STATUS "clap-wrapper: Configuring CLAP SDK")

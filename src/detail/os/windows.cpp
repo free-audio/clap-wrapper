@@ -117,7 +117,7 @@ namespace os
 		memset(&wc, 0, sizeof(wc));
 		wc.cbSize = sizeof(wc);
 		wc.hInstance = ghInst;
-		wc.lpfnWndProc = &Wndproc;
+		wc.lpfnWndProc = (WNDPROC)&Wndproc;
 		wc.lpszClassName = modulename;
 		auto a = RegisterClassEx(&wc);
 

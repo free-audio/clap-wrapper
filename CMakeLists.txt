@@ -9,6 +9,9 @@
 # cmake-time options which this wrapper will use. See the documentation for a more
 # complete description
 #
+# CLAP_SDK_ROOT The location of the clap library. Defaults to ../clap
+# VST3_SDK_ROOT The location of the VST3 sdk. Defaults tp ../vst3sdk
+#
 # CLAP_WRAPPER_OUTPUT_NAME   The name of the resulting .vst3 or .component
 # CLAP_SUPPORTS_ALL_NOTE_EXPRESSIONS  The wrapper will forward all VST3 note expressions to your CLAP
 # CLAP_VST3_TUID_STRING  The VST3 component ::iid as a string; absent this wrapper hashes clap id
@@ -110,7 +113,16 @@ if (APPLE)
 elseif(UNIX)
 	target_link_libraries(${pluginname_vst3} PUBLIC "-ldl")
 	target_link_libraries(${pluginname_vst3} PRIVATE "-Wl,--no-undefined")
+
+
 else()
+	set_target_properties(${pluginname_vst3} PROPERTIES
+			LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${clapname}.vst3/Contents/x86_64-win"
+			SUFFIX ".vst3")
+	add_custom_command(TARGET ${pluginname_vst3} PRE_BUILD
+			WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+			COMMAND ${CMAKE_COMMAND} -E make_directory "${clapname}.vst3/Contents/x86_64-win"
+			)
 endif()
 
 
