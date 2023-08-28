@@ -92,6 +92,7 @@ if (NOT "${CLAP_VST3_TUID_STRING}" STREQUAL "")
 			)
 endif()
 
+target_compile_options(${pluginname_vst3} PRIVATE $<IF:$<CONFIG:Debug>,-DDEVELOPMENT=1,-DRELEASE=1>) # work through steinbergs alternate choices for these
 
 if (APPLE)
 	if ("${CLAP_WRAPPER_BUNDLE_IDENTIFIER}" STREQUAL "")
@@ -118,8 +119,6 @@ if (APPLE)
 elseif(UNIX)
 	target_link_libraries(${pluginname_vst3} PUBLIC "-ldl")
 	target_link_libraries(${pluginname_vst3} PRIVATE "-Wl,--no-undefined")
-
-	target_compile_options(${pluginname_vst3} PRIVATE $<IF:$<CONFIG:Debug>,-DDEVELOPMENT=1,-DRELEASE=1>) # work through steinbergs alternate choices for these
 
 	add_custom_command(TARGET ${pluginname_vst3} PRE_BUILD
 			WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
