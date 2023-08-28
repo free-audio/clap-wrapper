@@ -10,21 +10,21 @@ set(VST3_SDK_ROOT "" CACHE STRING "Path to VST3 SDK")
 
 function(DetectCLAP)
   if(CLAP_SDK_ROOT STREQUAL "")
-	message(STATUS "searching CLAP SDK in \"${CMAKE_CURRENT_SOURCE_DIR}\"...")
+	message(STATUS "clap-wrapper: searching CLAP SDK in \"${CMAKE_CURRENT_SOURCE_DIR}\"...")
 
 	if ( CLAP_SDK_ROOT STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libs/clap")
 	  set(CLAP_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/libs/clap")
-	  message(STATUS "CLAP SDK detected in libs subdirectory")
+	  message(STATUS "clap-wrapper: CLAP SDK detected in libs subdirectory")
 	endif()
 
 		if ( CLAP_SDK_ROOT STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/clap")
 	  set(CLAP_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/clap")
-	  message(STATUS "CLAP SDK detected in subdirectory")
+	  message(STATUS "clap-wrapper: CLAP SDK detected in subdirectory")
 	endif()
 	
 	if ( CLAP_SDK_ROOT STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../clap")
 	  set(CLAP_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../clap")
-	  message(STATUS "CLAP SDK detected in parent subdirectory")
+	  message(STATUS "clap-wrapper: CLAP SDK detected in parent subdirectory")
 	endif()
 
 	if(CLAP_SDK_ROOT STREQUAL "")
@@ -33,7 +33,7 @@ function(DetectCLAP)
 
 	cmake_path(CONVERT "${CLAP_SDK_ROOT}" TO_CMAKE_PATH_LIST CLAP_SDK_ROOT)
 
-	message(STATUS "CLAP SDK at ${CLAP_SDK_ROOT}")
+	message(STATUS "clap-wrapper: CLAP SDK at ${CLAP_SDK_ROOT}")
 	set(CLAP_SDK_ROOT "${CLAP_SDK_ROOT}" PARENT_SCOPE)
 
   endif()
@@ -43,21 +43,21 @@ endfunction(DetectCLAP)
 function(DetectVST3SDK)
   
   if(VST3_SDK_ROOT STREQUAL "")
-	message(STATUS "searching VST3 SDK in \"${CMAKE_CURRENT_SOURCE_DIR}\"...")
+	message(STATUS "clap-wrapper: searching VST3 SDK in \"${CMAKE_CURRENT_SOURCE_DIR}\"...")
 
 	if ( VST3_SDK_ROOT STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libs/vst3sdk")
 	  set(VST3_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/libs/vst3sdk")
-	  message(STATUS "VST3 SDK detected in libs subdirectory")
+	  message(STATUS "clap-wrapper: VST3 SDK detected in libs subdirectory")
 	endif()
 
 	if ( VST3_SDK_ROOT STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/vst3sdk")
 	  set(VST3_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/vst3sdk")
-	  message(STATUS "VST3 SDK detected in subdirectory")
+	  message(STATUS "clap-wrapper: VST3 SDK detected in subdirectory")
 	endif()
 
 	if ( VST3_SDK_ROOT STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../vst3sdk")
 	  set(VST3_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../vst3sdk")
-	  message(STATUS "VST3 SDK detected in parent directory")
+	  message(STATUS "clap-wrapper: VST3 SDK detected in parent directory")
 	endif()
 
 	if(VST3_SDK_ROOT STREQUAL "")
@@ -67,7 +67,7 @@ function(DetectVST3SDK)
   endif()
 
   cmake_path(CONVERT "${VST3_SDK_ROOT}" TO_CMAKE_PATH_LIST VST3_SDK_ROOT)
-  message(STATUS "VST3 SDK location: ${VST3_SDK_ROOT}")
+  message(STATUS "clap-wrapper: VST3 SDK location: ${VST3_SDK_ROOT}")
   set(VST3_SDK_ROOT "${VST3_SDK_ROOT}" PARENT_SCOPE)
 
 endfunction()
@@ -166,7 +166,7 @@ if (NOT TARGET clap-core)
 		message(FATAL_ERROR "There is no CLAP SDK at ${CLAP_SDK_ROOT} ")
 	endif()
 
-	message(STATUS "Configuring CLAP SDK")
+	message(STATUS "clap-wrapper: Configuring CLAP SDK")
 	add_subdirectory(${CLAP_SDK_ROOT} clap EXCLUDE_FROM_ALL)
 endif()
 

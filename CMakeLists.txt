@@ -78,7 +78,7 @@ target_compile_options(${pluginname_vst3} PRIVATE
 		)
 
 if (NOT "${CLAP_VST3_TUID_STRING}" STREQUAL "")
-	message(STATUS "Using cmake-specified VST3 TUID ${CLAP_VST3_TUID_STRING}")
+	message(STATUS "clap-wrapper: Using cmake-specified VST3 TUID ${CLAP_VST3_TUID_STRING}")
 	target_compile_options(${pluginname_vst3} PRIVATE
 			-DCLAP_VST3_TUID_STRING="${CLAP_VST3_TUID_STRING}"
 			)
