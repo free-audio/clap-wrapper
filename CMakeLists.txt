@@ -24,6 +24,7 @@ cmake_policy(SET CMP0091 NEW)
 set(CMAKE_OSX_DEPLOYMENT_TARGET 10.15 CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "x86_64;arm64" CACHE STRING "Build Universal Always")
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>") # Statically link the MSVC Runtime
+set(CMAKE_COLOR_DIAGNOSTICS ON)
 
 # If your clap supports note expressions you *can* implement the wrapper extension here or you
 # can just build with this turned on and it will forward all note expressions to your CLAP
@@ -35,14 +36,14 @@ project(clap-wrapper
 	DESCRIPTION "CLAP-as-X wrappers"
 )
 
-
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 
 if(${CMAKE_SIZEOF_VOID_P} EQUAL 4)
-	message(FATAL_ERROR "Clap Wrapper requires a 64 bit build")
+	# a 32 bit build is odd enough that it might be an error. Chirp.
+	message(STATUS "clap-wrapper: configured as 32 bit build. Intentional?")
 endif()
 
 # discover the plugin paths and enable them
@@ -113,9 +114,11 @@ if (APPLE)
 			MACOSX_BUNDLE_SHORT_VERSION_STRING ${CLAP_WRAPPER_BUNDLE_VERSION}
 			MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/cmake/VST3_Info.plist.in
 			)
-	add_custom_command(TARGET ${pluginname_vst3} POST_BUILD
-			WORKING_DIRECTORY $<TARGET_PROPERTY:${pluginname_vst3},RUNTIME_OUTPUT_DIRECTORY>
-			COMMAND SetFile -a B "$<TARGET_PROPERTY:${pluginname_vst3},MACOSX_BUNDLE_BUNDLE_NAME>.$<TARGET_PROPERTY:${pluginname_vst3},BUNDLE_EXTENSION>")
+	if (NOT ${CMAKE_GENERATOR} STREQUAL "Xcode")
+		add_custom_command(TARGET ${pluginname_vst3} POST_BUILD
+				WORKING_DIRECTORY $<TARGET_PROPERTY:${pluginname_vst3},LIBRARY_OUTPUT_DIRECTORY>
+				COMMAND SetFile -a B "$<TARGET_PROPERTY:${pluginname_vst3},MACOSX_BUNDLE_BUNDLE_NAME>.$<TARGET_PROPERTY:${pluginname_vst3},BUNDLE_EXTENSION>")
+	endif()
 elseif(UNIX)
 	target_link_libraries(${pluginname_vst3} PUBLIC "-ldl")
 	target_link_libraries(${pluginname_vst3} PRIVATE "-Wl,--no-undefined")
