@@ -44,3 +44,4 @@ ignore/
 #df habit
 build/
 out/
+.DS_Store
