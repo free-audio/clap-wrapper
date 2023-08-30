@@ -10,21 +10,21 @@ set(VST3_SDK_ROOT "" CACHE STRING "Path to VST3 SDK")
 
 function(DetectCLAP)
   if(CLAP_SDK_ROOT STREQUAL "")
-	message(STATUS "searching CLAP SDK in \"${CMAKE_CURRENT_SOURCE_DIR}\"...")
+	message(STATUS "clap-wrapper: searching CLAP SDK in \"${CMAKE_CURRENT_SOURCE_DIR}\"...")
 
 	if ( CLAP_SDK_ROOT STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libs/clap")
 	  set(CLAP_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/libs/clap")
-	  message(STATUS "CLAP SDK detected in libs subdirectory")
+	  message(STATUS "clap-wrapper: CLAP SDK detected in libs subdirectory")
 	endif()
 
 		if ( CLAP_SDK_ROOT STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/clap")
 	  set(CLAP_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/clap")
-	  message(STATUS "CLAP SDK detected in subdirectory")
+	  message(STATUS "clap-wrapper: CLAP SDK detected in subdirectory")
 	endif()
 	
 	if ( CLAP_SDK_ROOT STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../clap")
 	  set(CLAP_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../clap")
-	  message(STATUS "CLAP SDK detected in parent subdirectory")
+	  message(STATUS "clap-wrapper: CLAP SDK detected in parent subdirectory")
 	endif()
 
 	if(CLAP_SDK_ROOT STREQUAL "")
@@ -33,7 +33,7 @@ function(DetectCLAP)
 
 	cmake_path(CONVERT "${CLAP_SDK_ROOT}" TO_CMAKE_PATH_LIST CLAP_SDK_ROOT)
 
-	message(STATUS "CLAP SDK at ${CLAP_SDK_ROOT}")
+	message(STATUS "clap-wrapper: CLAP SDK at ${CLAP_SDK_ROOT}")
 	set(CLAP_SDK_ROOT "${CLAP_SDK_ROOT}" PARENT_SCOPE)
 
   endif()
@@ -43,21 +43,21 @@ endfunction(DetectCLAP)
 function(DetectVST3SDK)
   
   if(VST3_SDK_ROOT STREQUAL "")
-	message(STATUS "searching VST3 SDK in \"${CMAKE_CURRENT_SOURCE_DIR}\"...")
+	message(STATUS "clap-wrapper: searching VST3 SDK in \"${CMAKE_CURRENT_SOURCE_DIR}\"...")
 
 	if ( VST3_SDK_ROOT STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libs/vst3sdk")
 	  set(VST3_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/libs/vst3sdk")
-	  message(STATUS "VST3 SDK detected in libs subdirectory")
+	  message(STATUS "clap-wrapper: VST3 SDK detected in libs subdirectory")
 	endif()
 
 	if ( VST3_SDK_ROOT STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/vst3sdk")
 	  set(VST3_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/vst3sdk")
-	  message(STATUS "VST3 SDK detected in subdirectory")
+	  message(STATUS "clap-wrapper: VST3 SDK detected in subdirectory")
 	endif()
 
 	if ( VST3_SDK_ROOT STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../vst3sdk")
 	  set(VST3_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../vst3sdk")
-	  message(STATUS "VST3 SDK detected in parent directory")
+	  message(STATUS "clap-wrapper: VST3 SDK detected in parent directory")
 	endif()
 
 	if(VST3_SDK_ROOT STREQUAL "")
@@ -67,45 +67,50 @@ function(DetectVST3SDK)
   endif()
 
   cmake_path(CONVERT "${VST3_SDK_ROOT}" TO_CMAKE_PATH_LIST VST3_SDK_ROOT)
-  message(STATUS "VST3 SDK location: ${VST3_SDK_ROOT}")
+  message(STATUS "clap-wrapper: VST3 SDK location: ${VST3_SDK_ROOT}")
   set(VST3_SDK_ROOT "${VST3_SDK_ROOT}" PARENT_SCOPE)
 
 endfunction()
 
 function(DefineCLAPASVST3Sources)
+	file(GLOB VST3_GLOB
+			${VST3_SDK_ROOT}/base/source/*.cpp
+			${VST3_SDK_ROOT}/base/thread/source/*.cpp
+			${VST3_SDK_ROOT}/public.sdk/source/common/*.cpp
+			${VST3_SDK_ROOT}/pluginterfaces/base/*.cpp
+			)
+
+	if (APPLE)
+		set(vst3platform ${VST3_SDK_ROOT}/public.sdk/source/main/macmain.cpp)
+	elseif (UNIX)
+		set(vst3platform ${VST3_SDK_ROOT}/public.sdk/source/main/linuxmain.cpp)
+	else()
+		set(vst3platform ${VST3_SDK_ROOT}/public.sdk/source/main/dllmain.cpp)
+	endif()
+
 	set(vst3sources
-		${VST3_SDK_ROOT}/public.sdk/source/main/pluginfactory.cpp
+			${VST3_GLOB}
+			${vst3platform}
+			${VST3_SDK_ROOT}/public.sdk/source/main/pluginfactory.cpp
+			${VST3_SDK_ROOT}/public.sdk/source/main/moduleinit.cpp
+			${VST3_SDK_ROOT}/public.sdk/source/vst/vstinitiids.cpp
+			${VST3_SDK_ROOT}/public.sdk/source/vst/vstnoteexpressiontypes.cpp
+			${VST3_SDK_ROOT}/public.sdk/source/vst/vstsinglecomponenteffect.cpp
+			${VST3_SDK_ROOT}/public.sdk/source/vst/vstaudioeffect.cpp
+			${VST3_SDK_ROOT}/public.sdk/source/vst/vstcomponent.cpp
+			${VST3_SDK_ROOT}/public.sdk/source/vst/vstsinglecomponenteffect.cpp
+			${VST3_SDK_ROOT}/public.sdk/source/vst/vstcomponentbase.cpp
+			${VST3_SDK_ROOT}/public.sdk/source/vst/vstbus.cpp
+			${VST3_SDK_ROOT}/public.sdk/source/vst/vstparameters.cpp
+			${VST3_SDK_ROOT}/public.sdk/source/vst/utility/stringconvert.cpp
+			PARENT_SCOPE
+			)
 
-		${VST3_SDK_ROOT}/public.sdk/source/common/commoniids.cpp
-		${VST3_SDK_ROOT}/public.sdk/source/common/memorystream.cpp
-		${VST3_SDK_ROOT}/public.sdk/source/common/pluginview.cpp
-
-		${VST3_SDK_ROOT}/public.sdk/source/vst/vstinitiids.cpp
-		${VST3_SDK_ROOT}/public.sdk/source/vst/vstaudioeffect.cpp
-		${VST3_SDK_ROOT}/public.sdk/source/vst/vstcomponentbase.cpp
-		${VST3_SDK_ROOT}/public.sdk/source/vst/vstcomponent.cpp
-		${VST3_SDK_ROOT}/public.sdk/source/vst/vstsinglecomponenteffect.cpp
-		${VST3_SDK_ROOT}/public.sdk/source/vst/vstsinglecomponenteffect.h
-		#${VST3_SDK_ROOT}/public.sdk/source/vst/vsteditcontroller.cpp
-		${VST3_SDK_ROOT}/public.sdk/source/vst/vstbus.cpp
-		${VST3_SDK_ROOT}/public.sdk/source/vst/vstparameters.cpp
-
-		${VST3_SDK_ROOT}/pluginterfaces/base/funknown.cpp
-		${VST3_SDK_ROOT}/pluginterfaces/base/coreiids.cpp
-		${VST3_SDK_ROOT}/pluginterfaces/base/ustring.cpp
-
-		${VST3_SDK_ROOT}/base/source/baseiids.cpp
-		${VST3_SDK_ROOT}/base/source/fobject.cpp
-		${VST3_SDK_ROOT}/base/source/fstring.cpp
-		${VST3_SDK_ROOT}/base/source/fbuffer.cpp
-		${VST3_SDK_ROOT}/base/source/fdynlib.cpp
-		${VST3_SDK_ROOT}/base/source/fdebug.cpp
-		${VST3_SDK_ROOT}/base/source/updatehandler.cpp
-		${VST3_SDK_ROOT}/base/thread/source/flock.cpp
-		${VST3_SDK_ROOT}/base/thread/source/fcondition.cpp
-	
-		PARENT_SCOPE
-	)
+	if( UNIX AND NOT APPLE )
+		# Sigh - ${VST3_SDK_ROOT} ships with non-working code if you has it
+		get_filename_component(full_path_test_cpp ${VST3_SDK_ROOT}/base/source/timer.cpp ABSOLUTE)
+		list(REMOVE_ITEM vst3sources "${full_path_test_cpp}")
+	endif()
 
 	if(WIN32)
 		set(os_wrappersources src/detail/os/windows.cpp)
@@ -158,10 +163,10 @@ if (NOT TARGET clap-core)
 	DetectCLAP()
 
 	if(NOT EXISTS "${CLAP_SDK_ROOT}/include/clap/clap.h")
-		message(FATAL_ERROR "There is no CLAP SDK at ${CLAP_SDK_ROOT} ")
+		message(FATAL_ERROR "There is no CLAP SDK at ${CLAP_SDK_ROOT}. Please set CLAP_SDK_ROOT appropriately ")
 	endif()
 
-	message(STATUS "Configuring CLAP SDK")
+	message(STATUS "clap-wrapper: Configuring CLAP SDK")
 	add_subdirectory(${CLAP_SDK_ROOT} clap EXCLUDE_FROM_ALL)
 endif()
 
@@ -171,9 +176,6 @@ DetectVST3SDK()
 if(NOT EXISTS "${VST3_SDK_ROOT}/public.sdk")
     message(FATAL_ERROR "There is no VST3 SDK at ${VST3_SDK_ROOT} ")
 endif()
-
-message(STATUS "Configuring VST3 SDK")
-add_subdirectory(${VST3_SDK_ROOT} vst3sdk EXCLUDE_FROM_ALL) 
 
 DefineCLAPASVST3Sources() 
 

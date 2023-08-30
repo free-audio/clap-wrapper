@@ -19,8 +19,8 @@ jobs:
             name: win
           - os: macos-latest
             name: mac
-        #  - os: ubuntu-latest
-        #    name: linux
+          - os: ubuntu-latest
+            name: linux
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
