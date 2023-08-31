@@ -81,7 +81,7 @@ set_target_properties(${pluginname_vst3} PROPERTIES LIBRARY_OUTPUT_NAME "${CLAP_
 # Link to the clap libraryes
 target_link_libraries(${pluginname_vst3} PRIVATE clap-core clap-wrapper-extensions)
 
-# Support some of the options at cmake time
+# Support ome of the options at cmake time
 target_compile_options(${pluginname_vst3} PRIVATE
 		-DCLAP_SUPPORTS_ALL_NOTE_EXPRESSIONS=$<IF:$<BOOL:${CLAP_SUPPORTS_ALL_NOTE_EXPRESSIONS}>,1,0>
 		)
@@ -125,18 +125,22 @@ elseif(UNIX)
 
 	add_custom_command(TARGET ${pluginname_vst3} PRE_BUILD
 			WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-			COMMAND ${CMAKE_COMMAND} -E make_directory "${clapname}.vst3/Contents/x86_64-linux"
+			COMMAND ${CMAKE_COMMAND} -E make_directory "$<IF:$<CONFIG:Debug>,Debug,Release>/${clapname}.vst3/Contents/x86_64-linux"
 	)
 	set_target_properties(${pluginname_vst3} PROPERTIES
-			LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${clapname}.vst3/Contents/x86_64-linux"
+			LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<IF:$<CONFIG:Debug>,Debug,Release>/${clapname}.vst3/Contents/x86_64-linux"
+			LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/Debug/${clapname}.vst3/Contents/x86_64-linux"
+			LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/Release/${clapname}.vst3/Contents/x86_64-linux"
 			SUFFIX ".so" PREFIX "")
 else()
 	add_custom_command(TARGET ${pluginname_vst3} PRE_BUILD
 			WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-			COMMAND ${CMAKE_COMMAND} -E make_directory "${clapname}.vst3/Contents/x86_64-win"
+			COMMAND ${CMAKE_COMMAND} -E make_directory "$<IF:$<CONFIG:Debug>,Debug,Release>/${clapname}.vst3/Contents/x86_64-win"
 			)
 	set_target_properties(${pluginname_vst3} PROPERTIES
-			LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${clapname}.vst3/Contents/x86_64-win"
+			LIBRARY_OUTPUT_DIRECTORY "$<IF:$<CONFIG:Debug>,Debug,Release>/${CMAKE_BINARY_DIR}/${clapname}.vst3/Contents/x86_64-win"
+			LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/Debug/${clapname}.vst3/Contents/x86_64-win"
+			LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/Release/${clapname}.vst3/Contents/x86_64-win"
 			SUFFIX ".vst3")
 endif()
 
