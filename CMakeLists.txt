@@ -17,6 +17,7 @@
 # CLAP_VST3_TUID_STRING  The VST3 component ::iid as a string; absent this wrapper hashes clap id
 # CLAP_WRAPPER_BUNDLE_IDENTIFIER the macOS Bundle Identifier. Absent this it is 'org.cleveraudio.wrapper.(name)'
 # CLAP_WRAPPER_BUNDLE_VERSION the macOS Bundle Version. Defaults to 1.0
+# CLAP_WRAPPER_WINDOWS_SINGLE_FILE if set to TRUE (default) the windows .vst3 is a single file; false a 3.7 spec folder
 #
 
 cmake_minimum_required(VERSION 3.20)
@@ -29,6 +30,7 @@ set(CMAKE_COLOR_DIAGNOSTICS ON)
 # If your clap supports note expressions you *can* implement the wrapper extension here or you
 # can just build with this turned on and it will forward all note expressions to your CLAP
 option(CLAP_SUPPORTS_ALL_NOTE_EXPRESSIONS "Does the underlying CLAP support note expressions" OFF)
+option(CLAP_WRAPPER_WINDOWS_SINGLE_FILE "Build a single fine (rather than folder) on windows" ON)
 
 project(clap-wrapper
 	LANGUAGES C CXX
@@ -81,7 +83,7 @@ set_target_properties(${pluginname_vst3} PROPERTIES LIBRARY_OUTPUT_NAME "${CLAP_
 # Link to the clap libraryes
 target_link_libraries(${pluginname_vst3} PRIVATE clap-core clap-wrapper-extensions)
 
-# Support some of the options at cmake time
+# Support ome of the options at cmake time
 target_compile_options(${pluginname_vst3} PRIVATE
 		-DCLAP_SUPPORTS_ALL_NOTE_EXPRESSIONS=$<IF:$<BOOL:${CLAP_SUPPORTS_ALL_NOTE_EXPRESSIONS}>,1,0>
 		)
@@ -125,19 +127,29 @@ elseif(UNIX)
 
 	add_custom_command(TARGET ${pluginname_vst3} PRE_BUILD
 			WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-			COMMAND ${CMAKE_COMMAND} -E make_directory "${clapname}.vst3/Contents/x86_64-linux"
+			COMMAND ${CMAKE_COMMAND} -E make_directory "$<IF:$<CONFIG:Debug>,Debug,Release>/${clapname}.vst3/Contents/x86_64-linux"
 	)
 	set_target_properties(${pluginname_vst3} PROPERTIES
-			LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${clapname}.vst3/Contents/x86_64-linux"
+			LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<IF:$<CONFIG:Debug>,Debug,Release>/${clapname}.vst3/Contents/x86_64-linux"
+			LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/Debug/${clapname}.vst3/Contents/x86_64-linux"
+			LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/Release/${clapname}.vst3/Contents/x86_64-linux"
 			SUFFIX ".so" PREFIX "")
 else()
-	add_custom_command(TARGET ${pluginname_vst3} PRE_BUILD
-			WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-			COMMAND ${CMAKE_COMMAND} -E make_directory "${clapname}.vst3/Contents/x86_64-win"
-			)
-	set_target_properties(${pluginname_vst3} PROPERTIES
-			LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${clapname}.vst3/Contents/x86_64-win"
-			SUFFIX ".vst3")
+	if (${CLAP_WRAPPER_WINDOWS_SINGLE_FILE})
+		message(STATUS "Building VST3 Single File")
+		set_target_properties(${pluginname_vst3} PROPERTIES SUFFIX ".vst3")
+	else()
+		message(STATUS "Building VST3 Bundle Folder")
+		add_custom_command(TARGET ${pluginname_vst3} PRE_BUILD
+				WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+				COMMAND ${CMAKE_COMMAND} -E make_directory "$<IF:$<CONFIG:Debug>,Debug,Release>/${clapname}.vst3/Contents/x86_64-win"
+				)
+		set_target_properties(${pluginname_vst3} PROPERTIES
+				LIBRARY_OUTPUT_DIRECTORY "$<IF:$<CONFIG:Debug>,Debug,Release>/${CMAKE_BINARY_DIR}/${clapname}.vst3/Contents/x86_64-win"
+				LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/Debug/${clapname}.vst3/Contents/x86_64-win"
+				LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/Release/${clapname}.vst3/Contents/x86_64-win"
+				SUFFIX ".vst3")
+	endif()
 endif()
 
 
