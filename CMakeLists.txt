@@ -18,6 +18,7 @@
 # CLAP_WRAPPER_BUNDLE_IDENTIFIER the macOS Bundle Identifier. Absent this it is 'org.cleveraudio.wrapper.(name)'
 # CLAP_WRAPPER_BUNDLE_VERSION the macOS Bundle Version. Defaults to 1.0
 # CLAP_WRAPPER_WINDOWS_SINGLE_FILE if set to TRUE (default) the windows .vst3 is a single file; false a 3.7 spec folder
+# CLAP_WRAPPER_BUILD_AUV2 on macOS also build an AUV2
 #
 
 cmake_minimum_required(VERSION 3.20)
@@ -31,6 +32,7 @@ set(CMAKE_COLOR_DIAGNOSTICS ON)
 # can just build with this turned on and it will forward all note expressions to your CLAP
 option(CLAP_SUPPORTS_ALL_NOTE_EXPRESSIONS "Does the underlying CLAP support note expressions" OFF)
 option(CLAP_WRAPPER_WINDOWS_SINGLE_FILE "Build a single fine (rather than folder) on windows" ON)
+option(CLAP_WRAPPER_BUILD_AUV2 "Build an AUV2 on macOS" OFF)
 
 project(clap-wrapper
 	LANGUAGES C CXX
@@ -64,9 +66,14 @@ else()
 	set(clapname ${CLAP_WRAPPER_OUTPUT_NAME})
 endif()
 
-# Generate a VST3 target name (prepare for AU)
+# Generate an AU and VST3
 set(pluginname_vst3 ${pluginname}_as_vst3)
 message(STATUS "clap-wrapper: VST3 plugin target is '${pluginname_vst3}' generating target '${clapname}.vst3'")
+
+if (${CLAP_WRAPPER_BUILD_AUV2})
+	set(pluginname_auv2 ${pluginname}_as_auv2)
+	message(STATUS "clap-wrapper: AUV2 plugin target is '${pluginname_auv2}' generating target '${clapname}.component'")
+endif()
 
 
 # Define the extensions target
@@ -99,7 +106,7 @@ target_compile_options(${pluginname_vst3} PRIVATE $<IF:$<CONFIG:Debug>,-DDEVELOP
 
 if (APPLE)
 	if ("${CLAP_WRAPPER_BUNDLE_IDENTIFIER}" STREQUAL "")
-		set(CLAP_WRAPPER_BUNDLE_IDENTIFIER "org.cleveraudio.wrapper.${pluginname}.vst3")
+		set(CLAP_WRAPPER_BUNDLE_IDENTIFIER "org.cleveraudio.wrapper.${pluginname}")
 	endif()
 
 	if ("${CLAP_WRAPPER_BUNDLE_VERSION}" STREQUAL "")
@@ -110,7 +117,7 @@ if (APPLE)
 	set_target_properties(${pluginname_vst3} PROPERTIES
 			BUNDLE True
 			BUNDLE_EXTENSION vst3
-			MACOSX_BUNDLE_GUI_IDENTIFIER ${CLAP_WRAPPER_BUNDLE_IDENTIFIER}
+			MACOSX_BUNDLE_GUI_IDENTIFIER "${CLAP_WRAPPER_BUNDLE_IDENTIFIER}.vst3"
 			MACOSX_BUNDLE_BUNDLE_NAME ${clapname}
 			MACOSX_BUNDLE_BUNDLE_VERSION ${CLAP_WRAPPER_BUNDLE_VERSION}
 			MACOSX_BUNDLE_SHORT_VERSION_STRING ${CLAP_WRAPPER_BUNDLE_VERSION}
@@ -152,4 +159,34 @@ else()
 	endif()
 endif()
 
+if (${CLAP_WRAPPER_BUILD_AUV2})
+	add_library(${pluginname_auv2} MODULE src/wrapasauv2.cpp)
+	set_target_properties(${pluginname_auv2} PROPERTIES LIBRARY_OUTPUT_NAME "${CLAP_WRAPPER_OUTPUT_NAME}")
+
+	target_link_libraries(${pluginname_auv2} PRIVATE auv2_sdk)
+
+	if ("${CLAP_WRAPPER_BUNDLE_IDENTIFIER}" STREQUAL "")
+		set(CLAP_WRAPPER_BUNDLE_IDENTIFIER "org.cleveraudio.wrapper.${pluginname}")
+	endif()
+
+	if ("${CLAP_WRAPPER_BUNDLE_VERSION}" STREQUAL "")
+		set(CLAP_WRAPPER_BUNDLE_VERSION "1.0")
+	endif()
+
+	target_link_libraries (${pluginname_auv2} PUBLIC "-framework Foundation" "-framework CoreFoundation" "-framework AudioToolbox")
+	set_target_properties(${pluginname_auv2} PROPERTIES
+			BUNDLE True
+			BUNDLE_EXTENSION component
+			MACOSX_BUNDLE_GUI_IDENTIFIER "${CLAP_WRAPPER_BUNDLE_IDENTIFIER}.component"
+			MACOSX_BUNDLE_BUNDLE_NAME ${clapname}
+			MACOSX_BUNDLE_BUNDLE_VERSION ${CLAP_WRAPPER_BUNDLE_VERSION}
+			MACOSX_BUNDLE_SHORT_VERSION_STRING ${CLAP_WRAPPER_BUNDLE_VERSION}
+			MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/cmake/auv2_Info.plist.in
+			)
+	if (NOT ${CMAKE_GENERATOR} STREQUAL "Xcode")
+		add_custom_command(TARGET ${pluginname_auv2} POST_BUILD
+				WORKING_DIRECTORY $<TARGET_PROPERTY:${pluginname_auv2},LIBRARY_OUTPUT_DIRECTORY>
+				COMMAND SetFile -a B "$<TARGET_PROPERTY:${pluginname_auv2},MACOSX_BUNDLE_BUNDLE_NAME>.$<TARGET_PROPERTY:${pluginname_auv2},BUNDLE_EXTENSION>")
+	endif()
+endif()
 

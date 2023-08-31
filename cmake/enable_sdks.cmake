@@ -7,6 +7,7 @@
 # set(CLAP_WRAPPER_OUTPUT_NAME "" CACHE STRING "The output name of the dynamically wrapped plugin")
 set(CLAP_SDK_ROOT "" CACHE STRING "Path to CLAP SDK")
 set(VST3_SDK_ROOT "" CACHE STRING "Path to VST3 SDK")
+set(AUDIOUNIT_SDK_ROOT "" CACHE STRING "Path to the Apple AUV2 Audio Unit SDK")
 
 function(DetectCLAP)
   if(CLAP_SDK_ROOT STREQUAL "")
@@ -33,7 +34,7 @@ function(DetectCLAP)
 
 	cmake_path(CONVERT "${CLAP_SDK_ROOT}" TO_CMAKE_PATH_LIST CLAP_SDK_ROOT)
 
-	message(STATUS "clap-wrapper: CLAP SDK at ${CLAP_SDK_ROOT}")
+	message(STATUS "clap-wrapper: CLAP SDK location: ${CLAP_SDK_ROOT}")
 	set(CLAP_SDK_ROOT "${CLAP_SDK_ROOT}" PARENT_SCOPE)
 
   endif()
@@ -180,6 +181,61 @@ endif()
 DefineCLAPASVST3Sources() 
 
 #####################
+
+function(DetectAudioUnitSDK)
+	if(AUDIOUNIT_SDK_ROOT STREQUAL "")
+		message(STATUS "clap-wrapper: searching AudioUnit SDK in \"${CMAKE_CURRENT_SOURCE_DIR}\"...")
+
+		if ( AUDIOUNIT_SDK_ROOT STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libs/AudioUnitSDK")
+			set(AUDIOUNIT_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/libs/AudioUnitSDK")
+			message(STATUS "clap-wrapper: AudioUnit SDK detected in libs subdirectory")
+		endif()
+
+		if ( AUDIOUNIT_SDK_ROOT STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/AudioUnitSDK")
+			set(AUDIOUNIT_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/AudioUnitSDK")
+			message(STATUS "clap-wrapper: AudioUnit SDK detected in subdirectory")
+		endif()
+
+		if ( AUDIOUNIT_SDK_ROOT STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../AudioUnitSDK")
+			set(AUDIOUNIT_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../AudioUnitSDK")
+			message(STATUS "clap-wrapper: AudioUnit SDK detected in parent subdirectory")
+		endif()
+
+		if(AUDIOUNIT_SDK_ROOT STREQUAL "")
+			message(FATAL_ERROR "Unable to detect AudioUnitSDK! Have you set -DCLAP_SDK_ROOT=/path/to/sdk?")
+		endif()
+
+		cmake_path(CONVERT "${AUDIOUNIT_SDK_ROOT}" TO_CMAKE_PATH_LIST AUDIOUNIT_SDK_ROOT)
+
+		message(STATUS "clap-wrapper: AudioUnit SDK location: ${AUDIOUNIT_SDK_ROOT}")
+		set(CLAP_SDK_ROOT "${AUDIOUNIT_SDK_ROOT}" PARENT_SCOPE)
+	else()
+		cmake_path(CONVERT "${AUDIOUNIT_SDK_ROOT}" TO_CMAKE_PATH_LIST AUDIOUNIT_SDK_ROOT)
+		message(STATUS "clap-wrapper: AudioUnit SDK location: ${AUDIOUNIT_SDK_ROOT}")
+	endif()
+endfunction(DetectAudioUnitSDK)
+
+if (APPLE)
+	if (${CLAP_WRAPPER_BUILD_AUV2})
+		DetectAudioUnitSDK()
+
+		set(AUSDK_SRC ${AUDIOUNIT_SDK_ROOT}/src/AudioUnitSDK)
+		add_library(auv2_sdk STATIC ${AUSDK_SRC}/AUBase.cpp
+				${AUSDK_SRC}/AUBuffer.cpp
+				${AUSDK_SRC}/AUBufferAllocator.cpp
+				${AUSDK_SRC}/AUEffectBase.cpp
+				${AUSDK_SRC}/AUInputElement.cpp
+				${AUSDK_SRC}/AUMIDIBase.cpp
+				${AUSDK_SRC}/AUMIDIEffectBase.cpp
+				${AUSDK_SRC}/AUOutputElement.cpp
+				${AUSDK_SRC}/AUPlugInDispatch.cpp
+				${AUSDK_SRC}/AUScopeElement.cpp
+				${AUSDK_SRC}/ComponentBase.cpp
+				${AUSDK_SRC}/MusicDeviceBase.cpp
+				)
+		target_include_directories(auv2_sdk PUBLIC ${AUDIOUNIT_SDK_ROOT}/include)
+	endif()
+endif()
 
 # define platforms
 
