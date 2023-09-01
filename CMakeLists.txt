@@ -18,6 +18,7 @@
 # CLAP_WRAPPER_BUNDLE_IDENTIFIER the macOS Bundle Identifier. Absent this it is 'org.cleveraudio.wrapper.(name)'
 # CLAP_WRAPPER_BUNDLE_VERSION the macOS Bundle Version. Defaults to 1.0
 # CLAP_WRAPPER_WINDOWS_SINGLE_FILE if set to TRUE (default) the windows .vst3 is a single file; false a 3.7 spec folder
+# CLAP_WRAPPER_DOWNLOAD_DEPENDENCIES if set will download the needed SDKs using CPM from github
 #
 
 cmake_minimum_required(VERSION 3.20)
@@ -46,14 +47,13 @@ set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 # discover the plugin paths and enable them
 include(cmake/enable_sdks.cmake)
 
-# provide the CLAP_WRAPPER_OUTPUT_NAME to specify the matching plugin name. This defines two
-# variables: pluginname which is a target and clapname which is the actual output result name
+# provide the CLAP_WRAPPER_OUTPUT_NAME to specify the matching plugin name.
 if((NOT CLAP_WRAPPER_OUTPUT_NAME ) OR (CLAP_WRAPPER_OUTPUT_NAME STREQUAL ""))
-	set(pluginname "clapasvst3")
+	set(CLAP_WRAPPER_OUTPUT_NAME "clapasvst3")
 	message(WARNING "clap-wrapper: CLAP_WRAPPER_OUTPUT_NAME not set - continuing with a default name `clapasvst3`")
-else()
-	string(MAKE_C_IDENTIFIER ${CLAP_WRAPPER_OUTPUT_NAME} pluginname)
 endif()
+
+string(MAKE_C_IDENTIFIER ${CLAP_WRAPPER_OUTPUT_NAME} pluginname)
 
 # Link the actual plugin library
 add_library(${pluginname}_as_vst3 MODULE)
@@ -66,13 +66,15 @@ target_add_vst3_wrapper(
 		BUNDLE_VERSION "${CLAP_WRAPPER_BUNDLE_VERSION}"
 		)
 
-if (${CLAP_WRAPPER_BUILD_AUV2})
-	add_library(${pluginname}_as_auv2 MODULE)
-	target_add_auv2_wrapper(
-			TARGET ${pluginname}_as_auv2
-			OUTPUT_NAME "${CLAP_WRAPPER_OUTPUT_NAME}"
-			BUNDLE_IDENTIFIER "${CLAP_WRAPPER_BUNDLE_IDENTIFIER}"
-			BUNDLE_VERSION "${CLAP_WRAPPER_BUNDLE_VERSION}"
+if (APPLE)
+	if (${CLAP_WRAPPER_BUILD_AUV2})
+		add_library(${pluginname}_as_auv2 MODULE)
+		target_add_auv2_wrapper(
+				TARGET ${pluginname}_as_auv2
+				OUTPUT_NAME "${CLAP_WRAPPER_OUTPUT_NAME}"
+				BUNDLE_IDENTIFIER "${CLAP_WRAPPER_BUNDLE_IDENTIFIER}"
+				BUNDLE_VERSION "${CLAP_WRAPPER_BUNDLE_VERSION}"
 
-	)
+		)
+	endif()
 endif()

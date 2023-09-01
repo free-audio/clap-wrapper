@@ -44,3 +44,22 @@ jobs:
           cmake -S . -B ./build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCLAP_SDK_ROOT=deps/clap -DVST3_SDK_ROOT=deps/vst3sdk -DCLAP_WRAPPER_OUTPUT_NAME=testplug
           cmake --build ./build --config Debug
 
+
+
+  build_feature_cpm_download:
+    name: Build feature with CMake CPM Dependency Download
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          submodules: recursive
+
+      - name: Build project
+        run: |
+          cmake -S . -B ./build -DCMAKE_BUILD_TYPE=Debug -DCLAP_WRAPPER_DOWNLOAD_DEPENDENCIES=TRUE -DCLAP_WRAPPER_BUILD_AUV2=TRUE 
+          cmake --build ./build --config Debug
+
