@@ -61,7 +61,7 @@ function(DetectVST3SDK)
 	  file(STRINGS "${VST3_SDK_ROOT}/CMakeLists.txt" SDKVERSION REGEX "^\[ ]*VERSION .*")
 	  string(STRIP ${SDKVERSION} SDKVERSION)
 	  string(REPLACE "VERSION " "" SDKVERSION ${SDKVERSION})
-	  message(STATUS "VST3 version ${SDKVERSION}")
+	  message(STATUS "VST3 version: ${SDKVERSION}")
   endif()
 
   cmake_path(CONVERT "${VST3_SDK_ROOT}" TO_CMAKE_PATH_LIST VST3_SDK_ROOT)
