@@ -40,11 +40,11 @@ jobs:
 
 
   build_feature-win-clang:
-    name: Build feature
+    name: Build feature with Clang and Ninja
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ windows-latest ]
+        os: [ windows-latest, ubuntu-latest ]
 
     steps:
       - name: Checkout code
@@ -54,6 +54,10 @@ jobs:
 
       - name: Set up Clang
         uses: egor-tensin/setup-clang@v1
+
+      - name: Set up ninja
+        uses: seanmiddleditch/gha-setup-ninja@master
+
 
       - name: Get Dependencies
         run: |
@@ -69,6 +73,6 @@ jobs:
 
       - name: Build project
         run: |
-          cmake -S . -B ./build -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=Debug -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCLAP_SDK_ROOT=deps/clap -DVST3_SDK_ROOT=deps/vst3sdk -DCLAP_WRAPPER_OUTPUT_NAME=testplug
+          cmake -S . -B ./build -GNinja -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=Debug -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCLAP_SDK_ROOT=deps/clap -DVST3_SDK_ROOT=deps/vst3sdk -DCLAP_WRAPPER_OUTPUT_NAME=testplug
           cmake --build ./build --config Debug
 
