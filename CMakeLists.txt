@@ -66,4 +66,13 @@ target_add_vst3_wrapper(
 		BUNDLE_VERSION "${CLAP_WRAPPER_BUNDLE_VERSION}"
 		)
 
+if (${CLAP_WRAPPER_BUILD_AUV2})
+	add_library(${pluginname}_as_auv2 MODULE)
+	target_add_auv2_wrapper(
+			TARGET ${pluginname}_as_auv2
+			OUTPUT_NAME "${CLAP_WRAPPER_OUTPUT_NAME}"
+			BUNDLE_IDENTIFIER "${CLAP_WRAPPER_BUNDLE_IDENTIFIER}"
+			BUNDLE_VERSION "${CLAP_WRAPPER_BUNDLE_VERSION}"
 
+	)
+endif()
