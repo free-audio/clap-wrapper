@@ -10,8 +10,15 @@
 
 #pragma once
 
-#include <vector>
+#if MAC
+#include "ghc/filesystem.hpp"
+namespace fs = ghc::filesystem;
+#else
 #include <filesystem>
+namespace fs = std::filesystem;
+#endif
+
+#include <vector>
 #include <functional>
 #include <clap/clap.h>
 #if WIN
@@ -27,7 +34,7 @@
 namespace Clap
 {
 
-  std::vector<std::filesystem::path> getValidCLAPSearchPaths();
+  std::vector<fs::path> getValidCLAPSearchPaths();
   class Plugin;
   class IHost;
 

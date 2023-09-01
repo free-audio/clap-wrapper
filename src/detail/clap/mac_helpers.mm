@@ -10,14 +10,17 @@
 */
 
 #include <vector>
-#include <filesystem>
+
+// No need to ifdef this - it is mac only
+#include <ghc/filesystem.hpp>
+namespace fs = ghc::filesystem;
 
 #include <Foundation/Foundation.h>
 
 namespace Clap
 {
-    std::vector<std::filesystem::path> getMacCLAPSearchPaths() {
-       auto res = std::vector<std::filesystem::path>();
+    std::vector<fs::path> getMacCLAPSearchPaths() {
+       auto res = std::vector<fs::path>();
        auto *fileManager = [NSFileManager defaultManager];
        auto *userLibURLs = [fileManager URLsForDirectory:NSLibraryDirectory
                                                inDomains:NSUserDomainMask];
@@ -27,14 +30,14 @@ namespace Clap
        if (userLibURLs) {
           auto *u = [userLibURLs objectAtIndex:0];
           auto p =
-                  std::filesystem::path{[u fileSystemRepresentation]} / "Audio" / "Plug-Ins" / "CLAP";
+                  fs::path{[u fileSystemRepresentation]} / "Audio" / "Plug-Ins" / "CLAP";
           res.push_back(p);
        }
 
        if (sysLibURLs) {
           auto *u = [sysLibURLs objectAtIndex:0];
           auto p =
-                  std::filesystem::path{[u fileSystemRepresentation]} / "Audio" / "Plug-Ins" / "CLAP";
+                  fs::path{[u fileSystemRepresentation]} / "Audio" / "Plug-Ins" / "CLAP";
           res.push_back(p);
        }
        return res;
