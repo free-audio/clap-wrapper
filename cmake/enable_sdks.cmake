@@ -275,12 +275,12 @@ function(target_add_vst3_wrapper)
 
 		add_custom_command(TARGET ${V3_TARGET} PRE_BUILD
 				WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-				COMMAND ${CMAKE_COMMAND} -E make_directory "$<IF:$<CONFIG:Debug>,Debug,Release>/${clapname}.vst3/Contents/x86_64-linux"
+				COMMAND ${CMAKE_COMMAND} -E make_directory "$<IF:$<CONFIG:Debug>,Debug,Release>/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-linux"
 				)
 		set_target_properties(${V3_TARGET} PROPERTIES
-				LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<IF:$<CONFIG:Debug>,Debug,Release>/${clapname}.vst3/Contents/x86_64-linux"
-				LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/Debug/${clapname}.vst3/Contents/x86_64-linux"
-				LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/Release/${clapname}.vst3/Contents/x86_64-linux"
+				LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<IF:$<CONFIG:Debug>,Debug,Release>/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-linux"
+				LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/Debug/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-linux"
+				LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/Release/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-linux"
 				SUFFIX ".so" PREFIX "")
 	else()
 		if (NOT ${V3_WINDOWS_FOLDER_VST3})
@@ -290,12 +290,12 @@ function(target_add_vst3_wrapper)
 			message(STATUS "clap-wrapper: Building VST3 Bundle Folder")
 			add_custom_command(TARGET ${V3_TARGET} PRE_BUILD
 					WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-					COMMAND ${CMAKE_COMMAND} -E make_directory "$<IF:$<CONFIG:Debug>,Debug,Release>/${clapname}.vst3/Contents/x86_64-win"
+					COMMAND ${CMAKE_COMMAND} -E make_directory "$<IF:$<CONFIG:Debug>,Debug,Release>/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-win"
 					)
 			set_target_properties(${V3_TARGET} PROPERTIES
-					LIBRARY_OUTPUT_DIRECTORY "$<IF:$<CONFIG:Debug>,Debug,Release>/${CMAKE_BINARY_DIR}/${clapname}.vst3/Contents/x86_64-win"
-					LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/Debug/${clapname}.vst3/Contents/x86_64-win"
-					LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/Release/${clapname}.vst3/Contents/x86_64-win"
+					LIBRARY_OUTPUT_DIRECTORY "$<IF:$<CONFIG:Debug>,Debug,Release>/${CMAKE_BINARY_DIR}/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-win"
+					LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/Debug/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-win"
+					LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/Release/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-win"
 					SUFFIX ".vst3")
 		endif()
 	endif()
