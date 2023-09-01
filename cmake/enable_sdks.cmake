@@ -11,6 +11,44 @@ set(VST3_SDK_ROOT "" CACHE STRING "Path to VST3 SDK")
 # make CPM available
 include(cmake/CPM.cmake)
 
+if (${CLAP_WRAPPER_DOWNLOAD_DEPENDENCIES})
+	message(STATUS "clap-wrapper: Downloading dependencies using CPM")
+
+	CPMAddPackage(
+			NAME "vst3sdk"
+			GITHUB_REPOSITORY "steinbergmedia/vst3sdk"
+			GIT_TAG "v3.7.6_build_18"
+			EXCLUDE_FROM_ALL TRUE
+			DOWNLOAD_ONLY TRUE
+			SOURCE_DIR cpm/vst3sdk
+	)
+	set(VST3_SDK_ROOT "${CMAKE_BINARY_DIR}/cpm/vst3sdk")
+
+	CPMAddPackage(
+			NAME "clap"
+			GITHUB_REPOSITORY "free-audio/clap"
+			GIT_TAG "1.1.8"
+			EXCLUDE_FROM_ALL TRUE
+			DOWNLOAD_ONLY TRUE
+			SOURCE_DIR cpm/clap
+	)
+	set(CLAP_SDK_ROOT "${CMAKE_BINARY_DIR}/cpm/clap")
+
+	if (APPLE)
+		if (${CLAP_WRAPPER_BUILD_AUV2})
+			CPMAddPackage(
+					NAME "AudioUnitSDK"
+					GITHUB_REPOSITORY "apple/AudioUnitSDK"
+					GIT_TAG "AudioUnitSDK-1.1.0"
+					EXCLUDE_FROM_ALL TRUE
+					DOWNLOAD_ONLY TRUE
+					SOURCE_DIR cpm/AudioUnitSDK
+			)
+			set(AUDIOUNIT_SDK_ROOT "${CMAKE_BINARY_DIR}/cpm/AudioUnitSDK")
+		endif()
+	endif()
+endif()
+
 function(LibrarySearchPath)
 	set(oneValueArgs SDKDIR RESULT)
 	cmake_parse_arguments(SEARCH "" "${oneValueArgs}" "" ${ARGN} )
@@ -58,10 +96,6 @@ endfunction(DetectCLAP)
 function(DetectVST3SDK)
   if(VST3_SDK_ROOT STREQUAL "")
 	  LibrarySearchPath(SDKDIR vst3sdk RESULT VST3_SDK_ROOT)
-	  file(STRINGS "${VST3_SDK_ROOT}/CMakeLists.txt" SDKVERSION REGEX "^\[ ]*VERSION .*")
-	  string(STRIP ${SDKVERSION} SDKVERSION)
-	  string(REPLACE "VERSION " "" SDKVERSION ${SDKVERSION})
-	  message(STATUS "VST3 version: ${SDKVERSION}")
   endif()
 
   cmake_path(CONVERT "${VST3_SDK_ROOT}" TO_CMAKE_PATH_LIST VST3_SDK_ROOT)
@@ -178,6 +212,12 @@ if(NOT EXISTS "${VST3_SDK_ROOT}/public.sdk")
     message(FATAL_ERROR "There is no VST3 SDK at ${VST3_SDK_ROOT} ")
 endif()
 
+file(STRINGS "${VST3_SDK_ROOT}/CMakeLists.txt" SDKVERSION REGEX "^\[ ]*VERSION .*")
+string(STRIP ${SDKVERSION} SDKVERSION)
+string(REPLACE "VERSION " "" SDKVERSION ${SDKVERSION})
+message(STATUS "clap-wrapper: VST3 version: ${SDKVERSION}; VST3 Root ${VST3_SDK_ROOT}")
+
+
 DefineCLAPASVST3Sources() 
 
 #####################
@@ -213,11 +253,21 @@ function(target_add_vst3_wrapper)
 			WINDOWS_FOLDER_VST3
 			)
 	cmake_parse_arguments(V3 "" "${oneValueArgs}" "" ${ARGN} )
+
+	if (NOT DEFINED V3_TARGET)
+		message(FATAL_ERROR "clap-wrapper: target_add_vst3_wrapper requires a target")
+	endif()
+
+	if (NOT DEFINED V3_OUTPUT_NAME)
+		message(FATAL_ERROR "clap-wrapper: target_add_vst3_wrapper requires an output name")
+	endif()
+
 	message(STATUS "clap-wrapper: Adding VST3 Wrapper to target ${V3_TARGET} generating '${V3_OUTPUT_NAME}.vst3'")
 
 	if (NOT DEFINED V3_WINDOWS_FOLDER_VST3)
 		set(V3_WINDOWS_FOLDER_VST3 FALSE)
 	endif()
+
 
 	string(MAKE_C_IDENTIFIER ${V3_OUTPUT_NAME} outidentifier)
 
@@ -357,6 +407,15 @@ if (APPLE)
 					BUNDLE_VERSION
 			)
 			cmake_parse_arguments(AUV2 "" "${oneValueArgs}" "" ${ARGN} )
+
+			if (NOT DEFINED AUV2_TARGET)
+				message(FATAL_ERROR "clap-wrapper: target_add_auv2_wrapper requires a target")
+			endif()
+
+			if (NOT DEFINED AUV2_OUTPUT_NAME)
+				message(FATAL_ERROR "clap-wrapper: target_add_auv2_wrapper requires an output name")
+			endif()
+
 			message(STATUS "clap-wrapper: Adding AUV2 Wrapper to target ${AUV2_TARGET} generating '${AUV2_OUTPUT_NAME}.component'")
 
 			string(MAKE_C_IDENTIFIER ${AUV2_OUTPUT_NAME} outidentifier)
