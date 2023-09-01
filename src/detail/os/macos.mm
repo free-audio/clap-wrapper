@@ -14,7 +14,8 @@
 #include "public.sdk/source/main/moduleinit.h"
 #include "osutil.h"
 #include <vector>
-#include <filesystem>
+#include <ghc/filesystem.hpp>
+namespace fs = ghc::filesystem;
 #include <iostream>
 
 namespace os
@@ -123,7 +124,7 @@ namespace os
   std::string getParentFolderName()
   {
     NSString* identifier = [[NSBundle bundleForClass:[clapwrapper_dummy_object_to_trick_the_os class]] bundlePath];
-    std::filesystem::path n = [identifier UTF8String];
+    fs::path n = [identifier UTF8String];
     if (n.has_parent_path())
     {
       auto p = n.parent_path();
@@ -143,7 +144,7 @@ namespace os
     
     // this is needed:
     NSString* identifier = [[NSBundle bundleForClass:[clapwrapper_dummy_object_to_trick_the_os class]] bundlePath];
-    std::filesystem::path k = [identifier UTF8String];
+    fs::path k = [identifier UTF8String];
     return k.stem();
   }
 }

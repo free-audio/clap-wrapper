@@ -79,14 +79,14 @@ bool findPlugin(Clap::Library& lib, const std::string& pluginfilename)
 	// Strategy 1: look for a clap with the same name as this binary
 	for (auto& i : paths)
 	{
-		if ( !std::filesystem::exists(i) )
+		if ( !fs::exists(i) )
 		 continue;
 		// try to find it the CLAP folder immediately
 		auto k1 = i / pluginfilename;
 		LOGDETAIL("scanning for binary: {}", k1.u8string().c_str());
 		std::cout << "scanning for " << k1 << std::endl;
 		
-		if (std::filesystem::exists(k1))
+		if (fs::exists(k1))
 		{
 			if (lib.load(k1.u8string().c_str()))
 			{
@@ -97,7 +97,7 @@ bool findPlugin(Clap::Library& lib, const std::string& pluginfilename)
 		// Strategy 2: try to locate "CLAP/vendorX/plugY.clap"  - derived from "VST3/vendorX/plugY.vst3"
 		auto k2 = i / parentfolder / pluginfilename;
 		LOGDETAIL("scanning for binary: {}", k2.u8string().c_str());
-		if (std::filesystem::exists(k2))
+		if (fs::exists(k2))
 		{
 			if (lib.load(k2.u8string().c_str()))
 			{
@@ -106,11 +106,11 @@ bool findPlugin(Clap::Library& lib, const std::string& pluginfilename)
 		}
 
 		// Strategy 3: enumerate folders in CLAP folder and try to locate the plugin in any sub folder (only one level)
-		for (const auto& subdir : std::filesystem::directory_iterator(i))
+		for (const auto& subdir : fs::directory_iterator(i))
 		{
 			auto k3 = i / subdir / pluginfilename;
 			LOGDETAIL("scanning for binary: {}", k3.u8string().c_str());
-			if (std::filesystem::exists(k3))
+			if (fs::exists(k3))
 			{
 				if (lib.load(k3.u8string().c_str()))
 				{

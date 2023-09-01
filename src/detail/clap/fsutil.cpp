@@ -39,19 +39,19 @@ namespace Clap
   }
 #endif
 
-  std::vector<std::filesystem::path> getValidCLAPSearchPaths()
+  std::vector<fs::path> getValidCLAPSearchPaths()
   {
-    std::vector<std::filesystem::path> res;
+    std::vector<fs::path> res;
 
 #if MAC
-    extern std::vector<std::filesystem::path> getMacCLAPSearchPaths();
+    extern std::vector<fs::path> getMacCLAPSearchPaths();
     res = getMacCLAPSearchPaths();
     // getSystemPaths(res);
 #endif
 
 #if LIN
     res.emplace_back("/usr/lib/clap");
-    res.emplace_back(std::filesystem::path(getenv("HOME")) / std::filesystem::path(".clap"));
+    res.emplace_back(fs::path(getenv("HOME")) / fs::path(".clap"));
 #endif
 
 #if WIN
@@ -60,12 +60,12 @@ namespace Clap
       auto p = getEnvVariable("COMMONPROGRAMFILES");
       if (!p.empty())
       {
-        res.emplace_back(std::filesystem::path{ p } / "CLAP");
+        res.emplace_back(fs::path{ p } / "CLAP");
       }
       auto q = getEnvVariable("LOCALAPPDATA");
       if (!q.empty())
       {
-        res.emplace_back(std::filesystem::path{ q } / "Programs" / "Common" / "CLAP");
+        res.emplace_back(fs::path{ q } / "Programs" / "Common" / "CLAP");
       }
     }
     auto cp = getEnvVariable("CLAP_PATH");
@@ -87,10 +87,10 @@ namespace Clap
       {
         auto item = cp.substr(0, pos);
         cp = cp.substr(pos + 1);
-        res.emplace_back(std::filesystem::path{ item });
+        res.emplace_back(fs::path{ item });
       }
       if (cp.size())
-        res.emplace_back(std::filesystem::path{ cp });
+        res.emplace_back(fs::path{ cp });
     }
 
     return res;
