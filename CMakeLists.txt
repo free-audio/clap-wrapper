@@ -86,7 +86,7 @@ endif()
 if (NOT TARGET clap-wrapper-vst3)
 	add_library(clap-wrapper-vst3 STATIC ${wrappersources_vst3})
 	target_include_directories(clap-wrapper-vst3 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
-	target_link_libraries(clap-wrapper-vst3 PRIVATE clap-core vst3-pluginbase)
+	target_link_libraries(clap-wrapper-vst3 PUBLIC clap-core vst3-pluginbase)
 
 	# clap-wrapper-extensions are PUBLIC, so a clap linking the library can access the clap-wrapper-extensions
 	target_compile_definitions(clap-wrapper-vst3 PUBLIC -D${PLATFORM}=1)
@@ -96,7 +96,7 @@ endif()
 # Link the actual plugin library
 add_library(${pluginname_vst3} MODULE src/nomain.cpp)
 set_target_properties(${pluginname_vst3} PROPERTIES LIBRARY_OUTPUT_NAME "${CLAP_WRAPPER_OUTPUT_NAME}")
-target_link_libraries(${pluginname_vst3} PRIVATE clap-wrapper-vst3 )
+target_link_libraries(${pluginname_vst3} PUBLIC clap-wrapper-vst3 )
 
 # Support ome of the options at cmake time
 target_compile_options(${pluginname_vst3} PRIVATE
