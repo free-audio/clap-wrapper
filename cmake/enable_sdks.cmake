@@ -201,6 +201,10 @@ function(target_add_vst3_wrapper)
 	cmake_parse_arguments(V3 "" "${oneValueArgs}" "" ${ARGN} )
 	message(STATUS "clap-wrapper: Adding VST3 Wrapper to target ${V3_TARGET} generating '${V3_OUTPUT_NAME}.vst3'")
 
+	if (NOT DEFINED V3_WINDOWS_FOLDER_VST3)
+		set(V3_WINDOWS_FOLDER_VST3 FALSE)
+	endif()
+
 	string(MAKE_C_IDENTIFIER ${V3_OUTPUT_NAME} outidentifier)
 
 	target_sources(${V3_TARGET} PRIVATE ${wrappersources_vst3_entry})
@@ -280,10 +284,10 @@ function(target_add_vst3_wrapper)
 				SUFFIX ".so" PREFIX "")
 	else()
 		if (NOT ${V3_WINDOWS_FOLDER_VST3})
-			message(STATUS "Building VST3 Single File")
+			message(STATUS "clap-wrapper: Building VST3 Single File")
 			set_target_properties(${V3_TARGET} PROPERTIES SUFFIX ".vst3")
 		else()
-			message(STATUS "Building VST3 Bundle Folder")
+			message(STATUS "clap-wrapper: Building VST3 Bundle Folder")
 			add_custom_command(TARGET ${V3_TARGET} PRE_BUILD
 					WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 					COMMAND ${CMAKE_COMMAND} -E make_directory "$<IF:$<CONFIG:Debug>,Debug,Release>/${clapname}.vst3/Contents/x86_64-win"
