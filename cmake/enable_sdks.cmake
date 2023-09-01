@@ -67,6 +67,7 @@ function(DetectVST3SDK)
   set(VST3_SDK_ROOT "${VST3_SDK_ROOT}" PARENT_SCOPE)
 endfunction()
 
+
 function(DefineCLAPASVST3Sources)
 	file(GLOB VST3_GLOB
 			${VST3_SDK_ROOT}/base/source/*.cpp
@@ -306,6 +307,100 @@ function(target_add_vst3_wrapper)
 
 
 endfunction(target_add_vst3_wrapper)
+
+
+if (APPLE)
+	if (${CLAP_WRAPPER_BUILD_AUV2})
+		if(AUDIOUNIT_SDK_ROOT STREQUAL "")
+			LibrarySearchPath(SDKDIR AudioUnitSDK RESULT AUDIOUNIT_SDK_ROOT)
+		endif()
+
+		cmake_path(CONVERT "${AUDIOUNIT_SDK_ROOT}" TO_CMAKE_PATH_LIST AUDIOUNIT_SDK_ROOT)
+		message(STATUS "clap-wrapper: AudioUnit SDK location: ${AUDIOUNIT_SDK_ROOT}")
+
+		set(AUSDK_SRC ${AUDIOUNIT_SDK_ROOT}/src/AudioUnitSDK)
+		if (NOT TARGET auv2_sdk)
+			add_library(auv2_sdk STATIC ${AUSDK_SRC}/AUBase.cpp
+					${AUSDK_SRC}/AUBuffer.cpp
+					${AUSDK_SRC}/AUBufferAllocator.cpp
+					${AUSDK_SRC}/AUEffectBase.cpp
+					${AUSDK_SRC}/AUInputElement.cpp
+					${AUSDK_SRC}/AUMIDIBase.cpp
+					${AUSDK_SRC}/AUMIDIEffectBase.cpp
+					${AUSDK_SRC}/AUOutputElement.cpp
+					${AUSDK_SRC}/AUPlugInDispatch.cpp
+					${AUSDK_SRC}/AUScopeElement.cpp
+					${AUSDK_SRC}/ComponentBase.cpp
+					${AUSDK_SRC}/MusicDeviceBase.cpp
+					)
+			target_include_directories(auv2_sdk PUBLIC ${AUDIOUNIT_SDK_ROOT}/include)
+		endif()
+
+		function(target_add_auv2_wrapper)
+			set(oneValueArgs
+					TARGET
+					OUTPUT_NAME
+					BUNDLE_IDENTIFIER
+					BUNDLE_VERSION
+			)
+			cmake_parse_arguments(AUV2 "" "${oneValueArgs}" "" ${ARGN} )
+			message(STATUS "clap-wrapper: Adding AUV2 Wrapper to target ${AUV2_TARGET} generating '${AUV2_OUTPUT_NAME}.component'")
+
+			string(MAKE_C_IDENTIFIER ${AUV2_OUTPUT_NAME} outidentifier)
+
+			# This is a placeholder dummy until we actually write the AUv2
+			# Similarly the subordinate library being an interface below
+			# is a placeholder. When we write it we will follow a similar
+			# split trick as for the vst3, mostly (but AUV2 is a bit different
+			# with info.plist and entrypoint-per-instance stuff)
+			target_sources(${AUV2_TARGET} PRIVATE src/wrapasauv2.cpp)
+
+
+			if (NOT TARGET clap-wrapper-auv2-${AUV2_TARGET})
+				# For now make this an interface
+				add_library(clap-wrapper-auv2-${AUV2_TARGET} INTERFACE )
+				target_include_directories(clap-wrapper-auv2-${AUV2_TARGET} INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+				target_link_libraries(clap-wrapper-auv2-${AUV2_TARGET} INTERFACE clap-core auv2_sdk)
+
+				# clap-wrapper-extensions are PUBLIC, so a clap linking the library can access the clap-wrapper-extensions
+				target_compile_definitions(clap-wrapper-auv2-${AUV2_TARGET} INTERFACE -D${PLATFORM}=1)
+				target_link_libraries(clap-wrapper-auv2-${AUV2_TARGET} INTERFACE clap-wrapper-extensions)
+			endif()
+
+			set_target_properties(${AUV2_TARGET} PROPERTIES LIBRARY_OUTPUT_NAME "${AUV2_OUTPUT_NAME}")
+			target_link_libraries(${AUV2_TARGET} PUBLIC clap-wrapper-auv2-${AUV2_TARGET} )
+
+			if ("${AUV2_BUNDLE_IDENTIFIER}" STREQUAL "")
+				set(AUV2_BUNDLE_IDENTIFIER "org.cleveraudio.wrapper.${outidentifier}.vst3")
+			endif()
+
+			if ("${CLAP_WRAPPER_BUNDLE_VERSION}" STREQUAL "")
+				set(CLAP_WRAPPER_BUNDLE_VERSION "1.0")
+			endif()
+
+			target_link_libraries (${AUV2_TARGET} PUBLIC
+					"-framework Foundation"
+					"-framework CoreFoundation"
+					"-framework AudioToolbox")
+
+			set_target_properties(${AUV2_TARGET} PROPERTIES
+					BUNDLE True
+					BUNDLE_EXTENSION component
+					MACOSX_BUNDLE_GUI_IDENTIFIER "${AUV2_BUNDLE_IDENTIFIER}.component"
+					MACOSX_BUNDLE_BUNDLE_NAME ${AUV2_OUTPUT_NAME}
+					MACOSX_BUNDLE_BUNDLE_VERSION ${AUV2_BUNDLE_VERSION}
+					MACOSX_BUNDLE_SHORT_VERSION_STRING ${AUV2_BUNDLE_VERSION}
+					MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/cmake/auv2_Info.plist.in
+					)
+			if (NOT ${CMAKE_GENERATOR} STREQUAL "Xcode")
+				add_custom_command(TARGET ${AUV2_TARGET} POST_BUILD
+						WORKING_DIRECTORY $<TARGET_PROPERTY:${AUV2_TARGET},LIBRARY_OUTPUT_DIRECTORY>
+						COMMAND SetFile -a B "$<TARGET_PROPERTY:${AUV2_TARGET},MACOSX_BUNDLE_BUNDLE_NAME>.$<TARGET_PROPERTY:${AUV2_TARGET},BUNDLE_EXTENSION>")
+			endif()
+
+		endfunction(target_add_auv2_wrapper)
+	endif()
+endif()
 
 
 # Define the extensions target
