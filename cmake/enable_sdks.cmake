@@ -190,3 +190,5 @@ elseif(UNIX)
 elseif(WIN32)
 	set(PLATFORM "WIN")
 endif()
+
+# define libraries

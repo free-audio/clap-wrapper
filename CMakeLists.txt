@@ -68,20 +68,35 @@ endif()
 set(pluginname_vst3 ${pluginname}_as_vst3)
 message(STATUS "clap-wrapper: VST3 plugin target is '${pluginname_vst3}' generating target '${clapname}.vst3'")
 
-
 # Define the extensions target
-add_library(clap-wrapper-extensions INTERFACE)
-target_include_directories(clap-wrapper-extensions INTERFACE include)
+if ( NOT TARGET clap-wrapper-extensions )
+	add_library(clap-wrapper-extensions INTERFACE)
+	target_include_directories(clap-wrapper-extensions INTERFACE include)
+endif()
+
+#define the vst3 plugin base library
+if (NOT TARGET vst3-pluginbase)
+	message(STATUS "clap-wrapper: creating vst3 library")
+    add_library(vst3-pluginbase STATIC ${vst3sources})
+	target_include_directories(vst3-pluginbase PUBLIC ${VST3_SDK_ROOT} ${VST3_SDK_ROOT}/public.sdk ${VST3_SDK_ROOT}/pluginterfaces)
+endif()
+
 
 # Define the VST3 plugin name and include the sources directly
-add_library(${pluginname_vst3} MODULE ${wrappersources_vst3} ${vst3sources})
-target_include_directories(${pluginname_vst3} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
-target_include_directories(${pluginname_vst3} PRIVATE ${VST3_SDK_ROOT} ${VST3_SDK_ROOT}/public.sdk ${VST3_SDK_ROOT}/pluginterfaces)
-target_compile_definitions(${pluginname_vst3} PRIVATE -D${PLATFORM}=1)
-set_target_properties(${pluginname_vst3} PROPERTIES LIBRARY_OUTPUT_NAME "${CLAP_WRAPPER_OUTPUT_NAME}")
+if (NOT TARGET clap-wrapper-vst3)
+	add_library(clap-wrapper-vst3 STATIC ${wrappersources_vst3})
+	target_include_directories(clap-wrapper-vst3 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+	target_link_libraries(clap-wrapper-vst3 PRIVATE clap-core vst3-pluginbase)
 
-# Link to the clap libraryes
-target_link_libraries(${pluginname_vst3} PRIVATE clap-core clap-wrapper-extensions)
+	# clap-wrapper-extensions are PUBLIC, so a clap linking the library can access the clap-wrapper-extensions
+	target_compile_definitions(clap-wrapper-vst3 PUBLIC -D${PLATFORM}=1)
+	target_link_libraries(clap-wrapper-vst3 PUBLIC clap-wrapper-extensions)
+endif()
+
+# Link the actual plugin library
+add_library(${pluginname_vst3} MODULE src/nomain.cpp)
+set_target_properties(${pluginname_vst3} PROPERTIES LIBRARY_OUTPUT_NAME "${CLAP_WRAPPER_OUTPUT_NAME}")
+target_link_libraries(${pluginname_vst3} PRIVATE clap-wrapper-vst3 )
 
 # Support ome of the options at cmake time
 target_compile_options(${pluginname_vst3} PRIVATE
