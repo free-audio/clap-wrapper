@@ -19,7 +19,7 @@ jobs:
             name: win
             cmake_args: ""
           - os: windows-latest
-            name: win
+            name: win-clang
             cmake_args: "-DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang"
           - os: macos-latest
             name: mac
