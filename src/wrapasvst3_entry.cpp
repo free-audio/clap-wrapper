@@ -122,7 +122,7 @@ bool findPlugin(Clap::Library& lib, const std::string& pluginfilename)
 	return false;
 }
 
-SMTG_EXPORT_SYMBOL IPluginFactory* PLUGIN_API GetPluginFactory() {
+IPluginFactory* GetPluginFactoryEntryPoint() {
 
 #if _DEBUG
   // MessageBoxA(NULL,"halt","me",MB_OK); // <- enable this on Windows to get a debug attachment to vstscanner.exe (subprocess of cbse)

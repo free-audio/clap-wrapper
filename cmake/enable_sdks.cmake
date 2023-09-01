@@ -8,68 +8,59 @@
 set(CLAP_SDK_ROOT "" CACHE STRING "Path to CLAP SDK")
 set(VST3_SDK_ROOT "" CACHE STRING "Path to VST3 SDK")
 
+
+function(LibrarySearchPath)
+	set(oneValueArgs SDKDIR RESULT)
+	cmake_parse_arguments(SEARCH "" "${oneValueArgs}" "" ${ARGN} )
+
+	set(RES "")
+
+	message(STATUS "clap-wrapper: searching for '${SEARCH_SDKDIR}' in \"${CMAKE_CURRENT_SOURCE_DIR}\"...")
+
+	if ( RES STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libs/${SEARCH_SDKDIR}")
+		set(RES "${CMAKE_CURRENT_SOURCE_DIR}/libs/${SEARCH_SDKDIR}")
+		message(STATUS "clap-wrapper: CLAP SDK detected in libs subdirectory")
+	endif()
+
+	if ( RES STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${SEARCH_SDKDIR}")
+		set(RES "${CMAKE_CURRENT_SOURCE_DIR}/${SEARCH_SDKDIR}")
+		message(STATUS "clap-wrapper: CLAP SDK detected in subdirectory")
+	endif()
+
+	if ( RES STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../${SEARCH_SDKDIR}")
+		set(RES "${CMAKE_CURRENT_SOURCE_DIR}/../${SEARCH_SDKDIR}")
+		message(STATUS "clap-wrapper: CLAP SDK detected in parent subdirectory")
+	endif()
+
+	if(RES STREQUAL "")
+		message(FATAL_ERROR "Unable to detect ${SEARCH_SDKDIR}! Have you set -D${SEARCH_RESULT}=/path/to/sdk?")
+	endif()
+
+	cmake_path(CONVERT "${RES}" TO_CMAKE_PATH_LIST RES)
+
+	message(STATUS "clap-wrapper: ${SEARCH_RESULT} at ${RES}")
+	set("${SEARCH_RESULT}" "${RES}" PARENT_SCOPE)
+endfunction(LibrarySearchPath)
+
 function(DetectCLAP)
   if(CLAP_SDK_ROOT STREQUAL "")
-	message(STATUS "clap-wrapper: searching CLAP SDK in \"${CMAKE_CURRENT_SOURCE_DIR}\"...")
-
-	if ( CLAP_SDK_ROOT STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libs/clap")
-	  set(CLAP_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/libs/clap")
-	  message(STATUS "clap-wrapper: CLAP SDK detected in libs subdirectory")
-	endif()
-
-		if ( CLAP_SDK_ROOT STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/clap")
-	  set(CLAP_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/clap")
-	  message(STATUS "clap-wrapper: CLAP SDK detected in subdirectory")
-	endif()
-	
-	if ( CLAP_SDK_ROOT STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../clap")
-	  set(CLAP_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../clap")
-	  message(STATUS "clap-wrapper: CLAP SDK detected in parent subdirectory")
-	endif()
-
-	if(CLAP_SDK_ROOT STREQUAL "")
-		message(FATAL_ERROR "Unable to detect CLAP SDK! Have you set -DCLAP_SDK_ROOT=/path/to/sdk?")
-	endif()
-
-	cmake_path(CONVERT "${CLAP_SDK_ROOT}" TO_CMAKE_PATH_LIST CLAP_SDK_ROOT)
-
-	message(STATUS "clap-wrapper: CLAP SDK at ${CLAP_SDK_ROOT}")
-	set(CLAP_SDK_ROOT "${CLAP_SDK_ROOT}" PARENT_SCOPE)
-
+	LibrarySearchPath(SDKDIR clap RESULT CLAP_SDK_ROOT)
   endif()
+
+  cmake_path(CONVERT "${CLAP_SDK_ROOT}" TO_CMAKE_PATH_LIST CLAP_SDK_ROOT)
+  message(STATUS "clap-wrapper: CLAP SDK location: ${CLAP_SDK_ROOT}")
+  set(CLAP_SDK_ROOT "${CLAP_SDK_ROOT}" PARENT_SCOPE)
 endfunction(DetectCLAP)
 
 # allow the programmer to place the VST3 SDK at various places
 function(DetectVST3SDK)
-  
   if(VST3_SDK_ROOT STREQUAL "")
-	message(STATUS "clap-wrapper: searching VST3 SDK in \"${CMAKE_CURRENT_SOURCE_DIR}\"...")
-
-	if ( VST3_SDK_ROOT STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libs/vst3sdk")
-	  set(VST3_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/libs/vst3sdk")
-	  message(STATUS "clap-wrapper: VST3 SDK detected in libs subdirectory")
-	endif()
-
-	if ( VST3_SDK_ROOT STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/vst3sdk")
-	  set(VST3_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/vst3sdk")
-	  message(STATUS "clap-wrapper: VST3 SDK detected in subdirectory")
-	endif()
-
-	if ( VST3_SDK_ROOT STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../vst3sdk")
-	  set(VST3_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../vst3sdk")
-	  message(STATUS "clap-wrapper: VST3 SDK detected in parent directory")
-	endif()
-
-	if(VST3_SDK_ROOT STREQUAL "")
-		message(FATAL_ERROR "Unable to detect VST3 SDK. Have you set -DVST3_SDK_ROOT=/path/to/sdk?")
-	endif()
-  
+	  LibrarySearchPath(SDKDIR vst3sdk RESULT VST3_SDK_ROOT)
   endif()
 
   cmake_path(CONVERT "${VST3_SDK_ROOT}" TO_CMAKE_PATH_LIST VST3_SDK_ROOT)
   message(STATUS "clap-wrapper: VST3 SDK location: ${VST3_SDK_ROOT}")
   set(VST3_SDK_ROOT "${VST3_SDK_ROOT}" PARENT_SCOPE)
-
 endfunction()
 
 function(DefineCLAPASVST3Sources)
@@ -153,6 +144,9 @@ function(DefineCLAPASVST3Sources)
 		${os_wrappersources}
 	PARENT_SCOPE)
 
+	set(wrappersources_vst3_entry
+		src/wrapasvst3_export_entry.cpp
+		PARENT_SCOPE)
 
 endfunction(DefineCLAPASVST3Sources)
 
@@ -192,3 +186,128 @@ elseif(WIN32)
 endif()
 
 # define libraries
+function(target_add_vst3_wrapper)
+	set(oneValueArgs
+			TARGET
+			OUTPUT_NAME
+			SUPPORTS_ALL_NOTE_EXPRESSIONS
+			SINGLE_PLUGIN_TUID
+
+			BUNDLE_IDENTIFIER
+			BUNDLE_VERSION
+
+			WINDOWS_FOLDER_VST3
+			)
+	cmake_parse_arguments(V3 "" "${oneValueArgs}" "" ${ARGN} )
+	message(STATUS "clap-wrapper: Adding VST3 Wrapper to target ${V3_TARGET} generating '${V3_OUTPUT_NAME}.vst3'")
+
+	string(MAKE_C_IDENTIFIER ${V3_OUTPUT_NAME} outidentifier)
+
+	target_sources(${V3_TARGET} PRIVATE ${wrappersources_vst3_entry})
+
+	if (NOT TARGET vst3-pluginbase)
+		message(STATUS "clap-wrapper: creating vst3 library")
+		add_library(vst3-pluginbase STATIC ${vst3sources})
+		target_include_directories(vst3-pluginbase PUBLIC ${VST3_SDK_ROOT} ${VST3_SDK_ROOT}/public.sdk ${VST3_SDK_ROOT}/pluginterfaces)
+		target_compile_options(vst3-pluginbase PUBLIC $<IF:$<CONFIG:Debug>,-DDEVELOPMENT=1,-DRELEASE=1>) # work through steinbergs alternate choices for these
+	endif()
+
+
+	# Define the VST3 plugin name and include the sources directly.
+	# We need to indivduate this target since it will be different
+	# for different options
+	if (NOT TARGET clap-wrapper-vst3-${V3_TARGET})
+		add_library(clap-wrapper-vst3-${V3_TARGET} STATIC ${wrappersources_vst3})
+		target_include_directories(clap-wrapper-vst3-${V3_TARGET} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+		target_link_libraries(clap-wrapper-vst3-${V3_TARGET} PUBLIC clap-core vst3-pluginbase)
+
+		# clap-wrapper-extensions are PUBLIC, so a clap linking the library can access the clap-wrapper-extensions
+		target_compile_definitions(clap-wrapper-vst3-${V3_TARGET} PUBLIC -D${PLATFORM}=1)
+		target_link_libraries(clap-wrapper-vst3-${V3_TARGET} PRIVATE clap-wrapper-extensions)
+
+		target_compile_options(clap-wrapper-vst3-${V3_TARGET} PRIVATE
+				-DCLAP_SUPPORTS_ALL_NOTE_EXPRESSIONS=$<IF:$<BOOL:${V3_SUPPORTS_ALL_NOTE_EXPRESSIONS}>,1,0>
+				)
+	endif()
+
+
+	if (NOT "${V3_SINGLE_PLUGIN_TUID}" STREQUAL "")
+		message(STATUS "clap-wrapper: Using cmake-specified VST3 TUID ${V3_SINGLE_PLUGIN_TUID}")
+		target_compile_options(clap-wrapper-vst3-${V3_TARGET}  PRIVATE
+				-DCLAP_VST3_TUID_STRING="${V3_SINGLE_PLUGIN_TUID}"
+				)
+	endif()
+	set_target_properties(${V3_TARGET} PROPERTIES LIBRARY_OUTPUT_NAME "${CLAP_WRAPPER_OUTPUT_NAME}")
+	target_link_libraries(${V3_TARGET} PUBLIC clap-wrapper-vst3-${V3_TARGET} )
+
+
+	if (APPLE)
+		if ("${V3_BUNDLE_IDENTIFIER}" STREQUAL "")
+			set(V3_BUNDLE_IDENTIFIER "org.cleveraudio.wrapper.${outidentifier}.vst3")
+		endif()
+
+		if ("${CLAP_WRAPPER_BUNDLE_VERSION}" STREQUAL "")
+			set(CLAP_WRAPPER_BUNDLE_VERSION "1.0")
+		endif()
+
+		target_link_libraries (${V3_TARGET} PUBLIC "-framework Foundation" "-framework CoreFoundation")
+		set_target_properties(${V3_TARGET} PROPERTIES
+				BUNDLE True
+				BUNDLE_EXTENSION vst3
+				MACOSX_BUNDLE_GUI_IDENTIFIER ${V3_BUNDLE_IDENTIFIER}
+				MACOSX_BUNDLE_BUNDLE_NAME ${V3_OUTPUT_NAME}
+				MACOSX_BUNDLE_BUNDLE_VERSION ${V3_BUNDLE_VERSION}
+				MACOSX_BUNDLE_SHORT_VERSION_STRING ${V3_BUNDLE_VERSION}
+				MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/cmake/VST3_Info.plist.in
+				)
+		if (NOT ${CMAKE_GENERATOR} STREQUAL "Xcode")
+			add_custom_command(TARGET ${V3_TARGET} POST_BUILD
+					WORKING_DIRECTORY $<TARGET_PROPERTY:${V3_TARGET},LIBRARY_OUTPUT_DIRECTORY>
+					COMMAND SetFile -a B "$<TARGET_PROPERTY:${V3_TARGET},MACOSX_BUNDLE_BUNDLE_NAME>.$<TARGET_PROPERTY:${V3_TARGET},BUNDLE_EXTENSION>")
+		endif()
+	elseif(UNIX)
+		target_link_libraries(${V3_TARGET} PUBLIC "-ldl")
+		target_link_libraries(${V3_TARGET} PRIVATE "-Wl,--no-undefined")
+
+		add_custom_command(TARGET ${V3_TARGET} PRE_BUILD
+				WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+				COMMAND ${CMAKE_COMMAND} -E make_directory "$<IF:$<CONFIG:Debug>,Debug,Release>/${clapname}.vst3/Contents/x86_64-linux"
+				)
+		set_target_properties(${V3_TARGET} PROPERTIES
+				LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<IF:$<CONFIG:Debug>,Debug,Release>/${clapname}.vst3/Contents/x86_64-linux"
+				LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/Debug/${clapname}.vst3/Contents/x86_64-linux"
+				LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/Release/${clapname}.vst3/Contents/x86_64-linux"
+				SUFFIX ".so" PREFIX "")
+	else()
+		if (NOT ${V3_WINDOWS_FOLDER_VST3})
+			message(STATUS "Building VST3 Single File")
+			set_target_properties(${V3_TARGET} PROPERTIES SUFFIX ".vst3")
+		else()
+			message(STATUS "Building VST3 Bundle Folder")
+			add_custom_command(TARGET ${V3_TARGET} PRE_BUILD
+					WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+					COMMAND ${CMAKE_COMMAND} -E make_directory "$<IF:$<CONFIG:Debug>,Debug,Release>/${clapname}.vst3/Contents/x86_64-win"
+					)
+			set_target_properties(${V3_TARGET} PROPERTIES
+					LIBRARY_OUTPUT_DIRECTORY "$<IF:$<CONFIG:Debug>,Debug,Release>/${CMAKE_BINARY_DIR}/${clapname}.vst3/Contents/x86_64-win"
+					LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/Debug/${clapname}.vst3/Contents/x86_64-win"
+					LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/Release/${clapname}.vst3/Contents/x86_64-win"
+					SUFFIX ".vst3")
+		endif()
+	endif()
+
+
+endfunction(target_add_vst3_wrapper)
+
+
+# Define the extensions target
+if ( NOT TARGET clap-wrapper-extensions )
+	add_library(clap-wrapper-extensions INTERFACE)
+	target_include_directories(clap-wrapper-extensions INTERFACE include)
+endif()
+
+if(${CMAKE_SIZEOF_VOID_P} EQUAL 4)
+	# a 32 bit build is odd enough that it might be an error. Chirp.
+	message(STATUS "clap-wrapper: configured as 32 bit build. Intentional?")
+endif()
+message(STATUS "clap-wrapper: source dir is ${CMAKE_CURRENT_SOURCE_DIR}, platform is ${PLATFORM}")
