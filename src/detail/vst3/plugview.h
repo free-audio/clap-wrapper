@@ -19,7 +19,7 @@ class WrappedView : public Steinberg::IPlugView, public Steinberg::FObject
 
 public:
 
-	WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui, std::function<void()> onDestroy);
+	WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui, std::function<void()> onDestroy, std::function<void()> onRunLoopAvailable);
 	~WrappedView();
 
 
@@ -87,15 +87,24 @@ public:
 
   // wrapper needed interfaces
 	bool request_resize(uint32_t width, uint32_t height);
+
 private:
 	void ensure_ui();
 	void drop_ui();
 	const clap_plugin_t* _plugin = nullptr;
 	const clap_plugin_gui_t* _extgui = nullptr;	
-	std::function<void()> _onDestroy = nullptr;
+	std::function<void()> _onDestroy = nullptr, _onRunLoopAvailable = nullptr;
   clap_window_t _window = { nullptr,nullptr };
 	IPlugFrame* _plugFrame = nullptr;
-	ViewRect _rect = {0,0,0,0};
+    ViewRect _rect = {0,0,0,0};
 	bool _created = false;
 	bool _attached = false;
+
+#if LIN
+public:
+    Steinberg::Linux::IRunLoop *getRunLoop() { return _runLoop; }
+private:
+    Steinberg::Linux::IRunLoop *_runLoop = nullptr;
+#endif
+
 };

@@ -48,7 +48,6 @@
 #include "detail/sha1.h"
 #include "wrapasvst3.h"
 #include "public.sdk/source/main/pluginfactory.h"
-#include <iostream>
 #include <array>
 
 using namespace Steinberg::Vst;
@@ -84,8 +83,7 @@ bool findPlugin(Clap::Library& lib, const std::string& pluginfilename)
 		// try to find it the CLAP folder immediately
 		auto k1 = i / pluginfilename;
 		LOGDETAIL("scanning for binary: {}", k1.u8string().c_str());
-		std::cout << "scanning for " << k1 << std::endl;
-		
+
 		if (fs::exists(k1))
 		{
 			if (lib.load(k1.u8string().c_str()))
