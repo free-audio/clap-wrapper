@@ -16,17 +16,9 @@ jobs:
         cmake_args: [ "" ]
         include:
           - os: windows-latest
-            name: win
-            cmake_args: ""
-          - os: windows-latest
             name: win-clang
-            cmake_args: "-DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang"
-          - os: macos-latest
-            name: mac
-            cmake_args: ""
-          - os: ubuntu-latest
-            name: linux
-            cmake_args: ""
+            cmake_args: -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
