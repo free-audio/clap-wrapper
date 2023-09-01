@@ -37,7 +37,9 @@ namespace Clap
 			clap_event_note_expression_t noteexpression;
 		} clap_multi_event_t;
 
-		// the bitly helpers
+#if 0
+		// the bitly helpers. These names conflict with macOS params.h but are
+      // unused, so for now comment out
 		static void setbit(uint64_t& val, int bit, bool value)
 		{
 			if (value) val |= ((uint64_t)1 << bit); else val &= ~((uint64_t)1 << bit);
@@ -48,6 +50,7 @@ namespace Clap
 			val &= ~(mask << pos);
 			if (value) val |= mask << pos;
 		}
+#endif
 
 		void setupProcessing(const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params, 
 			Steinberg::Vst::BusList& numInputs, Steinberg::Vst::BusList& numOutputs,

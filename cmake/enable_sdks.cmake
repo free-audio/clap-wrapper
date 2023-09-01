@@ -8,6 +8,8 @@
 set(CLAP_SDK_ROOT "" CACHE STRING "Path to CLAP SDK")
 set(VST3_SDK_ROOT "" CACHE STRING "Path to VST3 SDK")
 
+# make CPM available
+include(cmake/CPM.cmake)
 
 function(LibrarySearchPath)
 	set(oneValueArgs SDKDIR RESULT)
@@ -190,6 +192,13 @@ elseif(WIN32)
 	set(PLATFORM "WIN")
 endif()
 
+
+# Setup a filesystem replacement on apple
+if (APPLE)
+	message(STATUS "cmake-wrapper: Downloading Gulrak Filesystem as a macOS < 10.15 stub")
+	CPMAddPackage("gh:gulrak/filesystem#v1.5.14")
+endif()
+
 # define libraries
 function(target_add_vst3_wrapper)
 	set(oneValueArgs
@@ -232,11 +241,15 @@ function(target_add_vst3_wrapper)
 
 		# clap-wrapper-extensions are PUBLIC, so a clap linking the library can access the clap-wrapper-extensions
 		target_compile_definitions(clap-wrapper-vst3-${V3_TARGET} PUBLIC -D${PLATFORM}=1)
-		target_link_libraries(clap-wrapper-vst3-${V3_TARGET} PRIVATE clap-wrapper-extensions)
+		target_link_libraries(clap-wrapper-vst3-${V3_TARGET} PUBLIC clap-wrapper-extensions)
 
 		target_compile_options(clap-wrapper-vst3-${V3_TARGET} PRIVATE
 				-DCLAP_SUPPORTS_ALL_NOTE_EXPRESSIONS=$<IF:$<BOOL:${V3_SUPPORTS_ALL_NOTE_EXPRESSIONS}>,1,0>
 				)
+
+		if (APPLE)
+			target_link_libraries(clap-wrapper-vst3-${V3_TARGET} PUBLIC ghc_filesystem)
+		endif()
 	endif()
 
 
@@ -364,7 +377,7 @@ if (APPLE)
 
 				# clap-wrapper-extensions are PUBLIC, so a clap linking the library can access the clap-wrapper-extensions
 				target_compile_definitions(clap-wrapper-auv2-${AUV2_TARGET} INTERFACE -D${PLATFORM}=1)
-				target_link_libraries(clap-wrapper-auv2-${AUV2_TARGET} INTERFACE clap-wrapper-extensions)
+				target_link_libraries(clap-wrapper-auv2-${AUV2_TARGET} INTERFACE clap-wrapper-extensions ghc_filesystem)
 			endif()
 
 			set_target_properties(${AUV2_TARGET} PROPERTIES LIBRARY_OUTPUT_NAME "${AUV2_OUTPUT_NAME}")
@@ -414,3 +427,4 @@ if(${CMAKE_SIZEOF_VOID_P} EQUAL 4)
 	message(STATUS "clap-wrapper: configured as 32 bit build. Intentional?")
 endif()
 message(STATUS "clap-wrapper: source dir is ${CMAKE_CURRENT_SOURCE_DIR}, platform is ${PLATFORM}")
+
