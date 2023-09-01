@@ -443,7 +443,7 @@ if (APPLE)
 			target_link_libraries(${AUV2_TARGET} PUBLIC clap-wrapper-auv2-${AUV2_TARGET} )
 
 			if ("${AUV2_BUNDLE_IDENTIFIER}" STREQUAL "")
-				set(AUV2_BUNDLE_IDENTIFIER "org.cleveraudio.wrapper.${outidentifier}.vst3")
+				set(AUV2_BUNDLE_IDENTIFIER "org.cleveraudio.wrapper.${outidentifier}.auv2")
 			endif()
 
 			if ("${CLAP_WRAPPER_BUNDLE_VERSION}" STREQUAL "")
