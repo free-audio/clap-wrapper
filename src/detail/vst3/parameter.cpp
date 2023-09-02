@@ -54,8 +54,8 @@ Vst3Parameter* Vst3Parameter::create(const clap_param_info_t* info, std::functio
 	std::string fullname;
 	Vst::UnitID unit = 0;
 
-	// if there is a module and a lambda
-	if (info->module && info->module[0] != 0 && getUnitId)
+	// if there is a module name and a lambda
+	if (info->module[0] != 0 && getUnitId)
 	{
 		unit = getUnitId(info->module);
 		fullname = info->name;
