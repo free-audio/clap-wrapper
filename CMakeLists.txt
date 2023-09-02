@@ -74,6 +74,13 @@ if (APPLE)
 				OUTPUT_NAME "${CLAP_WRAPPER_OUTPUT_NAME}"
 				BUNDLE_IDENTIFIER "${CLAP_WRAPPER_BUNDLE_IDENTIFIER}"
 				BUNDLE_VERSION "${CLAP_WRAPPER_BUNDLE_VERSION}"
+
+				# AUv2 is still a work in progress. For now make this an
+				# explict option to the single plugin version
+				INSTRUMENT_TYPE "aumu"
+				MANUFACTURER_NAME "cleveraudio.org"
+				MANUFACTURER_CODE "clAd"
+				SUBTYPE_CODE "gWrp"
 		)
 	endif()
 endif()
