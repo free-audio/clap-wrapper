@@ -57,6 +57,12 @@ namespace Clap
     virtual bool register_timer(uint32_t period_ms, clap_id* timer_id) = 0;
     virtual bool unregister_timer(clap_id timer_id) = 0;
 
+#if LIN
+    virtual bool register_fd(int fd, clap_posix_fd_flags_t flags) = 0;
+    virtual bool modify_fd(int fd, clap_posix_fd_flags_t flags) = 0;
+    virtual bool unregister_fd(int fd) = 0;
+#endif
+
     virtual void latency_changed() = 0;
 
     virtual void tail_changed() = 0;
@@ -84,6 +90,10 @@ namespace Clap
     const clap_plugin_render_t* _render = nullptr;
     const clap_plugin_tail_t* _tail = nullptr;
     const clap_plugin_timer_support_t* _timer = nullptr;
+#if LIN
+    const clap_plugin_posix_fd_support* _posixfd = nullptr;
+#endif
+
   };
 
   class Raise
@@ -184,6 +194,13 @@ namespace Clap
     // clap_timer support
     bool register_timer(uint32_t period_ms, clap_id* timer_id);
     bool unregister_timer(clap_id timer_id);
+
+#if LIN
+    bool register_fd(int fd, clap_posix_fd_flags_t flags);
+    bool modify_fd(int fd, clap_posix_fd_flags_t flags);
+    bool unregister_fd(int fd);
+
+#endif
     CLAP_NODISCARD Raise AlwaysAudioThread();
   private:
     

@@ -3,12 +3,14 @@
 // #include <crtdbg.h>
 #include <cassert>
 
-WrappedView::WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui, std::function<void()> onDestroy)
+WrappedView::WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui, std::function<void()> onDestroy,
+                         std::function<void()> onRunLoopAvailable)
   : FObject()
   , IPlugView()
   , _plugin(plugin)
   , _extgui(gui)
   , _onDestroy(onDestroy)
+  , _onRunLoopAvailable(onRunLoopAvailable)
 {
   
 }
@@ -201,6 +203,16 @@ tresult PLUGIN_API WrappedView::onFocus(TBool state)
 tresult PLUGIN_API WrappedView::setFrame(IPlugFrame* frame)
 {
   _plugFrame = frame;
+
+#if LIN
+  if (_plugFrame->queryInterface(Steinberg::Linux::IRunLoop::iid,
+                                 (void **)&_runLoop) == Steinberg::kResultOk &&
+      _onRunLoopAvailable)
+  {
+    _onRunLoopAvailable();
+  }
+#endif
+
   return kResultOk;
 }
 
