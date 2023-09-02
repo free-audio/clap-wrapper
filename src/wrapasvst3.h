@@ -191,8 +191,18 @@ public:
 	bool register_timer(uint32_t period_ms, clap_id* timer_id) override;
 	bool unregister_timer(clap_id timer_id) override;
 
-	//----from IPlugObject
+
+#if LIN
+    bool register_fd(int fd, clap_posix_fd_flags_t flags) override;
+    bool modify_fd(int fd, clap_posix_fd_flags_t flags) override;
+    bool unregister_fd(int fd) override;
+#endif
+
+
+public:
+    //----from IPlugObject
 	void onIdle() override;
+private:
 
 	// from Clap::IAutomation
 	void onBeginEdit(clap_id id) override;
@@ -243,8 +253,40 @@ private:
 		uint32_t period = 0;		// if period is 0 the entry is unused (and can be reused)
 		uint64_t nexttick = 0;
 		clap_id timer_id = 0;
+#if LIN
+        Steinberg::IPtr<Steinberg::Linux::ITimerHandler> handler = nullptr;
+#endif
 	};
 	std::vector<TimerObject> _timersObjects;
+
+#if LIN
+    Steinberg::IPtr<Steinberg::Linux::ITimerHandler> _idleHandler;
+
+    void attachTimers(Steinberg::Linux::IRunLoop *);
+    void detachTimers(Steinberg::Linux::IRunLoop *);
+    Steinberg::Linux::IRunLoop *_iRunLoop{nullptr};
+#endif
+
+
+#if LIN
+    // for timer
+    struct PosixFDObject
+    {
+        PosixFDObject(int f, clap_posix_fd_flags_t fl) : fd(f), flags(fl) {}
+        int fd = 0;
+        clap_posix_fd_flags_t flags = 0;
+        Steinberg::IPtr<Steinberg::Linux::IEventHandler> handler = nullptr;
+    };
+    std::vector<PosixFDObject> _posixFDObjects;
+
+    void attachPosixFD(Steinberg::Linux::IRunLoop *);
+    void detachPosixFD(Steinberg::Linux::IRunLoop *);
+#endif
+
+public:
+    void fireTimer(clap_id timer_id);
+    void firePosixFDIsSet(int fd, clap_posix_fd_flags_t flags);
+private:
 
 	// INoteExpression
 	Vst::NoteExpressionTypeContainer _noteExpressions;

@@ -208,13 +208,25 @@ IPlugView* PLUGIN_API ClapAsVst3::createView(FIDString name)
 {
   if (_plugin->_ext._gui)
   {
-    _wrappedview = new WrappedView(_plugin->_plugin, _plugin->_ext._gui,
-      [&] 
-      { 
-         // the host calls the destructor, the wrapper just removes its pointer
-        _wrappedview = nullptr; 
-      }
-      );
+    _wrappedview = new WrappedView(
+        _plugin->_plugin, _plugin->_ext._gui,
+        [this]()
+        {
+#if LIN
+          // the host calls the destructor, the wrapper just removes its pointer
+          detachTimers(_wrappedview->getRunLoop());
+          detachPosixFD(_wrappedview->getRunLoop());
+          _iRunLoop = nullptr;
+#endif
+          _wrappedview = nullptr;
+        },
+        [this]()
+        {
+#if LIN
+          attachTimers(_wrappedview->getRunLoop());
+          attachPosixFD(_wrappedview->getRunLoop());
+#endif
+        });
     return _wrappedview;
   }
   return nullptr;
@@ -732,31 +744,41 @@ void ClapAsVst3::onEndEdit(clap_id id)
 // ext-timer
 bool ClapAsVst3::register_timer(uint32_t period_ms, clap_id* timer_id)
 {
-  // restricting the callbacks to ~30 Hz
+  // restrict the timer to 30ms
   if (period_ms < 30)
   {
     period_ms = 30;
   }
+
   auto l = _timersObjects.size();
   for (decltype(l) i = 0; i < l; ++i)
   {
     auto& to = _timersObjects[i];
     if (to.period == 0)
     {
-      // reuse timer object
-      to.timer_id = static_cast<clap_id>(i);
+      // reuse timer object. Lets choose not to use 0 as a timer id, just
+      // to make debugging a bit clearer
+      to.timer_id = static_cast<clap_id>(i + 1000);
       to.period = period_ms;
       to.nexttick = os::getTickInMS() + period_ms;
       // pass the id to the plugin
       *timer_id = to.timer_id;
+#if LIN
+      to.handler.reset();
+      attachTimers(_iRunLoop);
+#endif
       return true;
     }
   }
   // create a new timer object
-  auto newid = (clap_id)l;
+  auto newid = (clap_id)(l+1000);
   TimerObject f{ period_ms, os::getTickInMS() + period_ms, newid };
   *timer_id = newid;
   _timersObjects.push_back(f);
+#if LIN
+  attachTimers(_iRunLoop);
+#endif
+
   return true;
 }
 bool ClapAsVst3::unregister_timer(clap_id timer_id)
@@ -767,6 +789,13 @@ bool ClapAsVst3::unregister_timer(clap_id timer_id)
     {
       to.period = 0;
       to.nexttick = 0;
+#if LIN
+      if (to.handler && _iRunLoop)
+      {
+          _iRunLoop->unregisterTimer(to.handler.get());
+      }
+      to.handler.reset();
+#endif
       return true;
     }
   }
@@ -774,10 +803,7 @@ bool ClapAsVst3::unregister_timer(clap_id timer_id)
 }
 
 void ClapAsVst3::onIdle()
-{  
-  // todo: if the CLAP requested a "in UI" callback, do it here..
-  // is needed for plugin->flush()
-
+{
   // handling queued events
   queueEvent n;
   while (_queueToUI.pop(n))
@@ -820,20 +846,204 @@ void ClapAsVst3::onIdle()
     _plugin->_plugin->on_main_thread(_plugin->_plugin);
   }
 
-  // handling timerobjects
-  auto now = os::getTickInMS();
-  for (auto&& to : _timersObjects)
+#if LIN
+   if (!_iRunLoop) // don't process timers if we have a runloop.
+      // (but if we don't have a runloop on linux onIdle isn't called
+      // anyway so consider just not having this at all once we decide
+      // to do with the no UI case)
+#endif
   {
-    if (to.period > 0)
+    // handling timerobjects
+    auto now = os::getTickInMS();
+    for (auto &&to : _timersObjects)
     {
-      if (to.nexttick < now)
+      if (to.period > 0)
       {
-        to.nexttick = now + to.period;
-        this->_plugin->_ext._timer->on_timer(_plugin->_plugin, to.timer_id);
+          if (to.nexttick < now)
+          {
+          to.nexttick = now + to.period;
+          this->_plugin->_ext._timer->on_timer(_plugin->_plugin, to.timer_id);
+          }
       }
     }
   }
-
-  
-
 }
+
+#if LIN
+struct TimerHandler : Steinberg::Linux::ITimerHandler, public Steinberg::FObject
+{
+  ClapAsVst3 *_parent{nullptr};
+  clap_id _timerId{0};
+  TimerHandler(ClapAsVst3 *parent, clap_id timerId)
+      : _parent(parent), _timerId(timerId)
+  {
+  }
+  void PLUGIN_API onTimer() final { _parent->fireTimer(_timerId); }
+  DELEGATE_REFCOUNT(Steinberg::FObject)
+  DEFINE_INTERFACES
+  DEF_INTERFACE(Steinberg::Linux::ITimerHandler)
+  END_DEFINE_INTERFACES(Steinberg::FObject)
+};
+
+struct IdleHandler : Steinberg::Linux::ITimerHandler, public Steinberg::FObject
+{
+  ClapAsVst3 *_parent{nullptr};
+  IdleHandler(ClapAsVst3 *parent) : _parent(parent) {}
+  void PLUGIN_API onTimer() final { _parent->onIdle(); }
+  DELEGATE_REFCOUNT(Steinberg::FObject)
+  DEFINE_INTERFACES
+  DEF_INTERFACE(Steinberg::Linux::ITimerHandler)
+  END_DEFINE_INTERFACES(Steinberg::FObject)
+};
+
+void ClapAsVst3::attachTimers(Steinberg::Linux::IRunLoop *r)
+{
+  if (r)
+  {
+    _iRunLoop = r;
+
+    if (_idleHandler)
+    {
+      _iRunLoop->unregisterTimer(_idleHandler.get());
+    }
+    else
+    {
+      _idleHandler = Steinberg::owned(new IdleHandler(this));
+    }
+    _iRunLoop->registerTimer(_idleHandler.get(), 30);
+
+    for (auto &t : _timersObjects)
+    {
+      if (!t.handler)
+      {
+        t.handler = Steinberg::owned(new TimerHandler(this, t.timer_id));
+        _iRunLoop->registerTimer(t.handler.get(), t.period);
+      }
+    }
+  }
+}
+
+void ClapAsVst3::detachTimers(Steinberg::Linux::IRunLoop *r)
+{
+  if (r && r == _iRunLoop)
+  {
+    if (_idleHandler)
+    {
+      _iRunLoop->unregisterTimer(_idleHandler.get());
+      _idleHandler.reset();
+    }
+    for (auto &t : _timersObjects)
+    {
+      if (t.handler)
+      {
+        _iRunLoop->unregisterTimer(t.handler.get());
+        t.handler.reset();
+      }
+    }
+  }
+}
+
+void ClapAsVst3::fireTimer(clap_id timer_id)
+{
+  _plugin->_ext._timer->on_timer(_plugin->_plugin, timer_id);
+}
+
+bool ClapAsVst3::register_fd(int fd, clap_posix_fd_flags_t flags)
+{
+  _posixFDObjects.emplace_back(fd, flags);
+  attachPosixFD(_iRunLoop);
+  return true;
+}
+bool ClapAsVst3::modify_fd(int fd, clap_posix_fd_flags_t flags)
+{
+  bool res{false};
+  for (auto &p : _posixFDObjects)
+  {
+    if (p.fd == fd)
+    {
+      p.flags = flags;
+      res = true;
+    }
+  }
+  return res;
+}
+
+bool ClapAsVst3::unregister_fd(int fd)
+{
+  bool res{false};
+  auto it = _posixFDObjects.begin();
+  while (it != _posixFDObjects.end())
+  {
+    if (it->fd == fd)
+    {
+      res = true;
+      if (_iRunLoop && it->handler)
+      {
+        _iRunLoop->unregisterEventHandler(it->handler.get());
+      }
+      it->handler.reset();
+      it = _posixFDObjects.erase(it);
+    }
+    else
+    {
+      ++it;
+    }
+  }
+  return res;
+}
+
+struct FDHandler : Steinberg::Linux::IEventHandler, public Steinberg::FObject
+{
+  ClapAsVst3 *_parent{nullptr};
+  int _fd{0};
+  clap_posix_fd_flags_t _flags{};
+  FDHandler(ClapAsVst3 *parent, int fd, clap_posix_fd_flags_t flags)
+      : _parent(parent), _fd(fd), _flags(flags)
+  {
+  }
+  void PLUGIN_API onFDIsSet(Steinberg::Linux::FileDescriptor) override
+  {
+    _parent->firePosixFDIsSet(_fd, _flags);
+  }
+  DELEGATE_REFCOUNT(Steinberg::FObject)
+  DEFINE_INTERFACES
+  DEF_INTERFACE(Steinberg::Linux::IEventHandler)
+  END_DEFINE_INTERFACES(Steinberg::FObject)
+};
+void ClapAsVst3::attachPosixFD(Steinberg::Linux::IRunLoop *r)
+{
+  if (r)
+  {
+    _iRunLoop = r;
+
+    for (auto &p : _posixFDObjects)
+    {
+      if (!p.handler)
+      {
+        p.handler = Steinberg::owned(new FDHandler(this, p.fd, p.flags));
+        _iRunLoop->registerEventHandler(p.handler.get(), p.fd);
+      }
+    }
+  }
+}
+
+void ClapAsVst3::detachPosixFD(Steinberg::Linux::IRunLoop *r)
+{
+  if (r && r == _iRunLoop)
+  {
+    for (auto &p : _posixFDObjects)
+    {
+      if (p.handler)
+      {
+        _iRunLoop->unregisterEventHandler(p.handler.get());
+        p.handler.reset();
+      }
+    }
+  }
+}
+
+void ClapAsVst3::firePosixFDIsSet(int fd, clap_posix_fd_flags_t flags)
+{
+  _plugin->_ext._posixfd->on_fd(_plugin->_plugin, fd, flags);
+}
+#endif
