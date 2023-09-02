@@ -104,6 +104,14 @@ namespace Clap
       /* unregister_timer */  [](const clap_host_t* host, clap_id timer_id) -> bool { return  self(host)->unregister_timer(timer_id); }
     };
 
+#if LIN
+    const clap_host_posix_fd_support hostposixfd = {
+        [](const clap_host_t *host, int fd, clap_posix_fd_flags_t  flags) -> bool { return self(host)->register_fd(fd, flags);},
+        [](const clap_host_t *host, int fd, clap_posix_fd_flags_t  flags) -> bool { return self(host)->modify_fd(fd, flags);},
+        [](const clap_host_t *host, int fd) -> bool { return self(host)->unregister_fd(fd);}
+    };
+#endif
+
     const clap_host_latency latency = { [](const clap_host_t* host) -> void { self(host)->latency_changed(); } };
 
     static void tail_changed(const clap_host_t* host)
@@ -175,6 +183,9 @@ namespace Clap
     getExtension(_plugin, _ext._tail, CLAP_EXT_TAIL);
     getExtension(_plugin, _ext._gui, CLAP_EXT_GUI);
     getExtension(_plugin, _ext._timer, CLAP_EXT_TIMER_SUPPORT);
+#if LIN
+    getExtension(_plugin, _ext._posixfd, CLAP_EXT_POSIX_FD_SUPPORT);
+#endif
 
     if (_ext._gui)
     {
@@ -410,6 +421,10 @@ namespace Clap
       return &HostExt::hostgui;
     if (!strcmp(extension, CLAP_EXT_TIMER_SUPPORT))
       return &HostExt::hosttimer;
+#if LIN
+    if (!strcmp(extension, CLAP_EXT_POSIX_FD_SUPPORT))
+      return &HostExt::hostposixfd;
+#endif
     if (!strcmp(extension, CLAP_EXT_LATENCY))
       return &HostExt::latency;
     if (!strcmp(extension, CLAP_EXT_TAIL))
@@ -462,4 +477,16 @@ namespace Clap
   {
     return _parentHost->unregister_timer(timer_id);
   }
-}
+
+#if LIN
+  bool Plugin::register_fd(int fd, clap_posix_fd_flags_t flags)
+  {
+    return _parentHost->register_fd(fd, flags);
+  }
+  bool Plugin::modify_fd(int fd, clap_posix_fd_flags_t flags)
+  {
+    return _parentHost->modify_fd(fd, flags);
+  }
+  bool Plugin::unregister_fd(int fd) { return _parentHost->unregister_fd(fd); }
+#endif
+  }
