@@ -86,7 +86,7 @@ bool findPlugin(Clap::Library& lib, const std::string& pluginfilename)
 
 		if (fs::exists(k1))
 		{
-			if (lib.load(k1.u8string().c_str()))
+     	if (lib.load(k1.u8string().c_str()))
 			{
 				return true;
 			}
@@ -117,6 +117,7 @@ bool findPlugin(Clap::Library& lib, const std::string& pluginfilename)
 			}
 		}
 	}
+
 	return false;
 }
 
