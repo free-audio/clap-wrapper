@@ -417,6 +417,11 @@ if (APPLE)
 					BUNDLE_IDENTIFIER
 					BUNDLE_VERSION
 
+					MANUFACTURER_NAME
+					MANUFACTURER_CODE
+					SUBTYPE_CODE
+					INSTRUMENT_TYPE
+
 					MACOS_EMBEDDED_CLAP_LOCATION
 			)
 			cmake_parse_arguments(AUV2 "" "${oneValueArgs}" "" ${ARGN} )
@@ -428,6 +433,28 @@ if (APPLE)
 			if (NOT DEFINED AUV2_OUTPUT_NAME)
 				message(FATAL_ERROR "clap-wrapper: target_add_auv2_wrapper requires an output name")
 			endif()
+
+			if (NOT DEFINED AUV2_MANUFACTURER_NAME)
+				message(FATAL_ERROR "clap-wrapper: For now please specify AUV2 manufacturer name")
+			endif()
+
+			if (NOT DEFINED AUV2_MANUFACTURER_CODE)
+				message(FATAL_ERROR "clap-wrapper: For now please specify AUV2 manufacturer code (4 chars)")
+			endif()
+
+			if (NOT DEFINED AUV2_SUBTYPE_CODE)
+				message(FATAL_ERROR "clap-wrapper: For now please specify AUV2 subtype code (4 chars)")
+			endif()
+
+			if (NOT DEFINED AUV2_INSTRUMENT_TYPE)
+				message(WARNING "clap-wrapper: auv2 instrument type not specified. Using aumu")
+				set(AUV2_INSTRUMENT_TYPE "aumu")
+			endif()
+
+			set(AUV2_INSTRUMENT_TYPE ${AUV2_INSTRUMENT_TYPE} PARENT_SCOPE)
+			set(AUV2_MANUFACTURER_NAME ${AUV2_MANUFACTURER_NAME} PARENT_SCOPE)
+			set(AUV2_MANUFACTURER_CODE ${AUV2_MANUFACTURER_CODE} PARENT_SCOPE)
+			set(AUV2_SUBTYPE_CODE ${AUV2_SUBTYPE_CODE} PARENT_SCOPE)
 
 			message(STATUS "clap-wrapper: Adding AUV2 Wrapper to target ${AUV2_TARGET} generating '${AUV2_OUTPUT_NAME}.component'")
 

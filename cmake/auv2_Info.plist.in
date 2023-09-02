@@ -28,17 +28,17 @@
     <array>
       <dict>
         <key>name</key>
-        <string>Free Audio : ${MACOSX_BUNDLE_BUNDLE_NAME}</string>
+        <string>${AUV2_MANUFACTURER_NAME} : ${MACOSX_BUNDLE_BUNDLE_NAME}</string>
         <key>description</key>
         <string>${MACOSX_BUNDLE_BUNDLE_NAME} Clap to AU Wrapper</string>
         <key>factoryFunction</key>
         <string>wrapAsAUV2Factory</string>
         <key>manufacturer</key>
-        <string>FrAD</string>
+        <string>${AUV2_MANUFACTURER_CODE}</string>
         <key>subtype</key>
-        <string>WRPR</string>
+        <string>${AUV2_SUBTYPE_CODE}</string>
         <key>type</key>
-        <string>aumu</string>
+        <string>${AUV2_INSTRUMENT_TYPE}</string>
         <key>version</key>
         <integer>1</integer>
         <key>resourceUsage</key>
