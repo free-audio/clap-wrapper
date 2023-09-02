@@ -435,6 +435,7 @@ if (APPLE)
 
 			if (NOT DEFINED AUV2_INSTRUMENT_TYPE)
 				message(WARNING "clap-wrapper: auv2 instrument type not specified. Using aumu")
+				set(AUV2_INSTRUMENT_TYPE "aumu")
 			endif()
 
 			set(AUV2_INSTRUMENT_TYPE ${AUV2_INSTRUMENT_TYPE} PARENT_SCOPE)
