@@ -43,6 +43,18 @@ bool Vst3Parameter::setNormalized(Steinberg::Vst::ParamValue v)
 	return super::setNormalized(v);
 }
 
+#if 0
+void Vst3Parameter::toString(Steinberg::Vst::ParamValue valueNormalized, Steinberg::Vst::String128 string) const
+{	
+	super::toString(valueNormalized, string);
+}
+/** Converts a string to a normalized value. */
+bool Vst3Parameter::fromString(const Steinberg::Vst::TChar* string, Steinberg::Vst::ParamValue& valueNormalized) const
+{
+	return super::fromString(string, valueNormalized);
+}
+#endif
+
 Vst3Parameter* Vst3Parameter::create(const clap_param_info_t* info, std::function<Steinberg::Vst::UnitID(const char* modulepath)> getUnitId)
 {
 	Vst::ParameterInfo v;
