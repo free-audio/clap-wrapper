@@ -216,8 +216,12 @@ namespace Clap
         }
      }
   }
-  static void ffeomwe()
-  {}
+
+#if WIN || LIN
+  // This is a small stub to resolve the self dll. MacOs uses a different approach
+  // in sharedLibraryBundlePath
+  static void ffeomwe() {}
+#endif
 
   Library::Library()
   {

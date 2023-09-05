@@ -533,7 +533,6 @@ namespace Clap
           if (_supportsPolyPressure && vstevent.type == Vst::Event::kPolyPressureEvent)
           {
             clap_multi_event_t n;
-            auto& f = vstevent.noteExpressionValue;
             n.noteexpression.header.type = CLAP_EVENT_NOTE_EXPRESSION;
             n.noteexpression.header.flags = (vstevent.flags & Vst::Event::kIsLive) ? CLAP_EVENT_IS_LIVE : 0;
             n.noteexpression.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
@@ -557,7 +556,6 @@ namespace Clap
           if (vstevent.type == Vst::Event::kNoteExpressionValueEvent)
           {
             clap_multi_event_t n;
-            auto& f = vstevent.noteExpressionValue;
             n.noteexpression.header.type = CLAP_EVENT_NOTE_EXPRESSION;
             n.noteexpression.header.flags = (vstevent.flags & Vst::Event::kIsLive) ? CLAP_EVENT_IS_LIVE : 0;
             n.noteexpression.header.space_id = CLAP_CORE_EVENT_SPACE_ID;

@@ -5,8 +5,8 @@
 
 WrappedView::WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui, std::function<void()> onDestroy,
                          std::function<void()> onRunLoopAvailable)
-  : FObject()
-  , IPlugView()
+  : IPlugView()
+  , FObject()
   , _plugin(plugin)
   , _extgui(gui)
   , _onDestroy(onDestroy)
@@ -87,16 +87,16 @@ tresult PLUGIN_API WrappedView::isPlatformTypeSupported(FIDString type)
 tresult PLUGIN_API WrappedView::attached(void* parent, FIDString type)
 {
 #if WIN
-  _window = { CLAP_WINDOW_API_WIN32, parent };
+  _window = { CLAP_WINDOW_API_WIN32, { parent } };
 #endif
 
 #if MAC
-   _window = { CLAP_WINDOW_API_COCOA, parent };
+   _window = { CLAP_WINDOW_API_COCOA, { parent } };
 #endif
 
 
 #if LIN
-    _window = { CLAP_WINDOW_API_X11, parent };
+    _window = { CLAP_WINDOW_API_X11, { parent } };
 #endif
 
   ensure_ui();
