@@ -123,6 +123,10 @@ public:
 
 	//----from IEditControllerEx1--------------------------------
 	IPlugView* PLUGIN_API createView(FIDString name) override;
+	/** Gets for a given paramID and normalized value its associated string representation. */
+	tresult PLUGIN_API getParamStringByValue(Vst::ParamID id, Vst::ParamValue valueNormalized /*in*/, Vst::String128 string /*out*/) override;
+	/** Gets for a given paramID and string its normalized value. */
+	tresult PLUGIN_API getParamValueByString(Vst::ParamID id, Vst::TChar* string /*in*/, Vst::ParamValue& valueNormalized /*out*/) override;
 
 	//----from IMidiMapping--------------------------------------
 	tresult PLUGIN_API getMidiControllerAssignment(int32 busIndex, int16 channel,
