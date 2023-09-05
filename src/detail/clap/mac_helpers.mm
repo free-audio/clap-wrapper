@@ -13,8 +13,13 @@
 #include <dlfcn.h>
 
 // No need to ifdef this - it is mac only
-#include <ghc/filesystem.hpp>
+#if MACOS_USE_STD_FILESYSTEM
+#include <filesystem>
+namespace fs = std::filesystem;
+#else
+#include "ghc/filesystem.hpp"
 namespace fs = ghc::filesystem;
+#endif
 
 #include <Foundation/Foundation.h>
 
