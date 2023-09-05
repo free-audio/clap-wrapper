@@ -16,10 +16,12 @@
 
 #if MAC
 #include <CoreFoundation/CoreFoundation.h>
+#include <iostream>
 #endif
 
 #if LIN
 #include <dlfcn.h>
+#include <iostream>
 #endif
 
 
@@ -235,6 +237,63 @@ namespace Clap
       }
     }
 #endif
+
+#if LIN
+    Dl_info info;
+    if (dladdr(reinterpret_cast<const void *>(&ffeomwe), &info) &&
+        info.dli_fname[0])
+    {
+      auto lhandle = dlopen(info.dli_fname, RTLD_LOCAL | RTLD_LAZY);
+      if (lhandle)
+      {
+        auto liptr = (int *)dlsym(_handle, "clap_entry");
+        if (liptr)
+        {
+              _handle = lhandle; // as a result the Library dtor will dlclose me
+              _pluginEntry = (const clap_plugin_entry_t *)liptr;
+              _selfcontained = true;
+
+              setupPluginsFromPluginEntry(info.dli_fname);
+        }
+      }
+    }
+#endif
+
+#if MAC
+    extern fs::path sharedLibraryBundlePath();
+    auto selfp = sharedLibraryBundlePath();
+    if (!selfp.empty())
+    {
+      std::string name = selfp.u8string();
+      CFURLRef bundleUrl = CFURLCreateFromFileSystemRepresentation (0,
+                                                                   (const unsigned char*)name.c_str (),
+                                                                   name.size(), true);
+      if (bundleUrl)
+      {
+        auto pluginBundle = CFBundleCreate(0, bundleUrl);
+        CFRelease(bundleUrl);
+
+        if (pluginBundle)
+        {
+          auto db = CFBundleGetDataPointerForName(pluginBundle, CFSTR("clap_entry"));
+          if (db)
+          {
+             _bundle = pluginBundle;
+             _pluginEntry = (const clap_plugin_entry_t *)db;
+             _selfcontained = true;
+
+             setupPluginsFromPluginEntry(selfp.u8string().c_str());
+          }
+          else
+          {
+             CFRelease(pluginBundle);
+          }
+        }
+      }
+    }
+#endif
+
+
   }
 
   Library::~Library()

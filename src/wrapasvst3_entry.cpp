@@ -155,7 +155,7 @@ IPluginFactory* GetPluginFactoryEntryPoint() {
 		else
 		{
 			LOGDETAIL("detected entrypoint in this binary");
-		}
+                }
 	}
 	if (gClapLibrary.plugins.empty())
 	{
