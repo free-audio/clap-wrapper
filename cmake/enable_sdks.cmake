@@ -511,7 +511,7 @@ if (APPLE)
 				target_link_libraries(clap-wrapper-auv2-${AUV2_TARGET} INTERFACE clap-core auv2_sdk)
 
 				# clap-wrapper-extensions are PUBLIC, so a clap linking the library can access the clap-wrapper-extensions
-				target_compile_definitions(clap-wrapper-auv2-${AUV2_TARGET} INTERFACE -D${PLATFORM}=1)
+				target_compile_definitions(clap-wrapper-auv2-${AUV2_TARGET} INTERFACE -D${CLAP_WRAPPER_PLATFORM}=1)
 				target_link_libraries(clap-wrapper-auv2-${AUV2_TARGET} INTERFACE clap-wrapper-extensions macos_filesystem_support)
 
 			endif()
