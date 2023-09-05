@@ -5,8 +5,6 @@
 #
 # options
 # set(CLAP_WRAPPER_OUTPUT_NAME "" CACHE STRING "The output name of the dynamically wrapped plugin")
-set(CLAP_SDK_ROOT "" CACHE STRING "Path to CLAP SDK")
-set(VST3_SDK_ROOT "" CACHE STRING "Path to VST3 SDK")
 
 # make CPM available
 include(cmake/CPM.cmake)
@@ -22,17 +20,21 @@ if (${CLAP_WRAPPER_DOWNLOAD_DEPENDENCIES})
 			DOWNLOAD_ONLY TRUE
 			SOURCE_DIR cpm/vst3sdk
 	)
-	set(VST3_SDK_ROOT "${CMAKE_BINARY_DIR}/cpm/vst3sdk")
+	set(VST3_SDK_ROOT "${CMAKE_CURRENT_BINARY_DIR}/cpm/vst3sdk" CACHE STRING "Path to downloaded VST3SDK")
+	message(STATUS "clap-wrapper: configuring vst3sdk in ${VST3_SDK_ROOT}")
 
-	CPMAddPackage(
-			NAME "clap"
-			GITHUB_REPOSITORY "free-audio/clap"
-			GIT_TAG "1.1.8"
-			EXCLUDE_FROM_ALL TRUE
-			DOWNLOAD_ONLY TRUE
-			SOURCE_DIR cpm/clap
-	)
-	set(CLAP_SDK_ROOT "${CMAKE_BINARY_DIR}/cpm/clap")
+	if(NOT TARGET clap-core)
+		CPMAddPackage(
+				NAME "clap"
+				GITHUB_REPOSITORY "free-audio/clap"
+				GIT_TAG "1.1.8"
+				EXCLUDE_FROM_ALL TRUE
+				DOWNLOAD_ONLY TRUE
+				SOURCE_DIR cpm/clap
+		)
+		set(CLAP_SDK_ROOT "${CMAKE_CURRENT_BINARY_DIR}/cpm/clap" CACHE STRING "Path to downloaded CLAP SDK")
+		message(STATUS "clap-wrapper: configuring clap in ${CLAP_SDK_ROOT}")
+	endif()
 
 	if (APPLE)
 		if (${CLAP_WRAPPER_BUILD_AUV2})
@@ -44,9 +46,14 @@ if (${CLAP_WRAPPER_DOWNLOAD_DEPENDENCIES})
 					DOWNLOAD_ONLY TRUE
 					SOURCE_DIR cpm/AudioUnitSDK
 			)
-			set(AUDIOUNIT_SDK_ROOT "${CMAKE_BINARY_DIR}/cpm/AudioUnitSDK")
+			set(AUDIOUNIT_SDK_ROOT "${CMAKE_CURRENT_BINARY_DIR}/cpm/AudioUnitSDK" CACHE STRING "Path to downloaded AUV2 SDK")
+			message(STATUS "clap-wrapper: configuring AudioUnitSDK in ${AUDIOUNIT_SDK_ROOT}")
 		endif()
 	endif()
+else()
+	set(CLAP_SDK_ROOT "" CACHE STRING "Path to CLAP SDK")
+	set(VST3_SDK_ROOT "" CACHE STRING "Path to VST3 SDK")
+	set(AUDIOUNIT_SDK_ROOT "" CACHE STRING "Path to VST3 SDK")
 endif()
 
 function(LibrarySearchPath)
@@ -73,7 +80,7 @@ function(LibrarySearchPath)
 	endif()
 
 	if(RES STREQUAL "")
-		message(FATAL_ERROR "Unable to detect ${SEARCH_SDKDIR}! Have you set -D${SEARCH_RESULT}=/path/to/sdk?")
+		message(FATAL_ERROR "Unable to detect ${SEARCH_SDKDIR}! Have you set -D${SEARCH_RESULT}=/path/to/sdk or CLAP_WRAPPER_DOWNLOAD_DEPENDENCIES=TRUE")
 	endif()
 
 	cmake_path(CONVERT "${RES}" TO_CMAKE_PATH_LIST RES)
@@ -135,7 +142,7 @@ function(DefineCLAPASVST3Sources)
 			${VST3_SDK_ROOT}/public.sdk/source/vst/vstbus.cpp
 			${VST3_SDK_ROOT}/public.sdk/source/vst/vstparameters.cpp
 			${VST3_SDK_ROOT}/public.sdk/source/vst/utility/stringconvert.cpp
-			PARENT_SCOPE
+			CACHE STRING "VST3 SDK Source List"
 			)
 
 	if( UNIX AND NOT APPLE )
@@ -183,11 +190,11 @@ function(DefineCLAPASVST3Sources)
 		src/detail/os/osutil.h
 		src/detail/clap/automation.h
 		${os_wrappersources}
-	PARENT_SCOPE)
+			CACHE STRING "Clap Wrapper Library Sources")
 
 	set(wrappersources_vst3_entry
-		src/wrapasvst3_export_entry.cpp
-		PARENT_SCOPE)
+		${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/wrapasvst3_export_entry.cpp
+		CACHE STRING "Clap Wrapper Entry Point Sources")
 
 endfunction(DefineCLAPASVST3Sources)
 
@@ -225,11 +232,11 @@ DefineCLAPASVST3Sources()
 # define platforms
 
 if (APPLE)
-	set(PLATFORM "MAC")
+	set(CLAP_WRAPPER_PLATFORM "MAC" CACHE STRING "Clap Wrapper Platform: MAC")
 elseif(UNIX)
-	set(PLATFORM "LIN")
+	set(CLAP_WRAPPER_PLATFORM "LIN" CACHE STRING "Clap Wrapper Platform: Linux")
 elseif(WIN32)
-	set(PLATFORM "WIN")
+	set(CLAP_WRAPPER_PLATFORM "WIN" CACHE STRING "Clap Wrapper Platform: Windows")
 endif()
 
 
@@ -284,10 +291,24 @@ function(target_add_vst3_wrapper)
 	target_sources(${V3_TARGET} PRIVATE ${wrappersources_vst3_entry})
 
 	if (NOT TARGET vst3-pluginbase)
-		message(STATUS "clap-wrapper: creating vst3 library")
+		message(STATUS "clap-wrapper: creating vst3 library with root ${VST3_SDK_ROOT}")
 		add_library(vst3-pluginbase STATIC ${vst3sources})
 		target_include_directories(vst3-pluginbase PUBLIC ${VST3_SDK_ROOT} ${VST3_SDK_ROOT}/public.sdk ${VST3_SDK_ROOT}/pluginterfaces)
 		target_compile_options(vst3-pluginbase PUBLIC $<IF:$<CONFIG:Debug>,-DDEVELOPMENT=1,-DRELEASE=1>) # work through steinbergs alternate choices for these
+		# The VST3SDK uses sprintf, not snprintf, which macOS flags as deprecated
+		# to move people to snprintf. Silence that warning on the VST3 build
+		if (APPLE)
+			target_compile_options(vst3-pluginbase PUBLIC -Wno-deprecated-declarations)
+		endif()
+		if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+			# The VST3 SDK confuses lld and long long int in format statements in some situations it seems
+			target_compile_options(vst3-pluginbase PUBLIC -Wno-format)
+
+			# The SDK also does things like `#warning DEPRECATED No Linux implementation
+			#	assert (false && "DEPRECATED No Linux implementation");` for some methods which
+			# generates a cpp warning. Since we won't fix this do
+			target_compile_options(vst3-pluginbase PUBLIC -Wno-cpp)
+		endif()
 	endif()
 
 
@@ -295,12 +316,15 @@ function(target_add_vst3_wrapper)
 	# We need to indivduate this target since it will be different
 	# for different options
 	if (NOT TARGET clap-wrapper-vst3-${V3_TARGET})
-		add_library(clap-wrapper-vst3-${V3_TARGET} STATIC ${wrappersources_vst3})
-		target_include_directories(clap-wrapper-vst3-${V3_TARGET} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+		set(wsv3 ${wrappersources_vst3})
+		list(TRANSFORM wsv3 PREPEND "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/")
+
+		add_library(clap-wrapper-vst3-${V3_TARGET} STATIC ${wsv3})
+		target_include_directories(clap-wrapper-vst3-${V3_TARGET} PRIVATE "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/include")
 		target_link_libraries(clap-wrapper-vst3-${V3_TARGET} PUBLIC clap-core vst3-pluginbase)
 
 		# clap-wrapper-extensions are PUBLIC, so a clap linking the library can access the clap-wrapper-extensions
-		target_compile_definitions(clap-wrapper-vst3-${V3_TARGET} PUBLIC -D${PLATFORM}=1)
+		target_compile_definitions(clap-wrapper-vst3-${V3_TARGET} PUBLIC -D${CLAP_WRAPPER_PLATFORM}=1)
 		target_link_libraries(clap-wrapper-vst3-${V3_TARGET} PUBLIC clap-wrapper-extensions)
 
 		target_compile_options(clap-wrapper-vst3-${V3_TARGET} PRIVATE
@@ -336,16 +360,18 @@ function(target_add_vst3_wrapper)
 		set_target_properties(${V3_TARGET} PROPERTIES
 				BUNDLE True
 				BUNDLE_EXTENSION vst3
+				LIBRARY_OUTPUT_NAME ${V3_OUTPUT_NAME}
 				MACOSX_BUNDLE_GUI_IDENTIFIER ${V3_BUNDLE_IDENTIFIER}
 				MACOSX_BUNDLE_BUNDLE_NAME ${V3_OUTPUT_NAME}
 				MACOSX_BUNDLE_BUNDLE_VERSION ${V3_BUNDLE_VERSION}
 				MACOSX_BUNDLE_SHORT_VERSION_STRING ${V3_BUNDLE_VERSION}
-				MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/cmake/VST3_Info.plist.in
+				MACOSX_BUNDLE_INFO_PLIST ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/cmake/VST3_Info.plist.in
 				)
 		if (NOT ${CMAKE_GENERATOR} STREQUAL "Xcode")
 			add_custom_command(TARGET ${V3_TARGET} POST_BUILD
 					WORKING_DIRECTORY $<TARGET_PROPERTY:${V3_TARGET},LIBRARY_OUTPUT_DIRECTORY>
-					COMMAND SetFile -a B "$<TARGET_PROPERTY:${V3_TARGET},MACOSX_BUNDLE_BUNDLE_NAME>.$<TARGET_PROPERTY:${V3_TARGET},BUNDLE_EXTENSION>")
+					COMMAND SetFile -a B "$<TARGET_PROPERTY:${V3_TARGET},LIBRARY_OUTPUT_NAME>.$<TARGET_PROPERTY:${V3_TARGET},BUNDLE_EXTENSION>"
+					)
 		endif()
 
 		if (NOT ${V3_MACOS_EMBEDDED_CLAP_LOCATION} STREQUAL "")
@@ -365,6 +391,7 @@ function(target_add_vst3_wrapper)
 				COMMAND ${CMAKE_COMMAND} -E make_directory "$<IF:$<CONFIG:Debug>,Debug,Release>/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-linux"
 				)
 		set_target_properties(${V3_TARGET} PROPERTIES
+				LIBRARY_OUTPUT_NAME ${V3_OUTPUT_NAME}
 				LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<IF:$<CONFIG:Debug>,Debug,Release>/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-linux"
 				LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/Debug/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-linux"
 				LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/Release/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-linux"
@@ -372,7 +399,9 @@ function(target_add_vst3_wrapper)
 	else()
 		if (NOT ${V3_WINDOWS_FOLDER_VST3})
 			message(STATUS "clap-wrapper: Building VST3 Single File")
-			set_target_properties(${V3_TARGET} PROPERTIES SUFFIX ".vst3")
+			set_target_properties(${V3_TARGET} PROPERTIES
+					LIBRARY_OUTPUT_NAME ${V3_OUTPUT_NAME}
+					SUFFIX ".vst3")
 		else()
 			message(STATUS "clap-wrapper: Building VST3 Bundle Folder")
 			add_custom_command(TARGET ${V3_TARGET} PRE_BUILD
@@ -380,14 +409,13 @@ function(target_add_vst3_wrapper)
 					COMMAND ${CMAKE_COMMAND} -E make_directory "$<IF:$<CONFIG:Debug>,Debug,Release>/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-win"
 					)
 			set_target_properties(${V3_TARGET} PROPERTIES
+					LIBRARY_OUTPUT_NAME ${V3_OUTPUT_NAME}
 					LIBRARY_OUTPUT_DIRECTORY "$<IF:$<CONFIG:Debug>,Debug,Release>/${CMAKE_BINARY_DIR}/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-win"
 					LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/Debug/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-win"
 					LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/Release/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-win"
 					SUFFIX ".vst3")
 		endif()
 	endif()
-
-
 endfunction(target_add_vst3_wrapper)
 
 
@@ -485,6 +513,7 @@ if (APPLE)
 				# clap-wrapper-extensions are PUBLIC, so a clap linking the library can access the clap-wrapper-extensions
 				target_compile_definitions(clap-wrapper-auv2-${AUV2_TARGET} INTERFACE -D${PLATFORM}=1)
 				target_link_libraries(clap-wrapper-auv2-${AUV2_TARGET} INTERFACE clap-wrapper-extensions macos_filesystem_support)
+
 			endif()
 
 			set_target_properties(${AUV2_TARGET} PROPERTIES LIBRARY_OUTPUT_NAME "${AUV2_OUTPUT_NAME}")
@@ -506,6 +535,7 @@ if (APPLE)
 			set_target_properties(${AUV2_TARGET} PROPERTIES
 					BUNDLE True
 					BUNDLE_EXTENSION component
+					LIBRARY_OUTPUT_NAME ${AUV2_OUTPUT_NAME}
 					MACOSX_BUNDLE_GUI_IDENTIFIER "${AUV2_BUNDLE_IDENTIFIER}.component"
 					MACOSX_BUNDLE_BUNDLE_NAME ${AUV2_OUTPUT_NAME}
 					MACOSX_BUNDLE_BUNDLE_VERSION ${AUV2_BUNDLE_VERSION}
@@ -542,5 +572,5 @@ if(${CMAKE_SIZEOF_VOID_P} EQUAL 4)
 	# a 32 bit build is odd enough that it might be an error. Chirp.
 	message(STATUS "clap-wrapper: configured as 32 bit build. Intentional?")
 endif()
-message(STATUS "clap-wrapper: source dir is ${CMAKE_CURRENT_SOURCE_DIR}, platform is ${PLATFORM}")
+message(STATUS "clap-wrapper: source dir is ${CMAKE_CURRENT_SOURCE_DIR}, platform is ${CLAP_WRAPPER_PLATFORM}")
 
