@@ -19,9 +19,9 @@
 # CLAP_WRAPPER_BUNDLE_VERSION the macOS Bundle Version. Defaults to 1.0
 # CLAP_WRAPPER_WINDOWS_SINGLE_FILE if set to TRUE (default) the windows .vst3 is a single file; false a 3.7 spec folder
 # CLAP_WRAPPER_DOWNLOAD_DEPENDENCIES if set will download the needed SDKs using CPM from github
-#
+# CLAP_WRAPPER_DONT_ADD_TARGETS if included in a CMakeList above skip adding targets
 
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.21)
 cmake_policy(SET CMP0091 NEW)
 set(CMAKE_OSX_DEPLOYMENT_TARGET 10.11 CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "x86_64;arm64" CACHE STRING "Build Universal Always")
@@ -39,48 +39,69 @@ project(clap-wrapper
 	DESCRIPTION "CLAP-as-X wrappers"
 )
 
+if (APPLE)
+	enable_language(OBJC)
+	enable_language(OBJCXX)
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+set(CMAKE_OBJC_VISIBILITY_PRESET hidden)
+set(CMAKE_OBJCXX_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 
-# discover the plugin paths and enable them
+# discover the plugin paths and enable them. The library
+# defines functions relative to this, so needs a cache
+# variable with the source dir
+set(CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR} CACHE STRING "Clap Wrapper Source Location")
 include(cmake/enable_sdks.cmake)
 
-# provide the CLAP_WRAPPER_OUTPUT_NAME to specify the matching plugin name.
-if((NOT CLAP_WRAPPER_OUTPUT_NAME ) OR (CLAP_WRAPPER_OUTPUT_NAME STREQUAL ""))
-	set(CLAP_WRAPPER_OUTPUT_NAME "clapasvst3")
-	message(WARNING "clap-wrapper: CLAP_WRAPPER_OUTPUT_NAME not set - continuing with a default name `clapasvst3`")
+set(skipbuild FALSE)
+if (NOT PROJECT_IS_TOP_LEVEL)
+	if(DEFINED CLAP_WRAPPER_DONT_ADD_TARGETS)
+		set(skipbuild TRUE)
+	endif()
 endif()
 
-string(MAKE_C_IDENTIFIER ${CLAP_WRAPPER_OUTPUT_NAME} pluginname)
+if (${skipbuild})
+	message(STATUS "clap-wrapper: Skipping clap wrapper target ejection")
+else()
+	# provide the CLAP_WRAPPER_OUTPUT_NAME to specify the matching plugin name.
+	if((NOT CLAP_WRAPPER_OUTPUT_NAME ) OR (CLAP_WRAPPER_OUTPUT_NAME STREQUAL ""))
+		set(CLAP_WRAPPER_OUTPUT_NAME "clapasvst3")
+		message(WARNING "clap-wrapper: CLAP_WRAPPER_OUTPUT_NAME not set - continuing with a default name `clapasvst3`")
+	endif()
 
-# Link the actual plugin library
-add_library(${pluginname}_as_vst3 MODULE)
-target_add_vst3_wrapper(
-		TARGET ${pluginname}_as_vst3
-		OUTPUT_NAME "${CLAP_WRAPPER_OUTPUT_NAME}"
-		SUPPORTS_ALL_NOTE_EXPRESSIONS $<BOOL:${CLAP_SUPPORTS_ALL_NOTE_EXPRESSIONS}>
-		SINGLE_PLUGIN_TUID "${CLAP_VST3_TUID_STRING}"
-		BUNDLE_IDENTIFIER "${CLAP_WRAPPER_BUNDLE_IDENTIFIER}"
-		BUNDLE_VERSION "${CLAP_WRAPPER_BUNDLE_VERSION}"
-		)
+	string(MAKE_C_IDENTIFIER ${CLAP_WRAPPER_OUTPUT_NAME} pluginname)
 
-if (APPLE)
-	if (${CLAP_WRAPPER_BUILD_AUV2})
-		add_library(${pluginname}_as_auv2 MODULE)
-		target_add_auv2_wrapper(
-				TARGET ${pluginname}_as_auv2
-				OUTPUT_NAME "${CLAP_WRAPPER_OUTPUT_NAME}"
-				BUNDLE_IDENTIFIER "${CLAP_WRAPPER_BUNDLE_IDENTIFIER}"
-				BUNDLE_VERSION "${CLAP_WRAPPER_BUNDLE_VERSION}"
+	# Link the actual plugin library
+	add_library(${pluginname}_as_vst3 MODULE)
+	target_add_vst3_wrapper(
+			TARGET ${pluginname}_as_vst3
+			OUTPUT_NAME "${CLAP_WRAPPER_OUTPUT_NAME}"
+			SUPPORTS_ALL_NOTE_EXPRESSIONS $<BOOL:${CLAP_SUPPORTS_ALL_NOTE_EXPRESSIONS}>
+			SINGLE_PLUGIN_TUID "${CLAP_VST3_TUID_STRING}"
+			BUNDLE_IDENTIFIER "${CLAP_WRAPPER_BUNDLE_IDENTIFIER}"
+			BUNDLE_VERSION "${CLAP_WRAPPER_BUNDLE_VERSION}"
+			)
 
-				# AUv2 is still a work in progress. For now make this an
-				# explict option to the single plugin version
-				INSTRUMENT_TYPE "aumu"
-				MANUFACTURER_NAME "cleveraudio.org"
-				MANUFACTURER_CODE "clAd"
-				SUBTYPE_CODE "gWrp"
-		)
+	if (APPLE)
+		if (${CLAP_WRAPPER_BUILD_AUV2})
+			add_library(${pluginname}_as_auv2 MODULE)
+			target_add_auv2_wrapper(
+					TARGET ${pluginname}_as_auv2
+					OUTPUT_NAME "${CLAP_WRAPPER_OUTPUT_NAME}"
+					BUNDLE_IDENTIFIER "${CLAP_WRAPPER_BUNDLE_IDENTIFIER}"
+					BUNDLE_VERSION "${CLAP_WRAPPER_BUNDLE_VERSION}"
+
+					# AUv2 is still a work in progress. For now make this an
+					# explict option to the single plugin version
+					INSTRUMENT_TYPE "aumu"
+					MANUFACTURER_NAME "cleveraudio.org"
+					MANUFACTURER_CODE "clAd"
+					SUBTYPE_CODE "gWrp"
+			)
+		endif()
 	endif()
 endif()
