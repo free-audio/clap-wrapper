@@ -14,8 +14,13 @@
 #include "public.sdk/source/main/moduleinit.h"
 #include "osutil.h"
 #include <vector>
-#include <ghc/filesystem.hpp>
+#if MACOS_USE_STD_FILESYSTEM
+#include <filesystem>
+namespace fs = std::filesystem;
+#else
+#include "ghc/filesystem.hpp"
 namespace fs = ghc::filesystem;
+#endif
 #include <iostream>
 
 namespace os

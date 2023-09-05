@@ -235,8 +235,16 @@ endif()
 
 # Setup a filesystem replacement on apple
 if (APPLE)
-	message(STATUS "cmake-wrapper: Downloading Gulrak Filesystem as a macOS < 10.15 stub")
-	CPMAddPackage("gh:gulrak/filesystem#v1.5.14")
+	add_library(macos_filesystem_support INTERFACE)
+	if (${CMAKE_OSX_DEPLOYMENT_TARGET} VERSION_GREATER_EQUAL "10.15")
+		message(STATUS "cmake-wrapper: using std::filesystem as macOS deployment it ${CMAKE_OSX_DEPLOYMENT_TARGET}; using std::filesystem")
+		target_compile_definitions(macos_filesystem_support INTERFACE -DMACOS_USE_STD_FILESYSTEM)
+	else()
+		message(STATUS "cmake-wrapper: Downloading Gulrak Filesystem as a macOS deployment ${CMAKE_OSX_DEPLOYMENT_TARGET} < 10.15 stub")
+		CPMAddPackage("gh:gulrak/filesystem#v1.5.14")
+		target_link_libraries(macos_filesystem_support INTERFACE ghc_filesystem)
+		target_compile_definitions(macos_filesystem_support INTERFACE -DMACOS_USE_GHC_FILESYSTEM)
+	endif()
 endif()
 
 # define libraries
@@ -300,7 +308,7 @@ function(target_add_vst3_wrapper)
 				)
 
 		if (APPLE)
-			target_link_libraries(clap-wrapper-vst3-${V3_TARGET} PUBLIC ghc_filesystem)
+			target_link_libraries(clap-wrapper-vst3-${V3_TARGET} PUBLIC macos_filesystem_support)
 		endif()
 	endif()
 
@@ -476,7 +484,7 @@ if (APPLE)
 
 				# clap-wrapper-extensions are PUBLIC, so a clap linking the library can access the clap-wrapper-extensions
 				target_compile_definitions(clap-wrapper-auv2-${AUV2_TARGET} INTERFACE -D${PLATFORM}=1)
-				target_link_libraries(clap-wrapper-auv2-${AUV2_TARGET} INTERFACE clap-wrapper-extensions ghc_filesystem)
+				target_link_libraries(clap-wrapper-auv2-${AUV2_TARGET} INTERFACE clap-wrapper-extensions macos_filesystem_support)
 			endif()
 
 			set_target_properties(${AUV2_TARGET} PROPERTIES LIBRARY_OUTPUT_NAME "${AUV2_OUTPUT_NAME}")
