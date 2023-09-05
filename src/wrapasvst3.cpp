@@ -232,6 +232,38 @@ IPlugView* PLUGIN_API ClapAsVst3::createView(FIDString name)
   return nullptr;
 }
 
+tresult PLUGIN_API ClapAsVst3::getParamStringByValue(Vst::ParamID id, Vst::ParamValue valueNormalized, Vst::String128 string)
+{
+  auto param = (Vst3Parameter*)this->getParameterObject(id);
+  auto val = param->asClapValue(valueNormalized);
+
+  char outbuf[128];
+  if (this->_plugin->_ext._params->value_to_text(_plugin->_plugin, param->id, val, outbuf, 127))
+  {
+    UString wrapper(&string[0], str16BufferSize(Steinberg::Vst::String128));
+    
+    wrapper.assign(outbuf,sizeof(outbuf));
+    return true;
+  }
+  return super::getParamStringByValue(id, valueNormalized, string);
+}
+
+tresult PLUGIN_API ClapAsVst3::getParamValueByString(Vst::ParamID id, Vst::TChar* string, Vst::ParamValue& valueNormalized)
+{
+  auto param = (Vst3Parameter*)this->getParameterObject(id);
+  Steinberg::String m(string);
+  char inbuf[128];
+  auto l = m.copyTo8(inbuf);
+  double out = 0.;
+  if (this->_plugin->_ext._params->text_to_value(_plugin->_plugin, param->id, inbuf, &out))
+  {
+    valueNormalized = out;
+    return true;
+  }
+  return false;
+ 
+}
+
 tresult PLUGIN_API ClapAsVst3::activateBus(Vst::MediaType type, Vst::BusDirection dir, int32 index, TBool state)
 {
   return super::activateBus(type, dir, index, state);

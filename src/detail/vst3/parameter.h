@@ -35,6 +35,18 @@ protected:
 public:
   virtual ~Vst3Parameter();
   bool setNormalized(Steinberg::Vst::ParamValue v) override;
+
+#if 0
+  // toString/fromString from VST3 parameter should actually be overloaded, but the wrapper will not call them
+  // for the conversion, the _plugin instance is needed and we don't want to keep a copy in each parameter
+  // the IEditController will be called anyway from the host, therefore the conversion will take place there.
+
+  /** Converts a normalized value to a string. */
+  void toString(Steinberg::Vst::ParamValue valueNormalized, Steinberg::Vst::String128 string) const override;
+  /** Converts a string to a normalized value. */
+  bool fromString(const Steinberg::Vst::TChar* string, Steinberg::Vst::ParamValue& valueNormalized) const override;
+#endif
+
   inline double asClapValue(double vst3value) const
   {
     return vst3value * (max_value - min_value) + min_value;
