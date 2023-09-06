@@ -225,6 +225,8 @@ IPlugView* PLUGIN_API ClapAsVst3::createView(FIDString name)
 #if LIN
           attachTimers(_wrappedview->getRunLoop());
           attachPosixFD(_wrappedview->getRunLoop());
+#else
+          (void)this; // silence warning on non-linux
 #endif
         });
     return _wrappedview;
@@ -415,7 +417,7 @@ static std::vector<std::string> split(const std::string& s, char delimiter)
   return tokens;
 }
 
-Vst::UnitID ClapAsVst3::getUnitInfo(const char* modulename)
+Vst::UnitID ClapAsVst3::getOrCreateUnitInfo(const char* modulename)
 {
   // lookup the modulename fast and return the unitID
   auto loc = _moduleToUnit.find(modulename);
@@ -591,7 +593,7 @@ void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
     {
       auto p = Vst3Parameter::create(&info, [&](const char* modstring) 
         {
-          return this->getUnitInfo(modstring);
+          return this->getOrCreateUnitInfo(modstring);
         });
       // auto p = Vst3Parameter::create(&info,nullptr);
       parameters.addParameter(p);

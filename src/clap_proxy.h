@@ -218,6 +218,5 @@ namespace Clap
     const std::thread::id _main_thread_id = std::this_thread::get_id();
     std::atomic<uint32_t> _audio_thread_override = 0;
     AudioSetup _audioSetup;
-    bool _activated = false;
   };
 }

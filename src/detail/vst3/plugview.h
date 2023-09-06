@@ -94,7 +94,7 @@ private:
 	const clap_plugin_t* _plugin = nullptr;
 	const clap_plugin_gui_t* _extgui = nullptr;	
 	std::function<void()> _onDestroy = nullptr, _onRunLoopAvailable = nullptr;
-  clap_window_t _window = { nullptr,nullptr };
+  clap_window_t _window = { nullptr, { nullptr } };
 	IPlugFrame* _plugFrame = nullptr;
     ViewRect _rect = {0,0,0,0};
 	bool _created = false;

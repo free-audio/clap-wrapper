@@ -221,7 +221,7 @@ private:
 	void addMIDIBusFrom(const clap_note_port_info_t* info, uint32_t index, bool is_input);
 	void updateAudioBusses();
 
-	Vst::UnitID getUnitInfo(const char* modulename);
+	Vst::UnitID getOrCreateUnitInfo(const char* modulename);
 	std::map<std::string, Vst::UnitID> _moduleToUnit;
 
 	Clap::Library* _library = nullptr;
@@ -246,7 +246,7 @@ private:
 
 	// for IMidiMapping
   bool _useIMidiMapping = false;
-	Vst::ParamID _IMidiMappingIDs[16][Vst::ControllerNumbers::kCountCtrlNumber] = { 0 }; // 16 MappingIDs for 16 Channels
+	Vst::ParamID _IMidiMappingIDs[16][Vst::ControllerNumbers::kCountCtrlNumber] = {}; // 16 MappingIDs for 16 Channels
 	bool _IMidiMappingEasy = true;
 	uint8_t _numMidiChannels = 16;
 	uint32_t _largestBlocksize = 0;
