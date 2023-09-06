@@ -340,7 +340,7 @@ function(target_add_vst3_wrapper)
 				)
 
 		if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-			target_compile_options(clap-wrapper-vst3-${V3_TARGET} PRIVATE -Wall)
+			target_compile_options(${V3_TARGET}-clap-wrapper-vst3-lib PRIVATE -Wall)
 		endif()
 		if (APPLE)
 			target_link_libraries(${V3_TARGET}-clap-wrapper-vst3-lib PUBLIC macos_filesystem_support)
@@ -515,20 +515,20 @@ if (APPLE)
 			target_sources(${AUV2_TARGET} PRIVATE src/wrapasauv2.cpp)
 
 
-			if (NOT TARGET clap-wrapper-auv2-${AUV2_TARGET})
+			if (NOT TARGET ${AUV2_TARGET}-clap-wrapper-auv2-lib)
 				# For now make this an interface
-				add_library(clap-wrapper-auv2-${AUV2_TARGET} INTERFACE )
-				target_include_directories(clap-wrapper-auv2-${AUV2_TARGET} INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
-				target_link_libraries(clap-wrapper-auv2-${AUV2_TARGET} INTERFACE clap auv2_sdk)
+				add_library(${AUV2_TARGET}-clap-wrapper-auv2-lib INTERFACE )
+				target_include_directories(${AUV2_TARGET}-clap-wrapper-auv2-lib INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+				target_link_libraries(${AUV2_TARGET}-clap-wrapper-auv2-lib INTERFACE clap auv2_sdk)
 
 				# clap-wrapper-extensions are PUBLIC, so a clap linking the library can access the clap-wrapper-extensions
-				target_compile_definitions(clap-wrapper-auv2-${AUV2_TARGET} INTERFACE -D${CLAP_WRAPPER_PLATFORM}=1)
-				target_link_libraries(clap-wrapper-auv2-${AUV2_TARGET} INTERFACE clap-wrapper-extensions macos_filesystem_support)
+				target_compile_definitions(${AUV2_TARGET}-clap-wrapper-auv2-lib INTERFACE -D${CLAP_WRAPPER_PLATFORM}=1)
+				target_link_libraries(${AUV2_TARGET}-clap-wrapper-auv2-lib INTERFACE clap-wrapper-extensions macos_filesystem_support)
 
 			endif()
 
 			set_target_properties(${AUV2_TARGET} PROPERTIES LIBRARY_OUTPUT_NAME "${AUV2_OUTPUT_NAME}")
-			target_link_libraries(${AUV2_TARGET} PUBLIC clap-wrapper-auv2-${AUV2_TARGET} )
+			target_link_libraries(${AUV2_TARGET} PUBLIC ${AUV2_TARGET}-clap-wrapper-auv2-lib)
 
 			if ("${AUV2_BUNDLE_IDENTIFIER}" STREQUAL "")
 				set(AUV2_BUNDLE_IDENTIFIER "org.cleveraudio.wrapper.${outidentifier}.auv2")
@@ -574,7 +574,7 @@ endif()
 
 
 # Define the extensions target
-if ( NOT TARGET clap-wrapper-extensions )
+if ( NOT TARGET clap-wrapper-extensions)
 	add_library(clap-wrapper-extensions INTERFACE)
 	target_include_directories(clap-wrapper-extensions INTERFACE include)
 endif()
