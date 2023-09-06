@@ -57,6 +57,7 @@ set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 set(CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR} CACHE STRING "Clap Wrapper Source Location")
 include(cmake/enable_sdks.cmake)
 
+# automatically build the wrapper only if this is the top level project
 set(skipbuild FALSE)
 if (NOT PROJECT_IS_TOP_LEVEL)
 	if(DEFINED CLAP_WRAPPER_DONT_ADD_TARGETS)

@@ -23,7 +23,7 @@ if (${CLAP_WRAPPER_DOWNLOAD_DEPENDENCIES})
 	set(VST3_SDK_ROOT "${CMAKE_CURRENT_BINARY_DIR}/cpm/vst3sdk" CACHE STRING "Path to downloaded VST3SDK")
 	message(STATUS "clap-wrapper: configuring vst3sdk in ${VST3_SDK_ROOT}")
 
-	if(NOT TARGET clap-core)
+	if(NOT TARGET clap)
 		CPMAddPackage(
 				NAME "clap"
 				GITHUB_REPOSITORY "free-audio/clap"
@@ -53,9 +53,11 @@ if (${CLAP_WRAPPER_DOWNLOAD_DEPENDENCIES})
 else()
 	set(CLAP_SDK_ROOT "" CACHE STRING "Path to CLAP SDK")
 	set(VST3_SDK_ROOT "" CACHE STRING "Path to VST3 SDK")
-	set(AUDIOUNIT_SDK_ROOT "" CACHE STRING "Path to VST3 SDK")
+	set(AUDIOUNIT_SDK_ROOT "" CACHE STRING "Path to AUv2 SDK")
 endif()
 
+# locates certain paths/files in specific locations
+# used to locate the base paths for the different Plugin SDKs 
 function(LibrarySearchPath)
 	set(oneValueArgs SDKDIR RESULT)
 	cmake_parse_arguments(SEARCH "" "${oneValueArgs}" "" ${ARGN} )
@@ -109,7 +111,6 @@ function(DetectVST3SDK)
   # message(STATUS "clap-wrapper: VST3 SDK location: ${VST3_SDK_ROOT}")
   set(VST3_SDK_ROOT "${VST3_SDK_ROOT}" PARENT_SCOPE)
 endfunction()
-
 
 function(DefineCLAPASVST3Sources)
 	file(GLOB VST3_GLOB
@@ -200,8 +201,8 @@ endfunction(DefineCLAPASVST3Sources)
 
 ##################### 
 
-# if clap-core is already existent as target, there is no need to do this here
-if (NOT TARGET clap-core)
+# if target clap is already existent as target, there is no need to do this here
+if (NOT TARGET clap)
 	DetectCLAP()
 
 	if(NOT EXISTS "${CLAP_SDK_ROOT}/include/clap/clap.h")
@@ -219,6 +220,7 @@ if(NOT EXISTS "${VST3_SDK_ROOT}/public.sdk")
     message(FATAL_ERROR "There is no VST3 SDK at ${VST3_SDK_ROOT} ")
 endif()
 
+message(STATUS "clap-wrapper: assimilating VST3 SDK")
 file(STRINGS "${VST3_SDK_ROOT}/CMakeLists.txt" SDKVERSION REGEX "^\[ ]*VERSION .*")
 string(STRIP ${SDKVERSION} SDKVERSION)
 string(REPLACE "VERSION " "" SDKVERSION ${SDKVERSION})
@@ -241,6 +243,7 @@ endif()
 
 
 # Setup a filesystem replacement on apple
+# deployment targets below 10.15 do not support std::filesystem
 if (APPLE)
 	add_library(macos_filesystem_support INTERFACE)
 	if (${CMAKE_OSX_DEPLOYMENT_TARGET} VERSION_GREATER_EQUAL "10.15")
@@ -290,24 +293,27 @@ function(target_add_vst3_wrapper)
 
 	target_sources(${V3_TARGET} PRIVATE ${wrappersources_vst3_entry})
 
-	if (NOT TARGET vst3-pluginbase)
+	# the library "vst3-pluginbase-lib" contains all code from the VST3 SDK like the interface definitions
+	# and base classes and will be statically linked. This code is shared between all VST3 plugins.
+	# it only needs to be created once.
+	if (NOT TARGET vst3-pluginbase-lib)
 		message(STATUS "clap-wrapper: creating vst3 library with root ${VST3_SDK_ROOT}")
-		add_library(vst3-pluginbase STATIC ${vst3sources})
-		target_include_directories(vst3-pluginbase PUBLIC ${VST3_SDK_ROOT} ${VST3_SDK_ROOT}/public.sdk ${VST3_SDK_ROOT}/pluginterfaces)
-		target_compile_options(vst3-pluginbase PUBLIC $<IF:$<CONFIG:Debug>,-DDEVELOPMENT=1,-DRELEASE=1>) # work through steinbergs alternate choices for these
+		add_library(vst3-pluginbase-lib STATIC ${vst3sources})
+		target_include_directories(vst3-pluginbase-lib PUBLIC ${VST3_SDK_ROOT} ${VST3_SDK_ROOT}/public.sdk ${VST3_SDK_ROOT}/pluginterfaces)
+		target_compile_options(vst3-pluginbase-lib PUBLIC $<IF:$<CONFIG:Debug>,-DDEVELOPMENT=1,-DRELEASE=1>) # work through steinbergs alternate choices for these
 		# The VST3SDK uses sprintf, not snprintf, which macOS flags as deprecated
 		# to move people to snprintf. Silence that warning on the VST3 build
 		if (APPLE)
-			target_compile_options(vst3-pluginbase PUBLIC -Wno-deprecated-declarations)
+			target_compile_options(vst3-pluginbase-lib PUBLIC -Wno-deprecated-declarations)
 		endif()
 		if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
 			# The VST3 SDK confuses lld and long long int in format statements in some situations it seems
-			target_compile_options(vst3-pluginbase PUBLIC -Wno-format)
+			target_compile_options(vst3-pluginbase-lib PUBLIC -Wno-format)
 
 			# The SDK also does things like `#warning DEPRECATED No Linux implementation
 			#	assert (false && "DEPRECATED No Linux implementation");` for some methods which
 			# generates a cpp warning. Since we won't fix this do
-			target_compile_options(vst3-pluginbase PUBLIC -Wno-cpp)
+			target_compile_options(vst3-pluginbase-lib PUBLIC -Wno-cpp)
 		endif()
 	endif()
 
@@ -315,36 +321,38 @@ function(target_add_vst3_wrapper)
 	# Define the VST3 plugin name and include the sources directly.
 	# We need to indivduate this target since it will be different
 	# for different options
-	if (NOT TARGET clap-wrapper-vst3-${V3_TARGET})
+
+	# this creates a individually configured wrapper library for each target
+	if (NOT TARGET ${V3_TARGET}-clap-wrapper-vst3-lib)
 		set(wsv3 ${wrappersources_vst3})
 		list(TRANSFORM wsv3 PREPEND "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/")
 
-		add_library(clap-wrapper-vst3-${V3_TARGET} STATIC ${wsv3})
-		target_include_directories(clap-wrapper-vst3-${V3_TARGET} PRIVATE "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/include")
-		target_link_libraries(clap-wrapper-vst3-${V3_TARGET} PUBLIC clap-core vst3-pluginbase)
+		add_library(${V3_TARGET}-clap-wrapper-vst3-lib STATIC ${wsv3})
+		target_include_directories(${V3_TARGET}-clap-wrapper-vst3-lib PRIVATE "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/include")
+		target_link_libraries(${V3_TARGET}-clap-wrapper-vst3-lib PUBLIC clap vst3-pluginbase-lib)
 
 		# clap-wrapper-extensions are PUBLIC, so a clap linking the library can access the clap-wrapper-extensions
-		target_compile_definitions(clap-wrapper-vst3-${V3_TARGET} PUBLIC -D${CLAP_WRAPPER_PLATFORM}=1)
-		target_link_libraries(clap-wrapper-vst3-${V3_TARGET} PUBLIC clap-wrapper-extensions)
+		target_compile_definitions(${V3_TARGET}-clap-wrapper-vst3-lib PUBLIC -D${CLAP_WRAPPER_PLATFORM}=1)
+		target_link_libraries(${V3_TARGET}-clap-wrapper-vst3-lib PUBLIC clap-wrapper-extensions)
 
-		target_compile_options(clap-wrapper-vst3-${V3_TARGET} PRIVATE
+		target_compile_options(${V3_TARGET}-clap-wrapper-vst3-lib PRIVATE
 				-DCLAP_SUPPORTS_ALL_NOTE_EXPRESSIONS=$<IF:$<BOOL:${V3_SUPPORTS_ALL_NOTE_EXPRESSIONS}>,1,0>
 				)
 
 		if (APPLE)
-			target_link_libraries(clap-wrapper-vst3-${V3_TARGET} PUBLIC macos_filesystem_support)
+			target_link_libraries(${V3_TARGET}-clap-wrapper-vst3-lib PUBLIC macos_filesystem_support)
 		endif()
 	endif()
 
 
 	if (NOT "${V3_SINGLE_PLUGIN_TUID}" STREQUAL "")
 		message(STATUS "clap-wrapper: Using cmake-specified VST3 TUID ${V3_SINGLE_PLUGIN_TUID}")
-		target_compile_options(clap-wrapper-vst3-${V3_TARGET}  PRIVATE
+		target_compile_options(${V3_TARGET}-clap-wrapper-vst3-lib  PRIVATE
 				-DCLAP_VST3_TUID_STRING="${V3_SINGLE_PLUGIN_TUID}"
 				)
 	endif()
 	set_target_properties(${V3_TARGET} PROPERTIES LIBRARY_OUTPUT_NAME "${CLAP_WRAPPER_OUTPUT_NAME}")
-	target_link_libraries(${V3_TARGET} PUBLIC clap-wrapper-vst3-${V3_TARGET} )
+	target_link_libraries(${V3_TARGET} PUBLIC ${V3_TARGET}-clap-wrapper-vst3-lib )
 
 
 	if (APPLE)
@@ -508,7 +516,7 @@ if (APPLE)
 				# For now make this an interface
 				add_library(clap-wrapper-auv2-${AUV2_TARGET} INTERFACE )
 				target_include_directories(clap-wrapper-auv2-${AUV2_TARGET} INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
-				target_link_libraries(clap-wrapper-auv2-${AUV2_TARGET} INTERFACE clap-core auv2_sdk)
+				target_link_libraries(clap-wrapper-auv2-${AUV2_TARGET} INTERFACE clap auv2_sdk)
 
 				# clap-wrapper-extensions are PUBLIC, so a clap linking the library can access the clap-wrapper-extensions
 				target_compile_definitions(clap-wrapper-auv2-${AUV2_TARGET} INTERFACE -D${PLATFORM}=1)
