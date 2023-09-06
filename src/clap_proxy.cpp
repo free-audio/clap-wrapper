@@ -409,9 +409,7 @@ namespace Clap
   // [thread-safe]
   const void* Plugin::clapExtension(const clap_host* host, const char* extension)
   {
-    Plugin* self = reinterpret_cast<Plugin*>(host->host_data);
-
-    if (!strcmp(extension, CLAP_EXT_LOG)) 
+    if (!strcmp(extension, CLAP_EXT_LOG))
       return &HostExt::log;
     if (!strcmp(extension, CLAP_EXT_PARAMS)) 
       return &HostExt::params;

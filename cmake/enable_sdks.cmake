@@ -331,6 +331,9 @@ function(target_add_vst3_wrapper)
 				-DCLAP_SUPPORTS_ALL_NOTE_EXPRESSIONS=$<IF:$<BOOL:${V3_SUPPORTS_ALL_NOTE_EXPRESSIONS}>,1,0>
 				)
 
+		if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+			target_compile_options(clap-wrapper-vst3-${V3_TARGET} PRIVATE -Wall)
+		endif()
 		if (APPLE)
 			target_link_libraries(clap-wrapper-vst3-${V3_TARGET} PUBLIC macos_filesystem_support)
 		endif()
