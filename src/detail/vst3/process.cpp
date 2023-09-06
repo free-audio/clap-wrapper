@@ -266,6 +266,13 @@ namespace Clap
         // get the Vst3Parameter
         auto paramid = k->getParameterId();
 
+        // if a parameter is currently edited by a user, we are not allowed to send this back to the CLAP.
+        // this is a fundamental difference between VST3 and CLAP
+        if (std::find(_gesturedParameters.begin(), _gesturedParameters.end(), paramid) != _gesturedParameters.end())
+        {
+          continue;
+        }
+
         auto param = (Vst3Parameter*)parameters->getParameter(paramid);
         if (param)
         {
