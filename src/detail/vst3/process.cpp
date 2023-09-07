@@ -680,8 +680,12 @@ namespace Clap
         auto ev = (clap_event_param_gesture*)event;
         auto param = (Vst3Parameter*)this->parameters->getParameter(ev->param_id & 0x7FFFFFFF);
 
-        _automation->onEndEdit(param->getInfo().id);
-        _gesturedParameters.erase(std::remove(_gesturedParameters.begin(), _gesturedParameters.end(), param->getInfo().id));
+        auto n = std::remove(_gesturedParameters.begin(), _gesturedParameters.end(), param->getInfo().id);
+        if (n != _gesturedParameters.end())
+        {
+          _gesturedParameters.erase(n, _gesturedParameters.end());
+          _automation->onEndEdit(param->getInfo().id);
+        }
       }
       return true;
       break;
