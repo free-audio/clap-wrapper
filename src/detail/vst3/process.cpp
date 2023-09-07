@@ -633,8 +633,6 @@ namespace Clap
 
       if (_vstdata && _vstdata->outputEvents)
         _vstdata->outputEvents->addEvent(oe);
-      else
-        fprintf(stderr, "No Output Events for CLAP_NOTE_ON\n");
     }
       return true;
     case CLAP_EVENT_NOTE_OFF:
@@ -655,8 +653,6 @@ namespace Clap
 
       if (_vstdata && _vstdata->outputEvents)
         _vstdata->outputEvents->addEvent(oe);
-      else
-        fprintf(stderr, "No Output Events for CLAP_NOTE_OFF\n");
     }
       return true;
     case CLAP_EVENT_NOTE_END:
@@ -733,7 +729,6 @@ namespace Clap
     case CLAP_EVENT_MIDI:
     case CLAP_EVENT_MIDI_SYSEX:
     case CLAP_EVENT_MIDI2:
-      fprintf(stderr, "Ignoring output event CLAP_EVENT_MIDI*\n");
       return true;
       break;
     default:
