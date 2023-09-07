@@ -57,6 +57,7 @@ static const struct _translate
   // CLAP main categories
   {   CLAP_PLUGIN_FEATURE_INSTRUMENT            , PlugType::kInstrument },
   {   CLAP_PLUGIN_FEATURE_AUDIO_EFFECT          , PlugType::kFx},
+  {   CLAP_PLUGIN_FEATURE_NOTE_EFFECT           , PlugType::kInstrumentSynth}, // it seems there is no type for a sequencer etc
   {   CLAP_PLUGIN_FEATURE_DRUM                  , PlugType::kInstrumentDrum},
   {   CLAP_PLUGIN_FEATURE_ANALYZER              , PlugType::kAnalyzer},
 
