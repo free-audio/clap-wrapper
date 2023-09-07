@@ -106,12 +106,13 @@ Vst3Parameter* Vst3Parameter::create(const clap_param_info_t* info, std::functio
 		| ((info->flags & CLAP_PARAM_IS_BYPASS) ? Vst::ParameterInfo::kIsBypass : 0)
 		| ((info->flags & CLAP_PARAM_IS_AUTOMATABLE) ? Vst::ParameterInfo::kCanAutomate : 0)
 		| ((info->flags & CLAP_PARAM_IS_READONLY) ? Vst::ParameterInfo::kIsReadOnly : 0)
+                | ((info->flags & CLAP_PARAM_IS_STEPPED) ? Vst::ParameterInfo::kIsList : 0)
 		// | ((info->flags & CLAP_PARAM_IS_READONLY) ? Vst::ParameterInfo::kIsReadOnly : 0)
 		;
 
-	auto param_range = (info->max_value - info->min_value);
+       auto param_range = (info->max_value - info->min_value);
 
-	v.defaultNormalizedValue = (info->default_value-info->min_value) / param_range;
+       v.defaultNormalizedValue = (info->default_value-info->min_value) / param_range;
 	if (info->flags & CLAP_PARAM_IS_STEPPED)
 	{
 		auto steps = param_range + 1;
