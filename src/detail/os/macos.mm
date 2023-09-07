@@ -80,7 +80,8 @@ namespace os
 	  	CFRunLoopTimerContext context = {};
 	  	context.info = this;
 	  	_timer = CFRunLoopTimerCreate(kCFAllocatorDefault, CFAbsoluteTimeGetCurrent() + (kIntervall * 0.001f), kIntervall * 0.001f, 0, 0, timerCallback, &context);
-	  	CFRunLoopAddTimer(CFRunLoopGetCurrent(), _timer, kCFRunLoopCommonModes);
+                if (_timer)
+	  	    CFRunLoopAddTimer(CFRunLoopGetCurrent(), _timer, kCFRunLoopCommonModes);
 	  }
 	  _plugs.push_back(plugobject);
 	}
@@ -90,9 +91,12 @@ namespace os
 	  _plugs.erase(std::remove(_plugs.begin(), _plugs.end(), plugobject), _plugs.end());
 	  if ( _plugs.empty() )
 	  {
-	    CFRunLoopTimerInvalidate(_timer);
-	    CFRelease(_timer);
-	    _timer = nullptr;
+            if (_timer)
+            {
+                CFRunLoopTimerInvalidate(_timer);
+                CFRelease(_timer);
+            }
+            _timer = nullptr;
 	  }
 	}
 

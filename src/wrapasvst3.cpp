@@ -513,12 +513,6 @@ void ClapAsVst3::setupAudioBusses(const clap_plugin_t* plugin, const clap_plugin
 
   fprintf(stderr, "\tAUDIO in: %d, out: %d\n", (int)numAudioInputs, (int)numAudioOutputs);
 
-  std::vector<clap_audio_port_info_t> inputs;
-  std::vector<clap_audio_port_info_t> outputs;
-
-  inputs.resize(numAudioInputs);
-  outputs.resize(numAudioOutputs);
-
   for (decltype(numAudioInputs) i = 0; i < numAudioInputs; ++i)
   {
     clap_audio_port_info_t info;
