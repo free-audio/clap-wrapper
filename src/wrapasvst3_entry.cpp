@@ -268,7 +268,7 @@ IPluginFactory* GetPluginFactoryEntryPoint() {
 				char x[sizeof(g)*2+8];
 				char* o = x;
 				constexpr char hexchar[] = "0123456789ABCDEF";
-				for (int i = 0 ; i < sizeof(g) ; i++)
+				for (auto i = 0U ; i < sizeof(g) ; i++)
 				{
 					auto n = v[i];
 					*o++ = hexchar[(n >> 4) & 0xF];
