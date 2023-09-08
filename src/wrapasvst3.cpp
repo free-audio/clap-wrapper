@@ -398,11 +398,11 @@ void ClapAsVst3::addMIDIBusFrom(const clap_note_port_info_t* info, uint32_t inde
 
 void ClapAsVst3::updateAudioBusses()
 {
-  for ( int i = 0 ; i < audioInputs.size() ; ++i)
+  for ( auto i = 0U; i < audioInputs.size() ; ++i)
   {
     _processAdapter->activateAudioBus(Vst::kInput, i,audioInputs[i]->isActive());
   }
-  for (int i = 0; i < audioOutputs.size(); ++i)
+  for (auto i = 0U; i < audioOutputs.size(); ++i)
   {
     _processAdapter->activateAudioBus(Vst::kOutput, i, audioOutputs[i]->isActive());
   }
@@ -667,7 +667,7 @@ void ClapAsVst3::param_rescan(clap_param_rescan_flags flags)
     vstflags |= Vst::RestartFlags::kMidiCCAssignmentChanged;
   }
 
-  vstflags |= ((flags & CLAP_PARAM_RESCAN_VALUES) ? Vst::RestartFlags::kParamValuesChanged : 0u);
+  vstflags |= ((flags & CLAP_PARAM_RESCAN_VALUES) ? (uint32_t)Vst::RestartFlags::kParamValuesChanged : 0u);
   vstflags |= ((flags & CLAP_PARAM_RESCAN_INFO) ? Vst::RestartFlags::kParamValuesChanged | Vst::RestartFlags::kParamTitlesChanged : 0u);
   if (vstflags != 0)
   {
