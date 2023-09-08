@@ -14,10 +14,21 @@
 */
 
 #include "clap_proxy.h"
+
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wextra"
+#endif
+
 #include <pluginterfaces/vst/ivstmidicontrollers.h>
 #include <pluginterfaces/vst/ivstnoteexpression.h>
 #include <public.sdk/source/vst/vstsinglecomponenteffect.h>
 #include <public.sdk/source/vst/vstnoteexpressiontypes.h>
+
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
+
 #include "detail/vst3/plugview.h"
 #include "detail/os/osutil.h"
 #include "detail/clap/automation.h"

@@ -240,12 +240,13 @@ tresult PLUGIN_API ClapAsVst3::getParamStringByValue(Vst::ParamID id, Vst::Param
   auto val = param->asClapValue(valueNormalized);
 
   char outbuf[128];
+  memset(outbuf, 0, sizeof(outbuf));
   if (this->_plugin->_ext._params->value_to_text(_plugin->_plugin, param->id, val, outbuf, 127))
   {
     UString wrapper(&string[0], str16BufferSize(Steinberg::Vst::String128));
     
     wrapper.assign(outbuf,sizeof(outbuf));
-    return true;
+    return kResultOk;
   }
   return super::getParamStringByValue(id, valueNormalized, string);
 }
@@ -255,14 +256,14 @@ tresult PLUGIN_API ClapAsVst3::getParamValueByString(Vst::ParamID id, Vst::TChar
   auto param = (Vst3Parameter*)this->getParameterObject(id);
   Steinberg::String m(string);
   char inbuf[128];
-  auto l = m.copyTo8(inbuf);
+  m.copyTo8(inbuf, 0, 128);
   double out = 0.;
   if (this->_plugin->_ext._params->text_to_value(_plugin->_plugin, param->id, inbuf, &out))
   {
-    valueNormalized = out;
-    return true;
+    valueNormalized = param->asVst3Value(out);
+    return kResultOk;
   }
-  return false;
+  return Steinberg::kResultFalse;
  
 }
 
@@ -389,16 +390,20 @@ void ClapAsVst3::addMIDIBusFrom(const clap_note_port_info_t* info, uint32_t inde
     {
       addEventInput(name16, numchannels, Vst::BusTypes::kMain, Vst::BusInfo::kDefaultActive);
     }
+    else
+    {
+      addEventOutput(name16, numchannels, Vst::BusTypes::kMain, Vst::BusInfo::kDefaultActive);
+    }
   }
 }
 
 void ClapAsVst3::updateAudioBusses()
 {
-  for ( int i = 0 ; i < audioInputs.size() ; ++i)
+  for ( auto i = 0U; i < audioInputs.size() ; ++i)
   {
     _processAdapter->activateAudioBus(Vst::kInput, i,audioInputs[i]->isActive());
   }
-  for (int i = 0; i < audioOutputs.size(); ++i)
+  for (auto i = 0U; i < audioOutputs.size(); ++i)
   {
     _processAdapter->activateAudioBus(Vst::kOutput, i, audioOutputs[i]->isActive());
   }
@@ -512,12 +517,6 @@ void ClapAsVst3::setupAudioBusses(const clap_plugin_t* plugin, const clap_plugin
   auto numAudioOutputs = audioports->count(plugin, false);
 
   fprintf(stderr, "\tAUDIO in: %d, out: %d\n", (int)numAudioInputs, (int)numAudioOutputs);
-
-  std::vector<clap_audio_port_info_t> inputs;
-  std::vector<clap_audio_port_info_t> outputs;
-
-  inputs.resize(numAudioInputs);
-  outputs.resize(numAudioOutputs);
 
   for (decltype(numAudioInputs) i = 0; i < numAudioInputs; ++i)
   {
@@ -669,7 +668,7 @@ void ClapAsVst3::param_rescan(clap_param_rescan_flags flags)
     vstflags |= Vst::RestartFlags::kMidiCCAssignmentChanged;
   }
 
-  vstflags |= ((flags & CLAP_PARAM_RESCAN_VALUES) ? Vst::RestartFlags::kParamValuesChanged : 0u);
+  vstflags |= ((flags & CLAP_PARAM_RESCAN_VALUES) ? (uint32_t)Vst::RestartFlags::kParamValuesChanged : 0u);
   vstflags |= ((flags & CLAP_PARAM_RESCAN_INFO) ? Vst::RestartFlags::kParamValuesChanged | Vst::RestartFlags::kParamTitlesChanged : 0u);
   if (vstflags != 0)
   {

@@ -340,7 +340,7 @@ function(target_add_vst3_wrapper)
 				)
 
 		if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-			target_compile_options(${V3_TARGET}-clap-wrapper-vst3-lib PRIVATE -Wall)
+			target_compile_options(${V3_TARGET}-clap-wrapper-vst3-lib PRIVATE -Wall -Wextra -Wno-unused-parameter -Wpedantic -Werror)
 		endif()
 		if (APPLE)
 			target_link_libraries(${V3_TARGET}-clap-wrapper-vst3-lib PUBLIC macos_filesystem_support)
@@ -512,7 +512,7 @@ if (APPLE)
 			# is a placeholder. When we write it we will follow a similar
 			# split trick as for the vst3, mostly (but AUV2 is a bit different
 			# with info.plist and entrypoint-per-instance stuff)
-			target_sources(${AUV2_TARGET} PRIVATE src/wrapasauv2.cpp)
+			target_sources(${AUV2_TARGET} PRIVATE ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/wrapasauv2.cpp)
 
 
 			if (NOT TARGET ${AUV2_TARGET}-clap-wrapper-auv2-lib)
@@ -551,7 +551,7 @@ if (APPLE)
 					MACOSX_BUNDLE_BUNDLE_NAME ${AUV2_OUTPUT_NAME}
 					MACOSX_BUNDLE_BUNDLE_VERSION ${AUV2_BUNDLE_VERSION}
 					MACOSX_BUNDLE_SHORT_VERSION_STRING ${AUV2_BUNDLE_VERSION}
-					MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/cmake/auv2_Info.plist.in
+					MACOSX_BUNDLE_INFO_PLIST ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/cmake/auv2_Info.plist.in
 					)
 			if (NOT ${CMAKE_GENERATOR} STREQUAL "Xcode")
 				add_custom_command(TARGET ${AUV2_TARGET} POST_BUILD

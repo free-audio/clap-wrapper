@@ -49,7 +49,7 @@ namespace Clap
     if ( numInputs > 0)
     {
       _input_ports = new clap_audio_buffer_t[numInputs];
-      for (int i = 0; i < numInputs; ++i)
+      for (auto i = 0U; i < numInputs; ++i)
       {
         clap_audio_buffer_t& bus = _input_ports[i];
         Vst::BusInfo info;
@@ -77,7 +77,7 @@ namespace Clap
     if (numOutputs > 0)
     {
       _output_ports = new clap_audio_buffer_t[numOutputs];
-      for (int i = 0; i < numOutputs; ++i)
+      for (auto i = 0U; i < numOutputs; ++i)
       {
         clap_audio_buffer_t& bus = _output_ports[i];
         Vst::BusInfo info;
@@ -361,7 +361,7 @@ namespace Clap
     {
       // setting the buffers
       auto inbusses = _audioinputs->size();
-      for (int i = 0; i < inbusses; ++i)
+      for (auto i = 0U; i < inbusses; ++i)
       {
         if (_vstdata->inputs[i].numChannels > 0)
           _input_ports[i].data32 = _vstdata->inputs[i].channelBuffers32;
@@ -370,7 +370,7 @@ namespace Clap
       }
 
       auto outbusses = _audiooutputs->size();
-      for (int i = 0; i < outbusses; ++i)
+      for (auto i = 0U; i < outbusses; ++i)
       {
         if (_vstdata->outputs[i].numChannels > 0)
           _output_ports[i].data32 = _vstdata->outputs[i].channelBuffers32;
@@ -617,7 +617,43 @@ namespace Clap
     switch (event->type)
     {
     case CLAP_EVENT_NOTE_ON:
+    {
+      auto nevt = reinterpret_cast<const clap_event_note *>(event);
+
+      Steinberg::Vst::Event oe{};
+      oe.type = Steinberg::Vst::Event::kNoteOnEvent;
+      oe.noteOn.channel = nevt->channel;
+      oe.noteOn.pitch = nevt->key;
+      oe.noteOn.velocity = nevt->velocity;
+      oe.noteOn.length = 0;
+      oe.noteOn.tuning = 0.0f;
+      oe.noteOn.noteId = nevt->note_id;
+      oe.busIndex = 0; // FIXME - multi-out midi still needs work
+      oe.sampleOffset = nevt->header.time;
+
+      if (_vstdata && _vstdata->outputEvents)
+        _vstdata->outputEvents->addEvent(oe);
+    }
+      return true;
     case CLAP_EVENT_NOTE_OFF:
+    {
+      auto nevt = reinterpret_cast<const clap_event_note *>(event);
+
+      Steinberg::Vst::Event oe{};
+      oe.type = Steinberg::Vst::Event::kNoteOffEvent;
+      oe.noteOff.channel = nevt->channel;
+      oe.noteOff.pitch = nevt->key;
+      oe.noteOff.velocity = nevt->velocity;
+      oe.noteOn.length = 0;
+      oe.noteOff.tuning = 0.0f;
+      oe.noteOff.noteId = nevt->note_id;
+      oe.busIndex = 0; // FIXME - multi-out midi still needs work
+      oe.sampleOffset = nevt->header.time;
+
+
+      if (_vstdata && _vstdata->outputEvents)
+        _vstdata->outputEvents->addEvent(oe);
+    }
       return true;
     case CLAP_EVENT_NOTE_END:
     case CLAP_EVENT_NOTE_CHOKE:
