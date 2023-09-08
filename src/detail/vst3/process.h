@@ -13,10 +13,21 @@
 
 */
 #include <clap/clap.h>
+
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wextra"
+#endif
+
 #include <pluginterfaces/vst/ivstevents.h>
 #include <pluginterfaces/vst/ivstaudioprocessor.h>
 #include <public.sdk/source/vst/vstparameters.h>
 #include <public.sdk/source/vst/vstbus.h>
+
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
+
 #include <vector>
 #include <memory>
 
