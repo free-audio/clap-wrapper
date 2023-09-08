@@ -340,7 +340,7 @@ function(target_add_vst3_wrapper)
 				)
 
 		if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-			target_compile_options(${V3_TARGET}-clap-wrapper-vst3-lib PRIVATE -Wall -Wextra -Wno-unused-parameter -Wpedantic)
+			target_compile_options(${V3_TARGET}-clap-wrapper-vst3-lib PRIVATE -Wall -Wextra -Wno-unused-parameter -Wpedantic -Werror)
 		endif()
 		if (APPLE)
 			target_link_libraries(${V3_TARGET}-clap-wrapper-vst3-lib PUBLIC macos_filesystem_support)
