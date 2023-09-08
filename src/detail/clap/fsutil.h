@@ -68,7 +68,6 @@ namespace Clap
 #if LIN
         return _handle != nullptr || _selfcontained;
 #endif
-
     }
 
   private:

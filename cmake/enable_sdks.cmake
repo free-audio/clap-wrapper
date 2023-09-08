@@ -152,21 +152,17 @@ function(DefineCLAPASVST3Sources)
 		list(REMOVE_ITEM vst3sources "${full_path_test_cpp}")
 	endif()
 
+
 	if(WIN32)
-		set(os_wrappersources src/detail/os/windows.cpp)
+		set(os_wrappersources src/detail/vst3/os/windows.cpp)
 	endif()
 
 	if (APPLE)
-		set(os_wrappersources
-			src/detail/clap/mac_helpers.mm
-			src/detail/os/macos.mm
-		)
+		set(os_wrappersources src/detail/vst3/os/macos.mm)
 	endif()
 
 	if(UNIX AND NOT APPLE)
-	set(os_wrappersources
-		src/detail/os/linux.cpp
-	)
+		set(os_wrappersources src/detail/vst3/os/linux.cpp)
 	endif()
 
 	set(wrappersources_vst3
@@ -184,12 +180,6 @@ function(DefineCLAPASVST3Sources)
 		src/detail/vst3/process.cpp
 		src/detail/vst3/categories.h
 		src/detail/vst3/categories.cpp
-		src/detail/sha1.h
-		src/detail/sha1.cpp
-		src/detail/clap/fsutil.h
-		src/detail/clap/fsutil.cpp
-		src/detail/os/osutil.h
-		src/detail/clap/automation.h
 		${os_wrappersources}
 			CACHE STRING "Clap Wrapper Library Sources")
 
@@ -333,7 +323,7 @@ function(target_add_vst3_wrapper)
 
 		# clap-wrapper-extensions are PUBLIC, so a clap linking the library can access the clap-wrapper-extensions
 		target_compile_definitions(${V3_TARGET}-clap-wrapper-vst3-lib PUBLIC -D${CLAP_WRAPPER_PLATFORM}=1)
-		target_link_libraries(${V3_TARGET}-clap-wrapper-vst3-lib PUBLIC clap-wrapper-extensions)
+		target_link_libraries(${V3_TARGET}-clap-wrapper-vst3-lib PUBLIC clap-wrapper-extensions clap-wrapper-shared-detail)
 
 		target_compile_options(${V3_TARGET}-clap-wrapper-vst3-lib PRIVATE
 				-DCLAP_SUPPORTS_ALL_NOTE_EXPRESSIONS=$<IF:$<BOOL:${V3_SUPPORTS_ALL_NOTE_EXPRESSIONS}>,1,0>
@@ -469,6 +459,8 @@ if (APPLE)
 					SUBTYPE_CODE
 					INSTRUMENT_TYPE
 
+					CLAP_TARGET_FOR_CONFIG
+
 					MACOS_EMBEDDED_CLAP_LOCATION
 			)
 			cmake_parse_arguments(AUV2 "" "${oneValueArgs}" "" ${ARGN} )
@@ -477,8 +469,8 @@ if (APPLE)
 				message(FATAL_ERROR "clap-wrapper: target_add_auv2_wrapper requires a target")
 			endif()
 
-			if (NOT DEFINED AUV2_OUTPUT_NAME)
-				message(FATAL_ERROR "clap-wrapper: target_add_auv2_wrapper requires an output name")
+			if (NOT TARGET ${AUV2_TARGET})
+				message(FATAL_ERROR "clap-wrapper: auv2-target must be a target")
 			endif()
 
 			if (NOT DEFINED AUV2_MANUFACTURER_NAME)
@@ -489,18 +481,76 @@ if (APPLE)
 				message(FATAL_ERROR "clap-wrapper: For now please specify AUV2 manufacturer code (4 chars)")
 			endif()
 
-			if (NOT DEFINED AUV2_SUBTYPE_CODE)
-				message(FATAL_ERROR "clap-wrapper: For now please specify AUV2 subtype code (4 chars)")
-			endif()
+			# We need a build helper which ejects our config code for info-plist and entry points
+			set(bhtg ${AUV2_TARGET}-build-helper)
+			set(bhsc "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv2/build-helper/")
+			add_executable(${bhtg} ${bhsc}/build-helper.cpp)
+			target_link_libraries(${bhtg} PRIVATE
+					clap-wrapper-shared-detail
+					macos_filesystem_support
+					"-framework Foundation"
+					"-framework CoreFoundation"
+					)
+			set(bhtgoutdir "${CMAKE_CURRENT_BINARY_DIR}/${AUV2_TARGET}-build-helper-output")
+			add_custom_command(TARGET ${bhtg} POST_BUILD
+					COMMAND ${CMAKE_COMMAND} -E echo "clap-wrapper: auv2 configuration output dir is ${bhtgoutdir}"
+					COMMAND ${CMAKE_COMMAND} -E make_directory "${bhtgoutdir}"
+					)
 
-			if (NOT DEFINED AUV2_INSTRUMENT_TYPE)
-				message(WARNING "clap-wrapper: auv2 instrument type not specified. Using aumu")
+			add_dependencies(${AUV2_TARGET} ${bhtg})
+
+			if (DEFINED AUV2_CLAP_TARGET_FOR_CONFIG)
+				set(clpt ${AUV2_CLAP_TARGET_FOR_CONFIG})
+				message(STATUS "clap-wrapper: building auv2 based on target ${AUV2_CLAP_TARGET_FOR_CONFIG}")
+				get_property(ton TARGET ${clpt} PROPERTY LIBRARY_OUTPUT_NAME)
+				set(AUV2_OUTPUT_NAME "${ton}")
+				set(AUV2_SUBTYPE_CODE "Fooo")
 				set(AUV2_INSTRUMENT_TYPE "aumu")
+
+				add_dependencies(${AUV2_TARGET} ${clpt})
+				add_dependencies(${bhtg} ${clpt})
+
+				add_custom_command(
+						TARGET ${bhtg}
+						POST_BUILD
+						WORKING_DIRECTORY ${bhtgoutdir}
+						BYPRODUCTS ${bhtgoutdir}/auv2_Info.plist ${bhtgoutdir}/generated_entrypoints.hxx
+						COMMAND $<TARGET_FILE:${bhtg}> --fromclap
+								"$<TARGET_FILE:${clpt}>"
+								"${AUV2_MANUFACTURER_CODE}" "${AUV2_MANUFACTURER_NAME}"
+						)
+			else()
+				if (NOT DEFINED AUV2_OUTPUT_NAME)
+					message(FATAL_ERROR "clap-wrapper: target_add_auv2_wrapper requires an output name")
+				endif()
+
+				if (NOT DEFINED AUV2_SUBTYPE_CODE)
+					message(FATAL_ERROR "clap-wrapper: For now please specify AUV2 subtype code (4 chars)")
+				endif()
+
+				if (NOT DEFINED AUV2_INSTRUMENT_TYPE)
+					message(WARNING "clap-wrapper: auv2 instrument type not specified. Using aumu")
+					set(AUV2_INSTRUMENT_TYPE "aumu")
+				endif()
+
+				add_custom_command(
+						TARGET ${bhtg}
+						POST_BUILD
+						WORKING_DIRECTORY ${bhtgoutdir}
+						BYPRODUCTS ${bhtgoutdir}/auv2_Info.plist ${bhtgoutdir}/generated_entrypoints.hxx
+						COMMAND $<TARGET_FILE:${bhtg}> --explicit
+						"${AUV2_OUTPUT_NAME}" "${AUV2_BUNDLE_VERSION}"
+						"${AUV2_INSTRUMENT_TYPE}" "${AUV2_SUBTYPE_CODE}"
+						"${AUV2_MANUFACTURER_CODE}" "${AUV2_MANUFACTURER_NAME}"
+						)
 			endif()
 
-			set(AUV2_INSTRUMENT_TYPE ${AUV2_INSTRUMENT_TYPE} PARENT_SCOPE)
 			set(AUV2_MANUFACTURER_NAME ${AUV2_MANUFACTURER_NAME} PARENT_SCOPE)
 			set(AUV2_MANUFACTURER_CODE ${AUV2_MANUFACTURER_CODE} PARENT_SCOPE)
+			configure_file(${bhsc}/auv2_infoplist_top.in
+					${bhtgoutdir}/auv2_infoplist_top)
+
+			set(AUV2_INSTRUMENT_TYPE ${AUV2_INSTRUMENT_TYPE} PARENT_SCOPE)
 			set(AUV2_SUBTYPE_CODE ${AUV2_SUBTYPE_CODE} PARENT_SCOPE)
 
 			message(STATUS "clap-wrapper: Adding AUV2 Wrapper to target ${AUV2_TARGET} generating '${AUV2_OUTPUT_NAME}.component'")
@@ -512,13 +562,15 @@ if (APPLE)
 			# is a placeholder. When we write it we will follow a similar
 			# split trick as for the vst3, mostly (but AUV2 is a bit different
 			# with info.plist and entrypoint-per-instance stuff)
-			target_sources(${AUV2_TARGET} PRIVATE ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/wrapasauv2.cpp)
+			target_sources(${AUV2_TARGET} PRIVATE
+					${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/wrapasauv2.cpp
+					${bhtgoutdir}/generated_entrypoints.hxx)
 
 
 			if (NOT TARGET ${AUV2_TARGET}-clap-wrapper-auv2-lib)
 				# For now make this an interface
 				add_library(${AUV2_TARGET}-clap-wrapper-auv2-lib INTERFACE )
-				target_include_directories(${AUV2_TARGET}-clap-wrapper-auv2-lib INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+				target_include_directories(${AUV2_TARGET}-clap-wrapper-auv2-lib INTERFACE "${bhtgoutdir}" "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src")
 				target_link_libraries(${AUV2_TARGET}-clap-wrapper-auv2-lib INTERFACE clap auv2_sdk)
 
 				# clap-wrapper-extensions are PUBLIC, so a clap linking the library can access the clap-wrapper-extensions
@@ -551,10 +603,15 @@ if (APPLE)
 					MACOSX_BUNDLE_BUNDLE_NAME ${AUV2_OUTPUT_NAME}
 					MACOSX_BUNDLE_BUNDLE_VERSION ${AUV2_BUNDLE_VERSION}
 					MACOSX_BUNDLE_SHORT_VERSION_STRING ${AUV2_BUNDLE_VERSION}
-					MACOSX_BUNDLE_INFO_PLIST ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/cmake/auv2_Info.plist.in
 					)
+			# This is "PRE_BUILD" because the target is created at cmake time and we want to beat xcode signing in order
+			# it is *not* a MACOSX_BUNDLE_INFO_PLIST since that is a configure not build time concept so doesn't work
+			# with compile time generated files
+			add_custom_command(TARGET ${AUV2_TARGET} PRE_BUILD
+					COMMAND ${CMAKE_COMMAND} -E copy ${bhtgoutdir}/auv2_Info.plist $<TARGET_FILE_DIR:${AUV2_TARGET}>/../Info.plist)
+
 			if (NOT ${CMAKE_GENERATOR} STREQUAL "Xcode")
-				add_custom_command(TARGET ${AUV2_TARGET} POST_BUILD
+				add_custom_command(TARGET ${AUV2_TARGET} PRE_BUILD
 						WORKING_DIRECTORY $<TARGET_PROPERTY:${AUV2_TARGET},LIBRARY_OUTPUT_DIRECTORY>
 						COMMAND SetFile -a B "$<TARGET_PROPERTY:${AUV2_TARGET},MACOSX_BUNDLE_BUNDLE_NAME>.$<TARGET_PROPERTY:${AUV2_TARGET},BUNDLE_EXTENSION>")
 			endif()
@@ -577,6 +634,25 @@ endif()
 if ( NOT TARGET clap-wrapper-extensions)
 	add_library(clap-wrapper-extensions INTERFACE)
 	target_include_directories(clap-wrapper-extensions INTERFACE include)
+endif()
+
+add_library(clap-wrapper-shared-detail STATIC
+		src/detail/sha1.h
+		src/detail/sha1.cpp
+		src/detail/clap/fsutil.h
+		src/detail/clap/fsutil.cpp
+		src/detail/clap/automation.h
+		)
+target_compile_options(clap-wrapper-shared-detail PUBLIC -D${CLAP_WRAPPER_PLATFORM}=1)
+target_link_libraries(clap-wrapper-shared-detail PUBLIC clap clap-wrapper-extensions)
+target_include_directories(clap-wrapper-shared-detail PUBLIC libs/fmt)
+target_include_directories(clap-wrapper-shared-detail PUBLIC src)
+
+if (APPLE)
+	target_sources(clap-wrapper-shared-detail PRIVATE
+			src/detail/clap/mac_helpers.mm
+			)
+	target_link_libraries(clap-wrapper-shared-detail PRIVATE macos_filesystem_support)
 endif()
 
 if(${CMAKE_SIZEOF_VOID_P} EQUAL 4)
