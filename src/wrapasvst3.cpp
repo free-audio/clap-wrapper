@@ -240,12 +240,13 @@ tresult PLUGIN_API ClapAsVst3::getParamStringByValue(Vst::ParamID id, Vst::Param
   auto val = param->asClapValue(valueNormalized);
 
   char outbuf[128];
+  memset(outbuf, 0, sizeof(outbuf));
   if (this->_plugin->_ext._params->value_to_text(_plugin->_plugin, param->id, val, outbuf, 127))
   {
     UString wrapper(&string[0], str16BufferSize(Steinberg::Vst::String128));
     
     wrapper.assign(outbuf,sizeof(outbuf));
-    return true;
+    return kResultOk;
   }
   return super::getParamStringByValue(id, valueNormalized, string);
 }
@@ -255,14 +256,14 @@ tresult PLUGIN_API ClapAsVst3::getParamValueByString(Vst::ParamID id, Vst::TChar
   auto param = (Vst3Parameter*)this->getParameterObject(id);
   Steinberg::String m(string);
   char inbuf[128];
-  auto l = m.copyTo8(inbuf);
+  m.copyTo8(inbuf, 0, 128);
   double out = 0.;
   if (this->_plugin->_ext._params->text_to_value(_plugin->_plugin, param->id, inbuf, &out))
   {
-    valueNormalized = out;
-    return true;
+    valueNormalized = param->asVst3Value(out);
+    return kResultOk;
   }
-  return false;
+  return Steinberg::kResultFalse;
  
 }
 
