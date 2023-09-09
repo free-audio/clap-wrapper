@@ -521,6 +521,7 @@ if (APPLE)
 						WORKING_DIRECTORY ${bhtgoutdir}
 						BYPRODUCTS ${bhtgoutdir}/auv2_Info.plist ${bhtgoutdir}/generated_entrypoints.hxx
 						COMMAND $<TARGET_FILE:${bhtg}> --fromclap
+								"${AUV2_OUTPUT_NAME}"
 								"$<TARGET_FILE:${clpt}>"
 								"${AUV2_MANUFACTURER_CODE}" "${AUV2_MANUFACTURER_NAME}"
 						)
@@ -580,7 +581,7 @@ if (APPLE)
 
 				# clap-wrapper-extensions are PUBLIC, so a clap linking the library can access the clap-wrapper-extensions
 				target_compile_definitions(${AUV2_TARGET}-clap-wrapper-auv2-lib INTERFACE -D${CLAP_WRAPPER_PLATFORM}=1)
-				target_link_libraries(${AUV2_TARGET}-clap-wrapper-auv2-lib INTERFACE clap-wrapper-extensions macos_filesystem_support)
+				target_link_libraries(${AUV2_TARGET}-clap-wrapper-auv2-lib INTERFACE clap-wrapper-extensions clap-wrapper-shared-detail macos_filesystem_support)
 
 			endif()
 
@@ -652,6 +653,11 @@ target_compile_options(clap-wrapper-shared-detail PUBLIC -D${CLAP_WRAPPER_PLATFO
 target_link_libraries(clap-wrapper-shared-detail PUBLIC clap clap-wrapper-extensions)
 target_include_directories(clap-wrapper-shared-detail PUBLIC libs/fmt)
 target_include_directories(clap-wrapper-shared-detail PUBLIC src)
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+	target_compile_options(clap-wrapper-shared-detail PRIVATE -Wall -Wextra -Wno-unused-parameter -Wpedantic -Werror)
+endif()
+
 
 if (APPLE)
 	target_sources(clap-wrapper-shared-detail PRIVATE

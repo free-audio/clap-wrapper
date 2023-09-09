@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <functional>
 
 #include "detail/clap/fsutil.h"
 
@@ -14,7 +15,7 @@ namespace fs = ghc::filesystem;
 
 struct auInfo
 {
-    std::string name, vers, type, subt, manu, manunm, clapid, desc;
+    std::string name, vers, type, subt, manu, manunm, clapid, desc, clapname;
 
     const std::string factoryBase{"wrapAsAUV2_inst"};
 
@@ -57,7 +58,7 @@ struct auInfo
     }
 };
 
-bool buildUnitsFromClap(const std::string &clapfile, std::string &manu, std::string &manuName, std::vector<auInfo> &units)
+bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname, std::string &manu, std::string &manuName, std::vector<auInfo> &units)
 {
     Clap::Library loader;
     if (!loader.load(clapfile.c_str()))
@@ -67,15 +68,30 @@ bool buildUnitsFromClap(const std::string &clapfile, std::string &manu, std::str
     }
 
     int idx{0};
+
+    static const char *encoder =
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-";
     for (const auto *clapPlug : loader.plugins)
     {
         auto u = auInfo();
         u.name = clapPlug->name;
+        u.clapname = clapname;
         u.clapid = clapPlug->id;
         u.vers = clapPlug->version;
         u.desc = clapPlug->description;
 
-        u.subt = "FIX" + std::to_string(idx++);
+        static_assert(sizeof(size_t) == 8);
+        size_t idHash = std::hash<std::string>{}(clapPlug->id);
+        std::string stH;
+        // We have to make an ascii-representable 4 char string. Here's a way I guess.
+        for (int i=0; i<4; ++i)
+        {
+            auto q = idHash & ((1 << 6) - 1);
+            stH += encoder[q];
+            idHash = idHash >> 9; // mix it up a bit
+        }
+
+        u.subt = stH;
         u.manu = manu;
         u.manunm = manuName;
 
@@ -123,6 +139,7 @@ int main(int argc, char **argv)
         int idx = 2;
         auInfo u;
         u.name = std::string(argv[idx++]);
+        u.clapname = u.name;
         u.vers = std::string(argv[idx++]);
         u.type = std::string(argv[idx++]);
         u.subt = std::string(argv[idx++]);
@@ -135,12 +152,13 @@ int main(int argc, char **argv)
     }
     else if (std::string(argv[1]) == "--fromclap")
     {
-        if (argc != 5)
+        if (argc != 6)
         {
             std::cout << "[ERROR] Configuration incorrect. Got " << argc << " arguments in fromclap" << std::endl;
-            return 5;
+            return 6;
         }
         int idx = 2;
+        auto clapname = std::string(argv[idx++]);
         auto clapfile = std::string(argv[idx++]);
         auto mcode = std::string(argv[idx++]);
         auto mname = std::string(argv[idx++]);
@@ -160,7 +178,7 @@ int main(int argc, char **argv)
         std::cout << "  - building information from CLAP directly\n"
                   << "  - source clap: '" << clapfile << "'" << std::endl;
 
-        if (!buildUnitsFromClap(clapfile, mcode, mname, units))
+        if (!buildUnitsFromClap(clapfile, clapname, mcode, mname, units))
         {
             std::cout << "[ERROR] Can't build units from CLAP" << std::endl;
             return 4;
@@ -218,37 +236,39 @@ int main(int argc, char **argv)
     }
 
     cppf << "#pragma once\n";
-    cppf << "#include \"detail/auv2/base_classes.h\"\n\n";
+    cppf << "#include \"detail/auv2/auv2_base_classes.h\"\n\n";
 
     idx = 0;
     for (const auto &u : units)
     {
         auto on = u.factoryBase + std::to_string(idx);
 
+        auto args = std::string("\"") + u.clapname + "\", \"" + u.clapid + "\", " + std::to_string(idx);
+
         if (u.type == "aumu")
         {
             std::cout << "    + " << u.name << " entry " << on << " from ClapWrapper_AUV2_Instrument" << std::endl;
-            cppf << "struct " << on << " : ClapWrapper_AUV2_Instrument {\n"
+            cppf << "struct " << on << " : free_audio::auv2_wrapper::ClapWrapper_AUV2_Instrument {\n"
                  << "   " << on << "(AudioComponentInstance ci) :\n"
-                 << "         ClapWrapper_AUV2_Instrument(\"" << u.clapid << "\", " << idx << ", ci) {}"
+                 << "         free_audio::auv2_wrapper::ClapWrapper_AUV2_Instrument(" << args << ", ci) {}"
                  << "};\n"
                  << "AUSDK_COMPONENT_ENTRY(ausdk::AUMusicDeviceFactory, " << on << ");\n";
         }
         else if (u.type == "aumi")
         {
             std::cout << "    + " << u.name << " entry " << on << " from ClapWrapper_AUV2_NoteEffect" << std::endl;
-            cppf << "struct " << on << " : ClapWrapper_AUV2_NoteEffect {\n"
+            cppf << "struct " << on << " : free_audio::auv2_wrapper::ClapWrapper_AUV2_NoteEffect {\n"
                  << "   " << on << "(AudioComponentInstance ci) :\n"
-                 << "         ClapWrapper_AUV2_NoteEffect(\"" << u.clapid << "\", " << idx << ", ci) {}"
+                 << "         free_audio::auv2_wrapper::ClapWrapper_AUV2_NoteEffect(" << args << ", ci) {}"
                  << "};\n"
                  << "AUSDK_COMPONENT_ENTRY(ausdk::AUBaseFactory , " << on << ");\n";
         }
         else if (u.type == "aufx")
         {
             std::cout << "    + " << u.name << " entry " << on << " from ClapWrapper_AUV2_Effect" << std::endl;
-            cppf << "struct " << on << " : ClapWrapper_AUV2_Effect {\n"
+            cppf << "struct " << on << " : free_audio::auv2_wrapper::ClapWrapper_AUV2_Effect {\n"
                  << "   " << on << "(AudioComponentInstance ci) :\n"
-                 << "         ClapWrapper_AUV2_Effect(\"" << u.clapid << "\", " << idx << ", ci) {}"
+                 << "         free_audio::auv2_wrapper::ClapWrapper_AUV2_Effect(" << args << ", ci) {}"
                  << "};\n"
                  << "AUSDK_COMPONENT_ENTRY(ausdk::AUBaseFactory, " << on << ");\n";
         }
