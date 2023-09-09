@@ -23,7 +23,7 @@ public:
   {
     auto self = static_cast<CLAPVST3StreamAdapter*>(stream->ctx);
     Steinberg::int32 bytesRead = 0;
-    if (kResultOk == self->vst_stream->read(buffer, size, &bytesRead))
+    if (kResultOk == self->vst_stream->read(buffer, (int32)size, &bytesRead))
       return bytesRead;
     return -1;
   }
@@ -31,7 +31,7 @@ public:
   {
     auto self = static_cast<CLAPVST3StreamAdapter*>(stream->ctx);
     Steinberg::int32 bytesWritten = 0;
-    if (kResultOk == self->vst_stream->write(const_cast<void*>(buffer), size, &bytesWritten))
+    if (kResultOk == self->vst_stream->write(const_cast<void*>(buffer), (int32)size, &bytesWritten))
       return bytesWritten;
     return -1;
   }
