@@ -35,7 +35,7 @@ option(CLAP_WRAPPER_WINDOWS_SINGLE_FILE "Build a single fine (rather than folder
 
 project(clap-wrapper
 	LANGUAGES C CXX
-	VERSION 0.0.4
+	VERSION 0.5.0
 	DESCRIPTION "CLAP-as-X wrappers"
 )
 
