@@ -39,8 +39,8 @@ namespace Clap
       _silent_output = new float[numSamples];
     }
 
-    auto numInputs = _audioinputs->size();
-    auto numOutputs = _audiooutputs->size();
+    auto numInputs = (uint32_t)_audioinputs->size();
+    auto numOutputs = (uint32_t)_audiooutputs->size();
 
     _processData.audio_inputs_count = numInputs;
     delete[] _input_ports;
@@ -412,7 +412,7 @@ namespace Clap
   uint32_t ProcessAdapter::input_events_size(const struct clap_input_events* list)
   {
     auto self = static_cast<ProcessAdapter*>(list->ctx);
-    return self->_events.size();
+    return (uint32_t)self->_events.size();
     // return self->_vstdata->inputEvents->getEventCount();
   }
 
