@@ -115,6 +115,11 @@ int main(int argc, char **argv)
     std::vector<auInfo> units;
     if (std::string(argv[1]) == "--explicit")
     {
+        if (argc != 8)
+        {
+            std::cout << "[ERROR] Configuration incorrect. Got " << argc << " arguments in explicit" << std::endl;
+            return 5;
+        }
         int idx = 2;
         auInfo u;
         u.name = std::string(argv[idx++]);
@@ -130,6 +135,11 @@ int main(int argc, char **argv)
     }
     else if (std::string(argv[1]) == "--fromclap")
     {
+        if (argc != 5)
+        {
+            std::cout << "[ERROR] Configuration incorrect. Got " << argc << " arguments in fromclap" << std::endl;
+            return 5;
+        }
         int idx = 2;
         auto clapfile = std::string(argv[idx++]);
         auto mcode = std::string(argv[idx++]);
