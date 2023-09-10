@@ -12,9 +12,17 @@
 class CLAPVST3StreamAdapter
 {
  public:
-  CLAPVST3StreamAdapter(Steinberg::IBStream* stream) : vst_stream(stream) {}
-  operator const clap_istream_t*() const { return &in; }
-  operator const clap_ostream_t*() const { return &out; }
+  CLAPVST3StreamAdapter(Steinberg::IBStream* stream) : vst_stream(stream)
+  {
+  }
+  operator const clap_istream_t*() const
+  {
+    return &in;
+  }
+  operator const clap_ostream_t*() const
+  {
+    return &out;
+  }
 
   static int64_t read(const struct clap_istream* stream, void* buffer, uint64_t size)
   {

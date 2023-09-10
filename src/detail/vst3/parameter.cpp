@@ -19,7 +19,9 @@ Vst3Parameter::Vst3Parameter(const Steinberg::Vst::ParameterInfo& vst3info, uint
     max_value = 16383;
   }
 }
-Vst3Parameter::~Vst3Parameter() {}
+Vst3Parameter::~Vst3Parameter()
+{
+}
 
 bool Vst3Parameter::setNormalized(Steinberg::Vst::ParamValue v)
 {

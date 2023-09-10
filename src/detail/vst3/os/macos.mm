@@ -25,7 +25,10 @@ namespace fs = ghc::filesystem;
 
 namespace os
 {
-  void log(const char* text) { NSLog(@"%s", text); }
+  void log(const char* text)
+  {
+    NSLog(@"%s", text);
+  }
 
   class MacOSHelper
   {
@@ -45,9 +48,13 @@ namespace os
   static Steinberg::ModuleInitializer createMessageWindow([] { gMacOSHelper.init(); });
   static Steinberg::ModuleTerminator dropMessageWindow([] { gMacOSHelper.terminate(); });
 
-  void MacOSHelper::init() {}
+  void MacOSHelper::init()
+  {
+  }
 
-  void MacOSHelper::terminate() {}
+  void MacOSHelper::terminate()
+  {
+  }
 
   void MacOSHelper::executeDefered()
   {
@@ -107,12 +114,21 @@ namespace os
 namespace os
 {
   // [UI Thread]
-  void attach(IPlugObject* plugobject) { gMacOSHelper.attach(plugobject); }
+  void attach(IPlugObject* plugobject)
+  {
+    gMacOSHelper.attach(plugobject);
+  }
 
   // [UI Thread]
-  void detach(IPlugObject* plugobject) { gMacOSHelper.detach(plugobject); }
+  void detach(IPlugObject* plugobject)
+  {
+    gMacOSHelper.detach(plugobject);
+  }
 
-  uint64_t getTickInMS() { return (::clock() * 1000) / CLOCKS_PER_SEC; }
+  uint64_t getTickInMS()
+  {
+    return (::clock() * 1000) / CLOCKS_PER_SEC;
+  }
 
   std::string getParentFolderName()
   {

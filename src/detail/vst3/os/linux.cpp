@@ -17,7 +17,10 @@
 
 namespace os
 {
-  void log(const char* text) { fprintf(stderr, "%s\n", text); }
+  void log(const char* text)
+  {
+    fprintf(stderr, "%s\n", text);
+  }
 
   class LinuxHelper
   {
@@ -152,9 +155,13 @@ namespace os
 	}
 
 #endif
-  void LinuxHelper::init() {}
+  void LinuxHelper::init()
+  {
+  }
 
-  void LinuxHelper::terminate() {}
+  void LinuxHelper::terminate()
+  {
+  }
 
   void LinuxHelper::executeDefered()
   {
@@ -163,19 +170,34 @@ namespace os
       p->onIdle();
     }
   }
-  void LinuxHelper::attach(IPlugObject* plugobject) { _plugs.push_back(plugobject); }
+  void LinuxHelper::attach(IPlugObject* plugobject)
+  {
+    _plugs.push_back(plugobject);
+  }
 
-  void LinuxHelper::detach(IPlugObject* plugobject) { _plugs.erase(std::remove(_plugs.begin(), _plugs.end(), plugobject), _plugs.end()); }
+  void LinuxHelper::detach(IPlugObject* plugobject)
+  {
+    _plugs.erase(std::remove(_plugs.begin(), _plugs.end(), plugobject), _plugs.end());
+  }
 
 }  // namespace os
 
 namespace os
 {
   // [UI Thread]
-  void attach(IPlugObject* plugobject) { gLinuxHelper.attach(plugobject); }
+  void attach(IPlugObject* plugobject)
+  {
+    gLinuxHelper.attach(plugobject);
+  }
 
   // [UI Thread]
-  void detach(IPlugObject* plugobject) { gLinuxHelper.detach(plugobject); }
+  void detach(IPlugObject* plugobject)
+  {
+    gLinuxHelper.detach(plugobject);
+  }
 
-  uint64_t getTickInMS() { return clock(); }
+  uint64_t getTickInMS()
+  {
+    return clock();
+  }
 }  // namespace os

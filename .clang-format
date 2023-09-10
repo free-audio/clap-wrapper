@@ -10,6 +10,7 @@ ColumnLimit: 250
 SortIncludes: false
 NamespaceIndentation: All
 ReflowComments: false
+AllowShortFunctionsOnASingleLine: None
 ---
 Language: ObjC
 BasedOnStyle: Google
@@ -20,4 +21,5 @@ ColumnLimit: 250
 SortIncludes: false
 NamespaceIndentation: All
 ReflowComments: false
+AllowShortFunctionsOnASingleLine: None
 ...

@@ -17,7 +17,9 @@ namespace os
   {
    public:
     virtual void onIdle() = 0;
-    virtual ~IPlugObject() {}
+    virtual ~IPlugObject()
+    {
+    }
   };
   void attach(IPlugObject* plugobject);
   void detach(IPlugObject* plugobject);
@@ -63,7 +65,10 @@ namespace util
   class fixedqueue
   {
    public:
-    inline void push(const T& val) { push(&val); }
+    inline void push(const T& val)
+    {
+      push(&val);
+    }
     inline void push(const T* val)
     {
       _elements[_head] = *val;

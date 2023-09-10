@@ -11,7 +11,10 @@ namespace Crypto
   class Sha1
   {
    public:
-    Sha1() { reset(); }
+    Sha1()
+    {
+      reset();
+    }
     Sha1(const unsigned char* message_array, size_t length)
     {
       reset();
@@ -24,7 +27,10 @@ namespace Crypto
     void reset();
     void processMessageBlock();
     void padmessage();
-    inline uint32_t circularShift(int bits, uint32_t word) { return ((word << bits) & 0xFFFFFFFF) | ((word & 0xFFFFFFFF) >> (32 - bits)); }
+    inline uint32_t circularShift(int bits, uint32_t word)
+    {
+      return ((word << bits) & 0xFFFFFFFF) | ((word & 0xFFFFFFFF) >> (32 - bits));
+    }
 
     unsigned H[5] =  // Message digest buffers
         {0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0};

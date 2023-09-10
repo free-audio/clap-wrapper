@@ -96,7 +96,9 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect, public Steinber
 
   static FUnknown* createInstance(void* context);
 
-  ClapAsVst3(Clap::Library* lib, int number, void* context) : super(), Steinberg::Vst::IMidiMapping(), Steinberg::Vst::INoteExpressionController(), _library(lib), _libraryIndex(number), _creationcontext(context) {}
+  ClapAsVst3(Clap::Library* lib, int number, void* context) : super(), Steinberg::Vst::IMidiMapping(), Steinberg::Vst::INoteExpressionController(), _library(lib), _libraryIndex(number), _creationcontext(context)
+  {
+  }
 
   //---from IComponent-----------------------
   tresult PLUGIN_API initialize(FUnknown* context) override;
@@ -265,7 +267,9 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect, public Steinber
   // for timer
   struct PosixFDObject
   {
-    PosixFDObject(int f, clap_posix_fd_flags_t fl) : fd(f), flags(fl) {}
+    PosixFDObject(int f, clap_posix_fd_flags_t fl) : fd(f), flags(fl)
+    {
+    }
     int fd = 0;
     clap_posix_fd_flags_t flags = 0;
     Steinberg::IPtr<Steinberg::Linux::IEventHandler> handler = nullptr;

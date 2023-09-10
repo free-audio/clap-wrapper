@@ -10,6 +10,8 @@ namespace Clap
     virtual void onBeginEdit(clap_id id) = 0;
     virtual void onPerformEdit(const clap_event_param_value_t* value) = 0;
     virtual void onEndEdit(clap_id id) = 0;
-    virtual ~IAutomation() {}
+    virtual ~IAutomation()
+    {
+    }
   };
 }  // namespace Clap

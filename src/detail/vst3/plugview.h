@@ -99,7 +99,10 @@ class WrappedView : public Steinberg::IPlugView, public Steinberg::FObject
 
 #if LIN
  public:
-  Steinberg::Linux::IRunLoop* getRunLoop() { return _runLoop; }
+  Steinberg::Linux::IRunLoop* getRunLoop()
+  {
+    return _runLoop;
+  }
 
  private:
   Steinberg::Linux::IRunLoop* _runLoop = nullptr;

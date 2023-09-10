@@ -97,8 +97,14 @@ namespace Clap
   class Raise
   {
    public:
-    Raise(std::atomic<uint32_t>& counter) : ctx(counter) { ++ctx; }
-    ~Raise() { ctx--; }
+    Raise(std::atomic<uint32_t>& counter) : ctx(counter)
+    {
+      ++ctx;
+    }
+    ~Raise()
+    {
+      ctx--;
+    }
 
    private:
     std::atomic<uint32_t>& ctx;
@@ -116,7 +122,10 @@ namespace Clap
    protected:
     // only the Clap::Library is allowed to create instances
     Plugin(IHost* host);
-    const clap_host_t* getClapHostInterface() { return &_host; }
+    const clap_host_t* getClapHostInterface()
+    {
+      return &_host;
+    }
     void connectClap(const clap_plugin_t* clap);
 
    public:
@@ -161,7 +170,9 @@ namespace Clap
     void tail_changed();
 
     // hostgui
-    void resize_hints_changed() {}
+    void resize_hints_changed()
+    {
+    }
     bool request_resize(uint32_t width, uint32_t height)
     {
       if (_parentHost->gui_can_resize())
@@ -171,9 +182,17 @@ namespace Clap
       }
       return false;
     }
-    bool request_show() { return _parentHost->gui_request_show(); }
-    bool request_hide() { return false; }
-    void closed(bool was_destroyed) {}
+    bool request_show()
+    {
+      return _parentHost->gui_request_show();
+    }
+    bool request_hide()
+    {
+      return false;
+    }
+    void closed(bool was_destroyed)
+    {
+    }
 
     // clap_timer support
     bool register_timer(uint32_t period_ms, clap_id* timer_id);

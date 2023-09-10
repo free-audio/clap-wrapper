@@ -137,15 +137,30 @@ namespace os
     for (auto&& p : _plugs) p->onIdle();
   }
 
-  void WindowsHelper::attach(IPlugObject* plugobject) { _plugs.push_back(plugobject); }
+  void WindowsHelper::attach(IPlugObject* plugobject)
+  {
+    _plugs.push_back(plugobject);
+  }
 
-  void WindowsHelper::detach(IPlugObject* plugobject) { _plugs.erase(std::remove(_plugs.begin(), _plugs.end(), plugobject), _plugs.end()); }
+  void WindowsHelper::detach(IPlugObject* plugobject)
+  {
+    _plugs.erase(std::remove(_plugs.begin(), _plugs.end(), plugobject), _plugs.end());
+  }
 
   // [UI Thread]
-  void attach(IPlugObject* plugobject) { gWindowsHelper.attach(plugobject); }
+  void attach(IPlugObject* plugobject)
+  {
+    gWindowsHelper.attach(plugobject);
+  }
 
   // [UI Thread]
-  void detach(IPlugObject* plugobject) { gWindowsHelper.detach(plugobject); }
+  void detach(IPlugObject* plugobject)
+  {
+    gWindowsHelper.detach(plugobject);
+  }
 
-  uint64_t getTickInMS() { return GetTickCount64(); }
+  uint64_t getTickInMS()
+  {
+    return GetTickCount64();
+  }
 }  // namespace os

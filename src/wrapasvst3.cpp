@@ -24,8 +24,14 @@
 
 struct ClapHostExtensions
 {
-  static inline ClapAsVst3* self(const clap_host_t* host) { return static_cast<ClapAsVst3*>(host->host_data); }
-  static void mark_dirty(const clap_host_t* host) { self(host)->mark_dirty(); }
+  static inline ClapAsVst3* self(const clap_host_t* host)
+  {
+    return static_cast<ClapAsVst3*>(host->host_data);
+  }
+  static void mark_dirty(const clap_host_t* host)
+  {
+    self(host)->mark_dirty();
+  }
   const clap_host_state_t _state = {mark_dirty};
 };
 
@@ -109,9 +115,15 @@ tresult PLUGIN_API ClapAsVst3::canProcessSampleSize(int32 symbolicSampleSize)
   return kResultOk;
 }
 
-tresult PLUGIN_API ClapAsVst3::setState(IBStream* state) { return (_plugin->load(CLAPVST3StreamAdapter(state)) ? Steinberg::kResultOk : Steinberg::kResultFalse); }
+tresult PLUGIN_API ClapAsVst3::setState(IBStream* state)
+{
+  return (_plugin->load(CLAPVST3StreamAdapter(state)) ? Steinberg::kResultOk : Steinberg::kResultFalse);
+}
 
-tresult PLUGIN_API ClapAsVst3::getState(IBStream* state) { return (_plugin->save(CLAPVST3StreamAdapter(state)) ? Steinberg::kResultOk : Steinberg::kResultFalse); }
+tresult PLUGIN_API ClapAsVst3::getState(IBStream* state)
+{
+  return (_plugin->save(CLAPVST3StreamAdapter(state)) ? Steinberg::kResultOk : Steinberg::kResultFalse);
+}
 
 uint32 PLUGIN_API ClapAsVst3::getLatencySamples()
 {
@@ -174,9 +186,15 @@ tresult PLUGIN_API ClapAsVst3::setProcessing(TBool state)
   return result;
 }
 
-tresult PLUGIN_API ClapAsVst3::setBusArrangements(Vst::SpeakerArrangement* inputs, int32 numIns, Vst::SpeakerArrangement* outputs, int32 numOuts) { return super::setBusArrangements(inputs, numIns, outputs, numOuts); };
+tresult PLUGIN_API ClapAsVst3::setBusArrangements(Vst::SpeakerArrangement* inputs, int32 numIns, Vst::SpeakerArrangement* outputs, int32 numOuts)
+{
+  return super::setBusArrangements(inputs, numIns, outputs, numOuts);
+};
 
-tresult PLUGIN_API ClapAsVst3::getBusArrangement(Vst::BusDirection dir, int32 index, Vst::SpeakerArrangement& arr) { return super::getBusArrangement(dir, index, arr); }
+tresult PLUGIN_API ClapAsVst3::getBusArrangement(Vst::BusDirection dir, int32 index, Vst::SpeakerArrangement& arr)
+{
+  return super::getBusArrangement(dir, index, arr);
+}
 
 IPlugView* PLUGIN_API ClapAsVst3::createView(FIDString name)
 {
@@ -240,7 +258,10 @@ tresult PLUGIN_API ClapAsVst3::getParamValueByString(Vst::ParamID id, Vst::TChar
   return Steinberg::kResultFalse;
 }
 
-tresult PLUGIN_API ClapAsVst3::activateBus(Vst::MediaType type, Vst::BusDirection dir, int32 index, TBool state) { return super::activateBus(type, dir, index, state); }
+tresult PLUGIN_API ClapAsVst3::activateBus(Vst::MediaType type, Vst::BusDirection dir, int32 index, TBool state)
+{
+  return super::activateBus(type, dir, index, state);
+}
 
 //-----------------------------------------------------------------------------
 
@@ -637,10 +658,15 @@ void ClapAsVst3::param_rescan(clap_param_rescan_flags flags)
   }
 }
 
-void ClapAsVst3::param_clear(clap_id param, clap_param_clear_flags flags) {}
+void ClapAsVst3::param_clear(clap_id param, clap_param_clear_flags flags)
+{
+}
 
 // request_flush requests a defered call to flush if there is no processing
-void ClapAsVst3::param_request_flush() { _requestedFlush = true; }
+void ClapAsVst3::param_request_flush()
+{
+  _requestedFlush = true;
+}
 
 bool ClapAsVst3::gui_can_resize()
 {
@@ -648,7 +674,10 @@ bool ClapAsVst3::gui_can_resize()
   return (componentHandler2 != nullptr);
 }
 
-bool ClapAsVst3::gui_request_resize(uint32_t width, uint32_t height) { return _wrappedview->request_resize(width, height); }
+bool ClapAsVst3::gui_request_resize(uint32_t width, uint32_t height)
+{
+  return _wrappedview->request_resize(width, height);
+}
 
 bool ClapAsVst3::gui_request_show()
 {
@@ -656,7 +685,10 @@ bool ClapAsVst3::gui_request_show()
   return false;
 }
 
-bool ClapAsVst3::gui_request_hide() { return false; }
+bool ClapAsVst3::gui_request_hide()
+{
+  return false;
+}
 
 void ClapAsVst3::latency_changed()
 {
@@ -674,7 +706,10 @@ void ClapAsVst3::mark_dirty()
   if (componentHandler2) componentHandler2->setDirty(true);
 }
 
-void ClapAsVst3::request_callback() { _requestUICallback = true; }
+void ClapAsVst3::request_callback()
+{
+  _requestUICallback = true;
+}
 
 void ClapAsVst3::restartPlugin()
 {
@@ -691,7 +726,10 @@ void ClapAsVst3::onPerformEdit(const clap_event_param_value_t* value)
   // receive a value change and pass it to the internal queue
   _queueToUI.push(valueEvent(value));
 }
-void ClapAsVst3::onEndEdit(clap_id id) { _queueToUI.push(endEvent(id)); }
+void ClapAsVst3::onEndEdit(clap_id id)
+{
+  _queueToUI.push(endEvent(id));
+}
 
 // ext-timer
 bool ClapAsVst3::register_timer(uint32_t period_ms, clap_id* timer_id)
@@ -826,8 +864,13 @@ struct TimerHandler : Steinberg::Linux::ITimerHandler, public Steinberg::FObject
 {
   ClapAsVst3* _parent{nullptr};
   clap_id _timerId{0};
-  TimerHandler(ClapAsVst3* parent, clap_id timerId) : _parent(parent), _timerId(timerId) {}
-  void PLUGIN_API onTimer() final { _parent->fireTimer(_timerId); }
+  TimerHandler(ClapAsVst3* parent, clap_id timerId) : _parent(parent), _timerId(timerId)
+  {
+  }
+  void PLUGIN_API onTimer() final
+  {
+    _parent->fireTimer(_timerId);
+  }
   DELEGATE_REFCOUNT(Steinberg::FObject)
   DEFINE_INTERFACES
   DEF_INTERFACE(Steinberg::Linux::ITimerHandler)
@@ -837,8 +880,13 @@ struct TimerHandler : Steinberg::Linux::ITimerHandler, public Steinberg::FObject
 struct IdleHandler : Steinberg::Linux::ITimerHandler, public Steinberg::FObject
 {
   ClapAsVst3* _parent{nullptr};
-  IdleHandler(ClapAsVst3* parent) : _parent(parent) {}
-  void PLUGIN_API onTimer() final { _parent->onIdle(); }
+  IdleHandler(ClapAsVst3* parent) : _parent(parent)
+  {
+  }
+  void PLUGIN_API onTimer() final
+  {
+    _parent->onIdle();
+  }
   DELEGATE_REFCOUNT(Steinberg::FObject)
   DEFINE_INTERFACES
   DEF_INTERFACE(Steinberg::Linux::ITimerHandler)
@@ -892,7 +940,10 @@ void ClapAsVst3::detachTimers(Steinberg::Linux::IRunLoop* r)
   }
 }
 
-void ClapAsVst3::fireTimer(clap_id timer_id) { _plugin->_ext._timer->on_timer(_plugin->_plugin, timer_id); }
+void ClapAsVst3::fireTimer(clap_id timer_id)
+{
+  _plugin->_ext._timer->on_timer(_plugin->_plugin, timer_id);
+}
 
 bool ClapAsVst3::register_fd(int fd, clap_posix_fd_flags_t flags)
 {
@@ -943,8 +994,13 @@ struct FDHandler : Steinberg::Linux::IEventHandler, public Steinberg::FObject
   ClapAsVst3* _parent{nullptr};
   int _fd{0};
   clap_posix_fd_flags_t _flags{};
-  FDHandler(ClapAsVst3* parent, int fd, clap_posix_fd_flags_t flags) : _parent(parent), _fd(fd), _flags(flags) {}
-  void PLUGIN_API onFDIsSet(Steinberg::Linux::FileDescriptor) override { _parent->firePosixFDIsSet(_fd, _flags); }
+  FDHandler(ClapAsVst3* parent, int fd, clap_posix_fd_flags_t flags) : _parent(parent), _fd(fd), _flags(flags)
+  {
+  }
+  void PLUGIN_API onFDIsSet(Steinberg::Linux::FileDescriptor) override
+  {
+    _parent->firePosixFDIsSet(_fd, _flags);
+  }
   DELEGATE_REFCOUNT(Steinberg::FObject)
   DEFINE_INTERFACES
   DEF_INTERFACE(Steinberg::Linux::IEventHandler)
@@ -982,5 +1038,8 @@ void ClapAsVst3::detachPosixFD(Steinberg::Linux::IRunLoop* r)
   }
 }
 
-void ClapAsVst3::firePosixFDIsSet(int fd, clap_posix_fd_flags_t flags) { _plugin->_ext._posixfd->on_fd(_plugin->_plugin, fd, flags); }
+void ClapAsVst3::firePosixFDIsSet(int fd, clap_posix_fd_flags_t flags)
+{
+  _plugin->_ext._posixfd->on_fd(_plugin->_plugin, fd, flags);
+}
 #endif

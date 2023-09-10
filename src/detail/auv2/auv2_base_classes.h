@@ -63,8 +63,14 @@ namespace free_audio::auv2_wrapper
       bridge.initialize();
     }
 
-    bool StreamFormatWritable(AudioUnitScope, AudioUnitElement) override { return true; }
+    bool StreamFormatWritable(AudioUnitScope, AudioUnitElement) override
+    {
+      return true;
+    }
 
-    bool CanScheduleParameters() const override { return false; }
+    bool CanScheduleParameters() const override
+    {
+      return false;
+    }
   };
 }  // namespace free_audio::auv2_wrapper

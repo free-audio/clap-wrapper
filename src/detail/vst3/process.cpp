@@ -141,9 +141,15 @@ namespace Clap
     */
   }
 
-  inline clap_beattime doubleToBeatTime(double t) { return std::round(t * CLAP_BEATTIME_FACTOR); }
+  inline clap_beattime doubleToBeatTime(double t)
+  {
+    return std::round(t * CLAP_BEATTIME_FACTOR);
+  }
 
-  inline clap_sectime doubleToSecTime(double t) { return round(t * CLAP_SECTIME_FACTOR); }
+  inline clap_sectime doubleToSecTime(double t)
+  {
+    return round(t * CLAP_SECTIME_FACTOR);
+  }
 
   void ProcessAdapter::flush()
   {
@@ -382,7 +388,9 @@ namespace Clap
     _vstdata = nullptr;
   }
 
-  void ProcessAdapter::processOutputParams(Steinberg::Vst::ProcessData& data) {}
+  void ProcessAdapter::processOutputParams(Steinberg::Vst::ProcessData& data)
+  {
+  }
 
   uint32_t ProcessAdapter::input_events_size(const struct clap_input_events* list)
   {

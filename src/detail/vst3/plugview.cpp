@@ -110,11 +110,20 @@ tresult PLUGIN_API WrappedView::removed()
   return kResultOk;
 }
 
-tresult PLUGIN_API WrappedView::onWheel(float distance) { return kResultOk; }
+tresult PLUGIN_API WrappedView::onWheel(float distance)
+{
+  return kResultOk;
+}
 
-tresult PLUGIN_API WrappedView::onKeyDown(char16 key, int16 keyCode, int16 modifiers) { return kResultOk; }
+tresult PLUGIN_API WrappedView::onKeyDown(char16 key, int16 keyCode, int16 modifiers)
+{
+  return kResultOk;
+}
 
-tresult PLUGIN_API WrappedView::onKeyUp(char16 key, int16 keyCode, int16 modifiers) { return kResultOk; }
+tresult PLUGIN_API WrappedView::onKeyUp(char16 key, int16 keyCode, int16 modifiers)
+{
+  return kResultOk;
+}
 
 tresult PLUGIN_API WrappedView::getSize(ViewRect* size)
 {
