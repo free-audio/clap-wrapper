@@ -1,0 +1,19 @@
+﻿---
+UseTab: Never
+---
+Language: Cpp
+IndentWidth: 2
+AlignAfterOpenBracket: Align
+BreakBeforeBraces: Allman
+ColumnLimit: 120
+SortIncludes: false
+NamespaceIndentation: All
+---
+Language: ObjC
+IndentWidth: 2
+AlignAfterOpenBracket: Align
+BreakBeforeBraces: Allman
+ColumnLimit: 120
+SortIncludes: false
+NamespaceIndentation: All
+...

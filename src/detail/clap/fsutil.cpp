@@ -24,20 +24,21 @@
 #include <iostream>
 #endif
 
-
 namespace Clap
 {
 #if WIN
-  std::string getEnvVariable(const char* varname)
+  std::string getEnvVariable(const char *varname)
   {
-    char* val;
+    char *val;
     size_t len;
     auto err = _dupenv_s(&val, &len, varname);
-    if (err) return std::string();
-    if (val == nullptr) return std::string();
+    if (err)
+      return std::string();
+    if (val == nullptr)
+      return std::string();
     std::string result(val);
     free(val);
-    return result;      
+    return result;
   }
 #endif
 
@@ -62,12 +63,12 @@ namespace Clap
       auto p = getEnvVariable("COMMONPROGRAMFILES");
       if (!p.empty())
       {
-        res.emplace_back(fs::path{ p } / "CLAP");
+        res.emplace_back(fs::path{p} / "CLAP");
       }
       auto q = getEnvVariable("LOCALAPPDATA");
       if (!q.empty())
       {
-        res.emplace_back(fs::path{ q } / "Programs" / "Common" / "CLAP");
+        res.emplace_back(fs::path{q} / "Programs" / "Common" / "CLAP");
       }
     }
     auto cp = getEnvVariable("CLAP_PATH");
@@ -89,39 +90,38 @@ namespace Clap
       {
         auto item = cp.substr(0, pos);
         cp = cp.substr(pos + 1);
-        res.emplace_back(fs::path{ item });
+        res.emplace_back(fs::path{item});
       }
       if (cp.size())
-        res.emplace_back(fs::path{ cp });
+        res.emplace_back(fs::path{cp});
     }
 
     return res;
   }
 
-  bool Library::load(const char* name)
+  bool Library::load(const char *name)
   {
 #if MAC
-     _pluginEntry = nullptr;
+    _pluginEntry = nullptr;
 
-     auto cs = CFStringCreateWithBytes(kCFAllocatorDefault, (uint8_t *)name, strlen(name),
-                                       kCFStringEncodingUTF8, false);
-     auto bundleURL =
-             CFURLCreateWithFileSystemPath(kCFAllocatorDefault, cs, kCFURLPOSIXPathStyle, true);
+    auto cs = CFStringCreateWithBytes(kCFAllocatorDefault, (uint8_t *)name, strlen(name), kCFStringEncodingUTF8, false);
+    auto bundleURL = CFURLCreateWithFileSystemPath(kCFAllocatorDefault, cs, kCFURLPOSIXPathStyle, true);
 
-     _bundle = CFBundleCreate(kCFAllocatorDefault, bundleURL);
-     CFRelease(bundleURL);
-     CFRelease(cs);
+    _bundle = CFBundleCreate(kCFAllocatorDefault, bundleURL);
+    CFRelease(bundleURL);
+    CFRelease(cs);
 
-     if (!_bundle) {
-        return false;
-     }
+    if (!_bundle)
+    {
+      return false;
+    }
 
-     auto db = CFBundleGetDataPointerForName(_bundle, CFSTR("clap_entry"));
+    auto db = CFBundleGetDataPointerForName(_bundle, CFSTR("clap_entry"));
 
-     _pluginEntry = (const clap_plugin_entry *)db;
+    _pluginEntry = (const clap_plugin_entry *)db;
 
-     setupPluginsFromPluginEntry(name);
-     return _pluginEntry != nullptr;
+    setupPluginsFromPluginEntry(name);
+    return _pluginEntry != nullptr;
 #endif
 
 #if WIN
@@ -149,23 +149,23 @@ namespace Clap
 #endif
 
 #if LIN
-      int *iptr;
+    int *iptr;
 
-      _handle = dlopen(name, RTLD_LOCAL | RTLD_LAZY);
-      if (!_handle)
-          return false;
+    _handle = dlopen(name, RTLD_LOCAL | RTLD_LAZY);
+    if (!_handle)
+      return false;
 
-      iptr = (int *)dlsym(_handle, "clap_entry");
-      if (!iptr)
-          return false;
+    iptr = (int *)dlsym(_handle, "clap_entry");
+    if (!iptr)
+      return false;
 
-      _pluginEntry = (const clap_plugin_entry_t *)iptr;
-      setupPluginsFromPluginEntry(name);
-      return true;
+    _pluginEntry = (const clap_plugin_entry_t *)iptr;
+    setupPluginsFromPluginEntry(name);
+    return true;
 #endif
   }
 
-  const clap_plugin_info_as_vst3_t* Library::get_vst3_info(uint32_t index)
+  const clap_plugin_info_as_vst3_t *Library::get_vst3_info(uint32_t index)
   {
     if (_pluginFactoryVst3Info && _pluginFactoryVst3Info->get_vst3_info)
     {
@@ -175,49 +175,55 @@ namespace Clap
   }
 
 #if WIN
-  bool Library::getEntryFunction(HMODULE handle, const char* path)
+  bool Library::getEntryFunction(HMODULE handle, const char *path)
   {
     if (handle)
     {
-      _pluginEntry = reinterpret_cast<const clap_plugin_entry*>(GetProcAddress(handle, "clap_entry"));
+      _pluginEntry = reinterpret_cast<const clap_plugin_entry *>(GetProcAddress(handle, "clap_entry"));
       if (_pluginEntry)
       {
-         setupPluginsFromPluginEntry(path);
+        setupPluginsFromPluginEntry(path);
       }
     }
     return (_pluginEntry && !plugins.empty());
   }
 #endif
 
-  void Library::setupPluginsFromPluginEntry(const char* path) {
-     if (clap_version_is_compatible(_pluginEntry->clap_version)) {
-        if (_pluginEntry->init(path)) {
-           _pluginFactory =
-                   static_cast<const clap_plugin_factory *>(_pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_ID));
-           _pluginFactoryVst3Info =
-                  static_cast<const clap_plugin_factory_as_vst3*>(_pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_VST3));
-           _pluginFactoryAUv2Info =
-               static_cast<const clap_plugin_factory_as_auv2*>(_pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_AUV2));
+  void Library::setupPluginsFromPluginEntry(const char *path)
+  {
+    if (clap_version_is_compatible(_pluginEntry->clap_version))
+    {
+      if (_pluginEntry->init(path))
+      {
+        _pluginFactory = static_cast<const clap_plugin_factory *>(_pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_ID));
+        _pluginFactoryVst3Info =
+            static_cast<const clap_plugin_factory_as_vst3 *>(_pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_VST3));
+        _pluginFactoryAUv2Info =
+            static_cast<const clap_plugin_factory_as_auv2 *>(_pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_AUV2));
 
-           // detect plugins that do not check the CLAP_PLUGIN_FACTORY_ID
-           if ((void*)_pluginFactory == (void*)_pluginFactoryVst3Info)
-           {
-             _pluginFactoryVst3Info = nullptr;
-             _pluginFactoryAUv2Info = nullptr;
-           }
-
-           auto count = _pluginFactory->get_plugin_count(_pluginFactory);
-
-           for (decltype(count) i = 0; i < count; ++i) {
-              auto desc = _pluginFactory->get_plugin_descriptor(_pluginFactory, i);
-              if (clap_version_is_compatible(desc->clap_version)) {
-                 plugins.push_back(desc);
-              } else {
-                 // incompatible
-              }
-           }
+        // detect plugins that do not check the CLAP_PLUGIN_FACTORY_ID
+        if ((void *)_pluginFactory == (void *)_pluginFactoryVst3Info)
+        {
+          _pluginFactoryVst3Info = nullptr;
+          _pluginFactoryAUv2Info = nullptr;
         }
-     }
+
+        auto count = _pluginFactory->get_plugin_count(_pluginFactory);
+
+        for (decltype(count) i = 0; i < count; ++i)
+        {
+          auto desc = _pluginFactory->get_plugin_descriptor(_pluginFactory, i);
+          if (clap_version_is_compatible(desc->clap_version))
+          {
+            plugins.push_back(desc);
+          }
+          else
+          {
+            // incompatible
+          }
+        }
+      }
+    }
   }
 
 #if WIN || LIN
@@ -238,7 +244,7 @@ namespace Clap
     }
     if (selfmodule)
     {
-      if (this->getEntryFunction(selfmodule, (const char*)modulename))
+      if (this->getEntryFunction(selfmodule, (const char *)modulename))
       {
         _selfcontained = true;
       }
@@ -247,8 +253,7 @@ namespace Clap
 
 #if LIN
     Dl_info info;
-    if (dladdr(reinterpret_cast<const void *>(&ffeomwe), &info) &&
-        info.dli_fname[0])
+    if (dladdr(reinterpret_cast<const void *>(&ffeomwe), &info) && info.dli_fname[0])
     {
       auto lhandle = dlopen(info.dli_fname, RTLD_LOCAL | RTLD_LAZY);
       if (lhandle)
@@ -256,11 +261,11 @@ namespace Clap
         auto liptr = (int *)dlsym(_handle, "clap_entry");
         if (liptr)
         {
-              _handle = lhandle; // as a result the Library dtor will dlclose me
-              _pluginEntry = (const clap_plugin_entry_t *)liptr;
-              _selfcontained = true;
+          _handle = lhandle; // as a result the Library dtor will dlclose me
+          _pluginEntry = (const clap_plugin_entry_t *)liptr;
+          _selfcontained = true;
 
-              setupPluginsFromPluginEntry(info.dli_fname);
+          setupPluginsFromPluginEntry(info.dli_fname);
         }
       }
     }
@@ -272,9 +277,8 @@ namespace Clap
     if (!selfp.empty())
     {
       std::string name = selfp.u8string();
-      CFURLRef bundleUrl = CFURLCreateFromFileSystemRepresentation (0,
-                                                                   (const unsigned char*)name.c_str (),
-                                                                   name.size(), true);
+      CFURLRef bundleUrl =
+          CFURLCreateFromFileSystemRepresentation(0, (const unsigned char *)name.c_str(), name.size(), true);
       if (bundleUrl)
       {
         auto pluginBundle = CFBundleCreate(0, bundleUrl);
@@ -285,22 +289,20 @@ namespace Clap
           auto db = CFBundleGetDataPointerForName(pluginBundle, CFSTR("clap_entry"));
           if (db)
           {
-             _bundle = pluginBundle;
-             _pluginEntry = (const clap_plugin_entry_t *)db;
-             _selfcontained = true;
+            _bundle = pluginBundle;
+            _pluginEntry = (const clap_plugin_entry_t *)db;
+            _selfcontained = true;
 
-             setupPluginsFromPluginEntry(selfp.u8string().c_str());
+            setupPluginsFromPluginEntry(selfp.u8string().c_str());
           }
           else
           {
-             CFRelease(pluginBundle);
+            CFRelease(pluginBundle);
           }
         }
       }
     }
 #endif
-
-
   }
 
   Library::~Library()
@@ -321,8 +323,8 @@ namespace Clap
 #if LIN
     if (_handle)
     {
-        dlclose(_handle);
-        _handle = nullptr;
+      dlclose(_handle);
+      _handle = nullptr;
     }
 #endif
 
@@ -334,4 +336,4 @@ namespace Clap
 #endif
   }
 
-}
+} // namespace Clap

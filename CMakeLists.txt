@@ -55,7 +55,11 @@ set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 # defines functions relative to this, so needs a cache
 # variable with the source dir
 set(CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR} CACHE STRING "Clap Wrapper Source Location")
-include(cmake/enable_sdks.cmake)
+if (DEFINED CLAP_WRAPPER_CODE_CHECKS_ONLY)
+	message(STATUS "clap-wrapper: code checks only; skipping enable sdks")
+else()
+	include(cmake/enable_sdks.cmake)
+endif()
 
 # automatically build the wrapper only if this is the top level project
 set(skipbuild FALSE)
@@ -63,6 +67,9 @@ if (NOT PROJECT_IS_TOP_LEVEL)
 	if(DEFINED CLAP_WRAPPER_DONT_ADD_TARGETS)
 		set(skipbuild TRUE)
 	endif()
+endif()
+if (DEFINED CLAP_WRAPPER_CODE_CHECKS_ONLY)
+	set(skipbuild ${CLAP_WRAPPER_CODE_CHECKS_ONLY})
 endif()
 
 if (${skipbuild})
@@ -106,3 +113,23 @@ else()
 		endif()
 	endif()
 endif()
+
+
+add_custom_target(clap-wrapper-code-checks)
+
+# Clang Format checks
+find_program(CLANG_FORMAT_EXE NAMES clang-format-12 clang-format)
+set(CLANG_FORMAT_DIRS src)
+set(CLANG_FORMAT_EXTS cpp h)
+foreach(dir ${CLANG_FORMAT_DIRS})
+	foreach(ext ${CLANG_FORMAT_EXTS})
+		list(APPEND CLANG_FORMAT_GLOBS "':(glob)${dir}/**/*.${ext}'")
+	endforeach()
+endforeach()
+add_custom_command(TARGET clap-wrapper-code-checks
+		POST_BUILD
+		WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+		COMMAND ${CMAKE_COMMAND} -E echo About to check clang-format using ${CLANG_FORMAT_EXE}
+		COMMAND git ls-files -- ${CLANG_FORMAT_GLOBS} | xargs ${CLANG_FORMAT_EXE} --dry-run --Werror
+		)
+# }}}

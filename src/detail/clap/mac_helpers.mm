@@ -1,8 +1,8 @@
-/* 
+/*
 
     Copyright (c) 2022 Paul Walker
                        Timo Kaluza (defiantnerd)
-                       
+
 
     This file is part of the clap-wrappers project which is released under MIT License.
     See file LICENSE or go to https://github.com/defiantnerd/clap-wrapper for full license details.
@@ -23,14 +23,12 @@ namespace fs = ghc::filesystem;
 
 #include <Foundation/Foundation.h>
 
-
 namespace Clap
 {
   fs::path sharedLibraryBundlePath()
   {
     Dl_info info;
-    if (!dladdr(reinterpret_cast<const void *>(&sharedLibraryBundlePath), &info) ||
-        !info.dli_fname[0])
+    if (!dladdr(reinterpret_cast<const void *>(&sharedLibraryBundlePath), &info) || !info.dli_fname[0])
     {
       // If dladdr(3) returns zero, dlerror(3) won't know why either
       return {};
@@ -45,64 +43,62 @@ namespace Clap
         return res.parent_path();
       }
     }
-    catch(const fs::filesystem_error &)
+    catch (const fs::filesystem_error &)
     {
       // oh well
     }
     return {};
   }
 
-    std::vector<fs::path> getMacCLAPSearchPaths() {
-      auto res = std::vector<fs::path>();
+  std::vector<fs::path> getMacCLAPSearchPaths()
+  {
+    auto res = std::vector<fs::path>();
 
-      auto bundlePath = sharedLibraryBundlePath();
-      if (!bundlePath.empty())
+    auto bundlePath = sharedLibraryBundlePath();
+    if (!bundlePath.empty())
+    {
+      std::string name = bundlePath.u8string();
+      CFURLRef bundleUrl =
+          CFURLCreateFromFileSystemRepresentation(0, (const unsigned char *)name.c_str(), name.size(), true);
+      if (bundleUrl)
       {
-        std::string name = bundlePath.u8string();
-        CFURLRef bundleUrl = CFURLCreateFromFileSystemRepresentation (0,
-                                                                   (const unsigned char*)name.c_str (),
-                                                                   name.size(), true);
-       if (bundleUrl)
-       {
-         auto pluginBundle = CFBundleCreate (0, bundleUrl);
-         CFRelease (bundleUrl);
+        auto pluginBundle = CFBundleCreate(0, bundleUrl);
+        CFRelease(bundleUrl);
 
-         if (pluginBundle)
-         {
-           auto pluginFoldersUrl = CFBundleCopyBuiltInPlugInsURL(pluginBundle);
+        if (pluginBundle)
+        {
+          auto pluginFoldersUrl = CFBundleCopyBuiltInPlugInsURL(pluginBundle);
 
-           if (pluginFoldersUrl)
-           {
-             // Remember CFURL and NSURL are toll free bridged
-             auto *ns = (NSURL *)pluginFoldersUrl;
-             auto pp = fs::path{[ns fileSystemRepresentation]};
-             res.push_back(pp);
-             CFRelease(pluginFoldersUrl);
-           }
-           CFRelease(pluginBundle);
-         }
-       }
+          if (pluginFoldersUrl)
+          {
+            // Remember CFURL and NSURL are toll free bridged
+            auto *ns = (NSURL *)pluginFoldersUrl;
+            auto pp = fs::path{[ns fileSystemRepresentation]};
+            res.push_back(pp);
+            CFRelease(pluginFoldersUrl);
+          }
+          CFRelease(pluginBundle);
+        }
       }
-
-       auto *fileManager = [NSFileManager defaultManager];
-       auto *userLibURLs = [fileManager URLsForDirectory:NSLibraryDirectory
-                                               inDomains:NSUserDomainMask];
-       auto *sysLibURLs = [fileManager URLsForDirectory:NSLibraryDirectory
-                                              inDomains:NSLocalDomainMask];
-
-       if (userLibURLs) {
-          auto *u = [userLibURLs objectAtIndex:0];
-          auto p =
-                  fs::path{[u fileSystemRepresentation]} / "Audio" / "Plug-Ins" / "CLAP";
-          res.push_back(p);
-       }
-
-       if (sysLibURLs) {
-          auto *u = [sysLibURLs objectAtIndex:0];
-          auto p =
-                  fs::path{[u fileSystemRepresentation]} / "Audio" / "Plug-Ins" / "CLAP";
-          res.push_back(p);
-       }
-       return res;
     }
+
+    auto *fileManager = [NSFileManager defaultManager];
+    auto *userLibURLs = [fileManager URLsForDirectory:NSLibraryDirectory inDomains:NSUserDomainMask];
+    auto *sysLibURLs = [fileManager URLsForDirectory:NSLibraryDirectory inDomains:NSLocalDomainMask];
+
+    if (userLibURLs)
+    {
+      auto *u = [userLibURLs objectAtIndex:0];
+      auto p = fs::path{[u fileSystemRepresentation]} / "Audio" / "Plug-Ins" / "CLAP";
+      res.push_back(p);
+    }
+
+    if (sysLibURLs)
+    {
+      auto *u = [sysLibURLs objectAtIndex:0];
+      auto p = fs::path{[u fileSystemRepresentation]} / "Audio" / "Plug-Ins" / "CLAP";
+      res.push_back(p);
+    }
+    return res;
+  }
 }

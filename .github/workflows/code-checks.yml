@@ -1,0 +1,21 @@
+name: Clap Wrapper Format and Code Checks
+on: [pull_request]
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-code-checks:
+    name: code-checks
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+      - name: Run Code Checks
+        run: |
+          cmake -Bbuild -DCLAP_WRAPPER_CODE_CHECKS_ONLY=TRUE
+          cmake --build build --target clap-wrapper-code-checks
