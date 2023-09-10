@@ -141,8 +141,8 @@ namespace Clap
               Plugin::clapExtension,
               Plugin::clapRequestRestart,
               Plugin::clapRequestProcess,
-              Plugin::clapRequestCallback},
-        _parentHost(host)
+              Plugin::clapRequestCallback}
+      , _parentHost(host)
   {
   }
 

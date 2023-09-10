@@ -7,25 +7,25 @@ using namespace Steinberg;
 
 Vst3Parameter::Vst3Parameter(const Steinberg::Vst::ParameterInfo& vst3info,
                              const clap_param_info_t* clapinfo)
-    : Steinberg::Vst::Parameter(vst3info),
-      id(clapinfo->id),
-      cookie(clapinfo->cookie),
-      min_value(clapinfo->min_value),
-      max_value(clapinfo->max_value)
+    : Steinberg::Vst::Parameter(vst3info)
+    , id(clapinfo->id)
+    , cookie(clapinfo->cookie)
+    , min_value(clapinfo->min_value)
+    , max_value(clapinfo->max_value)
 {
   //
 }
 
 Vst3Parameter::Vst3Parameter(const Steinberg::Vst::ParameterInfo& vst3info, uint8_t bus, uint8_t channel,
                              uint8_t cc)
-    : Steinberg::Vst::Parameter(vst3info),
-      id(vst3info.id),
-      cookie(nullptr),
-      min_value(0),
-      max_value(127),
-      isMidi(true),
-      channel(channel),
-      controller(cc)
+    : Steinberg::Vst::Parameter(vst3info)
+    , id(vst3info.id)
+    , cookie(nullptr)
+    , min_value(0)
+    , max_value(127)
+    , isMidi(true)
+    , channel(channel)
+    , controller(cc)
 {
   if (cc == Vst::ControllerNumbers::kPitchBend)
   {

@@ -5,8 +5,10 @@ Language: Cpp
 BasedOnStyle: Google
 IndentWidth: 2
 AlignAfterOpenBracket: Align
+ConstructorInitializerAllOnOneLineOrOnePerLine: true
+BreakConstructorInitializers: BeforeComma
 BreakBeforeBraces: Allman
-ColumnLimit: 250 
+ColumnLimit: 105 
 SortIncludes: false
 NamespaceIndentation: All
 ReflowComments: false
@@ -16,8 +18,10 @@ Language: ObjC
 BasedOnStyle: Google
 IndentWidth: 2
 AlignAfterOpenBracket: Align
+ConstructorInitializerAllOnOneLineOrOnePerLine: true
+BreakConstructorInitializers: BeforeComma
 BreakBeforeBraces: Allman
-ColumnLimit: 250
+ColumnLimit: 105
 SortIncludes: false
 NamespaceIndentation: All
 ReflowComments: false
