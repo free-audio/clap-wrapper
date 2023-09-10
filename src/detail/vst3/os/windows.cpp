@@ -21,146 +21,146 @@ extern HINSTANCE ghInst;
 namespace os
 {
 
-  void log(const char* text)
+void log(const char* text)
+{
+  OutputDebugStringA(text);
+  OutputDebugStringA("\n");
+}
+
+class WindowsHelper
+{
+ public:
+  void init();
+  void terminate();
+  void attach(IPlugObject* plugobject);
+  void detach(IPlugObject* plugobject);
+
+ private:
+  void executeDefered();
+  static LRESULT Wndproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+  HWND _msgWin = 0;
+  UINT_PTR _timer = 0;
+  std::vector<IPlugObject*> _plugs;
+} gWindowsHelper;
+
+static Steinberg::ModuleInitializer createMessageWindow([] { gWindowsHelper.init(); });
+static Steinberg::ModuleTerminator dropMessageWindow([] { gWindowsHelper.terminate(); });
+
+static char* getModuleNameA()
+{
+  static char modulename[2048];
+  HMODULE selfmodule;
+  if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCSTR)getModuleNameA, &selfmodule))
   {
-    OutputDebugStringA(text);
-    OutputDebugStringA("\n");
+    auto size = GetModuleFileNameA(selfmodule, modulename, 2048);
   }
+  return modulename;
+}
 
-  class WindowsHelper
+static TCHAR* getModuleName()
+{
+  static TCHAR modulename[2048];
+  HMODULE selfmodule;
+  if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCTSTR)getModuleName, &selfmodule))
   {
-   public:
-    void init();
-    void terminate();
-    void attach(IPlugObject* plugobject);
-    void detach(IPlugObject* plugobject);
-
-   private:
-    void executeDefered();
-    static LRESULT Wndproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
-    HWND _msgWin = 0;
-    UINT_PTR _timer = 0;
-    std::vector<IPlugObject*> _plugs;
-  } gWindowsHelper;
-
-  static Steinberg::ModuleInitializer createMessageWindow([] { gWindowsHelper.init(); });
-  static Steinberg::ModuleTerminator dropMessageWindow([] { gWindowsHelper.terminate(); });
-
-  static char* getModuleNameA()
-  {
-    static char modulename[2048];
-    HMODULE selfmodule;
-    if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCSTR)getModuleNameA, &selfmodule))
-    {
-      auto size = GetModuleFileNameA(selfmodule, modulename, 2048);
-    }
-    return modulename;
+    auto size = GetModuleFileName(selfmodule, modulename, 2048);
   }
+  return modulename;
+}
 
-  static TCHAR* getModuleName()
+std::string getParentFolderName()
+{
+  std::filesystem::path n = getModuleNameA();
+  if (n.has_parent_path())
   {
-    static TCHAR modulename[2048];
-    HMODULE selfmodule;
-    if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCTSTR)getModuleName, &selfmodule))
+    auto p = n.parent_path();
+    if (p.has_filename())
     {
-      auto size = GetModuleFileName(selfmodule, modulename, 2048);
-    }
-    return modulename;
-  }
-
-  std::string getParentFolderName()
-  {
-    std::filesystem::path n = getModuleNameA();
-    if (n.has_parent_path())
-    {
-      auto p = n.parent_path();
-      if (p.has_filename())
-      {
-        return p.filename().u8string();
-      }
-    }
-
-    return std::string();
-  }
-
-  std::string getBinaryName()
-  {
-    std::filesystem::path n = getModuleNameA();
-    if (n.has_filename())
-    {
-      return n.stem().u8string();
-    }
-    return std::string();
-  }
-
-  LRESULT WindowsHelper::Wndproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
-  {
-    switch (msg)
-    {
-      case WM_USER + 1:
-        return 1;
-        break;
-      case WM_TIMER:
-        gWindowsHelper.executeDefered();
-        return 1;
-        break;
-      default:
-        return ::DefWindowProc(hwnd, msg, wParam, lParam);
+      return p.filename().u8string();
     }
   }
 
-  void WindowsHelper::init()
-  {
-    auto modulename = getModuleName();
-    WNDCLASSEX wc;
-    memset(&wc, 0, sizeof(wc));
-    wc.cbSize = sizeof(wc);
-    wc.hInstance = ghInst;
-    wc.lpfnWndProc = (WNDPROC)&Wndproc;
-    wc.lpszClassName = modulename;
-    auto a = RegisterClassEx(&wc);
+  return std::string();
+}
 
-    _msgWin = ::CreateWindowEx(0, modulename, NULL, 0, 0, 0, 0, 0, HWND_MESSAGE, 0, 0, 0);
-    ::SetWindowLongW(_msgWin, GWLP_WNDPROC, (LONG_PTR)&Wndproc);
-    _timer = ::SetTimer(_msgWin, 0, 20, NULL);
-  }
-
-  void WindowsHelper::terminate()
+std::string getBinaryName()
+{
+  std::filesystem::path n = getModuleNameA();
+  if (n.has_filename())
   {
-    ::KillTimer(_msgWin, _timer);
-    ::DestroyWindow(_msgWin);
-    ::UnregisterClass(getModuleName(), ghInst);
+    return n.stem().u8string();
   }
+  return std::string();
+}
 
-  void WindowsHelper::executeDefered()
+LRESULT WindowsHelper::Wndproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+  switch (msg)
   {
-    for (auto&& p : _plugs) p->onIdle();
+    case WM_USER + 1:
+      return 1;
+      break;
+    case WM_TIMER:
+      gWindowsHelper.executeDefered();
+      return 1;
+      break;
+    default:
+      return ::DefWindowProc(hwnd, msg, wParam, lParam);
   }
+}
 
-  void WindowsHelper::attach(IPlugObject* plugobject)
-  {
-    _plugs.push_back(plugobject);
-  }
+void WindowsHelper::init()
+{
+  auto modulename = getModuleName();
+  WNDCLASSEX wc;
+  memset(&wc, 0, sizeof(wc));
+  wc.cbSize = sizeof(wc);
+  wc.hInstance = ghInst;
+  wc.lpfnWndProc = (WNDPROC)&Wndproc;
+  wc.lpszClassName = modulename;
+  auto a = RegisterClassEx(&wc);
 
-  void WindowsHelper::detach(IPlugObject* plugobject)
-  {
-    _plugs.erase(std::remove(_plugs.begin(), _plugs.end(), plugobject), _plugs.end());
-  }
+  _msgWin = ::CreateWindowEx(0, modulename, NULL, 0, 0, 0, 0, 0, HWND_MESSAGE, 0, 0, 0);
+  ::SetWindowLongW(_msgWin, GWLP_WNDPROC, (LONG_PTR)&Wndproc);
+  _timer = ::SetTimer(_msgWin, 0, 20, NULL);
+}
 
-  // [UI Thread]
-  void attach(IPlugObject* plugobject)
-  {
-    gWindowsHelper.attach(plugobject);
-  }
+void WindowsHelper::terminate()
+{
+  ::KillTimer(_msgWin, _timer);
+  ::DestroyWindow(_msgWin);
+  ::UnregisterClass(getModuleName(), ghInst);
+}
 
-  // [UI Thread]
-  void detach(IPlugObject* plugobject)
-  {
-    gWindowsHelper.detach(plugobject);
-  }
+void WindowsHelper::executeDefered()
+{
+  for (auto&& p : _plugs) p->onIdle();
+}
 
-  uint64_t getTickInMS()
-  {
-    return GetTickCount64();
-  }
+void WindowsHelper::attach(IPlugObject* plugobject)
+{
+  _plugs.push_back(plugobject);
+}
+
+void WindowsHelper::detach(IPlugObject* plugobject)
+{
+  _plugs.erase(std::remove(_plugs.begin(), _plugs.end(), plugobject), _plugs.end());
+}
+
+// [UI Thread]
+void attach(IPlugObject* plugobject)
+{
+  gWindowsHelper.attach(plugobject);
+}
+
+// [UI Thread]
+void detach(IPlugObject* plugobject)
+{
+  gWindowsHelper.detach(plugobject);
+}
+
+uint64_t getTickInMS()
+{
+  return GetTickCount64();
+}
 }  // namespace os

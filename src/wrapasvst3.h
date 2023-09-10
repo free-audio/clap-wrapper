@@ -39,7 +39,7 @@ using namespace Steinberg;
 struct ClapHostExtensions;
 namespace Clap
 {
-  class ProcessAdapter;
+class ProcessAdapter;
 }
 
 class queueEvent

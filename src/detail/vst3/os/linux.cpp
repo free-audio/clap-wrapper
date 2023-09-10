@@ -17,23 +17,23 @@
 
 namespace os
 {
-  void log(const char* text)
-  {
-    fprintf(stderr, "%s\n", text);
-  }
+void log(const char* text)
+{
+  fprintf(stderr, "%s\n", text);
+}
 
-  class LinuxHelper
-  {
-   public:
-    void init();
-    void terminate();
-    void attach(IPlugObject* plugobject);
-    void detach(IPlugObject* plugobject);
+class LinuxHelper
+{
+ public:
+  void init();
+  void terminate();
+  void attach(IPlugObject* plugobject);
+  void detach(IPlugObject* plugobject);
 
-   private:
-    void executeDefered();
-    std::vector<IPlugObject*> _plugs;
-  } gLinuxHelper;
+ private:
+  void executeDefered();
+  std::vector<IPlugObject*> _plugs;
+} gLinuxHelper;
 
 #if 0
 	class WindowsHelper
@@ -52,8 +52,8 @@ namespace os
 	} gWindowsHelper;
 #endif
 
-  static Steinberg::ModuleInitializer createMessageWindow([] { gLinuxHelper.init(); });
-  static Steinberg::ModuleTerminator dropMessageWindow([] { gLinuxHelper.terminate(); });
+static Steinberg::ModuleInitializer createMessageWindow([] { gLinuxHelper.init(); });
+static Steinberg::ModuleTerminator dropMessageWindow([] { gLinuxHelper.terminate(); });
 
 #if 0
 	static char* getModuleNameA()
@@ -79,40 +79,40 @@ namespace os
 	}
 #endif
 
-  static std::string getModuleName()
+static std::string getModuleName()
+{
+  Dl_info info;
+  if (dladdr((void*)getModuleName, &info))
   {
-    Dl_info info;
-    if (dladdr((void*)getModuleName, &info))
+    return info.dli_fname;
+  }
+  return nullptr;
+}
+
+std::string getParentFolderName()
+{
+  std::filesystem::path n = getModuleName();
+  if (n.has_parent_path())
+  {
+    auto p = n.parent_path();
+    if (p.has_filename())
     {
-      return info.dli_fname;
+      return p.filename().u8string();
     }
-    return nullptr;
   }
 
-  std::string getParentFolderName()
-  {
-    std::filesystem::path n = getModuleName();
-    if (n.has_parent_path())
-    {
-      auto p = n.parent_path();
-      if (p.has_filename())
-      {
-        return p.filename().u8string();
-      }
-    }
+  return std::string();
+}
 
-    return std::string();
-  }
-
-  std::string getBinaryName()
+std::string getBinaryName()
+{
+  std::filesystem::path n = getModuleName();
+  if (n.has_filename())
   {
-    std::filesystem::path n = getModuleName();
-    if (n.has_filename())
-    {
-      return n.stem().u8string();
-    }
-    return std::string();
+    return n.stem().u8string();
   }
+  return std::string();
+}
 
 #if 0
 	LRESULT WindowsHelper::Wndproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -155,49 +155,49 @@ namespace os
 	}
 
 #endif
-  void LinuxHelper::init()
-  {
-  }
+void LinuxHelper::init()
+{
+}
 
-  void LinuxHelper::terminate()
-  {
-  }
+void LinuxHelper::terminate()
+{
+}
 
-  void LinuxHelper::executeDefered()
+void LinuxHelper::executeDefered()
+{
+  for (auto p : _plugs)
   {
-    for (auto p : _plugs)
-    {
-      p->onIdle();
-    }
+    p->onIdle();
   }
-  void LinuxHelper::attach(IPlugObject* plugobject)
-  {
-    _plugs.push_back(plugobject);
-  }
+}
+void LinuxHelper::attach(IPlugObject* plugobject)
+{
+  _plugs.push_back(plugobject);
+}
 
-  void LinuxHelper::detach(IPlugObject* plugobject)
-  {
-    _plugs.erase(std::remove(_plugs.begin(), _plugs.end(), plugobject), _plugs.end());
-  }
+void LinuxHelper::detach(IPlugObject* plugobject)
+{
+  _plugs.erase(std::remove(_plugs.begin(), _plugs.end(), plugobject), _plugs.end());
+}
 
 }  // namespace os
 
 namespace os
 {
-  // [UI Thread]
-  void attach(IPlugObject* plugobject)
-  {
-    gLinuxHelper.attach(plugobject);
-  }
+// [UI Thread]
+void attach(IPlugObject* plugobject)
+{
+  gLinuxHelper.attach(plugobject);
+}
 
-  // [UI Thread]
-  void detach(IPlugObject* plugobject)
-  {
-    gLinuxHelper.detach(plugobject);
-  }
+// [UI Thread]
+void detach(IPlugObject* plugobject)
+{
+  gLinuxHelper.detach(plugobject);
+}
 
-  uint64_t getTickInMS()
-  {
-    return clock();
-  }
+uint64_t getTickInMS()
+{
+  return clock();
+}
 }  // namespace os

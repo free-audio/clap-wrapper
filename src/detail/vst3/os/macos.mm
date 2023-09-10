@@ -25,80 +25,80 @@ namespace fs = ghc::filesystem;
 
 namespace os
 {
-  void log(const char* text)
+void log(const char* text)
+{
+  NSLog(@"%s", text);
+}
+
+class MacOSHelper
+{
+ public:
+  void init();
+  void terminate();
+  void attach(IPlugObject* plugobject);
+  void detach(IPlugObject* plugobject);
+
+ private:
+  static void timerCallback(CFRunLoopTimerRef t, void* info);
+  void executeDefered();
+  CFRunLoopTimerRef _timer = nullptr;
+  std::vector<IPlugObject*> _plugs;
+} gMacOSHelper;
+
+static Steinberg::ModuleInitializer createMessageWindow([] { gMacOSHelper.init(); });
+static Steinberg::ModuleTerminator dropMessageWindow([] { gMacOSHelper.terminate(); });
+
+void MacOSHelper::init()
+{
+}
+
+void MacOSHelper::terminate()
+{
+}
+
+void MacOSHelper::executeDefered()
+{
+  for (auto p : _plugs)
   {
-    NSLog(@"%s", text);
+    p->onIdle();
   }
+}
 
-  class MacOSHelper
+void MacOSHelper::timerCallback(CFRunLoopTimerRef t, void* info)
+{
+  auto self = static_cast<MacOSHelper*>(info);
+  self->executeDefered();
+}
+
+static float kIntervall = 10.f;
+
+void MacOSHelper::attach(IPlugObject* plugobject)
+{
+  if (_plugs.empty())
   {
-   public:
-    void init();
-    void terminate();
-    void attach(IPlugObject* plugobject);
-    void detach(IPlugObject* plugobject);
-
-   private:
-    static void timerCallback(CFRunLoopTimerRef t, void* info);
-    void executeDefered();
-    CFRunLoopTimerRef _timer = nullptr;
-    std::vector<IPlugObject*> _plugs;
-  } gMacOSHelper;
-
-  static Steinberg::ModuleInitializer createMessageWindow([] { gMacOSHelper.init(); });
-  static Steinberg::ModuleTerminator dropMessageWindow([] { gMacOSHelper.terminate(); });
-
-  void MacOSHelper::init()
-  {
+    CFRunLoopTimerContext context = {};
+    context.info = this;
+    _timer =
+        CFRunLoopTimerCreate(kCFAllocatorDefault, CFAbsoluteTimeGetCurrent() + (kIntervall * 0.001f),
+                             kIntervall * 0.001f, 0, 0, timerCallback, &context);
+    if (_timer) CFRunLoopAddTimer(CFRunLoopGetCurrent(), _timer, kCFRunLoopCommonModes);
   }
+  _plugs.push_back(plugobject);
+}
 
-  void MacOSHelper::terminate()
+void MacOSHelper::detach(IPlugObject* plugobject)
+{
+  _plugs.erase(std::remove(_plugs.begin(), _plugs.end(), plugobject), _plugs.end());
+  if (_plugs.empty())
   {
-  }
-
-  void MacOSHelper::executeDefered()
-  {
-    for (auto p : _plugs)
+    if (_timer)
     {
-      p->onIdle();
+      CFRunLoopTimerInvalidate(_timer);
+      CFRelease(_timer);
     }
+    _timer = nullptr;
   }
-
-  void MacOSHelper::timerCallback(CFRunLoopTimerRef t, void* info)
-  {
-    auto self = static_cast<MacOSHelper*>(info);
-    self->executeDefered();
-  }
-
-  static float kIntervall = 10.f;
-
-  void MacOSHelper::attach(IPlugObject* plugobject)
-  {
-    if (_plugs.empty())
-    {
-      CFRunLoopTimerContext context = {};
-      context.info = this;
-      _timer =
-          CFRunLoopTimerCreate(kCFAllocatorDefault, CFAbsoluteTimeGetCurrent() + (kIntervall * 0.001f),
-                               kIntervall * 0.001f, 0, 0, timerCallback, &context);
-      if (_timer) CFRunLoopAddTimer(CFRunLoopGetCurrent(), _timer, kCFRunLoopCommonModes);
-    }
-    _plugs.push_back(plugobject);
-  }
-
-  void MacOSHelper::detach(IPlugObject* plugobject)
-  {
-    _plugs.erase(std::remove(_plugs.begin(), _plugs.end(), plugobject), _plugs.end());
-    if (_plugs.empty())
-    {
-      if (_timer)
-      {
-        CFRunLoopTimerInvalidate(_timer);
-        CFRelease(_timer);
-      }
-      _timer = nullptr;
-    }
-  }
+}
 
 }
 
@@ -115,49 +115,49 @@ namespace os
 
 namespace os
 {
-  // [UI Thread]
-  void attach(IPlugObject* plugobject)
-  {
-    gMacOSHelper.attach(plugobject);
-  }
+// [UI Thread]
+void attach(IPlugObject* plugobject)
+{
+  gMacOSHelper.attach(plugobject);
+}
 
-  // [UI Thread]
-  void detach(IPlugObject* plugobject)
-  {
-    gMacOSHelper.detach(plugobject);
-  }
+// [UI Thread]
+void detach(IPlugObject* plugobject)
+{
+  gMacOSHelper.detach(plugobject);
+}
 
-  uint64_t getTickInMS()
-  {
-    return (::clock() * 1000) / CLOCKS_PER_SEC;
-  }
+uint64_t getTickInMS()
+{
+  return (::clock() * 1000) / CLOCKS_PER_SEC;
+}
 
-  std::string getParentFolderName()
+std::string getParentFolderName()
+{
+  NSString* identifier =
+      [[NSBundle bundleForClass:[clapwrapper_dummy_object_to_trick_the_os class]] bundlePath];
+  fs::path n = [identifier UTF8String];
+  if (n.has_parent_path())
   {
-    NSString* identifier =
-        [[NSBundle bundleForClass:[clapwrapper_dummy_object_to_trick_the_os class]] bundlePath];
-    fs::path n = [identifier UTF8String];
-    if (n.has_parent_path())
+    auto p = n.parent_path();
+    if (p.has_filename())
     {
-      auto p = n.parent_path();
-      if (p.has_filename())
-      {
-        return p.filename().u8string();
-      }
+      return p.filename().u8string();
     }
-
-    return std::string();
   }
 
-  std::string getBinaryName()
-  {
-    // this is useless
-    // NSString* identifier = [[NSBundle mainBundle] bundleIdentifier];
+  return std::string();
+}
 
-    // this is needed:
-    NSString* identifier =
-        [[NSBundle bundleForClass:[clapwrapper_dummy_object_to_trick_the_os class]] bundlePath];
-    fs::path k = [identifier UTF8String];
-    return k.stem();
-  }
+std::string getBinaryName()
+{
+  // this is useless
+  // NSString* identifier = [[NSBundle mainBundle] bundleIdentifier];
+
+  // this is needed:
+  NSString* identifier =
+      [[NSBundle bundleForClass:[clapwrapper_dummy_object_to_trick_the_os class]] bundlePath];
+  fs::path k = [identifier UTF8String];
+  return k.stem();
+}
 }

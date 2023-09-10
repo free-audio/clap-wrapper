@@ -14,7 +14,7 @@ BreakConstructorInitializers: BeforeComma
 BreakBeforeBraces: Allman
 ColumnLimit: 105 
 SortIncludes: false
-NamespaceIndentation: All
+NamespaceIndentation: Inner
 ReflowComments: false
 AllowShortFunctionsOnASingleLine: None
 ---
@@ -30,7 +30,7 @@ BreakConstructorInitializers: BeforeComma
 BreakBeforeBraces: Allman
 ColumnLimit: 105
 SortIncludes: false
-NamespaceIndentation: All
+NamespaceIndentation: Inner
 ReflowComments: false
 AllowShortFunctionsOnASingleLine: None
 ...

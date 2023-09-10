@@ -105,7 +105,7 @@ static const struct _translate
 
   {nullptr, nullptr}
 };
-// clang-format off
+// clang-format on
 
 std::string clapCategoriesToVST3(const char* const* clap_categories)
 {
@@ -131,8 +131,8 @@ std::string clapCategoriesToVST3(const char* const* clap_categories)
     {
       r2.push_back(i);
     }
-  }  
-  
+  }
+
   std::string result;
   for (auto& i : r2)
   {
@@ -149,5 +149,4 @@ std::string clapCategoriesToVST3(const char* const* clap_categories)
   }
   result.pop_back();
   return result;
-
 }

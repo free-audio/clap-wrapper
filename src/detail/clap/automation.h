@@ -4,14 +4,14 @@
 
 namespace Clap
 {
-  class IAutomation
+class IAutomation
+{
+ public:
+  virtual void onBeginEdit(clap_id id) = 0;
+  virtual void onPerformEdit(const clap_event_param_value_t* value) = 0;
+  virtual void onEndEdit(clap_id id) = 0;
+  virtual ~IAutomation()
   {
-   public:
-    virtual void onBeginEdit(clap_id id) = 0;
-    virtual void onPerformEdit(const clap_event_param_value_t* value) = 0;
-    virtual void onEndEdit(clap_id id) = 0;
-    virtual ~IAutomation()
-    {
-    }
-  };
+  }
+};
 }  // namespace Clap
