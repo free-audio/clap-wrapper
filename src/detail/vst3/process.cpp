@@ -219,35 +219,48 @@ void ProcessAdapter::process(Steinberg::Vst::ProcessData& data)
         // kChordValid = 1 << 18,	///< chord contains valid information
         //
         // kSmpteValid = 1 << 14,	///< smpteOffset and frameRate contain valid information
-
         ;
 
-    _transport.song_pos_beats = doubleToBeatTime(_vstdata->processContext->projectTimeMusic);
+    _transport.song_pos_beats = 0;
     _transport.song_pos_seconds = 0;
 
-    _transport.tempo = _vstdata->processContext->tempo;
-    _transport.tempo_inc = 0;
+    if ((_vstdata->processContext->state & Vst::ProcessContext::kProjectTimeMusicValid))
+    {
+      _transport.song_pos_beats = doubleToBeatTime(_vstdata->processContext->projectTimeMusic);
+    }
 
-    _transport.loop_start_beats = doubleToBeatTime(_vstdata->processContext->cycleStartMusic);
-    _transport.loop_end_beats = doubleToBeatTime(_vstdata->processContext->cycleEndMusic);
+    _transport.tempo = 120;
+    _transport.tempo_inc = 0;
+    if ((_vstdata->processContext->state & Vst::ProcessContext::kTempoValid))
+    {
+      _transport.tempo = _vstdata->processContext->tempo;
+    }
+
+    _transport.loop_start_beats = 0;
+    _transport.loop_end_beats = 0;
     _transport.loop_start_seconds = 0;
     _transport.loop_end_seconds = 0;
 
-    _transport.bar_start = 0;
-    _transport.bar_number = 0;
+    if ((_vstdata->processContext->state & Vst::ProcessContext::kCycleValid))
+    {
+      _transport.loop_start_beats = doubleToBeatTime(_vstdata->processContext->cycleStartMusic);
+      _transport.loop_end_beats = doubleToBeatTime(_vstdata->processContext->cycleEndMusic);
+    }
 
+    _transport.tsig_num = 4;
+    _transport.tsig_denom = 4;
     if ((_vstdata->processContext->state & Vst::ProcessContext::kTimeSigValid))
     {
       _transport.tsig_num = _vstdata->processContext->timeSigNumerator;
       _transport.tsig_denom = _vstdata->processContext->timeSigDenominator;
     }
-    else
-    {
-      _transport.tsig_num = 4;
-      _transport.tsig_denom = 4;
-    }
 
-    _transport.bar_number = _vstdata->processContext->barPositionMusic;
+    _transport.bar_start = 0;
+    _transport.bar_number = 0;
+    if ((_vstdata->processContext->state & Vst::ProcessContext::kBarPositionValid))
+    {
+      _transport.bar_start = _vstdata->processContext->barPositionMusic * CLAP_BEATTIME_FACTOR;
+    }
     _processData.steady_time = _vstdata->processContext->projectTimeSamples;
   }
 
