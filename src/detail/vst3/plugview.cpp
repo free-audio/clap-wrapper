@@ -3,8 +3,8 @@
 // #include <crtdbg.h>
 #include <cassert>
 
-WrappedView::WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui, std::function<void()> onDestroy,
-                         std::function<void()> onRunLoopAvailable)
+WrappedView::WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui,
+                         std::function<void()> onDestroy, std::function<void()> onRunLoopAvailable)
   : IPlugView()
   , FObject()
   , _plugin(plugin)
@@ -12,7 +12,6 @@ WrappedView::WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* g
   , _onDestroy(onDestroy)
   , _onRunLoopAvailable(onRunLoopAvailable)
 {
-  
 }
 
 WrappedView::~WrappedView()
@@ -28,19 +27,18 @@ void WrappedView::ensure_ui()
 {
   if (!_created)
   {
-     const char* api{nullptr};
+    const char* api{nullptr};
 #if MAC
-     api = CLAP_WINDOW_API_COCOA;
+    api = CLAP_WINDOW_API_COCOA;
 #endif
 #if WIN
-     api = CLAP_WINDOW_API_WIN32;
+    api = CLAP_WINDOW_API_WIN32;
 #endif
 #if LIN
-      api = CLAP_WINDOW_API_X11;
+    api = CLAP_WINDOW_API_X11;
 #endif
 
-     if (_extgui->is_api_supported(_plugin, api, false))
-      _extgui->create(_plugin, api, false);
+    if (_extgui->is_api_supported(_plugin, api, false)) _extgui->create(_plugin, api, false);
 
     _created = true;
   }
@@ -58,16 +56,14 @@ void WrappedView::drop_ui()
 
 tresult PLUGIN_API WrappedView::isPlatformTypeSupported(FIDString type)
 {
-  static struct vst3_and_clap_match_types_t{
+  static struct vst3_and_clap_match_types_t
+  {
     const char* VST3;
     const char* CLAP;
-  } platformTypeMatches[] =
-    {
-      { kPlatformTypeHWND, CLAP_WINDOW_API_WIN32},
-      { kPlatformTypeNSView, CLAP_WINDOW_API_COCOA },
-      { kPlatformTypeX11EmbedWindowID, CLAP_WINDOW_API_X11},
-      { nullptr, nullptr }
-    };
+  } platformTypeMatches[] = {{kPlatformTypeHWND, CLAP_WINDOW_API_WIN32},
+                             {kPlatformTypeNSView, CLAP_WINDOW_API_COCOA},
+                             {kPlatformTypeX11EmbedWindowID, CLAP_WINDOW_API_X11},
+                             {nullptr, nullptr}};
   auto* n = platformTypeMatches;
   while (n->VST3 && n->CLAP)
   {
@@ -87,16 +83,15 @@ tresult PLUGIN_API WrappedView::isPlatformTypeSupported(FIDString type)
 tresult PLUGIN_API WrappedView::attached(void* parent, FIDString type)
 {
 #if WIN
-  _window = { CLAP_WINDOW_API_WIN32, { parent } };
+  _window = {CLAP_WINDOW_API_WIN32, {parent}};
 #endif
 
 #if MAC
-   _window = { CLAP_WINDOW_API_COCOA, { parent } };
+  _window = {CLAP_WINDOW_API_COCOA, {parent}};
 #endif
 
-
 #if LIN
-    _window = { CLAP_WINDOW_API_X11, { parent } };
+  _window = {CLAP_WINDOW_API_X11, {parent}};
 #endif
 
   ensure_ui();
@@ -108,10 +103,10 @@ tresult PLUGIN_API WrappedView::attached(void* parent, FIDString type)
     uint32_t h = _rect.getHeight();
     if (_extgui->adjust_size(_plugin, &w, &h))
     {
-      _rect.right = _rect.left + w +1;
-      _rect.bottom = _rect.top + h +1;
+      _rect.right = _rect.left + w + 1;
+      _rect.bottom = _rect.top + h + 1;
     }
-    _extgui->set_size(_plugin, w , h);
+    _extgui->set_size(_plugin, w, h);
   }
   _extgui->show(_plugin);
   return kResultOk;
@@ -135,7 +130,7 @@ tresult PLUGIN_API WrappedView::onKeyDown(char16 key, int16 keyCode, int16 modif
 }
 
 tresult PLUGIN_API WrappedView::onKeyUp(char16 key, int16 keyCode, int16 modifiers)
-{  
+{
   return kResultOk;
 }
 
@@ -185,11 +180,10 @@ tresult PLUGIN_API WrappedView::onSize(ViewRect* newSize)
       {
         return kResultFalse;
       }
-
     }
     return kResultOk;
   }
-  
+
   return kResultFalse;
 }
 
@@ -205,8 +199,8 @@ tresult PLUGIN_API WrappedView::setFrame(IPlugFrame* frame)
   _plugFrame = frame;
 
 #if LIN
-  if (_plugFrame->queryInterface(Steinberg::Linux::IRunLoop::iid,
-                                 (void **)&_runLoop) == Steinberg::kResultOk &&
+  if (_plugFrame->queryInterface(Steinberg::Linux::IRunLoop::iid, (void**)&_runLoop) ==
+          Steinberg::kResultOk &&
       _onRunLoopAvailable)
   {
     _onRunLoopAvailable();
