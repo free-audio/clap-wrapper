@@ -102,12 +102,12 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   static FUnknown* createInstance(void* context);
 
   ClapAsVst3(Clap::Library* lib, int number, void* context)
-      : super()
-      , Steinberg::Vst::IMidiMapping()
-      , Steinberg::Vst::INoteExpressionController()
-      , _library(lib)
-      , _libraryIndex(number)
-      , _creationcontext(context)
+    : super()
+    , Steinberg::Vst::IMidiMapping()
+    , Steinberg::Vst::INoteExpressionController()
+    , _library(lib)
+    , _libraryIndex(number)
+    , _creationcontext(context)
   {
   }
 

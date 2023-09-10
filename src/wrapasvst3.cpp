@@ -1036,7 +1036,7 @@ struct FDHandler : Steinberg::Linux::IEventHandler, public Steinberg::FObject
   int _fd{0};
   clap_posix_fd_flags_t _flags{};
   FDHandler(ClapAsVst3* parent, int fd, clap_posix_fd_flags_t flags)
-      : _parent(parent), _fd(fd), _flags(flags)
+    : _parent(parent), _fd(fd), _flags(flags)
   {
   }
   void PLUGIN_API onFDIsSet(Steinberg::Linux::FileDescriptor) override

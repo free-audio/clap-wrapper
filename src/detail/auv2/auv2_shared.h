@@ -17,7 +17,7 @@ namespace free_audio::auv2_wrapper
     const clap_plugin_descriptor_t *_desc{nullptr};
 
     ClapBridge(const std::string &clapname, const std::string &clapid, int idx)
-        : _clapname(clapname), _clapid(clapid), _idx(idx)
+      : _clapname(clapname), _clapid(clapid), _idx(idx)
     {
       std::cout << "[clap-wraper] auv2: creating clap bridge nm=" << clapname << " id=" << clapid
                 << " idx=" << idx << std::endl;

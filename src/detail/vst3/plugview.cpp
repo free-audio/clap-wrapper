@@ -5,12 +5,12 @@
 
 WrappedView::WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui,
                          std::function<void()> onDestroy, std::function<void()> onRunLoopAvailable)
-    : IPlugView()
-    , FObject()
-    , _plugin(plugin)
-    , _extgui(gui)
-    , _onDestroy(onDestroy)
-    , _onRunLoopAvailable(onRunLoopAvailable)
+  : IPlugView()
+  , FObject()
+  , _plugin(plugin)
+  , _extgui(gui)
+  , _onDestroy(onDestroy)
+  , _onRunLoopAvailable(onRunLoopAvailable)
 {
 }
 

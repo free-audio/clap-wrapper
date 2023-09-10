@@ -132,17 +132,17 @@ namespace Clap
   }
 
   Plugin::Plugin(IHost* host)
-      : _host{CLAP_VERSION,
-              this,
-              "Clap-As-VST3-Wrapper",
-              "defiant nerd",
-              "https://www.defiantnerd.com",
-              "0.0.1",
-              Plugin::clapExtension,
-              Plugin::clapRequestRestart,
-              Plugin::clapRequestProcess,
-              Plugin::clapRequestCallback}
-      , _parentHost(host)
+    : _host{CLAP_VERSION,
+            this,
+            "Clap-As-VST3-Wrapper",
+            "defiant nerd",
+            "https://www.defiantnerd.com",
+            "0.0.1",
+            Plugin::clapExtension,
+            Plugin::clapRequestRestart,
+            Plugin::clapRequestProcess,
+            Plugin::clapRequestCallback}
+    , _parentHost(host)
   {
   }
 

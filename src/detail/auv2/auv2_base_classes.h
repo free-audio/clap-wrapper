@@ -25,7 +25,7 @@ namespace free_audio::auv2_wrapper
    public:
     explicit ClapWrapper_AUV2_Effect(const std::string &clapname, const std::string &clapid, int clapidx,
                                      AudioComponentInstance ci)
-        : Base{ci, true}, bridge(clapname, clapid, clapidx)
+      : Base{ci, true}, bridge(clapname, clapid, clapidx)
     {
       std::cout << "[clap-wrapper] auv2: creating effect" << std::endl;
       std::cout << "[clap-wrapper] auv2: id='" << clapid << "' index=" << clapidx << std::endl;
@@ -42,7 +42,7 @@ namespace free_audio::auv2_wrapper
    public:
     explicit ClapWrapper_AUV2_NoteEffect(const std::string &clapname, const std::string &clapid,
                                          int clapidx, AudioComponentInstance ci)
-        : Base{ci, true}, bridge(clapname, clapid, clapidx)
+      : Base{ci, true}, bridge(clapname, clapid, clapidx)
     {
       std::cout << "[clap-wrapper] auv2: creating note effect" << std::endl;
       std::cout << "[clap-wrapper] auv2: id='" << clapid << "' index=" << clapidx << std::endl;
@@ -61,7 +61,7 @@ namespace free_audio::auv2_wrapper
    public:
     explicit ClapWrapper_AUV2_Instrument(const std::string &clapname, const std::string &clapid,
                                          int clapidx, AudioComponentInstance ci)
-        : Base{ci, 0, 1}, bridge(clapname, clapid, clapidx)
+      : Base{ci, 0, 1}, bridge(clapname, clapid, clapidx)
     {
       std::cout << "[clap-wrapper] auv2: creating instrument" << std::endl;
       std::cout << "[clap-wrapper] auv2: id='" << clapid << "' index=" << clapidx << std::endl;
