@@ -118,7 +118,7 @@ endif()
 add_custom_target(clap-wrapper-code-checks)
 
 # Clang Format checks
-find_program(CLANG_FORMAT_EXE NAMES clang-format-12 clang-format)
+find_program(CLANG_FORMAT_EXE NAMES clang-format)
 set(CLANG_FORMAT_DIRS src)
 set(CLANG_FORMAT_EXTS cpp h)
 foreach(dir ${CLANG_FORMAT_DIRS})
