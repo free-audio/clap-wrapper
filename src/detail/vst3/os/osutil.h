@@ -1,7 +1,7 @@
 #pragma once
 
 /*
-                a minimalistic OS layer
+		a minimalistic OS layer
 
 */
 
@@ -15,26 +15,27 @@ namespace os
 {
   class IPlugObject
   {
-  public:
+   public:
     virtual void onIdle() = 0;
     virtual ~IPlugObject() {}
   };
-  void attach(IPlugObject *plugobject);
-  void detach(IPlugObject *plugobject);
+  void attach(IPlugObject* plugobject);
+  void detach(IPlugObject* plugobject);
   uint64_t getTickInMS();
   std::string getParentFolderName();
   std::string getBinaryName();
 
-  void log(const char *text);
+  void log(const char* text);
 
-  template <typename... Args> void log(const char *format_str, Args &&...args)
+  template <typename... Args>
+  void log(const char* format_str, Args&&... args)
   {
     fmt::memory_buffer buf;
     fmt::format_to(std::back_inserter(buf), format_str, args...);
     buf.push_back(0);
-    log((const char *)buf.data());
+    log((const char*)buf.data());
   };
-} // namespace os
+}  // namespace os
 
 #ifndef CLAP_WRAPPER_LOGLEVEL
 #define CLAP_WRAPPER_LOGLEVEL 2
@@ -58,16 +59,17 @@ namespace os
 namespace util
 {
 
-  template <typename T, uint32_t Q> class fixedqueue
+  template <typename T, uint32_t Q>
+  class fixedqueue
   {
-  public:
-    inline void push(const T &val) { push(&val); }
-    inline void push(const T *val)
+   public:
+    inline void push(const T& val) { push(&val); }
+    inline void push(const T* val)
     {
       _elements[_head] = *val;
       _head = (_head + 1) % Q;
     }
-    inline bool pop(T &out)
+    inline bool pop(T& out)
     {
       if (_head == _tail)
       {
@@ -78,9 +80,9 @@ namespace util
       return true;
     }
 
-  private:
+   private:
     T _elements[Q] = {};
     std::atomic_uint32_t _head = 0u;
     std::atomic_uint32_t _tail = 0u;
   };
-}; // namespace util
+};  // namespace util

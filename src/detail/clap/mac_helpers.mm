@@ -1,8 +1,8 @@
-/*
+/* 
 
     Copyright (c) 2022 Paul Walker
                        Timo Kaluza (defiantnerd)
-
+                       
 
     This file is part of the clap-wrappers project which is released under MIT License.
     See file LICENSE or go to https://github.com/defiantnerd/clap-wrapper for full license details.
@@ -36,7 +36,7 @@ namespace Clap
     try
     {
       auto res = fs::path{info.dli_fname};
-      res = res.parent_path().parent_path(); // this might throw if not in bundle so catch
+      res = res.parent_path().parent_path();  // this might throw if not in bundle so catch
       if (res.filename().u8string() == "Contents" && res.has_parent_path())
       {
         // We are properly situated in a bundle in either a MacOS ir an iOS location
@@ -58,8 +58,7 @@ namespace Clap
     if (!bundlePath.empty())
     {
       std::string name = bundlePath.u8string();
-      CFURLRef bundleUrl =
-          CFURLCreateFromFileSystemRepresentation(0, (const unsigned char *)name.c_str(), name.size(), true);
+      CFURLRef bundleUrl = CFURLCreateFromFileSystemRepresentation(0, (const unsigned char *)name.c_str(), name.size(), true);
       if (bundleUrl)
       {
         auto pluginBundle = CFBundleCreate(0, bundleUrl);

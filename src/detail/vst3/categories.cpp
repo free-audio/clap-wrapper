@@ -1,6 +1,6 @@
 /*
     converting CLAP categories to VST3 categories
-
+    
     Copyright (c) 2022 Timo Kaluza (defiantnerd)
 
     This file is part of the clap-wrappers project which is released under MIT License.
@@ -50,13 +50,13 @@ using namespace Steinberg::Vst;
 
 static const struct _translate
 {
-  const char *clapattribute;
-  const char *vst3attribute;
+  const char* clapattribute;
+  const char* vst3attribute;
 } translationTable[] = {
     // CLAP main categories
     {CLAP_PLUGIN_FEATURE_INSTRUMENT, PlugType::kInstrument},
     {CLAP_PLUGIN_FEATURE_AUDIO_EFFECT, PlugType::kFx},
-    {CLAP_PLUGIN_FEATURE_NOTE_EFFECT, PlugType::kInstrumentSynth}, // it seems there is no type for a sequencer etc
+    {CLAP_PLUGIN_FEATURE_NOTE_EFFECT, PlugType::kInstrumentSynth},  // it seems there is no type for a sequencer etc
     {CLAP_PLUGIN_FEATURE_DRUM, PlugType::kInstrumentDrum},
     {CLAP_PLUGIN_FEATURE_ANALYZER, PlugType::kAnalyzer},
 
@@ -103,7 +103,7 @@ static const struct _translate
 
     {nullptr, nullptr}};
 
-std::string clapCategoriesToVST3(const char *const *clap_categories)
+std::string clapCategoriesToVST3(const char* const* clap_categories)
 {
   std::vector<std::string> r;
   auto f = clap_categories;
@@ -121,7 +121,7 @@ std::string clapCategoriesToVST3(const char *const *clap_categories)
     ++f;
   }
   std::vector<std::string> r2;
-  for (auto &i : r)
+  for (auto& i : r)
   {
     if (std::find(r2.begin(), r2.end(), i) == r2.end())
     {
@@ -130,7 +130,7 @@ std::string clapCategoriesToVST3(const char *const *clap_categories)
   }
 
   std::string result;
-  for (auto &i : r2)
+  for (auto& i : r2)
   {
     if (result.size() + i.size() <= Steinberg::PClassInfo2::kSubCategoriesSize)
     {

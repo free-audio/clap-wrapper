@@ -12,20 +12,17 @@ namespace Clap
 {
   namespace HostExt
   {
-    static Plugin *self(const clap_host_t *host) { return static_cast<Plugin *>(host->host_data); }
+    static Plugin* self(const clap_host_t* host) { return static_cast<Plugin*>(host->host_data); }
 
-    void host_log(const clap_host_t *host, clap_log_severity severity, const char *msg)
-    {
-      self(host)->log(severity, msg);
-    }
+    void host_log(const clap_host_t* host, clap_log_severity severity, const char* msg) { self(host)->log(severity, msg); }
 
     clap_host_log_t log = {host_log};
 
-    void rescan(const clap_host_t *host, clap_param_rescan_flags flags) { self(host)->param_rescan(flags); }
+    void rescan(const clap_host_t* host, clap_param_rescan_flags flags) { self(host)->param_rescan(flags); }
 
     // Clears references to a parameter.
     // [main-thread]
-    void clear(const clap_host_t *host, clap_id param_id, clap_param_clear_flags flags) {}
+    void clear(const clap_host_t* host, clap_id param_id, clap_param_clear_flags flags) {}
 
     // Request a parameter flush.
     //
@@ -37,58 +34,49 @@ namespace Clap
     //
     // This must not be called on the [audio-thread].
     // [thread-safe,!audio-thread]
-    void request_flush(const clap_host_t *host) { self(host)->param_request_flush(); }
+    void request_flush(const clap_host_t* host) { self(host)->param_request_flush(); }
     clap_host_params_t params = {rescan, clear, request_flush};
 
-    bool is_main_thread(const clap_host_t *host) { return self(host)->is_main_thread(); }
+    bool is_main_thread(const clap_host_t* host) { return self(host)->is_main_thread(); }
 
     // Returns true if "this" thread is one of the audio threads.
     // [thread-safe]
-    bool is_audio_thread(const clap_host_t *host) { return self(host)->is_audio_thread(); }
+    bool is_audio_thread(const clap_host_t* host) { return self(host)->is_audio_thread(); }
 
     clap_host_thread_check_t threadcheck = {is_main_thread, is_audio_thread};
 
-    static void resize_hints_changed(const clap_host_t *host) { self(host)->resize_hints_changed(); }
-    static bool request_resize(const clap_host_t *host, uint32_t width, uint32_t height)
-    {
-      return self(host)->request_resize(width, height);
-    }
-    static bool request_show(const clap_host_t *host) { return self(host)->request_show(); }
-    static bool request_hide(const clap_host_t *host) { return self(host)->request_hide(); }
-    static void closed(const clap_host_t *host, bool was_destroyed) { self(host)->closed(was_destroyed); }
+    static void resize_hints_changed(const clap_host_t* host) { self(host)->resize_hints_changed(); }
+    static bool request_resize(const clap_host_t* host, uint32_t width, uint32_t height) { return self(host)->request_resize(width, height); }
+    static bool request_show(const clap_host_t* host) { return self(host)->request_show(); }
+    static bool request_hide(const clap_host_t* host) { return self(host)->request_hide(); }
+    static void closed(const clap_host_t* host, bool was_destroyed) { self(host)->closed(was_destroyed); }
 
     const clap_host_gui hostgui = {resize_hints_changed, request_resize, request_show, request_hide, closed};
 
     const clap_host_timer_support hosttimer = {
-        /* register_timer */ [](const clap_host_t *host, uint32_t period_ms, clap_id *timer_id) -> bool
-        { return self(host)->register_timer(period_ms, timer_id); },
-        /* unregister_timer */
-        [](const clap_host_t *host, clap_id timer_id) -> bool { return self(host)->unregister_timer(timer_id); }};
+        /* register_timer */ [](const clap_host_t* host, uint32_t period_ms, clap_id* timer_id) -> bool { return self(host)->register_timer(period_ms, timer_id); },
+        /* unregister_timer */ [](const clap_host_t* host, clap_id timer_id) -> bool { return self(host)->unregister_timer(timer_id); }};
 
 #if LIN
-    const clap_host_posix_fd_support hostposixfd = {
-        [](const clap_host_t *host, int fd, clap_posix_fd_flags_t flags) -> bool
-        { return self(host)->register_fd(fd, flags); },
-        [](const clap_host_t *host, int fd, clap_posix_fd_flags_t flags) -> bool
-        { return self(host)->modify_fd(fd, flags); },
-        [](const clap_host_t *host, int fd) -> bool { return self(host)->unregister_fd(fd); }};
+    const clap_host_posix_fd_support hostposixfd = {[](const clap_host_t* host, int fd, clap_posix_fd_flags_t flags) -> bool { return self(host)->register_fd(fd, flags); },
+                                                    [](const clap_host_t* host, int fd, clap_posix_fd_flags_t flags) -> bool { return self(host)->modify_fd(fd, flags); },
+                                                    [](const clap_host_t* host, int fd) -> bool { return self(host)->unregister_fd(fd); }};
 #endif
 
-    const clap_host_latency latency = {[](const clap_host_t *host) -> void { self(host)->latency_changed(); }};
+    const clap_host_latency latency = {[](const clap_host_t* host) -> void { self(host)->latency_changed(); }};
 
-    static void tail_changed(const clap_host_t *host) { self(host)->tail_changed(); }
+    static void tail_changed(const clap_host_t* host) { self(host)->tail_changed(); }
 
     const clap_host_tail tail = {tail_changed};
 
-  } // namespace HostExt
+  }  // namespace HostExt
 
-  std::shared_ptr<Plugin> Plugin::createInstance(Clap::Library &library, size_t index, IHost *host)
+  std::shared_ptr<Plugin> Plugin::createInstance(Clap::Library& library, size_t index, IHost* host)
   {
     if (library.plugins.size() > index)
     {
       auto plug = std::shared_ptr<Plugin>(new Plugin(host));
-      auto instance = library._pluginFactory->create_plugin(library._pluginFactory, plug->getClapHostInterface(),
-                                                            library.plugins[index]->id);
+      auto instance = library._pluginFactory->create_plugin(library._pluginFactory, plug->getClapHostInterface(), library.plugins[index]->id);
       plug->connectClap(instance);
 
       return plug;
@@ -96,27 +84,18 @@ namespace Clap
     return nullptr;
   }
 
-  Plugin::Plugin(IHost *host)
-      : _host{CLAP_VERSION,
-              this,
-              "Clap-As-VST3-Wrapper",
-              "defiant nerd",
-              "https://www.defiantnerd.com",
-              "0.0.1",
-              Plugin::clapExtension,
-              Plugin::clapRequestRestart,
-              Plugin::clapRequestProcess,
-              Plugin::clapRequestCallback},
-        _parentHost(host)
+  Plugin::Plugin(IHost* host)
+      : _host{CLAP_VERSION, this, "Clap-As-VST3-Wrapper", "defiant nerd", "https://www.defiantnerd.com", "0.0.1", Plugin::clapExtension, Plugin::clapRequestRestart, Plugin::clapRequestProcess, Plugin::clapRequestCallback}, _parentHost(host)
   {
   }
 
-  template <typename T> void getExtension(const clap_plugin_t *plugin, T &ref, const char *name)
+  template <typename T>
+  void getExtension(const clap_plugin_t* plugin, T& ref, const char* name)
   {
     ref = static_cast<T>(plugin->get_extension(plugin, name));
   }
 
-  void Plugin::connectClap(const clap_plugin_t *clap)
+  void Plugin::connectClap(const clap_plugin_t* clap)
   {
     _plugin = clap;
 
@@ -145,7 +124,7 @@ namespace Clap
 
     if (_ext._gui)
     {
-      const char *api;
+      const char* api;
 #if WIN
       api = CLAP_WINDOW_API_WIN32;
 #endif
@@ -209,7 +188,7 @@ namespace Clap
     _audioSetup.maxFrames = maxFrames;
   }
 
-  bool Plugin::load(const clap_istream_t *stream)
+  bool Plugin::load(const clap_istream_t* stream)
   {
     if (_ext._state)
     {
@@ -218,7 +197,7 @@ namespace Clap
     return false;
   }
 
-  bool Plugin::save(const clap_ostream_t *stream)
+  bool Plugin::save(const clap_ostream_t* stream)
   {
     if (_ext._state)
     {
@@ -227,10 +206,7 @@ namespace Clap
     return false;
   }
 
-  bool Plugin::activate()
-  {
-    return _plugin->activate(_plugin, _audioSetup.sampleRate, _audioSetup.minFrames, _audioSetup.maxFrames);
-  }
+  bool Plugin::activate() { return _plugin->activate(_plugin, _audioSetup.sampleRate, _audioSetup.minFrames, _audioSetup.maxFrames); }
 
   void Plugin::deactivate() { _plugin->deactivate(_plugin); }
 
@@ -246,13 +222,13 @@ namespace Clap
     _plugin->stop_processing(_plugin);
   }
 
-  // void Plugin::process(const clap_process_t* data)
+  //void Plugin::process(const clap_process_t* data)
   //{
-  //   auto thisFn = AlwaysAudioThread();
-  //   _plugin->process(_plugin, data);
-  // }
+  //  auto thisFn = AlwaysAudioThread();
+  //  _plugin->process(_plugin, data);
+  //}
 
-  const clap_plugin_gui_t *Plugin::getUI()
+  const clap_plugin_gui_t* Plugin::getUI()
   {
     if (_ext._gui)
     {
@@ -268,39 +244,39 @@ namespace Clap
 
   void Plugin::tail_changed() { _parentHost->tail_changed(); }
 
-  void Plugin::log(clap_log_severity severity, const char *msg)
+  void Plugin::log(clap_log_severity severity, const char* msg)
   {
     std::string n;
     switch (severity)
     {
-    case CLAP_LOG_DEBUG:
-      n.append("PLUGIN: DEBUG: ");
-      break;
-    case CLAP_LOG_INFO:
-      n.append("PLUGIN: INFO: ");
-      break;
-    case CLAP_LOG_WARNING:
-      n.append("PLUGIN: WARNING: ");
-      break;
-    case CLAP_LOG_ERROR:
-      n.append("PLUGIN: ERROR: ");
-      break;
-    case CLAP_LOG_FATAL:
-      n.append("PLUGIN: FATAL: ");
-      break;
-    case CLAP_LOG_PLUGIN_MISBEHAVING:
-      n.append("PLUGIN: MISBEHAVING: ");
-      break;
-    case CLAP_LOG_HOST_MISBEHAVING:
-      n.append("PLUGIN: HOST MISBEHAVING: ");
+      case CLAP_LOG_DEBUG:
+        n.append("PLUGIN: DEBUG: ");
+        break;
+      case CLAP_LOG_INFO:
+        n.append("PLUGIN: INFO: ");
+        break;
+      case CLAP_LOG_WARNING:
+        n.append("PLUGIN: WARNING: ");
+        break;
+      case CLAP_LOG_ERROR:
+        n.append("PLUGIN: ERROR: ");
+        break;
+      case CLAP_LOG_FATAL:
+        n.append("PLUGIN: FATAL: ");
+        break;
+      case CLAP_LOG_PLUGIN_MISBEHAVING:
+        n.append("PLUGIN: MISBEHAVING: ");
+        break;
+      case CLAP_LOG_HOST_MISBEHAVING:
+        n.append("PLUGIN: HOST MISBEHAVING: ");
 #if WIN32
-      OutputDebugStringA(msg);
-      _CrtDbgBreak();
+        OutputDebugStringA(msg);
+        _CrtDbgBreak();
 #endif
 #if MAC
-      fprintf(stderr, "%s\n", msg);
+        fprintf(stderr, "%s\n", msg);
 #endif
-      break;
+        break;
     }
     n.append(msg);
 #if WIN32
@@ -332,24 +308,17 @@ namespace Clap
 
   // Query an extension.
   // [thread-safe]
-  const void *Plugin::clapExtension(const clap_host *host, const char *extension)
+  const void* Plugin::clapExtension(const clap_host* host, const char* extension)
   {
-    if (!strcmp(extension, CLAP_EXT_LOG))
-      return &HostExt::log;
-    if (!strcmp(extension, CLAP_EXT_PARAMS))
-      return &HostExt::params;
-    if (!strcmp(extension, CLAP_EXT_THREAD_CHECK))
-      return &HostExt::threadcheck;
-    if (!strcmp(extension, CLAP_EXT_GUI))
-      return &HostExt::hostgui;
-    if (!strcmp(extension, CLAP_EXT_TIMER_SUPPORT))
-      return &HostExt::hosttimer;
+    if (!strcmp(extension, CLAP_EXT_LOG)) return &HostExt::log;
+    if (!strcmp(extension, CLAP_EXT_PARAMS)) return &HostExt::params;
+    if (!strcmp(extension, CLAP_EXT_THREAD_CHECK)) return &HostExt::threadcheck;
+    if (!strcmp(extension, CLAP_EXT_GUI)) return &HostExt::hostgui;
+    if (!strcmp(extension, CLAP_EXT_TIMER_SUPPORT)) return &HostExt::hosttimer;
 #if LIN
-    if (!strcmp(extension, CLAP_EXT_POSIX_FD_SUPPORT))
-      return &HostExt::hostposixfd;
+    if (!strcmp(extension, CLAP_EXT_POSIX_FD_SUPPORT)) return &HostExt::hostposixfd;
 #endif
-    if (!strcmp(extension, CLAP_EXT_LATENCY))
-      return &HostExt::latency;
+    if (!strcmp(extension, CLAP_EXT_LATENCY)) return &HostExt::latency;
     if (!strcmp(extension, CLAP_EXT_TAIL))
     {
       return &HostExt::tail;
@@ -364,25 +333,25 @@ namespace Clap
 
   // Request the host to schedule a call to plugin->on_main_thread(plugin) on the main thread.
   // [thread-safe]
-  void Plugin::clapRequestCallback(const clap_host *host)
+  void Plugin::clapRequestCallback(const clap_host* host)
   {
-    auto self = static_cast<Plugin *>(host->host_data);
+    auto self = static_cast<Plugin*>(host->host_data);
     self->_parentHost->request_callback();
   }
 
   // Request the host to deactivate and then reactivate the plugin.
   // The operation may be delayed by the host.
   // [thread-safe]
-  void Plugin::clapRequestRestart(const clap_host *host)
+  void Plugin::clapRequestRestart(const clap_host* host)
   {
-    auto self = static_cast<Plugin *>(host->host_data);
+    auto self = static_cast<Plugin*>(host->host_data);
     self->_parentHost->restartPlugin();
   }
 
   // Request the host to activate and start processing the plugin.
   // This is useful if you have external IO and need to wake up the plugin from "sleep".
   // [thread-safe]
-  void Plugin::clapRequestProcess(const clap_host *host)
+  void Plugin::clapRequestProcess(const clap_host* host)
   {
     // right now, I don't know how to communicate this to the host
     // in VST3 you can't force processing...
@@ -392,10 +361,7 @@ namespace Clap
   // The host may adjust the period if it is under a certain threshold.
   // 30 Hz should be allowed.
   // [main-thread]
-  bool Plugin::register_timer(uint32_t period_ms, clap_id *timer_id)
-  {
-    return _parentHost->register_timer(period_ms, timer_id);
-  }
+  bool Plugin::register_timer(uint32_t period_ms, clap_id* timer_id) { return _parentHost->register_timer(period_ms, timer_id); }
   bool Plugin::unregister_timer(clap_id timer_id) { return _parentHost->unregister_timer(timer_id); }
 
 #if LIN
@@ -403,4 +369,4 @@ namespace Clap
   bool Plugin::modify_fd(int fd, clap_posix_fd_flags_t flags) { return _parentHost->modify_fd(fd, flags); }
   bool Plugin::unregister_fd(int fd) { return _parentHost->unregister_fd(fd); }
 #endif
-} // namespace Clap
+}  // namespace Clap

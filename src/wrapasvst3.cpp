@@ -13,7 +13,7 @@
 
 #if WIN
 #include <tchar.h>
-#define S16(x) reinterpret_cast<const Steinberg::Vst::TChar *>(_T(x))
+#define S16(x) reinterpret_cast<const Steinberg::Vst::TChar*>(_T(x))
 #endif
 #if MAC
 #define S16(x) u##x
@@ -24,12 +24,12 @@
 
 struct ClapHostExtensions
 {
-  static inline ClapAsVst3 *self(const clap_host_t *host) { return static_cast<ClapAsVst3 *>(host->host_data); }
-  static void mark_dirty(const clap_host_t *host) { self(host)->mark_dirty(); }
+  static inline ClapAsVst3* self(const clap_host_t* host) { return static_cast<ClapAsVst3*>(host->host_data); }
+  static void mark_dirty(const clap_host_t* host) { self(host)->mark_dirty(); }
   const clap_host_state_t _state = {mark_dirty};
 };
 
-tresult PLUGIN_API ClapAsVst3::initialize(FUnknown *context)
+tresult PLUGIN_API ClapAsVst3::initialize(FUnknown* context)
 {
   auto result = super::initialize(context);
   if (result == kResultOk)
@@ -64,10 +64,8 @@ tresult PLUGIN_API ClapAsVst3::setActive(TBool state)
 {
   if (state)
   {
-    if (_active)
-      return kResultFalse;
-    if (!_plugin->activate())
-      return kResultFalse;
+    if (_active) return kResultFalse;
+    if (!_plugin->activate()) return kResultFalse;
     _active = true;
     _processAdapter = new Clap::ProcessAdapter();
 
@@ -75,10 +73,8 @@ tresult PLUGIN_API ClapAsVst3::setActive(TBool state)
 
     // the processAdapter needs to know a few things to intercommunicate between VST3 host and CLAP plugin.
 
-    _processAdapter->setupProcessing(_plugin->_plugin, _plugin->_ext._params, this->audioInputs, this->audioOutputs,
-                                     this->_largestBlocksize, this->eventInputs.size(), this->eventOutputs.size(),
-                                     parameters, componentHandler, this, supportsnoteexpression,
-                                     _expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_TUNING);
+    _processAdapter->setupProcessing(_plugin->_plugin, _plugin->_ext._params, this->audioInputs, this->audioOutputs, this->_largestBlocksize, this->eventInputs.size(), this->eventOutputs.size(), parameters, componentHandler, this,
+                                     supportsnoteexpression, _expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_TUNING);
     updateAudioBusses();
 
     os::attach(this);
@@ -97,7 +93,7 @@ tresult PLUGIN_API ClapAsVst3::setActive(TBool state)
   return super::setActive(state);
 }
 
-tresult PLUGIN_API ClapAsVst3::process(Vst::ProcessData &data)
+tresult PLUGIN_API ClapAsVst3::process(Vst::ProcessData& data)
 {
   auto thisFn = _plugin->AlwaysAudioThread();
   this->_processAdapter->process(data);
@@ -113,15 +109,9 @@ tresult PLUGIN_API ClapAsVst3::canProcessSampleSize(int32 symbolicSampleSize)
   return kResultOk;
 }
 
-tresult PLUGIN_API ClapAsVst3::setState(IBStream *state)
-{
-  return (_plugin->load(CLAPVST3StreamAdapter(state)) ? Steinberg::kResultOk : Steinberg::kResultFalse);
-}
+tresult PLUGIN_API ClapAsVst3::setState(IBStream* state) { return (_plugin->load(CLAPVST3StreamAdapter(state)) ? Steinberg::kResultOk : Steinberg::kResultFalse); }
 
-tresult PLUGIN_API ClapAsVst3::getState(IBStream *state)
-{
-  return (_plugin->save(CLAPVST3StreamAdapter(state)) ? Steinberg::kResultOk : Steinberg::kResultFalse);
-}
+tresult PLUGIN_API ClapAsVst3::getState(IBStream* state) { return (_plugin->save(CLAPVST3StreamAdapter(state)) ? Steinberg::kResultOk : Steinberg::kResultFalse); }
 
 uint32 PLUGIN_API ClapAsVst3::getLatencySamples()
 {
@@ -140,14 +130,13 @@ uint32 PLUGIN_API ClapAsVst3::getTailSamples()
     auto tailsize = this->_plugin->_ext._tail->get(_plugin->_plugin);
 
     // Any value greater or equal to INT32_MAX implies infinite tail.
-    if (tailsize >= INT32_MAX)
-      return Vst::kInfiniteTail;
+    if (tailsize >= INT32_MAX) return Vst::kInfiniteTail;
     return tailsize;
   }
   return super::getTailSamples();
 }
 
-tresult PLUGIN_API ClapAsVst3::setupProcessing(Vst::ProcessSetup &newSetup)
+tresult PLUGIN_API ClapAsVst3::setupProcessing(Vst::ProcessSetup& newSetup)
 {
   if (newSetup.symbolicSampleSize != Vst::kSample32)
   {
@@ -185,18 +174,11 @@ tresult PLUGIN_API ClapAsVst3::setProcessing(TBool state)
   return result;
 }
 
-tresult PLUGIN_API ClapAsVst3::setBusArrangements(Vst::SpeakerArrangement *inputs, int32 numIns,
-                                                  Vst::SpeakerArrangement *outputs, int32 numOuts)
-{
-  return super::setBusArrangements(inputs, numIns, outputs, numOuts);
-};
+tresult PLUGIN_API ClapAsVst3::setBusArrangements(Vst::SpeakerArrangement* inputs, int32 numIns, Vst::SpeakerArrangement* outputs, int32 numOuts) { return super::setBusArrangements(inputs, numIns, outputs, numOuts); };
 
-tresult PLUGIN_API ClapAsVst3::getBusArrangement(Vst::BusDirection dir, int32 index, Vst::SpeakerArrangement &arr)
-{
-  return super::getBusArrangement(dir, index, arr);
-}
+tresult PLUGIN_API ClapAsVst3::getBusArrangement(Vst::BusDirection dir, int32 index, Vst::SpeakerArrangement& arr) { return super::getBusArrangement(dir, index, arr); }
 
-IPlugView *PLUGIN_API ClapAsVst3::createView(FIDString name)
+IPlugView* PLUGIN_API ClapAsVst3::createView(FIDString name)
 {
   if (_plugin->_ext._gui)
   {
@@ -218,7 +200,7 @@ IPlugView *PLUGIN_API ClapAsVst3::createView(FIDString name)
           attachTimers(_wrappedview->getRunLoop());
           attachPosixFD(_wrappedview->getRunLoop());
 #else
-          (void)this; // silence warning on non-linux
+          (void)this;  // silence warning on non-linux
 #endif
         });
     return _wrappedview;
@@ -226,10 +208,9 @@ IPlugView *PLUGIN_API ClapAsVst3::createView(FIDString name)
   return nullptr;
 }
 
-tresult PLUGIN_API ClapAsVst3::getParamStringByValue(Vst::ParamID id, Vst::ParamValue valueNormalized,
-                                                     Vst::String128 string)
+tresult PLUGIN_API ClapAsVst3::getParamStringByValue(Vst::ParamID id, Vst::ParamValue valueNormalized, Vst::String128 string)
 {
-  auto param = (Vst3Parameter *)this->getParameterObject(id);
+  auto param = (Vst3Parameter*)this->getParameterObject(id);
   auto val = param->asClapValue(valueNormalized);
 
   char outbuf[128];
@@ -244,10 +225,9 @@ tresult PLUGIN_API ClapAsVst3::getParamStringByValue(Vst::ParamID id, Vst::Param
   return super::getParamStringByValue(id, valueNormalized, string);
 }
 
-tresult PLUGIN_API ClapAsVst3::getParamValueByString(Vst::ParamID id, Vst::TChar *string,
-                                                     Vst::ParamValue &valueNormalized)
+tresult PLUGIN_API ClapAsVst3::getParamValueByString(Vst::ParamID id, Vst::TChar* string, Vst::ParamValue& valueNormalized)
 {
-  auto param = (Vst3Parameter *)this->getParameterObject(id);
+  auto param = (Vst3Parameter*)this->getParameterObject(id);
   Steinberg::String m(string);
   char inbuf[128];
   m.copyTo8(inbuf, 0, 128);
@@ -260,19 +240,14 @@ tresult PLUGIN_API ClapAsVst3::getParamValueByString(Vst::ParamID id, Vst::TChar
   return Steinberg::kResultFalse;
 }
 
-tresult PLUGIN_API ClapAsVst3::activateBus(Vst::MediaType type, Vst::BusDirection dir, int32 index, TBool state)
-{
-  return super::activateBus(type, dir, index, state);
-}
+tresult PLUGIN_API ClapAsVst3::activateBus(Vst::MediaType type, Vst::BusDirection dir, int32 index, TBool state) { return super::activateBus(type, dir, index, state); }
 
 //-----------------------------------------------------------------------------
 
-tresult PLUGIN_API ClapAsVst3::getMidiControllerAssignment(int32 busIndex, int16 channel,
-                                                           Vst::CtrlNumber midiControllerNumber,
-                                                           Vst::ParamID &id /*out*/)
+tresult PLUGIN_API ClapAsVst3::getMidiControllerAssignment(int32 busIndex, int16 channel, Vst::CtrlNumber midiControllerNumber, Vst::ParamID& id /*out*/)
 {
   // for my first Event bus and for MIDI channel 0 and for MIDI CC Volume only
-  if (busIndex == 0) // && channel == 0) // && midiControllerNumber == Vst::kCtrlVolume)
+  if (busIndex == 0)  // && channel == 0) // && midiControllerNumber == Vst::kCtrlVolume)
   {
     id = _IMidiMappingIDs[channel][midiControllerNumber];
     return kResultTrue;
@@ -293,8 +268,7 @@ int32 ClapAsVst3::getNoteExpressionCount(int32 busIndex, int16 channel)
 }
 
 /** Returns note change type info. */
-tresult ClapAsVst3::getNoteExpressionInfo(int32 busIndex, int16 channel, int32 noteExpressionIndex,
-                                          Vst::NoteExpressionTypeInfo &info /*out*/)
+tresult ClapAsVst3::getNoteExpressionInfo(int32 busIndex, int16 channel, int32 noteExpressionIndex, Vst::NoteExpressionTypeInfo& info /*out*/)
 {
   if (busIndex == 0 && channel == 0)
   {
@@ -304,17 +278,13 @@ tresult ClapAsVst3::getNoteExpressionInfo(int32 busIndex, int16 channel, int32 n
 }
 
 /** Gets a user readable representation of the normalized note change value. */
-tresult ClapAsVst3::getNoteExpressionStringByValue(int32 busIndex, int16 channel, Vst::NoteExpressionTypeID id,
-                                                   Vst::NoteExpressionValue valueNormalized /*in*/,
-                                                   Vst::String128 string /*out*/)
+tresult ClapAsVst3::getNoteExpressionStringByValue(int32 busIndex, int16 channel, Vst::NoteExpressionTypeID id, Vst::NoteExpressionValue valueNormalized /*in*/, Vst::String128 string /*out*/)
 {
   return _noteExpressions.getNoteExpressionStringByValue(id, valueNormalized, string);
 }
 
 /** Converts the user readable representation to the normalized note change value. */
-tresult ClapAsVst3::getNoteExpressionValueByString(int32 busIndex, int16 channel, Vst::NoteExpressionTypeID id,
-                                                   const Vst::TChar *string /*in*/,
-                                                   Vst::NoteExpressionValue &valueNormalized /*out*/)
+tresult ClapAsVst3::getNoteExpressionValueByString(int32 busIndex, int16 channel, Vst::NoteExpressionTypeID id, const Vst::TChar* string /*in*/, Vst::NoteExpressionValue& valueNormalized /*out*/)
 {
   return _noteExpressions.getNoteExpressionValueByString(id, string, valueNormalized);
 }
@@ -322,21 +292,20 @@ tresult ClapAsVst3::getNoteExpressionValueByString(int32 busIndex, int16 channel
 #endif
 
 ////-----------------------------------------------------------------------------
-// tresult PLUGIN_API ClapAsVst3::queryInterface(const TUID iid, void** obj)
+//tresult PLUGIN_API ClapAsVst3::queryInterface(const TUID iid, void** obj)
 //{
 //	  DEF_INTERFACE(IMidiMapping)
 //		return SingleComponentEffect::queryInterface(iid, obj);
-// }
+//}
 
-static Vst::SpeakerArrangement speakerArrFromPortType(const char *port_type)
+static Vst::SpeakerArrangement speakerArrFromPortType(const char* port_type)
 {
-  static const std::pair<const char *, Vst::SpeakerArrangement> arrangementmap[] = {
-      {CLAP_PORT_MONO, Vst::SpeakerArr::kMono},
-      {CLAP_PORT_STEREO, Vst::SpeakerArr::kStereo},
-      // {CLAP_PORT_AMBISONIC, Vst::SpeakerArr::kAmbi1stOrderACN} <- we need also CLAP_EXT_AMBISONIC
-      // {CLAP_PORT_SURROUND, Vst::SpeakerArr::kStereoSurround}, // add when CLAP_EXT_SURROUND is not draft anymore
-      // TODO: add more PortTypes to Speaker Arrangement
-      {nullptr, Vst::SpeakerArr::kEmpty}};
+  static const std::pair<const char*, Vst::SpeakerArrangement> arrangementmap[] = {{CLAP_PORT_MONO, Vst::SpeakerArr::kMono},
+                                                                                   {CLAP_PORT_STEREO, Vst::SpeakerArr::kStereo},
+                                                                                   // {CLAP_PORT_AMBISONIC, Vst::SpeakerArr::kAmbi1stOrderACN} <- we need also CLAP_EXT_AMBISONIC
+                                                                                   // {CLAP_PORT_SURROUND, Vst::SpeakerArr::kStereoSurround}, // add when CLAP_EXT_SURROUND is not draft anymore
+                                                                                   // TODO: add more PortTypes to Speaker Arrangement
+                                                                                   {nullptr, Vst::SpeakerArr::kEmpty}};
 
   auto p = &arrangementmap[0];
   while (p->first)
@@ -351,7 +320,7 @@ static Vst::SpeakerArrangement speakerArrFromPortType(const char *port_type)
   return Vst::SpeakerArr::kEmpty;
 }
 
-void ClapAsVst3::addAudioBusFrom(const clap_audio_port_info_t *info, bool is_input)
+void ClapAsVst3::addAudioBusFrom(const clap_audio_port_info_t* info, bool is_input)
 {
   auto spk = speakerArrFromPortType(info->port_type);
   auto bustype = (info->flags & CLAP_AUDIO_PORT_IS_MAIN) ? Vst::BusTypes::kMain : Vst::BusTypes::kAux;
@@ -368,7 +337,7 @@ void ClapAsVst3::addAudioBusFrom(const clap_audio_port_info_t *info, bool is_inp
   }
 }
 
-void ClapAsVst3::addMIDIBusFrom(const clap_note_port_info_t *info, uint32_t index, bool is_input)
+void ClapAsVst3::addMIDIBusFrom(const clap_note_port_info_t* info, uint32_t index, bool is_input)
 {
   if ((info->supported_dialects & CLAP_NOTE_DIALECT_MIDI) || (info->supported_dialects & CLAP_NOTE_DIALECT_CLAP))
   {
@@ -403,7 +372,7 @@ void ClapAsVst3::updateAudioBusses()
   }
 }
 
-static std::vector<std::string> split(const std::string &s, char delimiter)
+static std::vector<std::string> split(const std::string& s, char delimiter)
 {
   std::vector<std::string> tokens;
   std::string token;
@@ -415,7 +384,7 @@ static std::vector<std::string> split(const std::string &s, char delimiter)
   return tokens;
 }
 
-Vst::UnitID ClapAsVst3::getOrCreateUnitInfo(const char *modulename)
+Vst::UnitID ClapAsVst3::getOrCreateUnitInfo(const char* modulename)
 {
   // lookup the modulename fast and return the unitID
   auto loc = _moduleToUnit.find(modulename);
@@ -434,7 +403,7 @@ Vst::UnitID ClapAsVst3::getOrCreateUnitInfo(const char *modulename)
   // we will ensure that it is being created one by one
   auto path = split(modulename, '/');
   std::string curpath;
-  Vst::UnitID id = Vst::kRootUnitId; // there is already a root element
+  Vst::UnitID id = Vst::kRootUnitId;  // there is already a root element
   size_t i = 0;
   while (path.size() > i)
   {
@@ -457,7 +426,7 @@ Vst::UnitID ClapAsVst3::getOrCreateUnitInfo(const char *modulename)
       if (VST3::StringConvert::convert(u8name, name))
       {
         Vst::UnitID newid = static_cast<Steinberg::int32>(units.size());
-        Vst::Unit *newunit = new Vst::Unit(name, newid, id); // a new unit without a program list
+        Vst::Unit* newunit = new Vst::Unit(name, newid, id);  // a new unit without a program list
         addUnit(newunit);
         _moduleToUnit[u8name] = newid;
         id = newid;
@@ -470,9 +439,9 @@ Vst::UnitID ClapAsVst3::getOrCreateUnitInfo(const char *modulename)
 
 // Clap::IHost
 
-void ClapAsVst3::setupWrapperSpecifics(const clap_plugin_t *plugin)
+void ClapAsVst3::setupWrapperSpecifics(const clap_plugin_t* plugin)
 {
-  _vst3specifics = (clap_plugin_as_vst3_t *)plugin->get_extension(plugin, CLAP_PLUGIN_AS_VST3);
+  _vst3specifics = (clap_plugin_as_vst3_t*)plugin->get_extension(plugin, CLAP_PLUGIN_AS_VST3);
   if (_vst3specifics)
   {
     _numMidiChannels = _vst3specifics->getNumMIDIChannels(_plugin->_plugin, 0);
@@ -503,10 +472,9 @@ bool ClapAsVst3::checkMIDIDialectSupport()
   return false;
 }
 
-void ClapAsVst3::setupAudioBusses(const clap_plugin_t *plugin, const clap_plugin_audio_ports_t *audioports)
+void ClapAsVst3::setupAudioBusses(const clap_plugin_t* plugin, const clap_plugin_audio_ports_t* audioports)
 {
-  if (!audioports)
-    return;
+  if (!audioports) return;
   auto numAudioInputs = audioports->count(plugin, true);
   auto numAudioOutputs = audioports->count(plugin, false);
 
@@ -530,10 +498,9 @@ void ClapAsVst3::setupAudioBusses(const clap_plugin_t *plugin, const clap_plugin
   }
 }
 
-void ClapAsVst3::setupMIDIBusses(const clap_plugin_t *plugin, const clap_plugin_note_ports_t *noteports)
+void ClapAsVst3::setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_note_ports_t* noteports)
 {
-  if (!noteports)
-    return;
+  if (!noteports) return;
   auto numMIDIInPorts = noteports->count(plugin, true);
   auto numMIDIOutPorts = noteports->count(plugin, false);
 
@@ -563,10 +530,9 @@ void ClapAsVst3::setupMIDIBusses(const clap_plugin_t *plugin, const clap_plugin_
   }
 }
 
-void ClapAsVst3::setupParameters(const clap_plugin_t *plugin, const clap_plugin_params_t *params)
+void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params)
 {
-  if (!params)
-    return;
+  if (!params) return;
 
   // clear the units, they will be rebuild during the parameter conversion
   _moduleToUnit.clear();
@@ -574,8 +540,7 @@ void ClapAsVst3::setupParameters(const clap_plugin_t *plugin, const clap_plugin_
 
   {
     Vst::String128 rootname(STR16("root"));
-    Vst::Unit *newunit =
-        new Vst::Unit(rootname, Vst::kNoParentUnitId, Vst::kRootUnitId); // a new unit without a program list
+    Vst::Unit* newunit = new Vst::Unit(rootname, Vst::kNoParentUnitId, Vst::kRootUnitId);  // a new unit without a program list
     addUnit(newunit);
   }
 
@@ -587,8 +552,7 @@ void ClapAsVst3::setupParameters(const clap_plugin_t *plugin, const clap_plugin_
     clap_param_info info;
     if (params->get_info(plugin, i, &info))
     {
-      auto p =
-          Vst3Parameter::create(&info, [&](const char *modstring) { return this->getOrCreateUnitInfo(modstring); });
+      auto p = Vst3Parameter::create(&info, [&](const char* modstring) { return this->getOrCreateUnitInfo(modstring); });
       // auto p = Vst3Parameter::create(&info,nullptr);
       parameters.addParameter(p);
     }
@@ -620,29 +584,19 @@ void ClapAsVst3::setupParameters(const clap_plugin_t *plugin, const clap_plugin_
 
   // setting up noteexpression
 
-  if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_VOLUME)
-    _noteExpressions.addNoteExpressionType(new Vst::NoteExpressionType(
-        Vst::NoteExpressionTypeIDs::kVolumeTypeID, S16("Volume"), S16("Vol"), S16(""), 0, nullptr, 0));
-  if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_PAN)
+  if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_VOLUME) _noteExpressions.addNoteExpressionType(new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kVolumeTypeID, S16("Volume"), S16("Vol"), S16(""), 0, nullptr, 0));
+  if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_PAN) _noteExpressions.addNoteExpressionType(new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kPanTypeID, S16("Panorama"), S16("Pan"), S16(""), 0, nullptr, 0));
 
-    _noteExpressions.addNoteExpressionType(new Vst::NoteExpressionType(
-        Vst::NoteExpressionTypeIDs::kPanTypeID, S16("Panorama"), S16("Pan"), S16(""), 0, nullptr, 0));
-
-  if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_TUNING)
-    _noteExpressions.addNoteExpressionType(new Vst::NoteExpressionType(
-        Vst::NoteExpressionTypeIDs::kTuningTypeID, S16("Tuning"), S16("Tun"), S16(""), 0, nullptr, 0));
+  if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_TUNING) _noteExpressions.addNoteExpressionType(new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kTuningTypeID, S16("Tuning"), S16("Tun"), S16(""), 0, nullptr, 0));
 
   if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_VIBRATO)
-    _noteExpressions.addNoteExpressionType(new Vst::NoteExpressionType(
-        Vst::NoteExpressionTypeIDs::kVibratoTypeID, S16("Vibrato"), S16("Vibr"), S16(""), 0, nullptr, 0));
+    _noteExpressions.addNoteExpressionType(new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kVibratoTypeID, S16("Vibrato"), S16("Vibr"), S16(""), 0, nullptr, 0));
 
   if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_EXPRESSION)
-    _noteExpressions.addNoteExpressionType(new Vst::NoteExpressionType(
-        Vst::NoteExpressionTypeIDs::kExpressionTypeID, S16("Expression"), S16("Expr"), S16(""), 0, nullptr, 0));
+    _noteExpressions.addNoteExpressionType(new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kExpressionTypeID, S16("Expression"), S16("Expr"), S16(""), 0, nullptr, 0));
 
   if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_BRIGHTNESS)
-    _noteExpressions.addNoteExpressionType(new Vst::NoteExpressionType(
-        Vst::NoteExpressionTypeIDs::kBrightnessTypeID, S16("Brightness"), S16("Brit"), S16(""), 0, nullptr, 0));
+    _noteExpressions.addNoteExpressionType(new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kBrightnessTypeID, S16("Brightness"), S16("Brit"), S16(""), 0, nullptr, 0));
 
   // PRESSURE is handled by IMidiMapping (-> Polypressure)
 }
@@ -657,9 +611,7 @@ void ClapAsVst3::param_rescan(clap_param_rescan_flags flags)
   }
 
   vstflags |= ((flags & CLAP_PARAM_RESCAN_VALUES) ? (uint32_t)Vst::RestartFlags::kParamValuesChanged : 0u);
-  vstflags |= ((flags & CLAP_PARAM_RESCAN_INFO)
-                   ? Vst::RestartFlags::kParamValuesChanged | Vst::RestartFlags::kParamTitlesChanged
-                   : 0u);
+  vstflags |= ((flags & CLAP_PARAM_RESCAN_INFO) ? Vst::RestartFlags::kParamValuesChanged | Vst::RestartFlags::kParamTitlesChanged : 0u);
   if (vstflags != 0)
   {
     // update parameter values in our own tree
@@ -667,7 +619,7 @@ void ClapAsVst3::param_rescan(clap_param_rescan_flags flags)
     for (decltype(len) i = 0; i < len; ++i)
     {
       auto p = parameters.getParameterByIndex(i);
-      auto p1 = static_cast<Vst3Parameter *>(p);
+      auto p1 = static_cast<Vst3Parameter*>(p);
       if (!p1->isMidi)
       {
         double val;
@@ -696,15 +648,11 @@ bool ClapAsVst3::gui_can_resize()
   return (componentHandler2 != nullptr);
 }
 
-bool ClapAsVst3::gui_request_resize(uint32_t width, uint32_t height)
-{
-  return _wrappedview->request_resize(width, height);
-}
+bool ClapAsVst3::gui_request_resize(uint32_t width, uint32_t height) { return _wrappedview->request_resize(width, height); }
 
 bool ClapAsVst3::gui_request_show()
 {
-  if (componentHandler2)
-    return (componentHandler2->requestOpenEditor() == kResultOk);
+  if (componentHandler2) return (componentHandler2->requestOpenEditor() == kResultOk);
   return false;
 }
 
@@ -712,8 +660,7 @@ bool ClapAsVst3::gui_request_hide() { return false; }
 
 void ClapAsVst3::latency_changed()
 {
-  if (this->componentHandler)
-    this->componentHandler->restartComponent(Vst::RestartFlags::kLatencyChanged);
+  if (this->componentHandler) this->componentHandler->restartComponent(Vst::RestartFlags::kLatencyChanged);
 }
 
 void ClapAsVst3::tail_changed()
@@ -724,16 +671,14 @@ void ClapAsVst3::tail_changed()
 
 void ClapAsVst3::mark_dirty()
 {
-  if (componentHandler2)
-    componentHandler2->setDirty(true);
+  if (componentHandler2) componentHandler2->setDirty(true);
 }
 
 void ClapAsVst3::request_callback() { _requestUICallback = true; }
 
 void ClapAsVst3::restartPlugin()
 {
-  if (componentHandler)
-    componentHandler->restartComponent(Vst::RestartFlags::kReloadComponent);
+  if (componentHandler) componentHandler->restartComponent(Vst::RestartFlags::kReloadComponent);
 }
 
 void ClapAsVst3::onBeginEdit(clap_id id)
@@ -741,7 +686,7 @@ void ClapAsVst3::onBeginEdit(clap_id id)
   // receive beginEdit and pass it to the internal queue
   _queueToUI.push(beginEvent(id));
 }
-void ClapAsVst3::onPerformEdit(const clap_event_param_value_t *value)
+void ClapAsVst3::onPerformEdit(const clap_event_param_value_t* value)
 {
   // receive a value change and pass it to the internal queue
   _queueToUI.push(valueEvent(value));
@@ -749,7 +694,7 @@ void ClapAsVst3::onPerformEdit(const clap_event_param_value_t *value)
 void ClapAsVst3::onEndEdit(clap_id id) { _queueToUI.push(endEvent(id)); }
 
 // ext-timer
-bool ClapAsVst3::register_timer(uint32_t period_ms, clap_id *timer_id)
+bool ClapAsVst3::register_timer(uint32_t period_ms, clap_id* timer_id)
 {
   // restrict the timer to 30ms
   if (period_ms < 30)
@@ -760,7 +705,7 @@ bool ClapAsVst3::register_timer(uint32_t period_ms, clap_id *timer_id)
   auto l = _timersObjects.size();
   for (decltype(l) i = 0; i < l; ++i)
   {
-    auto &to = _timersObjects[i];
+    auto& to = _timersObjects[i];
     if (to.period == 0)
     {
       // reuse timer object. Lets choose not to use 0 as a timer id, just
@@ -790,7 +735,7 @@ bool ClapAsVst3::register_timer(uint32_t period_ms, clap_id *timer_id)
 }
 bool ClapAsVst3::unregister_timer(clap_id timer_id)
 {
-  for (auto &to : _timersObjects)
+  for (auto& to : _timersObjects)
   {
     if (to.timer_id == timer_id)
     {
@@ -817,19 +762,19 @@ void ClapAsVst3::onIdle()
   {
     switch (n._type)
     {
-    case queueEvent::type_t::editstart:
-      beginEdit(n._data._id);
+      case queueEvent::type_t::editstart:
+        beginEdit(n._data._id);
+        break;
+      case queueEvent::type_t::editvalue:
+      {
+        auto param = (Vst3Parameter*)(parameters.getParameter(n._data._value.param_id & 0x7FFFFFFF));
+        auto v = n._data._value.value;
+        performEdit(param->getInfo().id, param->asVst3Value(v));
+      }
       break;
-    case queueEvent::type_t::editvalue:
-    {
-      auto param = (Vst3Parameter *)(parameters.getParameter(n._data._value.param_id & 0x7FFFFFFF));
-      auto v = n._data._value.value;
-      performEdit(param->getInfo().id, param->asVst3Value(v));
-    }
-    break;
-    case queueEvent::type_t::editend:
-      endEdit(n._data._id);
-      break;
+      case queueEvent::type_t::editend:
+        endEdit(n._data._id);
+        break;
     }
   }
 
@@ -842,8 +787,7 @@ void ClapAsVst3::onIdle()
     {
       // setup a ProcessAdapter just for flush with no audio
       Clap::ProcessAdapter pa;
-      pa.setupProcessing(_plugin->_plugin, _plugin->_ext._params, audioInputs, audioOutputs, 0, 0, 0, this->parameters,
-                         componentHandler, nullptr, false, false);
+      pa.setupProcessing(_plugin->_plugin, _plugin->_ext._params, audioInputs, audioOutputs, 0, 0, 0, this->parameters, componentHandler, nullptr, false, false);
       pa.flush();
     }
   }
@@ -855,15 +799,15 @@ void ClapAsVst3::onIdle()
   }
 
 #if LIN
-  if (!_iRunLoop) // don't process timers if we have a runloop.
-                  // (but if we don't have a runloop on linux onIdle isn't called
-                  // anyway so consider just not having this at all once we decide
-                  // to do with the no UI case)
+  if (!_iRunLoop)  // don't process timers if we have a runloop.
+                   // (but if we don't have a runloop on linux onIdle isn't called
+                   // anyway so consider just not having this at all once we decide
+                   // to do with the no UI case)
 #endif
   {
     // handling timerobjects
     auto now = os::getTickInMS();
-    for (auto &&to : _timersObjects)
+    for (auto&& to : _timersObjects)
     {
       if (to.period > 0)
       {
@@ -880,9 +824,9 @@ void ClapAsVst3::onIdle()
 #if LIN
 struct TimerHandler : Steinberg::Linux::ITimerHandler, public Steinberg::FObject
 {
-  ClapAsVst3 *_parent{nullptr};
+  ClapAsVst3* _parent{nullptr};
   clap_id _timerId{0};
-  TimerHandler(ClapAsVst3 *parent, clap_id timerId) : _parent(parent), _timerId(timerId) {}
+  TimerHandler(ClapAsVst3* parent, clap_id timerId) : _parent(parent), _timerId(timerId) {}
   void PLUGIN_API onTimer() final { _parent->fireTimer(_timerId); }
   DELEGATE_REFCOUNT(Steinberg::FObject)
   DEFINE_INTERFACES
@@ -892,8 +836,8 @@ struct TimerHandler : Steinberg::Linux::ITimerHandler, public Steinberg::FObject
 
 struct IdleHandler : Steinberg::Linux::ITimerHandler, public Steinberg::FObject
 {
-  ClapAsVst3 *_parent{nullptr};
-  IdleHandler(ClapAsVst3 *parent) : _parent(parent) {}
+  ClapAsVst3* _parent{nullptr};
+  IdleHandler(ClapAsVst3* parent) : _parent(parent) {}
   void PLUGIN_API onTimer() final { _parent->onIdle(); }
   DELEGATE_REFCOUNT(Steinberg::FObject)
   DEFINE_INTERFACES
@@ -901,7 +845,7 @@ struct IdleHandler : Steinberg::Linux::ITimerHandler, public Steinberg::FObject
   END_DEFINE_INTERFACES(Steinberg::FObject)
 };
 
-void ClapAsVst3::attachTimers(Steinberg::Linux::IRunLoop *r)
+void ClapAsVst3::attachTimers(Steinberg::Linux::IRunLoop* r)
 {
   if (r)
   {
@@ -917,7 +861,7 @@ void ClapAsVst3::attachTimers(Steinberg::Linux::IRunLoop *r)
     }
     _iRunLoop->registerTimer(_idleHandler.get(), 30);
 
-    for (auto &t : _timersObjects)
+    for (auto& t : _timersObjects)
     {
       if (!t.handler)
       {
@@ -928,7 +872,7 @@ void ClapAsVst3::attachTimers(Steinberg::Linux::IRunLoop *r)
   }
 }
 
-void ClapAsVst3::detachTimers(Steinberg::Linux::IRunLoop *r)
+void ClapAsVst3::detachTimers(Steinberg::Linux::IRunLoop* r)
 {
   if (r && r == _iRunLoop)
   {
@@ -937,7 +881,7 @@ void ClapAsVst3::detachTimers(Steinberg::Linux::IRunLoop *r)
       _iRunLoop->unregisterTimer(_idleHandler.get());
       _idleHandler.reset();
     }
-    for (auto &t : _timersObjects)
+    for (auto& t : _timersObjects)
     {
       if (t.handler)
       {
@@ -959,7 +903,7 @@ bool ClapAsVst3::register_fd(int fd, clap_posix_fd_flags_t flags)
 bool ClapAsVst3::modify_fd(int fd, clap_posix_fd_flags_t flags)
 {
   bool res{false};
-  for (auto &p : _posixFDObjects)
+  for (auto& p : _posixFDObjects)
   {
     if (p.fd == fd)
     {
@@ -996,23 +940,23 @@ bool ClapAsVst3::unregister_fd(int fd)
 
 struct FDHandler : Steinberg::Linux::IEventHandler, public Steinberg::FObject
 {
-  ClapAsVst3 *_parent{nullptr};
+  ClapAsVst3* _parent{nullptr};
   int _fd{0};
   clap_posix_fd_flags_t _flags{};
-  FDHandler(ClapAsVst3 *parent, int fd, clap_posix_fd_flags_t flags) : _parent(parent), _fd(fd), _flags(flags) {}
+  FDHandler(ClapAsVst3* parent, int fd, clap_posix_fd_flags_t flags) : _parent(parent), _fd(fd), _flags(flags) {}
   void PLUGIN_API onFDIsSet(Steinberg::Linux::FileDescriptor) override { _parent->firePosixFDIsSet(_fd, _flags); }
   DELEGATE_REFCOUNT(Steinberg::FObject)
   DEFINE_INTERFACES
   DEF_INTERFACE(Steinberg::Linux::IEventHandler)
   END_DEFINE_INTERFACES(Steinberg::FObject)
 };
-void ClapAsVst3::attachPosixFD(Steinberg::Linux::IRunLoop *r)
+void ClapAsVst3::attachPosixFD(Steinberg::Linux::IRunLoop* r)
 {
   if (r)
   {
     _iRunLoop = r;
 
-    for (auto &p : _posixFDObjects)
+    for (auto& p : _posixFDObjects)
     {
       if (!p.handler)
       {
@@ -1023,11 +967,11 @@ void ClapAsVst3::attachPosixFD(Steinberg::Linux::IRunLoop *r)
   }
 }
 
-void ClapAsVst3::detachPosixFD(Steinberg::Linux::IRunLoop *r)
+void ClapAsVst3::detachPosixFD(Steinberg::Linux::IRunLoop* r)
 {
   if (r && r == _iRunLoop)
   {
-    for (auto &p : _posixFDObjects)
+    for (auto& p : _posixFDObjects)
     {
       if (p.handler)
       {
@@ -1038,8 +982,5 @@ void ClapAsVst3::detachPosixFD(Steinberg::Linux::IRunLoop *r)
   }
 }
 
-void ClapAsVst3::firePosixFDIsSet(int fd, clap_posix_fd_flags_t flags)
-{
-  _plugin->_ext._posixfd->on_fd(_plugin->_plugin, fd, flags);
-}
+void ClapAsVst3::firePosixFDIsSet(int fd, clap_posix_fd_flags_t flags) { _plugin->_ext._posixfd->on_fd(_plugin->_plugin, fd, flags); }
 #endif

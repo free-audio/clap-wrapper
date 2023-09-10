@@ -2,18 +2,22 @@
 UseTab: Never
 ---
 Language: Cpp
+BasedOnStyle: Google
 IndentWidth: 2
 AlignAfterOpenBracket: Align
 BreakBeforeBraces: Allman
-ColumnLimit: 120
+ColumnLimit: 250 
 SortIncludes: false
 NamespaceIndentation: All
+ReflowComments: false
 ---
 Language: ObjC
+BasedOnStyle: Google
 IndentWidth: 2
 AlignAfterOpenBracket: Align
 BreakBeforeBraces: Allman
-ColumnLimit: 120
+ColumnLimit: 250
 SortIncludes: false
 NamespaceIndentation: All
+ReflowComments: false
 ...

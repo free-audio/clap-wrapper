@@ -10,36 +10,33 @@ namespace Crypto
 {
   class Sha1
   {
-  public:
+   public:
     Sha1() { reset(); }
-    Sha1(const unsigned char *message_array, size_t length)
+    Sha1(const unsigned char* message_array, size_t length)
     {
       reset();
       input(message_array, length);
     }
-    void input(const unsigned char *message_array, size_t length);
+    void input(const unsigned char* message_array, size_t length);
     struct sha1hash hash();
 
-  private:
+   private:
     void reset();
     void processMessageBlock();
     void padmessage();
-    inline uint32_t circularShift(int bits, uint32_t word)
-    {
-      return ((word << bits) & 0xFFFFFFFF) | ((word & 0xFFFFFFFF) >> (32 - bits));
-    }
+    inline uint32_t circularShift(int bits, uint32_t word) { return ((word << bits) & 0xFFFFFFFF) | ((word & 0xFFFFFFFF) >> (32 - bits)); }
 
-    unsigned H[5] = // Message digest buffers
+    unsigned H[5] =  // Message digest buffers
         {0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0};
 
-    uint32_t _lengthLow = 0;   // Message length in bits
-    uint32_t _length_high = 0; // Message length in bits
+    uint32_t _lengthLow = 0;    // Message length in bits
+    uint32_t _length_high = 0;  // Message length in bits
 
-    unsigned char _messageBlock[64] = {0}; // 512-bit message blocks
-    int _messageBlockIndex = 0;            // Index into message block array
+    unsigned char _messageBlock[64] = {0};  // 512-bit message blocks
+    int _messageBlockIndex = 0;             // Index into message block array
 
-    bool _computed = false;  // Is the digest computed?
-    bool _corrupted = false; // Is the message digest corruped?
+    bool _computed = false;   // Is the digest computed?
+    bool _corrupted = false;  // Is the message digest corruped?
   };
 
   void Sha1::reset()
@@ -58,7 +55,7 @@ namespace Crypto
     _corrupted = false;
   }
 
-  void Sha1::input(const unsigned char *message_array, size_t length)
+  void Sha1::input(const unsigned char* message_array, size_t length)
   {
     if (length == 0)
     {
@@ -81,14 +78,14 @@ namespace Crypto
       _messageBlock[_messageBlockIndex++] = (*message_array & 0xFF);
 
       _lengthLow += 8;
-      _lengthLow &= 0xFFFFFFFF; // Force it to 32 bits
+      _lengthLow &= 0xFFFFFFFF;  // Force it to 32 bits
       if (_lengthLow == 0)
       {
         _length_high++;
-        _length_high &= 0xFFFFFFFF; // Force it to 32 bits
+        _length_high &= 0xFFFFFFFF;  // Force it to 32 bits
         if (_length_high == 0)
         {
-          _corrupted = true; // Message is too long
+          _corrupted = true;  // Message is too long
         }
       }
 
@@ -105,10 +102,10 @@ namespace Crypto
   {
     const unsigned K[] = {// Constants defined for SHA-1
                           0x5A827999, 0x6ED9EBA1, 0x8F1BBCDC, 0xCA62C1D6};
-    int t;                  // Loop counter
-    unsigned temp;          // Temporary word value
-    unsigned W[80];         // Word sequence
-    unsigned A, B, C, D, E; // Word buffers
+    int t;                   // Loop counter
+    unsigned temp;           // Temporary word value
+    unsigned W[80];          // Word sequence
+    unsigned A, B, C, D, E;  // Word buffers
 
     /*
      *  Initialize the first 16 words in the array W
@@ -188,10 +185,10 @@ namespace Crypto
   void Sha1::padmessage()
   {
     /*
-     *  Check to see if the current message block is too small to hold
-     *  the initial padding bits and length.  If so, we will pad the
-     *  block, process it, and then continue padding into a second block.
-     */
+       *  Check to see if the current message block is too small to hold
+       *  the initial padding bits and length.  If so, we will pad the
+       *  block, process it, and then continue padding into a second block.
+       */
     if (_messageBlockIndex > 55)
     {
       _messageBlock[_messageBlockIndex++] = 0x80;
@@ -268,9 +265,9 @@ namespace Crypto
     return r;
   }
 
-  struct sha1hash sha1(const char *text, size_t len)
+  struct sha1hash sha1(const char* text, size_t len)
   {
-    Sha1 x((const unsigned char *)(text), len);
+    Sha1 x((const unsigned char*)(text), len);
     return x.hash();
   }
 
@@ -299,9 +296,8 @@ namespace Crypto
   uuid_object NameSpace_DNS = {/* 6ba7b810-9dad-11d1-80b4-00c04fd430c8 */
                                0x6ba7b810, 0x9dad, 0x11d1, 0x80, 0xb4, {0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8}};
 
-  uuid_object create_sha1_guid_from_name(const char *name, size_t namelen)
+  uuid_object create_sha1_guid_from_name(const char* name, size_t namelen)
   {
-
     uuid_object uuid;
 
     /*put name space ID in network byte order so it hashes the same
@@ -315,8 +311,8 @@ namespace Crypto
     net_nsid.time_hi_and_version = swapOrder16(net_nsid.time_hi_and_version);
 
     Sha1 c;
-    c.input((const uint8_t *)&net_nsid, sizeof(net_nsid));
-    c.input((const uint8_t *)name, namelen);
+    c.input((const uint8_t*)&net_nsid, sizeof(net_nsid));
+    c.input((const uint8_t*)name, namelen);
     auto hash = c.hash();
 
     /* convert UUID to local byte order */
@@ -334,4 +330,4 @@ namespace Crypto
 
     return uuid;
   }
-} // namespace Crypto
+}  // namespace Crypto

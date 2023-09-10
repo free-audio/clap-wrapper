@@ -1,15 +1,15 @@
 #pragma once
 
 /*
-                CLAP as VST3
+		CLAP as VST3
 
     Copyright (c) 2022 Timo Kaluza (defiantnerd)
 
-                This file is part of the clap-wrappers project which is released under MIT License.
-                See file LICENSE or go to https://github.com/free-audio/clap-wrapper for full license details.
+		This file is part of the clap-wrappers project which is released under MIT License.
+		See file LICENSE or go to https://github.com/free-audio/clap-wrapper for full license details.
 
-                This VST3 opens a CLAP plugin and matches all corresponding VST3 calls to it.
-                For the VST3 Host it is a VST3 plugin, for the CLAP plugin it is a CLAP host.
+		This VST3 opens a CLAP plugin and matches all corresponding VST3 calls to it.
+		For the VST3 Host it is a VST3 plugin, for the CLAP plugin it is a CLAP host.
 
 */
 
@@ -44,7 +44,7 @@ namespace Clap
 
 class queueEvent
 {
-public:
+ public:
   typedef enum class type
   {
     editstart,
@@ -61,7 +61,7 @@ public:
 
 class beginEvent : public queueEvent
 {
-public:
+ public:
   beginEvent(clap_id id) : queueEvent()
   {
     this->_type = type::editstart;
@@ -71,7 +71,7 @@ public:
 
 class endEvent : public queueEvent
 {
-public:
+ public:
   endEvent(clap_id id) : queueEvent()
   {
     this->_type = type::editend;
@@ -81,61 +81,48 @@ public:
 
 class valueEvent : public queueEvent
 {
-public:
-  valueEvent(const clap_event_param_value_t *value) : queueEvent()
+ public:
+  valueEvent(const clap_event_param_value_t* value) : queueEvent()
   {
     _type = type::editvalue;
     _data._value = *value;
   }
 };
 
-class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
-                   public Steinberg::Vst::IMidiMapping,
-                   public Steinberg::Vst::INoteExpressionController,
-                   public Clap::IHost,
-                   public Clap::IAutomation,
-                   public os::IPlugObject
+class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect, public Steinberg::Vst::IMidiMapping, public Steinberg::Vst::INoteExpressionController, public Clap::IHost, public Clap::IAutomation, public os::IPlugObject
 {
-public:
+ public:
   using super = Steinberg::Vst::SingleComponentEffect;
 
-  static FUnknown *createInstance(void *context);
+  static FUnknown* createInstance(void* context);
 
-  ClapAsVst3(Clap::Library *lib, int number, void *context)
-      : super(), Steinberg::Vst::IMidiMapping(), Steinberg::Vst::INoteExpressionController(), _library(lib),
-        _libraryIndex(number), _creationcontext(context)
-  {
-  }
+  ClapAsVst3(Clap::Library* lib, int number, void* context) : super(), Steinberg::Vst::IMidiMapping(), Steinberg::Vst::INoteExpressionController(), _library(lib), _libraryIndex(number), _creationcontext(context) {}
 
   //---from IComponent-----------------------
-  tresult PLUGIN_API initialize(FUnknown *context) override;
+  tresult PLUGIN_API initialize(FUnknown* context) override;
   tresult PLUGIN_API terminate() override;
   tresult PLUGIN_API setActive(TBool state) override;
-  tresult PLUGIN_API process(Vst::ProcessData &data) override;
+  tresult PLUGIN_API process(Vst::ProcessData& data) override;
   tresult PLUGIN_API canProcessSampleSize(int32 symbolicSampleSize) override;
-  tresult PLUGIN_API setState(IBStream *state) override;
-  tresult PLUGIN_API getState(IBStream *state) override;
+  tresult PLUGIN_API setState(IBStream* state) override;
+  tresult PLUGIN_API getState(IBStream* state) override;
   uint32 PLUGIN_API getLatencySamples() override;
   uint32 PLUGIN_API getTailSamples() override;
-  tresult PLUGIN_API setupProcessing(Vst::ProcessSetup &newSetup) override;
+  tresult PLUGIN_API setupProcessing(Vst::ProcessSetup& newSetup) override;
   tresult PLUGIN_API setProcessing(TBool state) override;
-  tresult PLUGIN_API setBusArrangements(Vst::SpeakerArrangement *inputs, int32 numIns, Vst::SpeakerArrangement *outputs,
-                                        int32 numOuts) override;
-  tresult PLUGIN_API getBusArrangement(Vst::BusDirection dir, int32 index, Vst::SpeakerArrangement &arr) override;
+  tresult PLUGIN_API setBusArrangements(Vst::SpeakerArrangement* inputs, int32 numIns, Vst::SpeakerArrangement* outputs, int32 numOuts) override;
+  tresult PLUGIN_API getBusArrangement(Vst::BusDirection dir, int32 index, Vst::SpeakerArrangement& arr) override;
   tresult PLUGIN_API activateBus(Vst::MediaType type, Vst::BusDirection dir, int32 index, TBool state) override;
 
   //----from IEditControllerEx1--------------------------------
-  IPlugView *PLUGIN_API createView(FIDString name) override;
+  IPlugView* PLUGIN_API createView(FIDString name) override;
   /** Gets for a given paramID and normalized value its associated string representation. */
-  tresult PLUGIN_API getParamStringByValue(Vst::ParamID id, Vst::ParamValue valueNormalized /*in*/,
-                                           Vst::String128 string /*out*/) override;
+  tresult PLUGIN_API getParamStringByValue(Vst::ParamID id, Vst::ParamValue valueNormalized /*in*/, Vst::String128 string /*out*/) override;
   /** Gets for a given paramID and string its normalized value. */
-  tresult PLUGIN_API getParamValueByString(Vst::ParamID id, Vst::TChar *string /*in*/,
-                                           Vst::ParamValue &valueNormalized /*out*/) override;
+  tresult PLUGIN_API getParamValueByString(Vst::ParamID id, Vst::TChar* string /*in*/, Vst::ParamValue& valueNormalized /*out*/) override;
 
   //----from IMidiMapping--------------------------------------
-  tresult PLUGIN_API getMidiControllerAssignment(int32 busIndex, int16 channel, Vst::CtrlNumber midiControllerNumber,
-                                                 Vst::ParamID &id /*out*/) override;
+  tresult PLUGIN_API getMidiControllerAssignment(int32 busIndex, int16 channel, Vst::CtrlNumber midiControllerNumber, Vst::ParamID& id /*out*/) override;
 
 #if 1
   //----from INoteExpressionController-------------------------
@@ -143,18 +130,13 @@ public:
   int32 PLUGIN_API getNoteExpressionCount(int32 busIndex, int16 channel) override;
 
   /** Returns note change type info. */
-  tresult PLUGIN_API getNoteExpressionInfo(int32 busIndex, int16 channel, int32 noteExpressionIndex,
-                                           Vst::NoteExpressionTypeInfo &info /*out*/) override;
+  tresult PLUGIN_API getNoteExpressionInfo(int32 busIndex, int16 channel, int32 noteExpressionIndex, Vst::NoteExpressionTypeInfo& info /*out*/) override;
 
   /** Gets a user readable representation of the normalized note change value. */
-  tresult PLUGIN_API getNoteExpressionStringByValue(int32 busIndex, int16 channel, Vst::NoteExpressionTypeID id,
-                                                    Vst::NoteExpressionValue valueNormalized /*in*/,
-                                                    Vst::String128 string /*out*/) override;
+  tresult PLUGIN_API getNoteExpressionStringByValue(int32 busIndex, int16 channel, Vst::NoteExpressionTypeID id, Vst::NoteExpressionValue valueNormalized /*in*/, Vst::String128 string /*out*/) override;
 
   /** Converts the user readable representation to the normalized note change value. */
-  tresult PLUGIN_API getNoteExpressionValueByString(int32 busIndex, int16 channel, Vst::NoteExpressionTypeID id,
-                                                    const Vst::TChar *string /*in*/,
-                                                    Vst::NoteExpressionValue &valueNormalized /*out*/) override;
+  tresult PLUGIN_API getNoteExpressionValueByString(int32 busIndex, int16 channel, Vst::NoteExpressionTypeID id, const Vst::TChar* string /*in*/, Vst::NoteExpressionValue& valueNormalized /*out*/) override;
 #endif
   //---Interface--------------------------------------------------------------------------
   OBJ_METHODS(ClapAsVst3, SingleComponentEffect)
@@ -162,8 +144,7 @@ public:
   // since the macro above opens a local function, this code is being executed during QueryInterface() :)
   if (::Steinberg::FUnknownPrivate::iidEqual(iid, IMidiMapping::iid))
   {
-    // when queried for the IMididMapping interface, check if the CLAP supports MIDI dialect on the MIDI Input busses
-    // and only return IMidiMapping then
+    // when queried for the IMididMapping interface, check if the CLAP supports MIDI dialect on the MIDI Input busses and only return IMidiMapping then
     if (_useIMidiMapping)
     {
       DEF_INTERFACE(IMidiMapping)
@@ -176,11 +157,11 @@ public:
 
   //---Clap::IHost------------------------------------------------------------------------
 
-  void setupWrapperSpecifics(const clap_plugin_t *plugin) override;
+  void setupWrapperSpecifics(const clap_plugin_t* plugin) override;
 
-  void setupAudioBusses(const clap_plugin_t *plugin, const clap_plugin_audio_ports_t *audioports) override;
-  void setupMIDIBusses(const clap_plugin_t *plugin, const clap_plugin_note_ports_t *noteports) override;
-  void setupParameters(const clap_plugin_t *plugin, const clap_plugin_params_t *params) override;
+  void setupAudioBusses(const clap_plugin_t* plugin, const clap_plugin_audio_ports_t* audioports) override;
+  void setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_note_ports_t* noteports) override;
+  void setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params) override;
 
   void param_rescan(clap_param_rescan_flags flags) override;
   void param_clear(clap_id param, clap_param_clear_flags flags) override;
@@ -202,7 +183,7 @@ public:
   void request_callback() override;
 
   // clap_timer support
-  bool register_timer(uint32_t period_ms, clap_id *timer_id) override;
+  bool register_timer(uint32_t period_ms, clap_id* timer_id) override;
   bool unregister_timer(clap_id timer_id) override;
 
 #if LIN
@@ -211,37 +192,37 @@ public:
   bool unregister_fd(int fd) override;
 #endif
 
-public:
+ public:
   //----from IPlugObject
   void onIdle() override;
 
-private:
+ private:
   // from Clap::IAutomation
   void onBeginEdit(clap_id id) override;
-  void onPerformEdit(const clap_event_param_value_t *value) override;
+  void onPerformEdit(const clap_event_param_value_t* value) override;
   void onEndEdit(clap_id id) override;
 
   // information function to enable/disable the IMIDIMapping interface
   bool checkMIDIDialectSupport();
 
-private:
+ private:
   // helper functions
-  void addAudioBusFrom(const clap_audio_port_info_t *info, bool is_input);
-  void addMIDIBusFrom(const clap_note_port_info_t *info, uint32_t index, bool is_input);
+  void addAudioBusFrom(const clap_audio_port_info_t* info, bool is_input);
+  void addMIDIBusFrom(const clap_note_port_info_t* info, uint32_t index, bool is_input);
   void updateAudioBusses();
 
-  Vst::UnitID getOrCreateUnitInfo(const char *modulename);
+  Vst::UnitID getOrCreateUnitInfo(const char* modulename);
   std::map<std::string, Vst::UnitID> _moduleToUnit;
 
-  Clap::Library *_library = nullptr;
+  Clap::Library* _library = nullptr;
   int _libraryIndex = 0;
   std::shared_ptr<Clap::Plugin> _plugin;
-  ClapHostExtensions *_hostextensions = nullptr;
-  clap_plugin_as_vst3_t *_vst3specifics = nullptr;
-  Clap::ProcessAdapter *_processAdapter = nullptr;
-  WrappedView *_wrappedview = nullptr;
+  ClapHostExtensions* _hostextensions = nullptr;
+  clap_plugin_as_vst3_t* _vst3specifics = nullptr;
+  Clap::ProcessAdapter* _processAdapter = nullptr;
+  WrappedView* _wrappedview = nullptr;
 
-  void *_creationcontext; // context from the CLAP library
+  void* _creationcontext;  // context from the CLAP library
 
   // plugin state
   bool _active = false;
@@ -255,7 +236,7 @@ private:
 
   // for IMidiMapping
   bool _useIMidiMapping = false;
-  Vst::ParamID _IMidiMappingIDs[16][Vst::ControllerNumbers::kCountCtrlNumber] = {}; // 16 MappingIDs for 16 Channels
+  Vst::ParamID _IMidiMappingIDs[16][Vst::ControllerNumbers::kCountCtrlNumber] = {};  // 16 MappingIDs for 16 Channels
   bool _IMidiMappingEasy = true;
   uint8_t _numMidiChannels = 16;
   uint32_t _largestBlocksize = 0;
@@ -263,7 +244,7 @@ private:
   // for timer
   struct TimerObject
   {
-    uint32_t period = 0; // if period is 0 the entry is unused (and can be reused)
+    uint32_t period = 0;  // if period is 0 the entry is unused (and can be reused)
     uint64_t nexttick = 0;
     clap_id timer_id = 0;
 #if LIN
@@ -275,9 +256,9 @@ private:
 #if LIN
   Steinberg::IPtr<Steinberg::Linux::ITimerHandler> _idleHandler;
 
-  void attachTimers(Steinberg::Linux::IRunLoop *);
-  void detachTimers(Steinberg::Linux::IRunLoop *);
-  Steinberg::Linux::IRunLoop *_iRunLoop{nullptr};
+  void attachTimers(Steinberg::Linux::IRunLoop*);
+  void detachTimers(Steinberg::Linux::IRunLoop*);
+  Steinberg::Linux::IRunLoop* _iRunLoop{nullptr};
 #endif
 
 #if LIN
@@ -291,15 +272,15 @@ private:
   };
   std::vector<PosixFDObject> _posixFDObjects;
 
-  void attachPosixFD(Steinberg::Linux::IRunLoop *);
-  void detachPosixFD(Steinberg::Linux::IRunLoop *);
+  void attachPosixFD(Steinberg::Linux::IRunLoop*);
+  void detachPosixFD(Steinberg::Linux::IRunLoop*);
 #endif
 
-public:
+ public:
   void fireTimer(clap_id timer_id);
   void firePosixFDIsSet(int fd, clap_posix_fd_flags_t flags);
 
-private:
+ private:
   // INoteExpression
   Vst::NoteExpressionTypeContainer _noteExpressions;
 

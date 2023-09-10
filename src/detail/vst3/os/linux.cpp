@@ -1,12 +1,12 @@
 /**
- *		the Linux helper
- *
- *		provides services for all plugin instances regarding Linux
- *		- global timer object
- *		- dispatch to UI thread
- *		- get binary name
- *
- */
+*		the Linux helper
+* 
+*		provides services for all plugin instances regarding Linux
+*		- global timer object
+*		- dispatch to UI thread
+*		- get binary name
+* 
+*/
 
 #include "public.sdk/source/main/moduleinit.h"
 #include "osutil.h"
@@ -17,19 +17,19 @@
 
 namespace os
 {
-  void log(const char *text) { fprintf(stderr, "%s\n", text); }
+  void log(const char* text) { fprintf(stderr, "%s\n", text); }
 
   class LinuxHelper
   {
-  public:
+   public:
     void init();
     void terminate();
-    void attach(IPlugObject *plugobject);
-    void detach(IPlugObject *plugobject);
+    void attach(IPlugObject* plugobject);
+    void detach(IPlugObject* plugobject);
 
-  private:
+   private:
     void executeDefered();
-    std::vector<IPlugObject *> _plugs;
+    std::vector<IPlugObject*> _plugs;
   } gLinuxHelper;
 
 #if 0
@@ -79,7 +79,7 @@ namespace os
   static std::string getModuleName()
   {
     Dl_info info;
-    if (dladdr((void *)getModuleName, &info))
+    if (dladdr((void*)getModuleName, &info))
     {
       return info.dli_fname;
     }
@@ -163,22 +163,19 @@ namespace os
       p->onIdle();
     }
   }
-  void LinuxHelper::attach(IPlugObject *plugobject) { _plugs.push_back(plugobject); }
+  void LinuxHelper::attach(IPlugObject* plugobject) { _plugs.push_back(plugobject); }
 
-  void LinuxHelper::detach(IPlugObject *plugobject)
-  {
-    _plugs.erase(std::remove(_plugs.begin(), _plugs.end(), plugobject), _plugs.end());
-  }
+  void LinuxHelper::detach(IPlugObject* plugobject) { _plugs.erase(std::remove(_plugs.begin(), _plugs.end(), plugobject), _plugs.end()); }
 
-} // namespace os
+}  // namespace os
 
 namespace os
 {
   // [UI Thread]
-  void attach(IPlugObject *plugobject) { gLinuxHelper.attach(plugobject); }
+  void attach(IPlugObject* plugobject) { gLinuxHelper.attach(plugobject); }
 
   // [UI Thread]
-  void detach(IPlugObject *plugobject) { gLinuxHelper.detach(plugobject); }
+  void detach(IPlugObject* plugobject) { gLinuxHelper.detach(plugobject); }
 
   uint64_t getTickInMS() { return clock(); }
-} // namespace os
+}  // namespace os

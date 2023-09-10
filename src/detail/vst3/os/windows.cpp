@@ -1,13 +1,13 @@
 #define NOMINMAX 1
 
 /**
- *		the windows helper
- *
- *		provides services for all plugin instances regarding Windows
- *		- global timer object
- *		- dispatch to UI thread
- *
- */
+*		the windows helper
+* 
+*		provides services for all plugin instances regarding Windows
+*		- global timer object
+*		- dispatch to UI thread
+* 
+*/
 
 #include <Windows.h>
 #include <tchar.h>
@@ -21,7 +21,7 @@ extern HINSTANCE ghInst;
 namespace os
 {
 
-  void log(const char *text)
+  void log(const char* text)
   {
     OutputDebugStringA(text);
     OutputDebugStringA("\n");
@@ -29,24 +29,24 @@ namespace os
 
   class WindowsHelper
   {
-  public:
+   public:
     void init();
     void terminate();
-    void attach(IPlugObject *plugobject);
-    void detach(IPlugObject *plugobject);
+    void attach(IPlugObject* plugobject);
+    void detach(IPlugObject* plugobject);
 
-  private:
+   private:
     void executeDefered();
     static LRESULT Wndproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
     HWND _msgWin = 0;
     UINT_PTR _timer = 0;
-    std::vector<IPlugObject *> _plugs;
+    std::vector<IPlugObject*> _plugs;
   } gWindowsHelper;
 
   static Steinberg::ModuleInitializer createMessageWindow([] { gWindowsHelper.init(); });
   static Steinberg::ModuleTerminator dropMessageWindow([] { gWindowsHelper.terminate(); });
 
-  static char *getModuleNameA()
+  static char* getModuleNameA()
   {
     static char modulename[2048];
     HMODULE selfmodule;
@@ -57,7 +57,7 @@ namespace os
     return modulename;
   }
 
-  static TCHAR *getModuleName()
+  static TCHAR* getModuleName()
   {
     static TCHAR modulename[2048];
     HMODULE selfmodule;
@@ -97,15 +97,15 @@ namespace os
   {
     switch (msg)
     {
-    case WM_USER + 1:
-      return 1;
-      break;
-    case WM_TIMER:
-      gWindowsHelper.executeDefered();
-      return 1;
-      break;
-    default:
-      return ::DefWindowProc(hwnd, msg, wParam, lParam);
+      case WM_USER + 1:
+        return 1;
+        break;
+      case WM_TIMER:
+        gWindowsHelper.executeDefered();
+        return 1;
+        break;
+      default:
+        return ::DefWindowProc(hwnd, msg, wParam, lParam);
     }
   }
 
@@ -134,22 +134,18 @@ namespace os
 
   void WindowsHelper::executeDefered()
   {
-    for (auto &&p : _plugs)
-      p->onIdle();
+    for (auto&& p : _plugs) p->onIdle();
   }
 
-  void WindowsHelper::attach(IPlugObject *plugobject) { _plugs.push_back(plugobject); }
+  void WindowsHelper::attach(IPlugObject* plugobject) { _plugs.push_back(plugobject); }
 
-  void WindowsHelper::detach(IPlugObject *plugobject)
-  {
-    _plugs.erase(std::remove(_plugs.begin(), _plugs.end(), plugobject), _plugs.end());
-  }
+  void WindowsHelper::detach(IPlugObject* plugobject) { _plugs.erase(std::remove(_plugs.begin(), _plugs.end(), plugobject), _plugs.end()); }
 
   // [UI Thread]
-  void attach(IPlugObject *plugobject) { gWindowsHelper.attach(plugobject); }
+  void attach(IPlugObject* plugobject) { gWindowsHelper.attach(plugobject); }
 
   // [UI Thread]
-  void detach(IPlugObject *plugobject) { gWindowsHelper.detach(plugobject); }
+  void detach(IPlugObject* plugobject) { gWindowsHelper.detach(plugobject); }
 
   uint64_t getTickInMS() { return GetTickCount64(); }
-} // namespace os
+}  // namespace os

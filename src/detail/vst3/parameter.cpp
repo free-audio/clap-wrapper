@@ -5,16 +5,14 @@
 
 using namespace Steinberg;
 
-Vst3Parameter::Vst3Parameter(const Steinberg::Vst::ParameterInfo &vst3info, const clap_param_info_t *clapinfo)
-    : Steinberg::Vst::Parameter(vst3info), id(clapinfo->id), cookie(clapinfo->cookie), min_value(clapinfo->min_value),
-      max_value(clapinfo->max_value)
+Vst3Parameter::Vst3Parameter(const Steinberg::Vst::ParameterInfo& vst3info, const clap_param_info_t* clapinfo)
+    : Steinberg::Vst::Parameter(vst3info), id(clapinfo->id), cookie(clapinfo->cookie), min_value(clapinfo->min_value), max_value(clapinfo->max_value)
 {
   //
 }
 
-Vst3Parameter::Vst3Parameter(const Steinberg::Vst::ParameterInfo &vst3info, uint8_t bus, uint8_t channel, uint8_t cc)
-    : Steinberg::Vst::Parameter(vst3info), id(vst3info.id), cookie(nullptr), min_value(0), max_value(127), isMidi(true),
-      channel(channel), controller(cc)
+Vst3Parameter::Vst3Parameter(const Steinberg::Vst::ParameterInfo& vst3info, uint8_t bus, uint8_t channel, uint8_t cc)
+    : Steinberg::Vst::Parameter(vst3info), id(vst3info.id), cookie(nullptr), min_value(0), max_value(127), isMidi(true), channel(channel), controller(cc)
 {
   if (cc == Vst::ControllerNumbers::kPitchBend)
   {
@@ -44,12 +42,11 @@ bool Vst3Parameter::fromString(const Steinberg::Vst::TChar* string, Steinberg::V
 }
 #endif
 
-Vst3Parameter *Vst3Parameter::create(const clap_param_info_t *info,
-                                     std::function<Steinberg::Vst::UnitID(const char *modulepath)> getUnitId)
+Vst3Parameter* Vst3Parameter::create(const clap_param_info_t* info, std::function<Steinberg::Vst::UnitID(const char* modulepath)> getUnitId)
 {
   Vst::ParameterInfo v;
 
-  v.id = info->id & 0x7FFFFFFF; // why ever SMTG does not want the highest bit to be set
+  v.id = info->id & 0x7FFFFFFF;  // why ever SMTG does not want the highest bit to be set
 
   // the long name might contain the module name
   // this will change when we split the module to units
@@ -78,24 +75,21 @@ Vst3Parameter *Vst3Parameter::create(const clap_param_info_t *info,
   str8ToStr16(v.title, fullname.c_str(), str16BufferSize(v.title));
   // TODO: string shrink algorithm shortening the string a bit
   str8ToStr16(v.shortTitle, info->name, str16BufferSize(v.shortTitle));
-  v.units[0] = 0; // unfortunately, CLAP has no unit for parameter values
+  v.units[0] = 0;  // unfortunately, CLAP has no unit for parameter values
   v.unitId = unit;
 
   /*
-                  In the VST3 SDK the normalized value [0, 1] to discrete value and its inverse function discrete value
-     to normalized value is defined like this:
+			In the VST3 SDK the normalized value [0, 1] to discrete value and its inverse function discrete value to normalized value is defined like this:
 
-                  Normalize:
-                  double normalized = discreteValue / (double) stepCount;
+			Normalize:
+			double normalized = discreteValue / (double) stepCount;
 
-                  Denormalize :
-                  int discreteValue = min (stepCount, normalized * (stepCount + 1));
-  */
+			Denormalize :
+			int discreteValue = min (stepCount, normalized * (stepCount + 1));
+	*/
 
-  v.flags = Vst::ParameterInfo::kNoFlags | ((info->flags & CLAP_PARAM_IS_HIDDEN) ? Vst::ParameterInfo::kIsHidden : 0) |
-            ((info->flags & CLAP_PARAM_IS_BYPASS) ? Vst::ParameterInfo::kIsBypass : 0) |
-            ((info->flags & CLAP_PARAM_IS_AUTOMATABLE) ? Vst::ParameterInfo::kCanAutomate : 0) |
-            ((info->flags & CLAP_PARAM_IS_READONLY) ? Vst::ParameterInfo::kIsReadOnly : 0)
+  v.flags = Vst::ParameterInfo::kNoFlags | ((info->flags & CLAP_PARAM_IS_HIDDEN) ? Vst::ParameterInfo::kIsHidden : 0) | ((info->flags & CLAP_PARAM_IS_BYPASS) ? Vst::ParameterInfo::kIsBypass : 0) |
+            ((info->flags & CLAP_PARAM_IS_AUTOMATABLE) ? Vst::ParameterInfo::kCanAutomate : 0) | ((info->flags & CLAP_PARAM_IS_READONLY) ? Vst::ParameterInfo::kIsReadOnly : 0)
       // | ((info->flags & CLAP_PARAM_IS_READONLY) ? Vst::ParameterInfo::kIsReadOnly : 0)
       ;
 
@@ -111,11 +105,11 @@ Vst3Parameter *Vst3Parameter::create(const clap_param_info_t *info,
     v.stepCount = 0;
 
   auto result = new Vst3Parameter(v, info);
-  result->addRef(); // ParameterContainer doesn't add the ref -> but we don't have copies
+  result->addRef();  // ParameterContainer doesn't add the ref -> but we don't have copies
   return result;
 }
 
-Vst3Parameter *Vst3Parameter::create(uint8_t bus, uint8_t channel, uint8_t cc, Vst::ParamID id)
+Vst3Parameter* Vst3Parameter::create(uint8_t bus, uint8_t channel, uint8_t cc, Vst::ParamID id)
 {
   Vst::ParameterInfo v;
 
@@ -137,7 +131,7 @@ Vst3Parameter *Vst3Parameter::create(uint8_t bus, uint8_t channel, uint8_t cc, V
   str8ToStr16(v.title, fullname.c_str(), str16BufferSize(v.title));
   // TODO: string shrink algorithm shortening the string a bit
   str8ToStr16(v.shortTitle, name, str16BufferSize(v.shortTitle));
-  v.units[0] = 0; // unfortunately, CLAP has no unit for parameter values
+  v.units[0] = 0;  // unfortunately, CLAP has no unit for parameter values
   v.unitId = channel + 1;
 
   v.defaultNormalizedValue = 0;
@@ -157,6 +151,6 @@ Vst3Parameter *Vst3Parameter::create(uint8_t bus, uint8_t channel, uint8_t cc, V
   }
 
   auto result = new Vst3Parameter(v, bus, channel, cc);
-  result->addRef(); // ParameterContainer doesn't add the ref -> but we don't have copies
+  result->addRef();  // ParameterContainer doesn't add the ref -> but we don't have copies
   return result;
 }

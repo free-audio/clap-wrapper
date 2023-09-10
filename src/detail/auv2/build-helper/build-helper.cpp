@@ -58,8 +58,7 @@ struct auInfo
   }
 };
 
-bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname, std::string &manu,
-                        std::string &manuName, std::vector<auInfo> &units)
+bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname, std::string &manu, std::string &manuName, std::vector<auInfo> &units)
 {
   Clap::Library loader;
   if (!loader.load(clapfile.c_str()))
@@ -101,7 +100,7 @@ bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname
     {
       auto q = idHash & ((1 << 6) - 1);
       stH += encoder[q];
-      idHash = idHash >> 9; // mix it up a bit
+      idHash = idHash >> 9;  // mix it up a bit
     }
 
     u.subt = stH;
@@ -149,8 +148,7 @@ bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname
 
 int main(int argc, char **argv)
 {
-  if (argc < 2)
-    return 1;
+  if (argc < 2) return 1;
 
   std::cout << "clap-wrapper: auv2 configuration tool starting\n";
 
@@ -244,8 +242,7 @@ int main(int argc, char **argv)
   int idx{0};
   for (const auto &u : units)
   {
-    std::cout << "    + " << u.name << " (" << u.type << "/" << u.subt << ") by " << u.manunm << " (" << u.manu << ")"
-              << std::endl;
+    std::cout << "    + " << u.name << " (" << u.type << "/" << u.subt << ") by " << u.manunm << " (" << u.manu << ")" << std::endl;
     u.writePListFragment(of, idx++);
   }
   of << "    </array>\n";

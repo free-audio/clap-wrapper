@@ -32,10 +32,8 @@ namespace Clap
     char *val;
     size_t len;
     auto err = _dupenv_s(&val, &len, varname);
-    if (err)
-      return std::string();
-    if (val == nullptr)
-      return std::string();
+    if (err) return std::string();
+    if (val == nullptr) return std::string();
     std::string result(val);
     free(val);
     return result;
@@ -92,8 +90,7 @@ namespace Clap
         cp = cp.substr(pos + 1);
         res.emplace_back(fs::path{item});
       }
-      if (cp.size())
-        res.emplace_back(fs::path{cp});
+      if (cp.size()) res.emplace_back(fs::path{cp});
     }
 
     return res;
@@ -152,12 +149,10 @@ namespace Clap
     int *iptr;
 
     _handle = dlopen(name, RTLD_LOCAL | RTLD_LAZY);
-    if (!_handle)
-      return false;
+    if (!_handle) return false;
 
     iptr = (int *)dlsym(_handle, "clap_entry");
-    if (!iptr)
-      return false;
+    if (!iptr) return false;
 
     _pluginEntry = (const clap_plugin_entry_t *)iptr;
     setupPluginsFromPluginEntry(name);
@@ -196,10 +191,8 @@ namespace Clap
       if (_pluginEntry->init(path))
       {
         _pluginFactory = static_cast<const clap_plugin_factory *>(_pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_ID));
-        _pluginFactoryVst3Info =
-            static_cast<const clap_plugin_factory_as_vst3 *>(_pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_VST3));
-        _pluginFactoryAUv2Info =
-            static_cast<const clap_plugin_factory_as_auv2 *>(_pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_AUV2));
+        _pluginFactoryVst3Info = static_cast<const clap_plugin_factory_as_vst3 *>(_pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_VST3));
+        _pluginFactoryAUv2Info = static_cast<const clap_plugin_factory_as_auv2 *>(_pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_AUV2));
 
         // detect plugins that do not check the CLAP_PLUGIN_FACTORY_ID
         if ((void *)_pluginFactory == (void *)_pluginFactoryVst3Info)
@@ -261,7 +254,7 @@ namespace Clap
         auto liptr = (int *)dlsym(_handle, "clap_entry");
         if (liptr)
         {
-          _handle = lhandle; // as a result the Library dtor will dlclose me
+          _handle = lhandle;  // as a result the Library dtor will dlclose me
           _pluginEntry = (const clap_plugin_entry_t *)liptr;
           _selfcontained = true;
 
@@ -277,8 +270,7 @@ namespace Clap
     if (!selfp.empty())
     {
       std::string name = selfp.u8string();
-      CFURLRef bundleUrl =
-          CFURLCreateFromFileSystemRepresentation(0, (const unsigned char *)name.c_str(), name.size(), true);
+      CFURLRef bundleUrl = CFURLCreateFromFileSystemRepresentation(0, (const unsigned char *)name.c_str(), name.size(), true);
       if (bundleUrl)
       {
         auto pluginBundle = CFBundleCreate(0, bundleUrl);
@@ -336,4 +328,4 @@ namespace Clap
 #endif
   }
 
-} // namespace Clap
+}  // namespace Clap
