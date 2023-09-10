@@ -239,6 +239,8 @@ namespace Clap
     {
       _parentHost->setupParameters(_plugin, _ext._params);
     }
+
+    _parentHost->setupWrapperSpecifics(_plugin);
     return true;
   }
 

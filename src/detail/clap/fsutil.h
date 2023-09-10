@@ -31,6 +31,7 @@ namespace fs = std::filesystem;
 #endif
 
 #include "clapwrapper/vst3.h"
+#include "clapwrapper/auv2.h"
 
 #if MAC
 #include <CoreFoundation/CoreFoundation.h>
@@ -53,6 +54,7 @@ namespace Clap
     const clap_plugin_entry_t* _pluginEntry = nullptr;
     const clap_plugin_factory_t* _pluginFactory = nullptr;
     const clap_plugin_factory_as_vst3* _pluginFactoryVst3Info = nullptr;
+    const clap_plugin_factory_as_auv2* _pluginFactoryAUv2Info = nullptr;
     std::vector<const clap_plugin_descriptor_t*> plugins;
     const clap_plugin_info_as_vst3_t* get_vst3_info(uint32_t index);
 

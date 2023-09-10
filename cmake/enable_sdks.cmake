@@ -473,14 +473,6 @@ if (APPLE)
 				message(FATAL_ERROR "clap-wrapper: auv2-target must be a target")
 			endif()
 
-			if (NOT DEFINED AUV2_MANUFACTURER_NAME)
-				message(FATAL_ERROR "clap-wrapper: For now please specify AUV2 manufacturer name")
-			endif()
-
-			if (NOT DEFINED AUV2_MANUFACTURER_CODE)
-				message(FATAL_ERROR "clap-wrapper: For now please specify AUV2 manufacturer code (4 chars)")
-			endif()
-
 			if (NOT DEFINED AUV2_BUNDLE_VERSION)
 				message(WARNING "clap-wrapper: bundle version not defined. Chosing 1")
 				set(AUV2_BUNDLE_VERSION 1)
@@ -531,7 +523,15 @@ if (APPLE)
 				endif()
 
 				if (NOT DEFINED AUV2_SUBTYPE_CODE)
-					message(FATAL_ERROR "clap-wrapper: For now please specify AUV2 subtype code (4 chars)")
+					message(FATAL_ERROR "clap-wrapper: For nontarget build specify AUV2 subtype code (4 chars)")
+				endif()
+
+				if (NOT DEFINED AUV2_MANUFACTURER_NAME)
+					message(FATAL_ERROR "clap-wrapper: For nontarget build specify AUV2 manufacturer name")
+				endif()
+
+				if (NOT DEFINED AUV2_MANUFACTURER_CODE)
+					message(FATAL_ERROR "clap-wrapper: For nontarget build specify AUV2 manufacturer code (4 chars)")
 				endif()
 
 				if (NOT DEFINED AUV2_INSTRUMENT_TYPE)
