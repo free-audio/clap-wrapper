@@ -350,7 +350,8 @@ function(target_add_vst3_wrapper)
 
 	if (APPLE)
 		if ("${V3_BUNDLE_IDENTIFIER}" STREQUAL "")
-			set(V3_BUNDLE_IDENTIFIER "org.cleveraudio.wrapper.${outidentifier}.vst3")
+			string(REPLACE "_" "-" repout ${outidentifier})
+			set(V3_BUNDLE_IDENTIFIER "org.cleveraudio.wrapper.${repout}.vst3")
 		endif()
 
 		if ("${CLAP_WRAPPER_BUNDLE_VERSION}" STREQUAL "")
@@ -369,7 +370,7 @@ function(target_add_vst3_wrapper)
 				MACOSX_BUNDLE_INFO_PLIST ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/cmake/VST3_Info.plist.in
 				)
 		if (NOT ${CMAKE_GENERATOR} STREQUAL "Xcode")
-			add_custom_command(TARGET ${V3_TARGET} POST_BUILD
+			add_custom_command(TARGET ${V3_TARGET} PRE_BUILD
 					WORKING_DIRECTORY $<TARGET_PROPERTY:${V3_TARGET},LIBRARY_OUTPUT_DIRECTORY>
 					COMMAND SetFile -a B "$<TARGET_PROPERTY:${V3_TARGET},LIBRARY_OUTPUT_NAME>.$<TARGET_PROPERTY:${V3_TARGET},BUNDLE_EXTENSION>"
 					)
@@ -551,6 +552,13 @@ if (APPLE)
 						)
 			endif()
 
+			string(MAKE_C_IDENTIFIER ${AUV2_OUTPUT_NAME} outidentifier)
+
+			if ("${AUV2_BUNDLE_IDENTIFIER}" STREQUAL "")
+				string(REPLACE "_" "-" repout ${outidentifier})
+				set(AUV2_BUNDLE_IDENTIFIER "org.cleveraudio.wrapper.${repout}.auv2")
+			endif()
+
 			set(AUV2_MANUFACTURER_NAME ${AUV2_MANUFACTURER_NAME} PARENT_SCOPE)
 			set(AUV2_MANUFACTURER_CODE ${AUV2_MANUFACTURER_CODE} PARENT_SCOPE)
 			configure_file(${bhsc}/auv2_infoplist_top.in
@@ -561,8 +569,6 @@ if (APPLE)
 
 			message(STATUS "clap-wrapper: Adding AUV2 Wrapper to target ${AUV2_TARGET} generating '${AUV2_OUTPUT_NAME}.component'")
 
-			string(MAKE_C_IDENTIFIER ${AUV2_OUTPUT_NAME} outidentifier)
-
 			# This is a placeholder dummy until we actually write the AUv2
 			# Similarly the subordinate library being an interface below
 			# is a placeholder. When we write it we will follow a similar
@@ -570,6 +576,8 @@ if (APPLE)
 			# with info.plist and entrypoint-per-instance stuff)
 			target_sources(${AUV2_TARGET} PRIVATE
 					${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/wrapasauv2.cpp
+					${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv2/auv2_shared.h
+					${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv2/auv2_base_classes.h
 					${bhtgoutdir}/generated_entrypoints.hxx)
 
 
@@ -587,10 +595,6 @@ if (APPLE)
 
 			set_target_properties(${AUV2_TARGET} PROPERTIES LIBRARY_OUTPUT_NAME "${AUV2_OUTPUT_NAME}")
 			target_link_libraries(${AUV2_TARGET} PUBLIC ${AUV2_TARGET}-clap-wrapper-auv2-lib)
-
-			if ("${AUV2_BUNDLE_IDENTIFIER}" STREQUAL "")
-				set(AUV2_BUNDLE_IDENTIFIER "org.cleveraudio.wrapper.${outidentifier}.auv2")
-			endif()
 
 			if ("${CLAP_WRAPPER_BUNDLE_VERSION}" STREQUAL "")
 				set(CLAP_WRAPPER_BUNDLE_VERSION "1.0")
