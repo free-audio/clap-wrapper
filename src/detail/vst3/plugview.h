@@ -17,7 +17,8 @@ using namespace Steinberg;
 class WrappedView : public Steinberg::IPlugView, public Steinberg::FObject
 {
  public:
-  WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui, std::function<void()> onDestroy, std::function<void()> onRunLoopAvailable);
+  WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui, std::function<void()> onDestroy,
+              std::function<void()> onRunLoopAvailable);
   ~WrappedView();
 
   // IPlugView interface

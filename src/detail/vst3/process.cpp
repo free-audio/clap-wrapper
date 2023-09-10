@@ -14,8 +14,11 @@ namespace Clap
 {
   using namespace Steinberg;
 
-  void ProcessAdapter::setupProcessing(const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params, Vst::BusList& audioinputs, Vst::BusList& audiooutputs, uint32_t numSamples, size_t numEventInputs, size_t numEventOutputs,
-                                       Steinberg::Vst::ParameterContainer& params, Steinberg::Vst::IComponentHandler* componenthandler, IAutomation* automation, bool enablePolyPressure, bool supportsTuningNoteExpression)
+  void ProcessAdapter::setupProcessing(
+      const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params, Vst::BusList& audioinputs,
+      Vst::BusList& audiooutputs, uint32_t numSamples, size_t numEventInputs, size_t numEventOutputs,
+      Steinberg::Vst::ParameterContainer& params, Steinberg::Vst::IComponentHandler* componenthandler,
+      IAutomation* automation, bool enablePolyPressure, bool supportsTuningNoteExpression)
   {
     _plugin = plugin;
     _ext_params = ext_params;
@@ -179,14 +182,27 @@ namespace Clap
       // converting the flags
       _transport.flags |= 0
                           // kPlaying = 1 << 1,		///< currently playing
-                          | ((_vstdata->processContext->state & Vst::ProcessContext::kPlaying) ? CLAP_TRANSPORT_IS_PLAYING : 0)
+                          | ((_vstdata->processContext->state & Vst::ProcessContext::kPlaying)
+                                 ? CLAP_TRANSPORT_IS_PLAYING
+                                 : 0)
                           // kRecording = 1 << 3,		///< currently recording
-                          | ((_vstdata->processContext->state & Vst::ProcessContext::kRecording) ? CLAP_TRANSPORT_IS_RECORDING : 0)
+                          | ((_vstdata->processContext->state & Vst::ProcessContext::kRecording)
+                                 ? CLAP_TRANSPORT_IS_RECORDING
+                                 : 0)
                           // kCycleActive = 1 << 2,		///< cycle is active
-                          | ((_vstdata->processContext->state & Vst::ProcessContext::kCycleActive) ? CLAP_TRANSPORT_IS_LOOP_ACTIVE : 0)
+                          | ((_vstdata->processContext->state & Vst::ProcessContext::kCycleActive)
+                                 ? CLAP_TRANSPORT_IS_LOOP_ACTIVE
+                                 : 0)
                           // kTempoValid = 1 << 10,	///< tempo contains valid information
-                          | ((_vstdata->processContext->state & Vst::ProcessContext::kTempoValid) ? CLAP_TRANSPORT_HAS_TEMPO : 0) | ((_vstdata->processContext->state & Vst::ProcessContext::kBarPositionValid) ? CLAP_TRANSPORT_HAS_BEATS_TIMELINE : 0) |
-                          ((_vstdata->processContext->state & Vst::ProcessContext::kTimeSigValid) ? CLAP_TRANSPORT_HAS_TIME_SIGNATURE : 0)
+                          | ((_vstdata->processContext->state & Vst::ProcessContext::kTempoValid)
+                                 ? CLAP_TRANSPORT_HAS_TEMPO
+                                 : 0) |
+                          ((_vstdata->processContext->state & Vst::ProcessContext::kBarPositionValid)
+                               ? CLAP_TRANSPORT_HAS_BEATS_TIMELINE
+                               : 0) |
+                          ((_vstdata->processContext->state & Vst::ProcessContext::kTimeSigValid)
+                               ? CLAP_TRANSPORT_HAS_TIME_SIGNATURE
+                               : 0)
 
           // the rest of the flags has no meaning to CLAP
           // kSystemTimeValid = 1 << 8,		///< systemTime contains valid information
@@ -254,7 +270,8 @@ namespace Clap
 
         // if a parameter is currently edited by a user, we are not allowed to send this back to the CLAP.
         // this is a fundamental difference between VST3 and CLAP
-        if (std::find(_gesturedParameters.begin(), _gesturedParameters.end(), paramid) != _gesturedParameters.end())
+        if (std::find(_gesturedParameters.begin(), _gesturedParameters.end(), paramid) !=
+            _gesturedParameters.end())
         {
           continue;
         }
@@ -401,7 +418,8 @@ namespace Clap
 
   // returns the pointer to an event in the list. The index accessed is not the position in the event list itself
   // since all events indices were sorted by timestamp
-  const clap_event_header_t* ProcessAdapter::input_events_get(const struct clap_input_events* list, uint32_t index)
+  const clap_event_header_t* ProcessAdapter::input_events_get(const struct clap_input_events* list,
+                                                              uint32_t index)
   {
     auto self = static_cast<ProcessAdapter*>(list->ctx);
     if (self->_events.size() > index)
@@ -414,7 +432,8 @@ namespace Clap
     return nullptr;
   }
 
-  bool ProcessAdapter::output_events_try_push(const struct clap_output_events* list, const clap_event_header_t* event)
+  bool ProcessAdapter::output_events_try_push(const struct clap_output_events* list,
+                                              const clap_event_header_t* event)
   {
     auto self = static_cast<ProcessAdapter*>(list->ctx);
     // mainly used for CLAP_EVENT_NOTE_CHOKE and CLAP_EVENT_NOTE_END
@@ -425,7 +444,9 @@ namespace Clap
   void ProcessAdapter::sortEventIndices()
   {
     // just sorting the index
-    std::sort(_eventindices.begin(), _eventindices.end(), [&](size_t const& a, size_t const& b) { return _events[a].header.time < _events[b].header.time; });
+    std::sort(_eventindices.begin(), _eventindices.end(),
+              [&](size_t const& a, size_t const& b)
+              { return _events[a].header.time < _events[b].header.time; });
   }
 
   void ProcessAdapter::processInputEvents(Steinberg::Vst::IEventList* eventlist)
@@ -461,7 +482,8 @@ namespace Clap
             {
               clap_multi_event_t n;
               n.noteexpression.header.type = CLAP_EVENT_NOTE_EXPRESSION;
-              n.noteexpression.header.flags = (vstevent.flags & Vst::Event::kIsLive) ? CLAP_EVENT_IS_LIVE : 0;
+              n.noteexpression.header.flags =
+                  (vstevent.flags & Vst::Event::kIsLive) ? CLAP_EVENT_IS_LIVE : 0;
               n.noteexpression.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
               n.noteexpression.header.time = vstevent.sampleOffset;
               n.noteexpression.header.size = sizeof(clap_event_note_expression);
@@ -520,7 +542,8 @@ namespace Clap
           {
             clap_multi_event_t n;
             n.noteexpression.header.type = CLAP_EVENT_NOTE_EXPRESSION;
-            n.noteexpression.header.flags = (vstevent.flags & Vst::Event::kIsLive) ? CLAP_EVENT_IS_LIVE : 0;
+            n.noteexpression.header.flags =
+                (vstevent.flags & Vst::Event::kIsLive) ? CLAP_EVENT_IS_LIVE : 0;
             n.noteexpression.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
             n.noteexpression.header.time = vstevent.sampleOffset;
             n.noteexpression.header.size = sizeof(clap_event_note_expression);
@@ -543,7 +566,8 @@ namespace Clap
           {
             clap_multi_event_t n;
             n.noteexpression.header.type = CLAP_EVENT_NOTE_EXPRESSION;
-            n.noteexpression.header.flags = (vstevent.flags & Vst::Event::kIsLive) ? CLAP_EVENT_IS_LIVE : 0;
+            n.noteexpression.header.flags =
+                (vstevent.flags & Vst::Event::kIsLive) ? CLAP_EVENT_IS_LIVE : 0;
             n.noteexpression.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
             n.noteexpression.header.time = vstevent.sampleOffset;
             n.noteexpression.header.size = sizeof(clap_event_note_expression);
@@ -649,7 +673,8 @@ namespace Clap
 
           // if the parameter is marked as being edited in the UI, pass the value
           // to the queue so it can be given to the IComponentHandler
-          if (std::find(_gesturedParameters.begin(), _gesturedParameters.end(), param_id) != _gesturedParameters.end())
+          if (std::find(_gesturedParameters.begin(), _gesturedParameters.end(), param_id) !=
+              _gesturedParameters.end())
           {
             _automation->onPerformEdit(ev);
           }
@@ -691,7 +716,8 @@ namespace Clap
         auto ev = (clap_event_param_gesture*)event;
         auto param = (Vst3Parameter*)this->parameters->getParameter(ev->param_id & 0x7FFFFFFF);
 
-        auto n = std::remove(_gesturedParameters.begin(), _gesturedParameters.end(), param->getInfo().id);
+        auto n =
+            std::remove(_gesturedParameters.begin(), _gesturedParameters.end(), param->getInfo().id);
         if (n != _gesturedParameters.end())
         {
           _gesturedParameters.erase(n, _gesturedParameters.end());
@@ -733,7 +759,8 @@ namespace Clap
   {
     for (auto& i : _activeNotes)
     {
-      if (i.used && i.port_index == note->port_index && i.channel == note->channel && i.note_id == note->note_id)
+      if (i.used && i.port_index == note->port_index && i.channel == note->channel &&
+          i.note_id == note->note_id)
       {
         i.used = false;
       }

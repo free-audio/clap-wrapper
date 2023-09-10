@@ -86,19 +86,27 @@ namespace Clap
       self(host)->closed(was_destroyed);
     }
 
-    const clap_host_gui hostgui = {resize_hints_changed, request_resize, request_show, request_hide, closed};
+    const clap_host_gui hostgui = {resize_hints_changed, request_resize, request_show, request_hide,
+                                   closed};
 
     const clap_host_timer_support hosttimer = {
-        /* register_timer */ [](const clap_host_t* host, uint32_t period_ms, clap_id* timer_id) -> bool { return self(host)->register_timer(period_ms, timer_id); },
-        /* unregister_timer */ [](const clap_host_t* host, clap_id timer_id) -> bool { return self(host)->unregister_timer(timer_id); }};
+        /* register_timer */ [](const clap_host_t* host, uint32_t period_ms, clap_id* timer_id) -> bool
+        { return self(host)->register_timer(period_ms, timer_id); },
+        /* unregister_timer */
+        [](const clap_host_t* host, clap_id timer_id) -> bool
+        { return self(host)->unregister_timer(timer_id); }};
 
 #if LIN
-    const clap_host_posix_fd_support hostposixfd = {[](const clap_host_t* host, int fd, clap_posix_fd_flags_t flags) -> bool { return self(host)->register_fd(fd, flags); },
-                                                    [](const clap_host_t* host, int fd, clap_posix_fd_flags_t flags) -> bool { return self(host)->modify_fd(fd, flags); },
-                                                    [](const clap_host_t* host, int fd) -> bool { return self(host)->unregister_fd(fd); }};
+    const clap_host_posix_fd_support hostposixfd = {
+        [](const clap_host_t* host, int fd, clap_posix_fd_flags_t flags) -> bool
+        { return self(host)->register_fd(fd, flags); },
+        [](const clap_host_t* host, int fd, clap_posix_fd_flags_t flags) -> bool
+        { return self(host)->modify_fd(fd, flags); },
+        [](const clap_host_t* host, int fd) -> bool { return self(host)->unregister_fd(fd); }};
 #endif
 
-    const clap_host_latency latency = {[](const clap_host_t* host) -> void { self(host)->latency_changed(); }};
+    const clap_host_latency latency = {[](const clap_host_t* host) -> void
+                                       { self(host)->latency_changed(); }};
 
     static void tail_changed(const clap_host_t* host)
     {
@@ -114,7 +122,8 @@ namespace Clap
     if (library.plugins.size() > index)
     {
       auto plug = std::shared_ptr<Plugin>(new Plugin(host));
-      auto instance = library._pluginFactory->create_plugin(library._pluginFactory, plug->getClapHostInterface(), library.plugins[index]->id);
+      auto instance = library._pluginFactory->create_plugin(
+          library._pluginFactory, plug->getClapHostInterface(), library.plugins[index]->id);
       plug->connectClap(instance);
 
       return plug;
@@ -123,7 +132,17 @@ namespace Clap
   }
 
   Plugin::Plugin(IHost* host)
-      : _host{CLAP_VERSION, this, "Clap-As-VST3-Wrapper", "defiant nerd", "https://www.defiantnerd.com", "0.0.1", Plugin::clapExtension, Plugin::clapRequestRestart, Plugin::clapRequestProcess, Plugin::clapRequestCallback}, _parentHost(host)
+      : _host{CLAP_VERSION,
+              this,
+              "Clap-As-VST3-Wrapper",
+              "defiant nerd",
+              "https://www.defiantnerd.com",
+              "0.0.1",
+              Plugin::clapExtension,
+              Plugin::clapRequestRestart,
+              Plugin::clapRequestProcess,
+              Plugin::clapRequestCallback},
+        _parentHost(host)
   {
   }
 
@@ -251,7 +270,8 @@ namespace Clap
 
   bool Plugin::activate()
   {
-    return _plugin->activate(_plugin, _audioSetup.sampleRate, _audioSetup.minFrames, _audioSetup.maxFrames);
+    return _plugin->activate(_plugin, _audioSetup.sampleRate, _audioSetup.minFrames,
+                             _audioSetup.maxFrames);
   }
 
   void Plugin::deactivate()

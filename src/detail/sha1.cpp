@@ -281,7 +281,8 @@ namespace Crypto
   {
     if (!isBigEndian)
     {
-      return ((n >> 24) & 0x000000FF) | ((n >> 8) & 0x0000FF00) | ((n << 8) & 0x00FF0000) | ((n << 24) & 0xFF000000);
+      return ((n >> 24) & 0x000000FF) | ((n >> 8) & 0x0000FF00) | ((n << 8) & 0x00FF0000) |
+             ((n << 24) & 0xFF000000);
     }
     else
     {
@@ -300,7 +301,8 @@ namespace Crypto
 
   /* Name string is a fully-qualified domain name */
   uuid_object NameSpace_DNS = {/* 6ba7b810-9dad-11d1-80b4-00c04fd430c8 */
-                               0x6ba7b810, 0x9dad, 0x11d1, 0x80, 0xb4, {0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8}};
+                               0x6ba7b810, 0x9dad, 0x11d1,
+                               0x80,       0xb4,   {0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8}};
 
   uuid_object create_sha1_guid_from_name(const char* name, size_t namelen)
   {
@@ -309,8 +311,9 @@ namespace Crypto
     /*put name space ID in network byte order so it hashes the same
       no matter what endian machine we're on */
     // namespace DNS
-    uuid_object net_nsid = {/* 6ba7b810-9dad-11d1-80b4-00c04fd430c8 */
-                            0x6ba7b810, 0x9dad, 0x11d1, 0x80, 0xb4, {0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8}};
+    uuid_object net_nsid = {
+        /* 6ba7b810-9dad-11d1-80b4-00c04fd430c8 */
+        0x6ba7b810, 0x9dad, 0x11d1, 0x80, 0xb4, {0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8}};
 
     net_nsid.time_low = swapOrder32(net_nsid.time_low);
     net_nsid.time_mid = swapOrder16(net_nsid.time_mid);

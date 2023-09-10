@@ -35,7 +35,8 @@ class CLAPVST3StreamAdapter
   {
     auto self = static_cast<CLAPVST3StreamAdapter*>(stream->ctx);
     Steinberg::int32 bytesWritten = 0;
-    if (kResultOk == self->vst_stream->write(const_cast<void*>(buffer), (int32)size, &bytesWritten)) return bytesWritten;
+    if (kResultOk == self->vst_stream->write(const_cast<void*>(buffer), (int32)size, &bytesWritten))
+      return bytesWritten;
     return -1;
   }
 

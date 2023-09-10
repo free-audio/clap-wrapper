@@ -63,18 +63,25 @@ namespace Clap
 		}
 #endif
 
-    void setupProcessing(const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params, Steinberg::Vst::BusList& numInputs, Steinberg::Vst::BusList& numOutputs, uint32_t numSamples, size_t numEventInputs, size_t numEventOutputs,
-                         Steinberg::Vst::ParameterContainer& params, Steinberg::Vst::IComponentHandler* componenthandler, IAutomation* automation, bool enablePolyPressure, bool supportsTuningNoteExpression);
+    void setupProcessing(const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params,
+                         Steinberg::Vst::BusList& numInputs, Steinberg::Vst::BusList& numOutputs,
+                         uint32_t numSamples, size_t numEventInputs, size_t numEventOutputs,
+                         Steinberg::Vst::ParameterContainer& params,
+                         Steinberg::Vst::IComponentHandler* componenthandler, IAutomation* automation,
+                         bool enablePolyPressure, bool supportsTuningNoteExpression);
     void process(Steinberg::Vst::ProcessData& data);
     void flush();
     void processOutputParams(Steinberg::Vst::ProcessData& data);
-    void activateAudioBus(Steinberg::Vst::BusDirection dir, Steinberg::int32 index, Steinberg::TBool state);
+    void activateAudioBus(Steinberg::Vst::BusDirection dir, Steinberg::int32 index,
+                          Steinberg::TBool state);
 
     // C callbacks
     static uint32_t input_events_size(const struct clap_input_events* list);
-    static const clap_event_header_t* input_events_get(const struct clap_input_events* list, uint32_t index);
+    static const clap_event_header_t* input_events_get(const struct clap_input_events* list,
+                                                       uint32_t index);
 
-    static bool output_events_try_push(const struct clap_output_events* list, const clap_event_header_t* event);
+    static bool output_events_try_push(const struct clap_output_events* list,
+                                       const clap_event_header_t* event);
 
    private:
     void sortEventIndices();
@@ -117,7 +124,8 @@ namespace Clap
     float* _silent_input = nullptr;
     float* _silent_output = nullptr;
 
-    clap_process_t _processData = {-1, 0, &_transport, nullptr, nullptr, 0, 0, &_in_events, &_out_events};
+    clap_process_t _processData = {-1, 0, &_transport, nullptr,     nullptr,
+                                   0,  0, &_in_events, &_out_events};
 
     Steinberg::Vst::ProcessData* _vstdata = nullptr;
 

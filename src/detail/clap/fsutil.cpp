@@ -101,7 +101,8 @@ namespace Clap
 #if MAC
     _pluginEntry = nullptr;
 
-    auto cs = CFStringCreateWithBytes(kCFAllocatorDefault, (uint8_t *)name, strlen(name), kCFStringEncodingUTF8, false);
+    auto cs = CFStringCreateWithBytes(kCFAllocatorDefault, (uint8_t *)name, strlen(name),
+                                      kCFStringEncodingUTF8, false);
     auto bundleURL = CFURLCreateWithFileSystemPath(kCFAllocatorDefault, cs, kCFURLPOSIXPathStyle, true);
 
     _bundle = CFBundleCreate(kCFAllocatorDefault, bundleURL);
@@ -190,9 +191,12 @@ namespace Clap
     {
       if (_pluginEntry->init(path))
       {
-        _pluginFactory = static_cast<const clap_plugin_factory *>(_pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_ID));
-        _pluginFactoryVst3Info = static_cast<const clap_plugin_factory_as_vst3 *>(_pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_VST3));
-        _pluginFactoryAUv2Info = static_cast<const clap_plugin_factory_as_auv2 *>(_pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_AUV2));
+        _pluginFactory =
+            static_cast<const clap_plugin_factory *>(_pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_ID));
+        _pluginFactoryVst3Info = static_cast<const clap_plugin_factory_as_vst3 *>(
+            _pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_VST3));
+        _pluginFactoryAUv2Info = static_cast<const clap_plugin_factory_as_auv2 *>(
+            _pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_AUV2));
 
         // detect plugins that do not check the CLAP_PLUGIN_FACTORY_ID
         if ((void *)_pluginFactory == (void *)_pluginFactoryVst3Info)
@@ -272,7 +276,8 @@ namespace Clap
     if (!selfp.empty())
     {
       std::string name = selfp.u8string();
-      CFURLRef bundleUrl = CFURLCreateFromFileSystemRepresentation(0, (const unsigned char *)name.c_str(), name.size(), true);
+      CFURLRef bundleUrl = CFURLCreateFromFileSystemRepresentation(
+          0, (const unsigned char *)name.c_str(), name.size(), true);
       if (bundleUrl)
       {
         auto pluginBundle = CFBundleCreate(0, bundleUrl);

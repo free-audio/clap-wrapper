@@ -78,7 +78,9 @@ namespace os
     {
       CFRunLoopTimerContext context = {};
       context.info = this;
-      _timer = CFRunLoopTimerCreate(kCFAllocatorDefault, CFAbsoluteTimeGetCurrent() + (kIntervall * 0.001f), kIntervall * 0.001f, 0, 0, timerCallback, &context);
+      _timer =
+          CFRunLoopTimerCreate(kCFAllocatorDefault, CFAbsoluteTimeGetCurrent() + (kIntervall * 0.001f),
+                               kIntervall * 0.001f, 0, 0, timerCallback, &context);
       if (_timer) CFRunLoopAddTimer(CFRunLoopGetCurrent(), _timer, kCFRunLoopCommonModes);
     }
     _plugs.push_back(plugobject);
@@ -132,7 +134,8 @@ namespace os
 
   std::string getParentFolderName()
   {
-    NSString* identifier = [[NSBundle bundleForClass:[clapwrapper_dummy_object_to_trick_the_os class]] bundlePath];
+    NSString* identifier =
+        [[NSBundle bundleForClass:[clapwrapper_dummy_object_to_trick_the_os class]] bundlePath];
     fs::path n = [identifier UTF8String];
     if (n.has_parent_path())
     {
@@ -152,7 +155,8 @@ namespace os
     // NSString* identifier = [[NSBundle mainBundle] bundleIdentifier];
 
     // this is needed:
-    NSString* identifier = [[NSBundle bundleForClass:[clapwrapper_dummy_object_to_trick_the_os class]] bundlePath];
+    NSString* identifier =
+        [[NSBundle bundleForClass:[clapwrapper_dummy_object_to_trick_the_os class]] bundlePath];
     fs::path k = [identifier UTF8String];
     return k.stem();
   }

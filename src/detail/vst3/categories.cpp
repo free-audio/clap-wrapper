@@ -48,64 +48,61 @@
 using namespace Steinberg;
 using namespace Steinberg::Vst;
 
-// clang-format off
 static const struct _translate
 {
   const char* clapattribute;
   const char* vst3attribute;
-} translationTable[] =
-{
-  // CLAP main categories
-  {   CLAP_PLUGIN_FEATURE_INSTRUMENT            , PlugType::kInstrument },
-  {   CLAP_PLUGIN_FEATURE_AUDIO_EFFECT          , PlugType::kFx},
-  {   CLAP_PLUGIN_FEATURE_NOTE_EFFECT           , PlugType::kInstrumentSynth}, // it seems there is no type for a sequencer etc
-  {   CLAP_PLUGIN_FEATURE_DRUM                  , PlugType::kInstrumentDrum},
-  {   CLAP_PLUGIN_FEATURE_ANALYZER              , PlugType::kAnalyzer},
+} translationTable[] = {
+    // CLAP main categories
+    {CLAP_PLUGIN_FEATURE_INSTRUMENT, PlugType::kInstrument},
+    {CLAP_PLUGIN_FEATURE_AUDIO_EFFECT, PlugType::kFx},
+    {CLAP_PLUGIN_FEATURE_NOTE_EFFECT,
+     PlugType::kInstrumentSynth},  // it seems there is no type for a sequencer etc
+    {CLAP_PLUGIN_FEATURE_DRUM, PlugType::kInstrumentDrum},
+    {CLAP_PLUGIN_FEATURE_ANALYZER, PlugType::kAnalyzer},
 
-  // CLAP sub categories
-  {   CLAP_PLUGIN_FEATURE_SYNTHESIZER           , "Synth"},
-  {   CLAP_PLUGIN_FEATURE_SAMPLER               , "Sampler"},
-  {   CLAP_PLUGIN_FEATURE_DRUM                  , "Drum"},
-  {   CLAP_PLUGIN_FEATURE_DRUM_MACHINE          , "Drum"},
+    // CLAP sub categories
+    {CLAP_PLUGIN_FEATURE_SYNTHESIZER, "Synth"},
+    {CLAP_PLUGIN_FEATURE_SAMPLER, "Sampler"},
+    {CLAP_PLUGIN_FEATURE_DRUM, "Drum"},
+    {CLAP_PLUGIN_FEATURE_DRUM_MACHINE, "Drum"},
 
-  {   CLAP_PLUGIN_FEATURE_FILTER                , "Filter"},
-  {   CLAP_PLUGIN_FEATURE_PHASER                , "Modulation"          },
-  {   CLAP_PLUGIN_FEATURE_EQUALIZER             , "EQ"},
-  {   CLAP_PLUGIN_FEATURE_DEESSER               , "Restoration"},
-  {   CLAP_PLUGIN_FEATURE_PHASE_VOCODER         , "Modulation"},
-  {   CLAP_PLUGIN_FEATURE_GRANULAR              , "Synth"},
-  {   CLAP_PLUGIN_FEATURE_FREQUENCY_SHIFTER     , "Modulator"},
-  {   CLAP_PLUGIN_FEATURE_PITCH_SHIFTER         , "Pitch Shifter"},
+    {CLAP_PLUGIN_FEATURE_FILTER, "Filter"},
+    {CLAP_PLUGIN_FEATURE_PHASER, "Modulation"},
+    {CLAP_PLUGIN_FEATURE_EQUALIZER, "EQ"},
+    {CLAP_PLUGIN_FEATURE_DEESSER, "Restoration"},
+    {CLAP_PLUGIN_FEATURE_PHASE_VOCODER, "Modulation"},
+    {CLAP_PLUGIN_FEATURE_GRANULAR, "Synth"},
+    {CLAP_PLUGIN_FEATURE_FREQUENCY_SHIFTER, "Modulator"},
+    {CLAP_PLUGIN_FEATURE_PITCH_SHIFTER, "Pitch Shifter"},
 
-  {   CLAP_PLUGIN_FEATURE_DISTORTION            , "Distortion"},
-  {   CLAP_PLUGIN_FEATURE_TRANSIENT_SHAPER      , "Distortion"},
-  {   CLAP_PLUGIN_FEATURE_COMPRESSOR            , "Dynamics"},
-  {   CLAP_PLUGIN_FEATURE_LIMITER               , "Dynamics"},
+    {CLAP_PLUGIN_FEATURE_DISTORTION, "Distortion"},
+    {CLAP_PLUGIN_FEATURE_TRANSIENT_SHAPER, "Distortion"},
+    {CLAP_PLUGIN_FEATURE_COMPRESSOR, "Dynamics"},
+    {CLAP_PLUGIN_FEATURE_LIMITER, "Dynamics"},
 
-  {   CLAP_PLUGIN_FEATURE_FLANGER               , "Modulation"},
-  // {   CLAP_PLUGIN_FEATURE_FLANGER               , "Flanger"},
-  {   CLAP_PLUGIN_FEATURE_CHORUS                , "Modulation"},
-  // {   CLAP_PLUGIN_FEATURE_CHORUS                , "Chorus"},
-  {   CLAP_PLUGIN_FEATURE_DELAY                 , "Delay"},
-  {   CLAP_PLUGIN_FEATURE_REVERB                , "Reverb"},
+    {CLAP_PLUGIN_FEATURE_FLANGER, "Modulation"},
+    // {   CLAP_PLUGIN_FEATURE_FLANGER               , "Flanger"},
+    {CLAP_PLUGIN_FEATURE_CHORUS, "Modulation"},
+    // {   CLAP_PLUGIN_FEATURE_CHORUS                , "Chorus"},
+    {CLAP_PLUGIN_FEATURE_DELAY, "Delay"},
+    {CLAP_PLUGIN_FEATURE_REVERB, "Reverb"},
 
-  {   CLAP_PLUGIN_FEATURE_TREMOLO               , "Modulation"},
-  {   CLAP_PLUGIN_FEATURE_GLITCH                , "Modulation"},
+    {CLAP_PLUGIN_FEATURE_TREMOLO, "Modulation"},
+    {CLAP_PLUGIN_FEATURE_GLITCH, "Modulation"},
 
-  {   CLAP_PLUGIN_FEATURE_UTILITY               , "Tools"},
-  {   CLAP_PLUGIN_FEATURE_PITCH_CORRECTION      , "Pitch Shift"},
-  {   CLAP_PLUGIN_FEATURE_RESTORATION           , "Restoration"},
+    {CLAP_PLUGIN_FEATURE_UTILITY, "Tools"},
+    {CLAP_PLUGIN_FEATURE_PITCH_CORRECTION, "Pitch Shift"},
+    {CLAP_PLUGIN_FEATURE_RESTORATION, "Restoration"},
 
-  {   CLAP_PLUGIN_FEATURE_MULTI_EFFECTS         , "Tools"},
+    {CLAP_PLUGIN_FEATURE_MULTI_EFFECTS, "Tools"},
 
-  {   CLAP_PLUGIN_FEATURE_MIXING                , "Mixing"},
-  {   CLAP_PLUGIN_FEATURE_MASTERING             , "Mastering"},
+    {CLAP_PLUGIN_FEATURE_MIXING, "Mixing"},
+    {CLAP_PLUGIN_FEATURE_MASTERING, "Mastering"},
 
-  {   "external"                                , "External"},
+    {"external", "External"},
 
-  {nullptr, nullptr}
-};
-// clang-format on
+    {nullptr, nullptr}};
 
 std::string clapCategoriesToVST3(const char* const* clap_categories)
 {

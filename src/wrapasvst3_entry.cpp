@@ -278,8 +278,12 @@ IPluginFactory* GetPluginFactoryEntryPoint()
 
       gCreationContexts.push_back(
           {&gClapLibrary, ctr,
-           PClassInfo2(lcid, PClassInfo::kManyInstances, kVstAudioEffectClass, plugname, 0 /* the only flag is usually Vst:kDistributable, but CLAPs aren't distributable */, features.c_str(), pluginvendor, clapdescr->version, kVstVersionString)});
-      gPluginFactory->registerClass(&gCreationContexts.back().classinfo, ClapAsVst3::createInstance, &gCreationContexts.back());
+           PClassInfo2(
+               lcid, PClassInfo::kManyInstances, kVstAudioEffectClass, plugname,
+               0 /* the only flag is usually Vst:kDistributable, but CLAPs aren't distributable */,
+               features.c_str(), pluginvendor, clapdescr->version, kVstVersionString)});
+      gPluginFactory->registerClass(&gCreationContexts.back().classinfo, ClapAsVst3::createInstance,
+                                    &gCreationContexts.back());
     }
   }
   else

@@ -3,8 +3,14 @@
 // #include <crtdbg.h>
 #include <cassert>
 
-WrappedView::WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui, std::function<void()> onDestroy, std::function<void()> onRunLoopAvailable)
-    : IPlugView(), FObject(), _plugin(plugin), _extgui(gui), _onDestroy(onDestroy), _onRunLoopAvailable(onRunLoopAvailable)
+WrappedView::WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui,
+                         std::function<void()> onDestroy, std::function<void()> onRunLoopAvailable)
+    : IPlugView(),
+      FObject(),
+      _plugin(plugin),
+      _extgui(gui),
+      _onDestroy(onDestroy),
+      _onRunLoopAvailable(onRunLoopAvailable)
 {
 }
 
@@ -54,7 +60,10 @@ tresult PLUGIN_API WrappedView::isPlatformTypeSupported(FIDString type)
   {
     const char* VST3;
     const char* CLAP;
-  } platformTypeMatches[] = {{kPlatformTypeHWND, CLAP_WINDOW_API_WIN32}, {kPlatformTypeNSView, CLAP_WINDOW_API_COCOA}, {kPlatformTypeX11EmbedWindowID, CLAP_WINDOW_API_X11}, {nullptr, nullptr}};
+  } platformTypeMatches[] = {{kPlatformTypeHWND, CLAP_WINDOW_API_WIN32},
+                             {kPlatformTypeNSView, CLAP_WINDOW_API_COCOA},
+                             {kPlatformTypeX11EmbedWindowID, CLAP_WINDOW_API_X11},
+                             {nullptr, nullptr}};
   auto* n = platformTypeMatches;
   while (n->VST3 && n->CLAP)
   {
@@ -190,7 +199,9 @@ tresult PLUGIN_API WrappedView::setFrame(IPlugFrame* frame)
   _plugFrame = frame;
 
 #if LIN
-  if (_plugFrame->queryInterface(Steinberg::Linux::IRunLoop::iid, (void**)&_runLoop) == Steinberg::kResultOk && _onRunLoopAvailable)
+  if (_plugFrame->queryInterface(Steinberg::Linux::IRunLoop::iid, (void**)&_runLoop) ==
+          Steinberg::kResultOk &&
+      _onRunLoopAvailable)
   {
     _onRunLoopAvailable();
   }

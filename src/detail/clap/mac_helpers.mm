@@ -58,7 +58,8 @@ namespace Clap
     if (!bundlePath.empty())
     {
       std::string name = bundlePath.u8string();
-      CFURLRef bundleUrl = CFURLCreateFromFileSystemRepresentation(0, (const unsigned char *)name.c_str(), name.size(), true);
+      CFURLRef bundleUrl = CFURLCreateFromFileSystemRepresentation(
+          0, (const unsigned char *)name.c_str(), name.size(), true);
       if (bundleUrl)
       {
         auto pluginBundle = CFBundleCreate(0, bundleUrl);

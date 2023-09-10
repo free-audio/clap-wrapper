@@ -58,7 +58,8 @@ struct auInfo
   }
 };
 
-bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname, std::string &manu, std::string &manuName, std::vector<auInfo> &units)
+bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname, std::string &manu,
+                        std::string &manuName, std::vector<auInfo> &units)
 {
   Clap::Library loader;
   if (!loader.load(clapfile.c_str()))
@@ -129,7 +130,8 @@ bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname
     if (loader._pluginFactoryAUv2Info)
     {
       clap_plugin_info_as_auv2_t v2inf;
-      auto res = loader._pluginFactoryAUv2Info->get_auv2_info(loader._pluginFactoryAUv2Info, idx, &v2inf);
+      auto res =
+          loader._pluginFactoryAUv2Info->get_auv2_info(loader._pluginFactoryAUv2Info, idx, &v2inf);
       if (v2inf.au_type[0] != 0)
       {
         u.type = v2inf.au_type;
@@ -157,7 +159,8 @@ int main(int argc, char **argv)
   {
     if (argc != 8)
     {
-      std::cout << "[ERROR] Configuration incorrect. Got " << argc << " arguments in explicit" << std::endl;
+      std::cout << "[ERROR] Configuration incorrect. Got " << argc << " arguments in explicit"
+                << std::endl;
       return 5;
     }
     int idx = 2;
@@ -171,14 +174,16 @@ int main(int argc, char **argv)
     u.manunm = std::string(argv[idx++]);
     u.desc = u.name + " CLAP to AU Wrapper";
 
-    std::cout << "  - single plugin explicit mode: " << u.name << " (" << u.type << "/" << u.subt << ")" << std::endl;
+    std::cout << "  - single plugin explicit mode: " << u.name << " (" << u.type << "/" << u.subt << ")"
+              << std::endl;
     units.push_back(u);
   }
   else if (std::string(argv[1]) == "--fromclap")
   {
     if (argc < 4)
     {
-      std::cout << "[ERROR] Configuration incorrect. Got " << argc << " arguments in fromclap" << std::endl;
+      std::cout << "[ERROR] Configuration incorrect. Got " << argc << " arguments in fromclap"
+                << std::endl;
       return 6;
     }
     int idx = 2;
@@ -242,7 +247,8 @@ int main(int argc, char **argv)
   int idx{0};
   for (const auto &u : units)
   {
-    std::cout << "    + " << u.name << " (" << u.type << "/" << u.subt << ") by " << u.manunm << " (" << u.manu << ")" << std::endl;
+    std::cout << "    + " << u.name << " (" << u.type << "/" << u.subt << ") by " << u.manunm << " ("
+              << u.manu << ")" << std::endl;
     u.writePListFragment(of, idx++);
   }
   of << "    </array>\n";
@@ -270,7 +276,8 @@ int main(int argc, char **argv)
 
     if (u.type == "aumu")
     {
-      std::cout << "    + " << u.name << " entry " << on << " from ClapWrapper_AUV2_Instrument" << std::endl;
+      std::cout << "    + " << u.name << " entry " << on << " from ClapWrapper_AUV2_Instrument"
+                << std::endl;
       cppf << "struct " << on << " : free_audio::auv2_wrapper::ClapWrapper_AUV2_Instrument {\n"
            << "   " << on << "(AudioComponentInstance ci) :\n"
            << "         free_audio::auv2_wrapper::ClapWrapper_AUV2_Instrument(" << args << ", ci) {}"
@@ -279,7 +286,8 @@ int main(int argc, char **argv)
     }
     else if (u.type == "aumi")
     {
-      std::cout << "    + " << u.name << " entry " << on << " from ClapWrapper_AUV2_NoteEffect" << std::endl;
+      std::cout << "    + " << u.name << " entry " << on << " from ClapWrapper_AUV2_NoteEffect"
+                << std::endl;
       cppf << "struct " << on << " : free_audio::auv2_wrapper::ClapWrapper_AUV2_NoteEffect {\n"
            << "   " << on << "(AudioComponentInstance ci) :\n"
            << "         free_audio::auv2_wrapper::ClapWrapper_AUV2_NoteEffect(" << args << ", ci) {}"

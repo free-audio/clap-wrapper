@@ -39,10 +39,18 @@ namespace Clap
     virtual void restartPlugin() = 0;
     virtual void request_callback() = 0;
 
-    virtual void setupWrapperSpecifics(const clap_plugin_t* plugin) = 0;  // called when a wrapper could scan for wrapper specific plugins
+    virtual void setupWrapperSpecifics(
+        const clap_plugin_t*
+            plugin) = 0;  // called when a wrapper could scan for wrapper specific plugins
 
-    virtual void setupAudioBusses(const clap_plugin_t* plugin, const clap_plugin_audio_ports_t* audioports) = 0;  // called from initialize() to allow the setup of audio ports
-    virtual void setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_note_ports_t* noteports) = 0;     // called from initialize() to allow the setup of MIDI ports
+    virtual void setupAudioBusses(
+        const clap_plugin_t* plugin,
+        const clap_plugin_audio_ports_t*
+            audioports) = 0;  // called from initialize() to allow the setup of audio ports
+    virtual void setupMIDIBusses(
+        const clap_plugin_t* plugin,
+        const clap_plugin_note_ports_t*
+            noteports) = 0;  // called from initialize() to allow the setup of MIDI ports
     virtual void setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params) = 0;
 
     virtual void param_rescan(clap_param_rescan_flags flags) = 0;  // ext_host_params

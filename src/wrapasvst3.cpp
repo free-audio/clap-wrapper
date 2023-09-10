@@ -75,12 +75,16 @@ tresult PLUGIN_API ClapAsVst3::setActive(TBool state)
     _active = true;
     _processAdapter = new Clap::ProcessAdapter();
 
-    auto supportsnoteexpression = (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_PRESSURE);
+    auto supportsnoteexpression =
+        (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_PRESSURE);
 
     // the processAdapter needs to know a few things to intercommunicate between VST3 host and CLAP plugin.
 
-    _processAdapter->setupProcessing(_plugin->_plugin, _plugin->_ext._params, this->audioInputs, this->audioOutputs, this->_largestBlocksize, this->eventInputs.size(), this->eventOutputs.size(), parameters, componentHandler, this,
-                                     supportsnoteexpression, _expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_TUNING);
+    _processAdapter->setupProcessing(
+        _plugin->_plugin, _plugin->_ext._params, this->audioInputs, this->audioOutputs,
+        this->_largestBlocksize, this->eventInputs.size(), this->eventOutputs.size(), parameters,
+        componentHandler, this, supportsnoteexpression,
+        _expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_TUNING);
     updateAudioBusses();
 
     os::attach(this);
@@ -186,12 +190,14 @@ tresult PLUGIN_API ClapAsVst3::setProcessing(TBool state)
   return result;
 }
 
-tresult PLUGIN_API ClapAsVst3::setBusArrangements(Vst::SpeakerArrangement* inputs, int32 numIns, Vst::SpeakerArrangement* outputs, int32 numOuts)
+tresult PLUGIN_API ClapAsVst3::setBusArrangements(Vst::SpeakerArrangement* inputs, int32 numIns,
+                                                  Vst::SpeakerArrangement* outputs, int32 numOuts)
 {
   return super::setBusArrangements(inputs, numIns, outputs, numOuts);
 };
 
-tresult PLUGIN_API ClapAsVst3::getBusArrangement(Vst::BusDirection dir, int32 index, Vst::SpeakerArrangement& arr)
+tresult PLUGIN_API ClapAsVst3::getBusArrangement(Vst::BusDirection dir, int32 index,
+                                                 Vst::SpeakerArrangement& arr)
 {
   return super::getBusArrangement(dir, index, arr);
 }
@@ -226,7 +232,8 @@ IPlugView* PLUGIN_API ClapAsVst3::createView(FIDString name)
   return nullptr;
 }
 
-tresult PLUGIN_API ClapAsVst3::getParamStringByValue(Vst::ParamID id, Vst::ParamValue valueNormalized, Vst::String128 string)
+tresult PLUGIN_API ClapAsVst3::getParamStringByValue(Vst::ParamID id, Vst::ParamValue valueNormalized,
+                                                     Vst::String128 string)
 {
   auto param = (Vst3Parameter*)this->getParameterObject(id);
   auto val = param->asClapValue(valueNormalized);
@@ -243,7 +250,8 @@ tresult PLUGIN_API ClapAsVst3::getParamStringByValue(Vst::ParamID id, Vst::Param
   return super::getParamStringByValue(id, valueNormalized, string);
 }
 
-tresult PLUGIN_API ClapAsVst3::getParamValueByString(Vst::ParamID id, Vst::TChar* string, Vst::ParamValue& valueNormalized)
+tresult PLUGIN_API ClapAsVst3::getParamValueByString(Vst::ParamID id, Vst::TChar* string,
+                                                     Vst::ParamValue& valueNormalized)
 {
   auto param = (Vst3Parameter*)this->getParameterObject(id);
   Steinberg::String m(string);
@@ -258,14 +266,17 @@ tresult PLUGIN_API ClapAsVst3::getParamValueByString(Vst::ParamID id, Vst::TChar
   return Steinberg::kResultFalse;
 }
 
-tresult PLUGIN_API ClapAsVst3::activateBus(Vst::MediaType type, Vst::BusDirection dir, int32 index, TBool state)
+tresult PLUGIN_API ClapAsVst3::activateBus(Vst::MediaType type, Vst::BusDirection dir, int32 index,
+                                           TBool state)
 {
   return super::activateBus(type, dir, index, state);
 }
 
 //-----------------------------------------------------------------------------
 
-tresult PLUGIN_API ClapAsVst3::getMidiControllerAssignment(int32 busIndex, int16 channel, Vst::CtrlNumber midiControllerNumber, Vst::ParamID& id /*out*/)
+tresult PLUGIN_API ClapAsVst3::getMidiControllerAssignment(int32 busIndex, int16 channel,
+                                                           Vst::CtrlNumber midiControllerNumber,
+                                                           Vst::ParamID& id /*out*/)
 {
   // for my first Event bus and for MIDI channel 0 and for MIDI CC Volume only
   if (busIndex == 0)  // && channel == 0) // && midiControllerNumber == Vst::kCtrlVolume)
@@ -289,7 +300,8 @@ int32 ClapAsVst3::getNoteExpressionCount(int32 busIndex, int16 channel)
 }
 
 /** Returns note change type info. */
-tresult ClapAsVst3::getNoteExpressionInfo(int32 busIndex, int16 channel, int32 noteExpressionIndex, Vst::NoteExpressionTypeInfo& info /*out*/)
+tresult ClapAsVst3::getNoteExpressionInfo(int32 busIndex, int16 channel, int32 noteExpressionIndex,
+                                          Vst::NoteExpressionTypeInfo& info /*out*/)
 {
   if (busIndex == 0 && channel == 0)
   {
@@ -299,13 +311,19 @@ tresult ClapAsVst3::getNoteExpressionInfo(int32 busIndex, int16 channel, int32 n
 }
 
 /** Gets a user readable representation of the normalized note change value. */
-tresult ClapAsVst3::getNoteExpressionStringByValue(int32 busIndex, int16 channel, Vst::NoteExpressionTypeID id, Vst::NoteExpressionValue valueNormalized /*in*/, Vst::String128 string /*out*/)
+tresult ClapAsVst3::getNoteExpressionStringByValue(int32 busIndex, int16 channel,
+                                                   Vst::NoteExpressionTypeID id,
+                                                   Vst::NoteExpressionValue valueNormalized /*in*/,
+                                                   Vst::String128 string /*out*/)
 {
   return _noteExpressions.getNoteExpressionStringByValue(id, valueNormalized, string);
 }
 
 /** Converts the user readable representation to the normalized note change value. */
-tresult ClapAsVst3::getNoteExpressionValueByString(int32 busIndex, int16 channel, Vst::NoteExpressionTypeID id, const Vst::TChar* string /*in*/, Vst::NoteExpressionValue& valueNormalized /*out*/)
+tresult ClapAsVst3::getNoteExpressionValueByString(int32 busIndex, int16 channel,
+                                                   Vst::NoteExpressionTypeID id,
+                                                   const Vst::TChar* string /*in*/,
+                                                   Vst::NoteExpressionValue& valueNormalized /*out*/)
 {
   return _noteExpressions.getNoteExpressionValueByString(id, string, valueNormalized);
 }
@@ -321,12 +339,13 @@ tresult ClapAsVst3::getNoteExpressionValueByString(int32 busIndex, int16 channel
 
 static Vst::SpeakerArrangement speakerArrFromPortType(const char* port_type)
 {
-  static const std::pair<const char*, Vst::SpeakerArrangement> arrangementmap[] = {{CLAP_PORT_MONO, Vst::SpeakerArr::kMono},
-                                                                                   {CLAP_PORT_STEREO, Vst::SpeakerArr::kStereo},
-                                                                                   // {CLAP_PORT_AMBISONIC, Vst::SpeakerArr::kAmbi1stOrderACN} <- we need also CLAP_EXT_AMBISONIC
-                                                                                   // {CLAP_PORT_SURROUND, Vst::SpeakerArr::kStereoSurround}, // add when CLAP_EXT_SURROUND is not draft anymore
-                                                                                   // TODO: add more PortTypes to Speaker Arrangement
-                                                                                   {nullptr, Vst::SpeakerArr::kEmpty}};
+  static const std::pair<const char*, Vst::SpeakerArrangement> arrangementmap[] = {
+      {CLAP_PORT_MONO, Vst::SpeakerArr::kMono},
+      {CLAP_PORT_STEREO, Vst::SpeakerArr::kStereo},
+      // {CLAP_PORT_AMBISONIC, Vst::SpeakerArr::kAmbi1stOrderACN} <- we need also CLAP_EXT_AMBISONIC
+      // {CLAP_PORT_SURROUND, Vst::SpeakerArr::kStereoSurround}, // add when CLAP_EXT_SURROUND is not draft anymore
+      // TODO: add more PortTypes to Speaker Arrangement
+      {nullptr, Vst::SpeakerArr::kEmpty}};
 
   auto p = &arrangementmap[0];
   while (p->first)
@@ -360,7 +379,8 @@ void ClapAsVst3::addAudioBusFrom(const clap_audio_port_info_t* info, bool is_inp
 
 void ClapAsVst3::addMIDIBusFrom(const clap_note_port_info_t* info, uint32_t index, bool is_input)
 {
-  if ((info->supported_dialects & CLAP_NOTE_DIALECT_MIDI) || (info->supported_dialects & CLAP_NOTE_DIALECT_CLAP))
+  if ((info->supported_dialects & CLAP_NOTE_DIALECT_MIDI) ||
+      (info->supported_dialects & CLAP_NOTE_DIALECT_CLAP))
   {
     auto numchannels = 16;
     if (_vst3specifics)
@@ -493,7 +513,8 @@ bool ClapAsVst3::checkMIDIDialectSupport()
   return false;
 }
 
-void ClapAsVst3::setupAudioBusses(const clap_plugin_t* plugin, const clap_plugin_audio_ports_t* audioports)
+void ClapAsVst3::setupAudioBusses(const clap_plugin_t* plugin,
+                                  const clap_plugin_audio_ports_t* audioports)
 {
   if (!audioports) return;
   auto numAudioInputs = audioports->count(plugin, true);
@@ -561,7 +582,8 @@ void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
 
   {
     Vst::String128 rootname(STR16("root"));
-    Vst::Unit* newunit = new Vst::Unit(rootname, Vst::kNoParentUnitId, Vst::kRootUnitId);  // a new unit without a program list
+    Vst::Unit* newunit = new Vst::Unit(rootname, Vst::kNoParentUnitId,
+                                       Vst::kRootUnitId);  // a new unit without a program list
     addUnit(newunit);
   }
 
@@ -573,7 +595,8 @@ void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
     clap_param_info info;
     if (params->get_info(plugin, i, &info))
     {
-      auto p = Vst3Parameter::create(&info, [&](const char* modstring) { return this->getOrCreateUnitInfo(modstring); });
+      auto p = Vst3Parameter::create(
+          &info, [&](const char* modstring) { return this->getOrCreateUnitInfo(modstring); });
       // auto p = Vst3Parameter::create(&info,nullptr);
       parameters.addParameter(p);
     }
@@ -605,19 +628,32 @@ void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
 
   // setting up noteexpression
 
-  if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_VOLUME) _noteExpressions.addNoteExpressionType(new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kVolumeTypeID, S16("Volume"), S16("Vol"), S16(""), 0, nullptr, 0));
-  if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_PAN) _noteExpressions.addNoteExpressionType(new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kPanTypeID, S16("Panorama"), S16("Pan"), S16(""), 0, nullptr, 0));
+  if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_VOLUME)
+    _noteExpressions.addNoteExpressionType(new Vst::NoteExpressionType(
+        Vst::NoteExpressionTypeIDs::kVolumeTypeID, S16("Volume"), S16("Vol"), S16(""), 0, nullptr, 0));
+  if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_PAN)
 
-  if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_TUNING) _noteExpressions.addNoteExpressionType(new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kTuningTypeID, S16("Tuning"), S16("Tun"), S16(""), 0, nullptr, 0));
+    _noteExpressions.addNoteExpressionType(new Vst::NoteExpressionType(
+        Vst::NoteExpressionTypeIDs::kPanTypeID, S16("Panorama"), S16("Pan"), S16(""), 0, nullptr, 0));
+
+  if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_TUNING)
+    _noteExpressions.addNoteExpressionType(new Vst::NoteExpressionType(
+        Vst::NoteExpressionTypeIDs::kTuningTypeID, S16("Tuning"), S16("Tun"), S16(""), 0, nullptr, 0));
 
   if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_VIBRATO)
-    _noteExpressions.addNoteExpressionType(new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kVibratoTypeID, S16("Vibrato"), S16("Vibr"), S16(""), 0, nullptr, 0));
+    _noteExpressions.addNoteExpressionType(
+        new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kVibratoTypeID, S16("Vibrato"),
+                                    S16("Vibr"), S16(""), 0, nullptr, 0));
 
   if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_EXPRESSION)
-    _noteExpressions.addNoteExpressionType(new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kExpressionTypeID, S16("Expression"), S16("Expr"), S16(""), 0, nullptr, 0));
+    _noteExpressions.addNoteExpressionType(
+        new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kExpressionTypeID, S16("Expression"),
+                                    S16("Expr"), S16(""), 0, nullptr, 0));
 
   if (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_BRIGHTNESS)
-    _noteExpressions.addNoteExpressionType(new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kBrightnessTypeID, S16("Brightness"), S16("Brit"), S16(""), 0, nullptr, 0));
+    _noteExpressions.addNoteExpressionType(
+        new Vst::NoteExpressionType(Vst::NoteExpressionTypeIDs::kBrightnessTypeID, S16("Brightness"),
+                                    S16("Brit"), S16(""), 0, nullptr, 0));
 
   // PRESSURE is handled by IMidiMapping (-> Polypressure)
 }
@@ -631,8 +667,11 @@ void ClapAsVst3::param_rescan(clap_param_rescan_flags flags)
     vstflags |= Vst::RestartFlags::kMidiCCAssignmentChanged;
   }
 
-  vstflags |= ((flags & CLAP_PARAM_RESCAN_VALUES) ? (uint32_t)Vst::RestartFlags::kParamValuesChanged : 0u);
-  vstflags |= ((flags & CLAP_PARAM_RESCAN_INFO) ? Vst::RestartFlags::kParamValuesChanged | Vst::RestartFlags::kParamTitlesChanged : 0u);
+  vstflags |=
+      ((flags & CLAP_PARAM_RESCAN_VALUES) ? (uint32_t)Vst::RestartFlags::kParamValuesChanged : 0u);
+  vstflags |= ((flags & CLAP_PARAM_RESCAN_INFO)
+                   ? Vst::RestartFlags::kParamValuesChanged | Vst::RestartFlags::kParamTitlesChanged
+                   : 0u);
   if (vstflags != 0)
   {
     // update parameter values in our own tree
@@ -692,7 +731,8 @@ bool ClapAsVst3::gui_request_hide()
 
 void ClapAsVst3::latency_changed()
 {
-  if (this->componentHandler) this->componentHandler->restartComponent(Vst::RestartFlags::kLatencyChanged);
+  if (this->componentHandler)
+    this->componentHandler->restartComponent(Vst::RestartFlags::kLatencyChanged);
 }
 
 void ClapAsVst3::tail_changed()
@@ -825,7 +865,8 @@ void ClapAsVst3::onIdle()
     {
       // setup a ProcessAdapter just for flush with no audio
       Clap::ProcessAdapter pa;
-      pa.setupProcessing(_plugin->_plugin, _plugin->_ext._params, audioInputs, audioOutputs, 0, 0, 0, this->parameters, componentHandler, nullptr, false, false);
+      pa.setupProcessing(_plugin->_plugin, _plugin->_ext._params, audioInputs, audioOutputs, 0, 0, 0,
+                         this->parameters, componentHandler, nullptr, false, false);
       pa.flush();
     }
   }
@@ -994,7 +1035,8 @@ struct FDHandler : Steinberg::Linux::IEventHandler, public Steinberg::FObject
   ClapAsVst3* _parent{nullptr};
   int _fd{0};
   clap_posix_fd_flags_t _flags{};
-  FDHandler(ClapAsVst3* parent, int fd, clap_posix_fd_flags_t flags) : _parent(parent), _fd(fd), _flags(flags)
+  FDHandler(ClapAsVst3* parent, int fd, clap_posix_fd_flags_t flags)
+      : _parent(parent), _fd(fd), _flags(flags)
   {
   }
   void PLUGIN_API onFDIsSet(Steinberg::Linux::FileDescriptor) override
