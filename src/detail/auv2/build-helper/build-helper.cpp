@@ -69,6 +69,19 @@ bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname
 
     int idx{0};
 
+    if (manu.empty() && loader._pluginFactoryAUv2Info == nullptr)
+    {
+        std::cout << "[ERROR] No manufacturer provider and no auv2 info available" << std::endl;
+        return false;
+    }
+
+    if (manu.empty())
+    {
+        manu = loader._pluginFactoryAUv2Info->manufacturer_code;
+        manuName = loader._pluginFactoryAUv2Info->manufacturer_name;
+        std::cout << "  - using factor manufacturer '" << manuName << "' (" << manu << ")" << std::endl;
+    }
+
     static const char *encoder =
         "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-";
     for (const auto *clapPlug : loader.plugins)
@@ -95,7 +108,6 @@ bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname
         u.manu = manu;
         u.manunm = manuName;
 
-
         auto f = clapPlug->features[0];
         if (f == nullptr || strcmp(f, CLAP_PLUGIN_FEATURE_INSTRUMENT) == 0)
         {
@@ -115,8 +127,24 @@ bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname
             u.type = "aumu";
         }
 
+        if (loader._pluginFactoryAUv2Info)
+        {
+            clap_plugin_info_as_auv2_t v2inf;
+            auto res = loader._pluginFactoryAUv2Info->get_auv2_info(loader._pluginFactoryAUv2Info,
+                                                          idx,
+                                                         &v2inf);
+            if (v2inf.au_type[0] != 0)
+            {
+                u.type = v2inf.au_type;
+            }
+            if (v2inf.au_subt[0] != 0)
+            {
+                u.subt = v2inf.au_subt;
+            }
+        }
 
         units.push_back(u);
+        idx++;
     }
     return true;
 }
@@ -152,7 +180,7 @@ int main(int argc, char **argv)
     }
     else if (std::string(argv[1]) == "--fromclap")
     {
-        if (argc != 6)
+        if (argc < 4)
         {
             std::cout << "[ERROR] Configuration incorrect. Got " << argc << " arguments in fromclap" << std::endl;
             return 6;
@@ -160,8 +188,8 @@ int main(int argc, char **argv)
         int idx = 2;
         auto clapname = std::string(argv[idx++]);
         auto clapfile = std::string(argv[idx++]);
-        auto mcode = std::string(argv[idx++]);
-        auto mname = std::string(argv[idx++]);
+        auto mcode = (idx < argc) ? std::string(argv[idx++]) : std::string();
+        auto mname = (idx < argc) ? std::string(argv[idx++]) : std::string();
 
         try {
             auto p = fs::path{clapfile};

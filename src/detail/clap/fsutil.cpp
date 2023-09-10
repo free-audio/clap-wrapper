@@ -196,11 +196,14 @@ namespace Clap
                    static_cast<const clap_plugin_factory *>(_pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_ID));
            _pluginFactoryVst3Info =
                   static_cast<const clap_plugin_factory_as_vst3*>(_pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_VST3));
+           _pluginFactoryAUv2Info =
+               static_cast<const clap_plugin_factory_as_auv2*>(_pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_AUV2));
 
            // detect plugins that do not check the CLAP_PLUGIN_FACTORY_ID
            if ((void*)_pluginFactory == (void*)_pluginFactoryVst3Info)
            {
              _pluginFactoryVst3Info = nullptr;
+             _pluginFactoryAUv2Info = nullptr;
            }
 
            auto count = _pluginFactory->get_plugin_count(_pluginFactory);
