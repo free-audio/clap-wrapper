@@ -576,6 +576,8 @@ if (APPLE)
 			# with info.plist and entrypoint-per-instance stuff)
 			target_sources(${AUV2_TARGET} PRIVATE
 					${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/wrapasauv2.cpp
+					${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv2/auv2_shared.h
+					${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv2/auv2_base_classes.h
 					${bhtgoutdir}/generated_entrypoints.hxx)
 
 
@@ -619,9 +621,9 @@ if (APPLE)
 					COMMAND ${CMAKE_COMMAND} -E copy ${bhtgoutdir}/auv2_Info.plist $<TARGET_FILE_DIR:${AUV2_TARGET}>/../Info.plist)
 
 			if (NOT ${CMAKE_GENERATOR} STREQUAL "Xcode")
-				#add_custom_command(TARGET ${AUV2_TARGET} PRE_BUILD
-			#			WORKING_DIRECTORY $<TARGET_PROPERTY:${AUV2_TARGET},LIBRARY_OUTPUT_DIRECTORY>
-			#			COMMAND SetFile -a B "$<TARGET_PROPERTY:${AUV2_TARGET},MACOSX_BUNDLE_BUNDLE_NAME>.$<TARGET_PROPERTY:${AUV2_TARGET},BUNDLE_EXTENSION>")
+				add_custom_command(TARGET ${AUV2_TARGET} PRE_BUILD
+						WORKING_DIRECTORY $<TARGET_PROPERTY:${AUV2_TARGET},LIBRARY_OUTPUT_DIRECTORY>
+						COMMAND SetFile -a B "$<TARGET_PROPERTY:${AUV2_TARGET},MACOSX_BUNDLE_BUNDLE_NAME>.$<TARGET_PROPERTY:${AUV2_TARGET},BUNDLE_EXTENSION>")
 			endif()
 
 			if (NOT ${AUV2_MACOS_EMBEDDED_CLAP_LOCATION} STREQUAL "")

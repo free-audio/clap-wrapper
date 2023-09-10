@@ -2,6 +2,7 @@
 #pragma once
 
 #include "detail/clap/fsutil.h"
+#include <iostream>
 
 namespace free_audio::auv2_wrapper
 {
@@ -19,6 +20,7 @@ struct ClapBridge
                const std::string &clapid,
                int idx) : _clapname(clapname), _clapid(clapid), _idx(idx)
     {
+      std::cout << "[clap-wraper] auv2: creating clap bridge nm=" << clapname << " id=" << clapid << " idx=" << idx << std::endl;
     }
 
     void initialize()
@@ -27,7 +29,7 @@ struct ClapBridge
         {
             if (!_library.load(_clapname.c_str()))
             {
-                std::cout << "[ERROR] cannot load either by internal entry nor _clapname" << std::endl;
+                std::cout << "[ERROR] cannot load either by internal entry nor _clapname (" << _clapname << ")" << std::endl;
                 return;
             }
         }
