@@ -134,7 +134,10 @@ void WindowsHelper::terminate()
 
 void WindowsHelper::executeDefered()
 {
-  for (auto&& p : _plugs) p->onIdle();
+  for (auto&& p : _plugs)
+  {
+    if (p) p->onIdle();
+  }
 }
 
 void WindowsHelper::attach(IPlugObject* plugobject)
