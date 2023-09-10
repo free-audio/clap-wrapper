@@ -12,108 +12,107 @@ namespace Clap
 {
 namespace HostExt
 {
-  static Plugin* self(const clap_host_t* host)
-  {
-    return static_cast<Plugin*>(host->host_data);
-  }
+static Plugin* self(const clap_host_t* host)
+{
+  return static_cast<Plugin*>(host->host_data);
+}
 
-  void host_log(const clap_host_t* host, clap_log_severity severity, const char* msg)
-  {
-    self(host)->log(severity, msg);
-  }
+void host_log(const clap_host_t* host, clap_log_severity severity, const char* msg)
+{
+  self(host)->log(severity, msg);
+}
 
-  clap_host_log_t log = {host_log};
+clap_host_log_t log = {host_log};
 
-  void rescan(const clap_host_t* host, clap_param_rescan_flags flags)
-  {
-    self(host)->param_rescan(flags);
-  }
+void rescan(const clap_host_t* host, clap_param_rescan_flags flags)
+{
+  self(host)->param_rescan(flags);
+}
 
-  // Clears references to a parameter.
-  // [main-thread]
-  void clear(const clap_host_t* host, clap_id param_id, clap_param_clear_flags flags)
-  {
-  }
+// Clears references to a parameter.
+// [main-thread]
+void clear(const clap_host_t* host, clap_id param_id, clap_param_clear_flags flags)
+{
+}
 
-  // Request a parameter flush.
-  //
-  // If the plugin is processing, this will result in no action. The process call
-  // will run normally. If plugin isn't processing, the host will make a subsequent
-  // call to clap_plugin_params->flush(). As a result, this function is always
-  // safe to call from a non-audio thread (typically the UI thread on a gesture)
-  // whether processing is active or not.
-  //
-  // This must not be called on the [audio-thread].
-  // [thread-safe,!audio-thread]
-  void request_flush(const clap_host_t* host)
-  {
-    self(host)->param_request_flush();
-  }
-  clap_host_params_t params = {rescan, clear, request_flush};
+// Request a parameter flush.
+//
+// If the plugin is processing, this will result in no action. The process call
+// will run normally. If plugin isn't processing, the host will make a subsequent
+// call to clap_plugin_params->flush(). As a result, this function is always
+// safe to call from a non-audio thread (typically the UI thread on a gesture)
+// whether processing is active or not.
+//
+// This must not be called on the [audio-thread].
+// [thread-safe,!audio-thread]
+void request_flush(const clap_host_t* host)
+{
+  self(host)->param_request_flush();
+}
+clap_host_params_t params = {rescan, clear, request_flush};
 
-  bool is_main_thread(const clap_host_t* host)
-  {
-    return self(host)->is_main_thread();
-  }
+bool is_main_thread(const clap_host_t* host)
+{
+  return self(host)->is_main_thread();
+}
 
-  // Returns true if "this" thread is one of the audio threads.
-  // [thread-safe]
-  bool is_audio_thread(const clap_host_t* host)
-  {
-    return self(host)->is_audio_thread();
-  }
+// Returns true if "this" thread is one of the audio threads.
+// [thread-safe]
+bool is_audio_thread(const clap_host_t* host)
+{
+  return self(host)->is_audio_thread();
+}
 
-  clap_host_thread_check_t threadcheck = {is_main_thread, is_audio_thread};
+clap_host_thread_check_t threadcheck = {is_main_thread, is_audio_thread};
 
-  static void resize_hints_changed(const clap_host_t* host)
-  {
-    self(host)->resize_hints_changed();
-  }
-  static bool request_resize(const clap_host_t* host, uint32_t width, uint32_t height)
-  {
-    return self(host)->request_resize(width, height);
-  }
-  static bool request_show(const clap_host_t* host)
-  {
-    return self(host)->request_show();
-  }
-  static bool request_hide(const clap_host_t* host)
-  {
-    return self(host)->request_hide();
-  }
-  static void closed(const clap_host_t* host, bool was_destroyed)
-  {
-    self(host)->closed(was_destroyed);
-  }
+static void resize_hints_changed(const clap_host_t* host)
+{
+  self(host)->resize_hints_changed();
+}
+static bool request_resize(const clap_host_t* host, uint32_t width, uint32_t height)
+{
+  return self(host)->request_resize(width, height);
+}
+static bool request_show(const clap_host_t* host)
+{
+  return self(host)->request_show();
+}
+static bool request_hide(const clap_host_t* host)
+{
+  return self(host)->request_hide();
+}
+static void closed(const clap_host_t* host, bool was_destroyed)
+{
+  self(host)->closed(was_destroyed);
+}
 
-  const clap_host_gui hostgui = {resize_hints_changed, request_resize, request_show, request_hide,
-                                 closed};
+const clap_host_gui hostgui = {resize_hints_changed, request_resize, request_show, request_hide, closed};
 
-  const clap_host_timer_support hosttimer = {
-      /* register_timer */ [](const clap_host_t* host, uint32_t period_ms, clap_id* timer_id) -> bool
-      { return self(host)->register_timer(period_ms, timer_id); },
-      /* unregister_timer */
-      [](const clap_host_t* host, clap_id timer_id) -> bool
-      { return self(host)->unregister_timer(timer_id); }};
+const clap_host_timer_support hosttimer = {
+    /* register_timer */ [](const clap_host_t* host, uint32_t period_ms, clap_id* timer_id) -> bool
+    { return self(host)->register_timer(period_ms, timer_id); },
+    /* unregister_timer */
+    [](const clap_host_t* host, clap_id timer_id) -> bool
+    { return self(host)->unregister_timer(timer_id); }};
 
 #if LIN
-  const clap_host_posix_fd_support hostposixfd = {
-      [](const clap_host_t* host, int fd, clap_posix_fd_flags_t flags) -> bool
-      { return self(host)->register_fd(fd, flags); },
-      [](const clap_host_t* host, int fd, clap_posix_fd_flags_t flags) -> bool
-      { return self(host)->modify_fd(fd, flags); },
-      [](const clap_host_t* host, int fd) -> bool { return self(host)->unregister_fd(fd); }};
+const clap_host_posix_fd_support hostposixfd = {
+    [](const clap_host_t* host, int fd, clap_posix_fd_flags_t flags) -> bool
+    { return self(host)->register_fd(fd, flags); },
+    [](const clap_host_t* host, int fd, clap_posix_fd_flags_t flags) -> bool
+    { return self(host)->modify_fd(fd, flags); },
+    [](const clap_host_t* host, int fd) -> bool { return self(host)->unregister_fd(fd); }};
 #endif
 
-  const clap_host_latency latency = {[](const clap_host_t* host) -> void
-                                     { self(host)->latency_changed(); }};
+const clap_host_latency latency = {[](const clap_host_t* host) -> void
+                                   { self(host)->latency_changed(); }};
 
-  static void tail_changed(const clap_host_t* host)
-  {
-    self(host)->tail_changed();
-  }
+static void tail_changed(const clap_host_t* host)
+{
+  self(host)->tail_changed();
+}
 
-  const clap_host_tail tail = {tail_changed};
+const clap_host_tail tail = {tail_changed};
 
 }  // namespace HostExt
 
