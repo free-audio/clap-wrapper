@@ -31,6 +31,7 @@ namespace fs = std::filesystem;
 #endif
 
 #include "clapwrapper/vst3.h"
+#include "clapwrapper/auv2.h"
 
 #if MAC
 #include <CoreFoundation/CoreFoundation.h>
@@ -39,57 +40,55 @@ namespace fs = std::filesystem;
 namespace Clap
 {
 
-  std::vector<fs::path> getValidCLAPSearchPaths();
-  class Plugin;
-  class IHost;
+std::vector<fs::path> getValidCLAPSearchPaths();
+class Plugin;
+class IHost;
 
-  class Library
+class Library
+{
+ public:
+  Library();
+  ~Library();
+  bool load(const char* name);
+
+  const clap_plugin_entry_t* _pluginEntry = nullptr;
+  const clap_plugin_factory_t* _pluginFactory = nullptr;
+  const clap_plugin_factory_as_vst3* _pluginFactoryVst3Info = nullptr;
+  const clap_plugin_factory_as_auv2* _pluginFactoryAUv2Info = nullptr;
+  std::vector<const clap_plugin_descriptor_t*> plugins;
+  const clap_plugin_info_as_vst3_t* get_vst3_info(uint32_t index);
+
+  bool hasEntryPoint() const
   {
-  public:
-    Library();
-    ~Library();
-    bool load(const char* name);
-    
-    const clap_plugin_entry_t* _pluginEntry = nullptr;
-    const clap_plugin_factory_t* _pluginFactory = nullptr;
-    const clap_plugin_factory_as_vst3* _pluginFactoryVst3Info = nullptr;
-    std::vector<const clap_plugin_descriptor_t*> plugins;
-    const clap_plugin_info_as_vst3_t* get_vst3_info(uint32_t index);
-
-    bool hasEntryPoint() const {
 #if WIN
-        return _handle != 0 || _selfcontained;
+    return _handle != 0 || _selfcontained;
 #endif
 
 #if MAC
-        return _bundle != nullptr || _selfcontained;
+    return _bundle != nullptr || _selfcontained;
 #endif
 
 #if LIN
-        return _handle != nullptr || _selfcontained;
+    return _handle != nullptr || _selfcontained;
 #endif
+  }
 
-    }
-
-  private:
+ private:
 #if MAC
-   CFBundleRef _bundle{nullptr};
+  CFBundleRef _bundle{nullptr};
 #endif
 
 #if LIN
-    void *_handle{nullptr};
+  void* _handle{nullptr};
 #endif
-
 
 #if WIN
-    HMODULE _handle = 0;
-    bool getEntryFunction(HMODULE handle, const char* path);
+  HMODULE _handle = 0;
+  bool getEntryFunction(HMODULE handle, const char* path);
 #endif
 
-    void setupPluginsFromPluginEntry(const char* p);
-    bool _selfcontained = false;
-  };
+  void setupPluginsFromPluginEntry(const char* p);
+  bool _selfcontained = false;
+};
 
-}
-
-
+}  // namespace Clap
