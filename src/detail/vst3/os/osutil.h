@@ -7,12 +7,27 @@
 
 #include <atomic>
 #include <string>
+#include <functional>
 #define FMT_HEADER_ONLY 1
 #include "fmt/format.h"
 #include "fmt/ranges.h"
 
 namespace os
 {
+
+class State {
+public:
+  State(std::function<void()> on, std::function<void()> off)
+  : _on(on)
+  , _off(off)
+  {}
+  void on() { if ( !_state ) { _on(); } _state = true; }
+  void off() { if ( _state ) { _off();} _state = false; }
+private:
+  bool _state = false;
+  std::function<void()> _on,_off;
+};
+
 class IPlugObject
 {
  public:
