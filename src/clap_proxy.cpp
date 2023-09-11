@@ -1,5 +1,6 @@
 #include "clap_proxy.h"
 #include "detail/clap/fsutil.h"
+#include <cstring>
 
 #if MAC || LIN
 #include <iostream>
