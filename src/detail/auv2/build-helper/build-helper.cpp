@@ -132,13 +132,16 @@ bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname
       clap_plugin_info_as_auv2_t v2inf;
       auto res =
           loader._pluginFactoryAUv2Info->get_auv2_info(loader._pluginFactoryAUv2Info, idx, &v2inf);
-      if (v2inf.au_type[0] != 0)
+      if (res)
       {
-        u.type = v2inf.au_type;
-      }
-      if (v2inf.au_subt[0] != 0)
-      {
-        u.subt = v2inf.au_subt;
+        if (v2inf.au_type[0] != 0)
+        {
+          u.type = v2inf.au_type;
+        }
+        if (v2inf.au_subt[0] != 0)
+        {
+          u.subt = v2inf.au_subt;
+        }
       }
     }
 
