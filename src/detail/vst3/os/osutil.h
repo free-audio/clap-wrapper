@@ -21,6 +21,10 @@ class State
   State(std::function<void()> on, std::function<void()> off) : _on(on), _off(off)
   {
   }
+  ~State()
+  {
+    off();
+  }
   void on()
   {
     if (!_state)
