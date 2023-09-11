@@ -250,6 +250,8 @@ endif()
 
 
 add_library(clap-wrapper-compile-options INTERFACE)
+add_library(clap-wrapper-sanitizer-options INTERFACE)
+
 target_compile_options(clap-wrapper-compile-options INTERFACE -D${CLAP_WRAPPER_PLATFORM}=1)
 if (APPLE)
 	target_link_libraries(clap-wrapper-compile-options INTERFACE macos_filesystem_support)
@@ -258,8 +260,9 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
 	target_compile_options(clap-wrapper-compile-options INTERFACE -Wall -Wextra -Wno-unused-parameter -Wpedantic -Werror)
 	if (${CLAP_WRAPPER_ENABLE_ASAN})
 		message(STATUS "clap-wrapper: enabling asan build")
-		target_compile_options(clap-wrapper-compile-options INTERFACE -fsanitize=address -fsanitize=undefined)
-		target_link_options(clap-wrapper-compile-options INTERFACE -fsanitize=address -fsanitize=undefined)
+		target_compile_options(clap-wrapper-sanitizer-options INTERFACE -fsanitize=address -fsanitize=undefined)
+		target_link_options(clap-wrapper-sanitizer-options INTERFACE -fsanitize=address -fsanitize=undefined)
+		target_link_libraries(clap-wrapper-compile-options INTERFACE clap-wrapper-sanitizer-options)
 	endif()
 endif()
 
@@ -308,6 +311,7 @@ function(target_add_vst3_wrapper)
 		add_library(base-sdk-vst3 STATIC ${vst3sources})
 		target_include_directories(base-sdk-vst3 PUBLIC ${VST3_SDK_ROOT} ${VST3_SDK_ROOT}/public.sdk ${VST3_SDK_ROOT}/pluginterfaces)
 		target_compile_options(base-sdk-vst3 PUBLIC $<IF:$<CONFIG:Debug>,-DDEVELOPMENT=1,-DRELEASE=1>) # work through steinbergs alternate choices for these
+		target_link_libraries(base-sdk-vst3 PUBLIC clap-wrapper-sanitizer-options)
 		# The VST3SDK uses sprintf, not snprintf, which macOS flags as deprecated
 		# to move people to snprintf. Silence that warning on the VST3 build
 		if (APPLE)
