@@ -167,8 +167,6 @@ function(DefineCLAPASVST3Sources)
 	endif()
 
 	set(wrappersources_vst3
-		src/clap_proxy.h
-		src/clap_proxy.cpp
 		src/wrapasvst3.h
 		src/wrapasvst3.cpp
 		src/wrapasvst3_entry.cpp
@@ -660,7 +658,6 @@ if (APPLE)
 	endif()
 endif()
 
-
 # Define the extensions target
 if ( NOT TARGET clap-wrapper-extensions)
 	add_library(clap-wrapper-extensions INTERFACE)
@@ -668,6 +665,8 @@ if ( NOT TARGET clap-wrapper-extensions)
 endif()
 
 add_library(clap-wrapper-shared-detail STATIC
+		src/clap_proxy.h
+		src/clap_proxy.cpp
 		src/detail/sha1.h
 		src/detail/sha1.cpp
 		src/detail/clap/fsutil.h
