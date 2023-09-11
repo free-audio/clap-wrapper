@@ -130,7 +130,7 @@ std::shared_ptr<Plugin> Plugin::createInstance(const clap_plugin_factory* fac, s
                                                Clap::IHost* host)
 {
   auto pc = fac->get_plugin_count(fac);
-  if (idx < 0 || idx >= pc) return nullptr;
+  if (idx >= pc) return nullptr;
   auto desc = fac->get_plugin_descriptor(fac, idx);
   return createInstance(fac, desc->id, host);
 }
