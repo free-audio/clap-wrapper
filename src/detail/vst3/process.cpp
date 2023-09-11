@@ -698,15 +698,21 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
         Steinberg::int32 index = 0;
         // addParameterData() does check if there is already a queue and returns it,
         // actually, it should be called getParameterQueue()
-        auto list = _vstdata->outputParameterChanges->addParameterData(param_id, index);
 
-        // the implementation of addParameterData() in the SDK always returns a queue, but Cubase 12 (perhaps others, too)
-        // sometimes don't return a queue object during the first bunch of process calls. I (df) haven't figured out, why.
-        // therefore we have to check if there is an output queue at all
-        if (list)
+        // the vst3 validator from the VST3 SDK does not provide always an object to output parameters, probably other hosts won't to that, too
+        // therefore we are cautious.
+        if (_vstdata->outputParameterChanges)
         {
-          Steinberg::int32 index2 = 0;
-          list->addPoint(ev->header.time, param->asVst3Value(ev->value), index2);
+          auto list = _vstdata->outputParameterChanges->addParameterData(param_id, index);
+
+          // the implementation of addParameterData() in the SDK always returns a queue, but Cubase 12 (perhaps others, too)
+          // sometimes don't return a queue object during the first bunch of process calls. I (df) haven't figured out, why.
+          // therefore we have to check if there is an output queue at all
+          if (list)
+          {
+            Steinberg::int32 index2 = 0;
+            list->addPoint(ev->header.time, param->asVst3Value(ev->value), index2);
+          }
         }
       }
     }
