@@ -258,10 +258,19 @@ if (APPLE)
 endif()
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
 	target_compile_options(clap-wrapper-compile-options INTERFACE -Wall -Wextra -Wno-unused-parameter -Wpedantic -Werror)
-	if (${CLAP_WRAPPER_ENABLE_ASAN})
-		message(STATUS "clap-wrapper: enabling asan build")
-		target_compile_options(clap-wrapper-sanitizer-options INTERFACE -fsanitize=address -fsanitize=undefined)
-		target_link_options(clap-wrapper-sanitizer-options INTERFACE -fsanitize=address -fsanitize=undefined)
+	if (${CLAP_WRAPPER_ENABLE_SANITIZER})
+		message(STATUS "clap-wrapper: enabling sanitizer build")
+
+		target_compile_options(clap-wrapper-sanitizer-options INTERFACE
+				-fsanitize=address,undefined,float-divide-by-zero
+				-fsanitize-address-use-after-return=always
+				-fsanitize-address-use-after-scope
+				)
+		target_link_options(clap-wrapper-sanitizer-options INTERFACE
+				-fsanitize=address,undefined,float-divide-by-zero
+				-fsanitize-address-use-after-return=always
+				-fsanitize-address-use-after-scope
+				)
 		target_link_libraries(clap-wrapper-compile-options INTERFACE clap-wrapper-sanitizer-options)
 	endif()
 endif()
