@@ -233,7 +233,6 @@ void Plugin::schnick()
 
 bool Plugin::initialize()
 {
-  fprintf(stderr, "Plugin Initialize\n");
   if (_ext._audioports)
   {
     _parentHost->setupAudioBusses(_plugin, _ext._audioports);
@@ -418,13 +417,18 @@ void Plugin::param_request_flush()
 // [thread-safe]
 const void* Plugin::clapExtension(const clap_host* host, const char* extension)
 {
+  std::cout << "EXTENSION " << extension << std::endl;
   if (!strcmp(extension, CLAP_EXT_LOG)) return &HostExt::log;
   if (!strcmp(extension, CLAP_EXT_PARAMS)) return &HostExt::params;
   if (!strcmp(extension, CLAP_EXT_THREAD_CHECK)) return &HostExt::threadcheck;
   if (!strcmp(extension, CLAP_EXT_GUI)) return &HostExt::hostgui;
   if (!strcmp(extension, CLAP_EXT_TIMER_SUPPORT)) return &HostExt::hosttimer;
 #if LIN
-  if (!strcmp(extension, CLAP_EXT_POSIX_FD_SUPPORT)) return &HostExt::hostposixfd;
+  if (!strcmp(extension, CLAP_EXT_POSIX_FD_SUPPORT))
+  {
+    std::cout << "Returning hpfd" << std::endl;
+    return &HostExt::hostposixfd;
+  }
 #endif
   if (!strcmp(extension, CLAP_EXT_LATENCY)) return &HostExt::latency;
   if (!strcmp(extension, CLAP_EXT_TAIL))
