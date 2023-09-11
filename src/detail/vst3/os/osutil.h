@@ -14,7 +14,7 @@
 
 namespace os
 {
-  
+
 class State
 {
   // the State class ensures that a specific function pair (like init/terminate) is only called in pairs.
@@ -24,7 +24,7 @@ class State
   // the construct should only be applied to when no state machine can cover this properly
   // or your own code depends on correct calling sequences of an external code base and should
   // help to implement defensive programming.
-  
+
  public:
   State(std::function<void()> on, std::function<void()> off) : _on(on), _off(off)
   {
