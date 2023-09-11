@@ -53,7 +53,7 @@ struct ClapBridge
 
     if (_clapid.empty())
     {
-      if (_idx < 0 || _idx >= _library.plugins.size())
+      if (_idx < 0 || _idx >= (int)_library.plugins.size())
       {
         std::cout << "[ERROR] cannot load by index" << std::endl;
         return;
