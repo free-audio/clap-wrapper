@@ -60,6 +60,7 @@ tresult PLUGIN_API ClapAsVst3::terminate()
 {
   if (_plugin)
   {
+    _os_attached.off();  // ensure we are detached
     _plugin->terminate();
     _plugin.reset();
   }
@@ -87,11 +88,12 @@ tresult PLUGIN_API ClapAsVst3::setActive(TBool state)
         _expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_TUNING);
     updateAudioBusses();
 
-    os::attach(this);
+    _os_attached.on();
   }
   if (!state)
   {
-    os::detach(this);
+    _os_attached.off();
+
     if (_active)
     {
       _plugin->deactivate();

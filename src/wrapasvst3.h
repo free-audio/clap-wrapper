@@ -108,6 +108,7 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
     , _library(lib)
     , _libraryIndex(number)
     , _creationcontext(context)
+    , _os_attached([this] { os::attach(this); }, [this] { os::detach(this); })
   {
   }
 
@@ -253,6 +254,7 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
 
   // plugin state
   bool _active = false;
+  os::State _os_attached;
   bool _processing = false;
   std::mutex _processingLock;
   std::atomic_bool _requestedFlush = false;
