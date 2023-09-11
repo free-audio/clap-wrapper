@@ -22,8 +22,8 @@ public:
   : _on(on)
   , _off(off)
   {}
-  void on() { if ( !_state ) { _on(); } _state = true; }
-  void off() { if ( _state ) { _off();} _state = false; }
+  void on(){ if ( !_state ) { _on(); } _state = true; }
+  void off(){ if ( _state ) { _off();} _state = false; }
 private:
   bool _state = false;
   std::function<void()> _on,_off;
