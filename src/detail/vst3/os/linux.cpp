@@ -167,7 +167,7 @@ void LinuxHelper::executeDefered()
 {
   for (auto p : _plugs)
   {
-    p->onIdle();
+    if (p) p->onIdle();
   }
 }
 void LinuxHelper::attach(IPlugObject* plugobject)

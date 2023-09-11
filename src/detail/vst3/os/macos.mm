@@ -60,7 +60,7 @@ void MacOSHelper::executeDefered()
 {
   for (auto p : _plugs)
   {
-    p->onIdle();
+    if (p) p->onIdle();
   }
 }
 
