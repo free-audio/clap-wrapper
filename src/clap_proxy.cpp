@@ -1,6 +1,6 @@
 #include "clap_proxy.h"
 #include "detail/clap/fsutil.h"
-#include "public.sdk/source/main/pluginfactory.h"
+#include <cstring>
 
 #if MAC || LIN
 #include <iostream>
@@ -115,6 +115,25 @@ static void tail_changed(const clap_host_t* host)
 const clap_host_tail tail = {tail_changed};
 
 }  // namespace HostExt
+
+std::shared_ptr<Plugin> Plugin::createInstance(const clap_plugin_factory* fac, const std::string& id,
+                                               Clap::IHost* host)
+{
+  auto plug = std::shared_ptr<Plugin>(new Plugin(host));
+  auto instance = fac->create_plugin(fac, plug->getClapHostInterface(), id.c_str());
+  plug->connectClap(instance);
+
+  return plug;
+}
+
+std::shared_ptr<Plugin> Plugin::createInstance(const clap_plugin_factory* fac, size_t idx,
+                                               Clap::IHost* host)
+{
+  auto pc = fac->get_plugin_count(fac);
+  if (idx >= pc) return nullptr;
+  auto desc = fac->get_plugin_descriptor(fac, idx);
+  return createInstance(fac, desc->id, host);
+}
 
 std::shared_ptr<Plugin> Plugin::createInstance(Clap::Library& library, size_t index, IHost* host)
 {
