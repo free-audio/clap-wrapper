@@ -15,7 +15,8 @@
 namespace os
 {
 
-class State {
+class State
+{
 public:
   State(std::function<void()> on, std::function<void()> off)
   : _on(on)

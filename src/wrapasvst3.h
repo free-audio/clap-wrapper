@@ -108,7 +108,7 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
     , _library(lib)
     , _libraryIndex(number)
     , _creationcontext(context)
-    , _os_attached( [this]{os::attach(this);},[this]{os::detach(this);})
+    , _os_attached( [this]{ os::attach(this); }, [this]{ os::detach(this); })
   {
   }
 
