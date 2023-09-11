@@ -60,7 +60,7 @@ tresult PLUGIN_API ClapAsVst3::terminate()
 {
   if (_plugin)
   {
-    _os_attached.off();  // ensure we are detached (countermeasure to Bug in Renoise)
+    _os_attached.off();  // ensure we are detached
     _plugin->terminate();
     _plugin.reset();
   }
