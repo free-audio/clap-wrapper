@@ -60,6 +60,7 @@ tresult PLUGIN_API ClapAsVst3::terminate()
 {
   if (_plugin)
   {
+    _os_attached.off();  // ensure we are detached
     _plugin->terminate();
     _plugin.reset();
   }
@@ -87,11 +88,12 @@ tresult PLUGIN_API ClapAsVst3::setActive(TBool state)
         _expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_TUNING);
     updateAudioBusses();
 
-    os::attach(this);
+    _os_attached.on();
   }
   if (!state)
   {
-    os::detach(this);
+    _os_attached.off();
+
     if (_active)
     {
       _plugin->deactivate();
@@ -461,7 +463,6 @@ Vst::UnitID ClapAsVst3::getOrCreateUnitInfo(const char* modulename)
     }
     else
     {
-      // the unit needs to be created
       Steinberg::Vst::String128 name;
       std::string u8name(path[i]);
       if (VST3::StringConvert::convert(u8name, name))
@@ -581,10 +582,14 @@ void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
   units.clear();
 
   {
-    Vst::String128 rootname(STR16("root"));
-    Vst::Unit* newunit = new Vst::Unit(rootname, Vst::kNoParentUnitId,
-                                       Vst::kRootUnitId);  // a new unit without a program list
-    addUnit(newunit);
+    Vst::UnitInfo rootInfo;
+    rootInfo.id = Vst::kRootUnitId;
+    rootInfo.parentUnitId = Vst::kNoParentUnitId;
+    rootInfo.programListId = Vst::kNoProgramListId;
+    VST3::StringConvert::convert(std::string("Root"), rootInfo.name);
+
+    auto rootUnit = new Vst::Unit(rootInfo);
+    addUnit(rootUnit);
   }
 
   auto numparams = params->count(plugin);

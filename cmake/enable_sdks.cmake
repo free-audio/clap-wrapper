@@ -9,6 +9,7 @@
 # make CPM available
 include(cmake/CPM.cmake)
 
+
 if (${CLAP_WRAPPER_DOWNLOAD_DEPENDENCIES})
 	message(STATUS "clap-wrapper: Downloading dependencies using CPM")
 
@@ -247,6 +248,34 @@ if (APPLE)
 	endif()
 endif()
 
+
+add_library(clap-wrapper-compile-options INTERFACE)
+add_library(clap-wrapper-sanitizer-options INTERFACE)
+
+target_compile_options(clap-wrapper-compile-options INTERFACE -D${CLAP_WRAPPER_PLATFORM}=1)
+if (APPLE)
+	target_link_libraries(clap-wrapper-compile-options INTERFACE macos_filesystem_support)
+endif()
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+	target_compile_options(clap-wrapper-compile-options INTERFACE -Wall -Wextra -Wno-unused-parameter -Wpedantic -Werror)
+	if (${CLAP_WRAPPER_ENABLE_SANITIZER})
+		message(STATUS "clap-wrapper: enabling sanitizer build")
+
+		target_compile_options(clap-wrapper-sanitizer-options INTERFACE
+				-fsanitize=address,undefined,float-divide-by-zero
+				-fsanitize-address-use-after-return=always
+				-fsanitize-address-use-after-scope
+				)
+		target_link_options(clap-wrapper-sanitizer-options INTERFACE
+				-fsanitize=address,undefined,float-divide-by-zero
+				-fsanitize-address-use-after-return=always
+				-fsanitize-address-use-after-scope
+				)
+		target_link_libraries(clap-wrapper-compile-options INTERFACE clap-wrapper-sanitizer-options)
+	endif()
+endif()
+
+
 # define libraries
 function(target_add_vst3_wrapper)
 	set(oneValueArgs
@@ -291,6 +320,7 @@ function(target_add_vst3_wrapper)
 		add_library(base-sdk-vst3 STATIC ${vst3sources})
 		target_include_directories(base-sdk-vst3 PUBLIC ${VST3_SDK_ROOT} ${VST3_SDK_ROOT}/public.sdk ${VST3_SDK_ROOT}/pluginterfaces)
 		target_compile_options(base-sdk-vst3 PUBLIC $<IF:$<CONFIG:Debug>,-DDEVELOPMENT=1,-DRELEASE=1>) # work through steinbergs alternate choices for these
+		target_link_libraries(base-sdk-vst3 PUBLIC clap-wrapper-sanitizer-options)
 		# The VST3SDK uses sprintf, not snprintf, which macOS flags as deprecated
 		# to move people to snprintf. Silence that warning on the VST3 build
 		if (APPLE)
@@ -322,19 +352,11 @@ function(target_add_vst3_wrapper)
 		target_link_libraries(${V3_TARGET}-clap-wrapper-vst3-lib PUBLIC clap base-sdk-vst3)
 
 		# clap-wrapper-extensions are PUBLIC, so a clap linking the library can access the clap-wrapper-extensions
-		target_compile_definitions(${V3_TARGET}-clap-wrapper-vst3-lib PUBLIC -D${CLAP_WRAPPER_PLATFORM}=1)
-		target_link_libraries(${V3_TARGET}-clap-wrapper-vst3-lib PUBLIC clap-wrapper-extensions clap-wrapper-shared-detail)
+		target_link_libraries(${V3_TARGET}-clap-wrapper-vst3-lib PUBLIC clap-wrapper-extensions clap-wrapper-compile-options clap-wrapper-shared-detail)
 
 		target_compile_options(${V3_TARGET}-clap-wrapper-vst3-lib PRIVATE
 				-DCLAP_SUPPORTS_ALL_NOTE_EXPRESSIONS=$<IF:$<BOOL:${V3_SUPPORTS_ALL_NOTE_EXPRESSIONS}>,1,0>
 				)
-
-		if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-			target_compile_options(${V3_TARGET}-clap-wrapper-vst3-lib PRIVATE -Wall -Wextra -Wno-unused-parameter -Wpedantic -Werror)
-		endif()
-		if (APPLE)
-			target_link_libraries(${V3_TARGET}-clap-wrapper-vst3-lib PUBLIC macos_filesystem_support)
-		endif()
 	endif()
 
 
@@ -588,8 +610,7 @@ if (APPLE)
 				target_link_libraries(${AUV2_TARGET}-clap-wrapper-auv2-lib INTERFACE clap base-sdk-auv2)
 
 				# clap-wrapper-extensions are PUBLIC, so a clap linking the library can access the clap-wrapper-extensions
-				target_compile_definitions(${AUV2_TARGET}-clap-wrapper-auv2-lib INTERFACE -D${CLAP_WRAPPER_PLATFORM}=1)
-				target_link_libraries(${AUV2_TARGET}-clap-wrapper-auv2-lib INTERFACE clap-wrapper-extensions clap-wrapper-shared-detail macos_filesystem_support)
+				target_link_libraries(${AUV2_TARGET}-clap-wrapper-auv2-lib INTERFACE clap-wrapper-extensions clap-wrapper-shared-detail clap-wrapper-compile-options)
 
 			endif()
 
@@ -653,14 +674,9 @@ add_library(clap-wrapper-shared-detail STATIC
 		src/detail/clap/fsutil.cpp
 		src/detail/clap/automation.h
 		)
-target_compile_options(clap-wrapper-shared-detail PUBLIC -D${CLAP_WRAPPER_PLATFORM}=1)
-target_link_libraries(clap-wrapper-shared-detail PUBLIC clap clap-wrapper-extensions)
+target_link_libraries(clap-wrapper-shared-detail PUBLIC clap clap-wrapper-extensions clap-wrapper-compile-options)
 target_include_directories(clap-wrapper-shared-detail PUBLIC libs/fmt)
 target_include_directories(clap-wrapper-shared-detail PUBLIC src)
-
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-	target_compile_options(clap-wrapper-shared-detail PRIVATE -Wall -Wextra -Wno-unused-parameter -Wpedantic -Werror)
-endif()
 
 
 if (APPLE)
