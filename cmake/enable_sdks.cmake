@@ -283,27 +283,27 @@ function(target_add_vst3_wrapper)
 
 	target_sources(${V3_TARGET} PRIVATE ${wrappersources_vst3_entry})
 
-	# the library "vst3-pluginbase-lib" contains all code from the VST3 SDK like the interface definitions
+	# the library "base-sdk-vst3" contains all code from the VST3 SDK like the interface definitions
 	# and base classes and will be statically linked. This code is shared between all VST3 plugins.
 	# it only needs to be created once.
-	if (NOT TARGET vst3-pluginbase-lib)
+	if (NOT TARGET base-sdk-vst3)
 		message(STATUS "clap-wrapper: creating vst3 library with root ${VST3_SDK_ROOT}")
-		add_library(vst3-pluginbase-lib STATIC ${vst3sources})
-		target_include_directories(vst3-pluginbase-lib PUBLIC ${VST3_SDK_ROOT} ${VST3_SDK_ROOT}/public.sdk ${VST3_SDK_ROOT}/pluginterfaces)
-		target_compile_options(vst3-pluginbase-lib PUBLIC $<IF:$<CONFIG:Debug>,-DDEVELOPMENT=1,-DRELEASE=1>) # work through steinbergs alternate choices for these
+		add_library(base-sdk-vst3 STATIC ${vst3sources})
+		target_include_directories(base-sdk-vst3 PUBLIC ${VST3_SDK_ROOT} ${VST3_SDK_ROOT}/public.sdk ${VST3_SDK_ROOT}/pluginterfaces)
+		target_compile_options(base-sdk-vst3 PUBLIC $<IF:$<CONFIG:Debug>,-DDEVELOPMENT=1,-DRELEASE=1>) # work through steinbergs alternate choices for these
 		# The VST3SDK uses sprintf, not snprintf, which macOS flags as deprecated
 		# to move people to snprintf. Silence that warning on the VST3 build
 		if (APPLE)
-			target_compile_options(vst3-pluginbase-lib PUBLIC -Wno-deprecated-declarations)
+			target_compile_options(base-sdk-vst3 PUBLIC -Wno-deprecated-declarations)
 		endif()
 		if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
 			# The VST3 SDK confuses lld and long long int in format statements in some situations it seems
-			target_compile_options(vst3-pluginbase-lib PUBLIC -Wno-format)
+			target_compile_options(base-sdk-vst3 PUBLIC -Wno-format)
 
 			# The SDK also does things like `#warning DEPRECATED No Linux implementation
 			#	assert (false && "DEPRECATED No Linux implementation");` for some methods which
 			# generates a cpp warning. Since we won't fix this do
-			target_compile_options(vst3-pluginbase-lib PUBLIC -Wno-cpp)
+			target_compile_options(base-sdk-vst3 PUBLIC -Wno-cpp)
 		endif()
 	endif()
 
@@ -319,7 +319,7 @@ function(target_add_vst3_wrapper)
 
 		add_library(${V3_TARGET}-clap-wrapper-vst3-lib STATIC ${wsv3})
 		target_include_directories(${V3_TARGET}-clap-wrapper-vst3-lib PRIVATE "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/include")
-		target_link_libraries(${V3_TARGET}-clap-wrapper-vst3-lib PUBLIC clap vst3-pluginbase-lib)
+		target_link_libraries(${V3_TARGET}-clap-wrapper-vst3-lib PUBLIC clap base-sdk-vst3)
 
 		# clap-wrapper-extensions are PUBLIC, so a clap linking the library can access the clap-wrapper-extensions
 		target_compile_definitions(${V3_TARGET}-clap-wrapper-vst3-lib PUBLIC -D${CLAP_WRAPPER_PLATFORM}=1)
@@ -431,8 +431,8 @@ if (APPLE)
 		message(STATUS "clap-wrapper: AudioUnit SDK location: ${AUDIOUNIT_SDK_ROOT}")
 
 		set(AUSDK_SRC ${AUDIOUNIT_SDK_ROOT}/src/AudioUnitSDK)
-		if (NOT TARGET auv2_sdk)
-			add_library(auv2_sdk STATIC ${AUSDK_SRC}/AUBase.cpp
+		if (NOT TARGET base-sdk-auv2)
+			add_library(base-sdk-auv2 STATIC ${AUSDK_SRC}/AUBase.cpp
 					${AUSDK_SRC}/AUBuffer.cpp
 					${AUSDK_SRC}/AUBufferAllocator.cpp
 					${AUSDK_SRC}/AUEffectBase.cpp
@@ -445,7 +445,7 @@ if (APPLE)
 					${AUSDK_SRC}/ComponentBase.cpp
 					${AUSDK_SRC}/MusicDeviceBase.cpp
 					)
-			target_include_directories(auv2_sdk PUBLIC ${AUDIOUNIT_SDK_ROOT}/include)
+			target_include_directories(base-sdk-auv2 PUBLIC ${AUDIOUNIT_SDK_ROOT}/include)
 		endif()
 
 		function(target_add_auv2_wrapper)
@@ -585,7 +585,7 @@ if (APPLE)
 				# For now make this an interface
 				add_library(${AUV2_TARGET}-clap-wrapper-auv2-lib INTERFACE )
 				target_include_directories(${AUV2_TARGET}-clap-wrapper-auv2-lib INTERFACE "${bhtgoutdir}" "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src")
-				target_link_libraries(${AUV2_TARGET}-clap-wrapper-auv2-lib INTERFACE clap auv2_sdk)
+				target_link_libraries(${AUV2_TARGET}-clap-wrapper-auv2-lib INTERFACE clap base-sdk-auv2)
 
 				# clap-wrapper-extensions are PUBLIC, so a clap linking the library can access the clap-wrapper-extensions
 				target_compile_definitions(${AUV2_TARGET}-clap-wrapper-auv2-lib INTERFACE -D${CLAP_WRAPPER_PLATFORM}=1)
