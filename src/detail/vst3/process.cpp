@@ -110,15 +110,15 @@ void ProcessAdapter::setupProcessing(const clap_plugin_t* plugin, const clap_plu
   _out_events.try_push = output_events_try_push;
 
   _events.clear();
-  _events.reserve(256);
+  _events.reserve(8192);
   _eventindices.clear();
   _eventindices.reserve(_events.capacity());
 
   _out_events.ctx = this;
 
-  _gesturedParameters.reserve(32);
+  _gesturedParameters.reserve(8192);
 
-  _activeNotes.reserve(64);
+  _activeNotes.reserve(256);
 
   _supportsPolyPressure = enablePolyPressure;
   _supportsTuningNoteExpression = supportsTuningNoteExpression;
