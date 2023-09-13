@@ -20,6 +20,7 @@
 # CLAP_WRAPPER_WINDOWS_SINGLE_FILE if set to TRUE (default) the windows .vst3 is a single file; false a 3.7 spec folder
 # CLAP_WRAPPER_DOWNLOAD_DEPENDENCIES if set will download the needed SDKs using CPM from github
 # CLAP_WRAPPER_DONT_ADD_TARGETS if included in a CMakeList above skip adding targets
+# CLAP_WRAPPER_COPY_AFTER_BUILD if included mac and lin will copy to ~/... (lin t/k)
 
 cmake_minimum_required(VERSION 3.21)
 cmake_policy(SET CMP0091 NEW)
