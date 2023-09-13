@@ -273,6 +273,41 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
 	endif()
 endif()
 
+function(target_copy_after_build)
+	set(oneValueArgs
+			TARGET
+			FLAVOR
+			)
+	cmake_parse_arguments(CAB "" "${oneValueArgs}" "" ${ARGN})
+
+	if (${CAB_FLAVOR} STREQUAL "vst3")
+		set(postfix "vst3")
+		set(macdir "VST3")
+		set(lindir ".vst3")
+	elseif (${CAB_FLAVOR} STREQUAL "auv2")
+		set(postfix "component")
+		set(macdir "Components")
+		set(lindir ".component")
+	endif ()
+
+	if (APPLE)
+		message(STATUS "clap-wrapper: will copy ${CAB_TARGET} / ${CAB_FLAVOR} after build")
+		set(products_folder "${CMAKE_BINARY_DIR}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_DIR>")
+		add_custom_command(TARGET ${CAB_TARGET} POST_BUILD
+				COMMAND ${CMAKE_COMMAND} -E make_directory "~/Library/Audio/Plug-Ins/${macdir}"
+				COMMAND ${CMAKE_COMMAND} -E echo installing "${products_folder}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}" "~/Library/Audio/Plug-Ins/${macdir}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}"
+				COMMAND ${CMAKE_COMMAND} -E copy_directory "${products_folder}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}" "~/Library/Audio/Plug-Ins/${macdir}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}"
+				)
+	elseif (UNIX)
+		message(STATUS "clap-wrapper: will copy ${CAB_TARGET} / ${CAB_FLAVOR} after build (untested)")
+		set(products_folder "${CMAKE_BINARY_DIR}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_DIR>")
+		add_custom_command(TARGET ${CAB_TARGET} POST_BUILD
+				COMMAND ${CMAKE_COMMAND} -E make_directory "~/${lindir}"
+				COMMAND ${CMAKE_COMMAND} -E echo installing "${products_folder}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}" "~/${lindir}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}"
+				COMMAND ${CMAKE_COMMAND} -E copy_directory "${products_folder}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}" "~/${lindir}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}"
+				)
+	endif ()
+endfunction(target_copy_after_build)
 
 # define libraries
 function(target_add_vst3_wrapper)
@@ -389,15 +424,13 @@ function(target_add_vst3_wrapper)
 				MACOSX_BUNDLE_SHORT_VERSION_STRING ${V3_BUNDLE_VERSION}
 				MACOSX_BUNDLE_INFO_PLIST ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/cmake/VST3_Info.plist.in
 				)
-		if (NOT ${CMAKE_GENERATOR} STREQUAL "Xcode")
-			add_custom_command(TARGET ${V3_TARGET} PRE_BUILD
-					WORKING_DIRECTORY $<TARGET_PROPERTY:${V3_TARGET},LIBRARY_OUTPUT_DIRECTORY>
-					COMMAND SetFile -a B "$<TARGET_PROPERTY:${V3_TARGET},LIBRARY_OUTPUT_NAME>.$<TARGET_PROPERTY:${V3_TARGET},BUNDLE_EXTENSION>"
-					)
-		endif()
+		add_custom_command(TARGET ${V3_TARGET} PRE_BUILD
+				WORKING_DIRECTORY $<TARGET_PROPERTY:${V3_TARGET},LIBRARY_OUTPUT_DIRECTORY>
+				COMMAND SetFile -a B "$<TARGET_PROPERTY:${V3_TARGET},LIBRARY_OUTPUT_NAME>.$<TARGET_PROPERTY:${V3_TARGET},BUNDLE_EXTENSION>"
+				)
 
 		if (NOT ${V3_MACOS_EMBEDDED_CLAP_LOCATION} STREQUAL "")
-			add_custom_command(TARGET ${V3_TARGET} POST_BUILD
+			add_custom_command(TARGET ${V3_TARGET} PRE_BUILD
 					WORKING_DIRECTORY $<TARGET_PROPERTY:${V3_TARGET},LIBRARY_OUTPUT_DIRECTORY>
 					COMMAND ${CMAKE_COMMAND} -E echo "Installing ${V3_MACOS_EMBEDDED_CLAP_LOCATION} in $<TARGET_PROPERTY:${V3_TARGET},MACOSX_BUNDLE_BUNDLE_NAME>.$<TARGET_PROPERTY:${V3_TARGET},BUNDLE_EXTENSION>/Contents/PlugIns/$<TARGET_PROPERTY:${V3_TARGET},MACOSX_BUNDLE_BUNDLE_NAME>.clap"
 					COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_PROPERTY:${V3_TARGET},MACOSX_BUNDLE_BUNDLE_NAME>.$<TARGET_PROPERTY:${V3_TARGET},BUNDLE_EXTENSION>/Contents/PlugIns"
@@ -437,6 +470,10 @@ function(target_add_vst3_wrapper)
 					LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/Release/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-win"
 					SUFFIX ".vst3")
 		endif()
+	endif()
+
+	if (${CLAP_WRAPPER_COPY_AFTER_BUILD})
+		target_copy_after_build(TARGET ${V3_TARGET} FLAVOR vst3)
 	endif()
 endfunction(target_add_vst3_wrapper)
 
@@ -639,14 +676,12 @@ if (APPLE)
 			add_custom_command(TARGET ${AUV2_TARGET} PRE_BUILD
 					COMMAND ${CMAKE_COMMAND} -E copy ${bhtgoutdir}/auv2_Info.plist $<TARGET_FILE_DIR:${AUV2_TARGET}>/../Info.plist)
 
-			if (NOT ${CMAKE_GENERATOR} STREQUAL "Xcode")
-				add_custom_command(TARGET ${AUV2_TARGET} PRE_BUILD
-						WORKING_DIRECTORY $<TARGET_PROPERTY:${AUV2_TARGET},LIBRARY_OUTPUT_DIRECTORY>
-						COMMAND SetFile -a B "$<TARGET_PROPERTY:${AUV2_TARGET},MACOSX_BUNDLE_BUNDLE_NAME>.$<TARGET_PROPERTY:${AUV2_TARGET},BUNDLE_EXTENSION>")
-			endif()
+			add_custom_command(TARGET ${AUV2_TARGET} PRE_BUILD
+					WORKING_DIRECTORY $<TARGET_PROPERTY:${AUV2_TARGET},LIBRARY_OUTPUT_DIRECTORY>
+					COMMAND SetFile -a B "$<TARGET_PROPERTY:${AUV2_TARGET},MACOSX_BUNDLE_BUNDLE_NAME>.$<TARGET_PROPERTY:${AUV2_TARGET},BUNDLE_EXTENSION>")
 
 			if (NOT ${AUV2_MACOS_EMBEDDED_CLAP_LOCATION} STREQUAL "")
-				add_custom_command(TARGET ${AUV2_TARGET} POST_BUILD
+				add_custom_command(TARGET ${AUV2_TARGET} PRE_BUILD
 						WORKING_DIRECTORY $<TARGET_PROPERTY:${AUV2_TARGET},LIBRARY_OUTPUT_DIRECTORY>
 						COMMAND ${CMAKE_COMMAND} -E echo "Installing ${AUV2_MACOS_EMBEDDED_CLAP_LOCATION} in $<TARGET_PROPERTY:${AUV2_TARGET},MACOSX_BUNDLE_BUNDLE_NAME>.$<TARGET_PROPERTY:${AUV2_TARGET},BUNDLE_EXTENSION>/Contents/PlugIns/$<TARGET_PROPERTY:${AUV2_TARGET},MACOSX_BUNDLE_BUNDLE_NAME>.clap"
 						COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_PROPERTY:${AUV2_TARGET},MACOSX_BUNDLE_BUNDLE_NAME>.$<TARGET_PROPERTY:${AUV2_TARGET},BUNDLE_EXTENSION>/Contents/PlugIns"
@@ -654,6 +689,9 @@ if (APPLE)
 						)
 			endif()
 
+			if (${CLAP_WRAPPER_COPY_AFTER_BUILD})
+				target_copy_after_build(TARGET ${AUV2_TARGET} FLAVOR auv2)
+			endif()
 		endfunction(target_add_auv2_wrapper)
 	endif()
 endif()
