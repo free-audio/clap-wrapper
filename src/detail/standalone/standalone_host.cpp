@@ -122,7 +122,7 @@ void StandaloneHost::clapProcess(void *pOutput, const void *pInput, uint32_t fra
     if (mainInIdx < 0)
     {
       // TODO cleaner
-      mainInIdx = ptrIdx - 2;
+      mainInIdx = (int32_t)(ptrIdx - 2);
     }
     bufIdx++;
   }
@@ -143,7 +143,7 @@ void StandaloneHost::clapProcess(void *pOutput, const void *pInput, uint32_t fra
     if (mainOutIdx < 0)
     {
       // TODO cleaner
-      mainOutIdx = ptrIdx - 2;
+      mainOutIdx = (int32_t)(ptrIdx - 2);
     }
 
     bufIdx++;

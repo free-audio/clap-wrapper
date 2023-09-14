@@ -57,9 +57,9 @@ set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 # variable with the source dir
 set(CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR} CACHE STRING "Clap Wrapper Source Location")
 if (DEFINED CLAP_WRAPPER_CODE_CHECKS_ONLY)
-	message(STATUS "clap-wrapper: code checks only; skipping enable sdks")
+	message(STATUS "clap-wrapper: code checks only; skipping wrapper functions")
 else()
-	include(cmake/enable_sdks.cmake)
+	include(cmake/wrapper_functions.cmake)
 endif()
 
 # automatically build the wrapper only if this is the top level project
@@ -113,6 +113,15 @@ else()
 			)
 		endif()
 	endif()
+
+	if (${CLAP_WRAPPER_BUILD_STANDALONE})
+		add_executable(${pluginname}_as_standalone)
+		target_add_standalone_wrapper(TARGET ${pluginname}_as_standalone
+		    OUTPUT_NAME ${CLAP_WRAPPER_OUTPUT_NAME}
+		    HOSTED_CLAP_NAME ${CLAP_WRAPPER_OUTPUT_NAME}
+		    PLUGIN_INDEX 0)
+	endif()
+
 endif()
 
 
