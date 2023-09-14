@@ -25,20 +25,20 @@
   entry = &clap_entry;
 #else
   // Library shenanigans t/k
-  std::string cn{HOSTED_CLAP_NAME};
-  LOG << "Loading " << cn << std::endl;
+  std::string clapName{HOSTED_CLAP_NAME};
+  LOG << "Loading " << clapName << std::endl;
 
   auto pts = Clap::getValidCLAPSearchPaths();
 
   auto lib = Clap::Library();
 
-  for (const auto &p : pts)
+  for (const auto &searchPaths : pts)
   {
-    auto cp = p / (cn + ".clap");
+    auto clapPath = searchPaths / (clapName + ".clap");
 
-    if (fs::is_directory(cp))
+    if (fs::is_directory(clapPath) && !entry)
     {
-      lib.load(cp.u8string().c_str());
+      lib.load(clapPath.u8string().c_str());
       entry = lib._pluginEntry;
     }
   }
@@ -52,7 +52,7 @@
   std::string pid{PLUGIN_ID};
   int pindex{PLUGIN_INDEX};
 
-  switch ([AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo])
+  switch ([AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio])
   {
     case AVAuthorizationStatusNotDetermined:
     {

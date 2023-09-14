@@ -195,8 +195,13 @@ bool StandaloneHost::register_timer(uint32_t period_ms, clap_id *timer_id)
 {
   if (!timersStarted)
   {
-    LOG << "Stargint Timers" << std::endl;
+#if CLAP_WRAPPER_HAS_GTK3
+    LOG << "Starting Timers" << std::endl;
     g_timeout_add(30, time_handler, this);
+#else
+    LOG << "No linux timer support absent GTK3 right now" << std::endl;
+    return false;
+#endif
   }
   std::lock_guard<std::mutex> g(timerMapMutex);
   auto nid = currTimer++;

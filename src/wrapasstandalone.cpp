@@ -20,29 +20,22 @@ int main(int argc, char **argv)
   entry = &clap_entry;
 #else
   // Library shenanigans t/k
-  std::string cn{HOSTED_CLAP_NAME};
-  LOG << "Loading " << cn << std::endl;
+  std::string clapName{HOSTED_CLAP_NAME};
+  LOG << "Loading " << clapName << std::endl;
 
   auto pts = Clap::getValidCLAPSearchPaths();
 
   auto lib = Clap::Library();
 
-  for (const auto &p : pts)
+  for (const auto &searchPaths : pts)
   {
-    auto cp = p / (cn + ".clap");
-#if MAC
-    if (fs::is_directory(cp))
+    auto clapPath = searchPaths / (clapName + ".clap");
+
+    if (fs::exists(clapPath) && !entry)
     {
-      lib.load(cp.u8string().c_str());
+      lib.load(clapPath.u8string().c_str());
       entry = lib._pluginEntry;
     }
-#else
-    if (fs::exists(cp))
-    {
-      lib.load(cp.u8string().c_str());
-      entry = lib._pluginEntry;
-    }
-#endif
   }
 
 #endif
