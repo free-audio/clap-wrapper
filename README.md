@@ -6,9 +6,7 @@ Wrappers for other plugin formats to the CLAP audio plugin format (see https://g
 This project does provide:
 - a standalone wrapper that dynamically loads an installed CLAP
 - a CMAKE library to make use of wrapper specific extensions
-
-Future releases will provide:
-- a library that is statically linked to a CLAP plugin.
+- a library that is statically linked to a CLAP plugin by simple CMake function call
 
 It exposes the entrypoints for different Audio Plugin standards and their interfaces and maps them quite immediately to the CLAP in the same binary (this might be dynamic later on). The code locates the CLAP entrypoint and uses it from a host perspective and translates all information and events to a different Audio Standard.
 
@@ -16,13 +14,9 @@ The CLAP community calls this a PALCer or a CLAP-as-X wrapper.
 
 ## Status
 
-Currently this works on Windows, macOS and Linux(*) and it will always try to load a .clap with the same name as the .vst3 from the CLAP folders. It does this by taking also the parent folder into account, so a vendor name can be matched and finally searches through the first level of subdirectories in the CLAP folders.
+Currently this works on Windows, macOS and Linux and it will always try to load a .clap with the same name as the .vst3 from the CLAP folders. It does this by taking also the parent folder into account, so a vendor name can be matched and finally searches through the first level of subdirectories in the CLAP folders.
 
 If not found, it returns a nullptr and the host will not load it.
-
-Things currently missing:
-
-- CMake function to link to clap project
 
 ## How to build
 
@@ -76,3 +70,4 @@ target_link_libraries(${project} PRIVATE clap-wrapper-extensions)
 ## But...
 
 ..yes, you're probably right - lets discuss. :)
+

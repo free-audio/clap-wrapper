@@ -19,7 +19,7 @@ struct ClapBridge
   ClapBridge(const std::string &clapname, const std::string &clapid, int idx)
     : _clapname(clapname), _clapid(clapid), _idx(idx)
   {
-    std::cout << "[clap-wraper] auv2: creating clap bridge nm=" << clapname << " id=" << clapid
+    std::cout << "[clap-wrapper] auv2: creating clap bridge nm=" << clapname << " id=" << clapid
               << " idx=" << idx << std::endl;
   }
 
@@ -36,8 +36,10 @@ struct ClapBridge
       auto csp = Clap::getValidCLAPSearchPaths();
       for (auto &cs : csp)
       {
-        if (fs::is_directory(cs / (_clapname + ".clap")))
-          if (_library.load(_clapname.c_str()))
+        auto fp = cs / (_clapname + ".clap");
+
+        if (fs::is_directory(fp))
+          if (_library.load(fp.u8string().c_str()))
           {
             std::cout << "[clap-wrapper] auv2 loaded clap from " << cs.u8string() << std::endl;
             loaded = true;
