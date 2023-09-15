@@ -52,6 +52,7 @@
   std::string pid{PLUGIN_ID};
   int pindex{PLUGIN_INDEX};
 
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
   switch ([AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio])
   {
     case AVAuthorizationStatusNotDetermined:
@@ -68,6 +69,7 @@
     default:
       break;
   }
+#endif
 
   auto plugin = Clap::Standalone::mainCreatePlugin(entry, pid, pindex, 1, (char **)argv);
 

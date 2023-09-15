@@ -49,7 +49,7 @@ void StandaloneHost::startMIDIThread()
 
 void StandaloneHost::processMIDIEvents(double deltatime, std::vector<unsigned char> *message)
 {
-  unsigned int nBytes = message->size();
+  auto nBytes = message->size();
 
   if (nBytes == 3)
   {
