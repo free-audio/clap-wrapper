@@ -72,6 +72,11 @@ std::shared_ptr<Clap::Plugin> getMainPlugin()
   return plugin;
 }
 
+StandaloneHost *getStandaloneHost()
+{
+  return standaloneHost.get();
+}
+
 int mainWait()
 {
   while (standaloneHost->running)

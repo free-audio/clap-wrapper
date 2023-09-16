@@ -11,6 +11,10 @@ std::shared_ptr<Clap::Plugin> mainCreatePlugin(const clap_plugin_entry *entry, c
 void mainStartAudio();
 
 std::shared_ptr<Clap::Plugin> getMainPlugin();
+
+struct StandaloneHost;
+StandaloneHost *getStandaloneHost();
+
 int mainWait();
 int mainFinish();
 }  // namespace Clap::Standalone

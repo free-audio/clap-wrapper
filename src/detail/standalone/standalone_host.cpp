@@ -4,7 +4,7 @@
 
 #if LIN
 #if CLAP_WRAPPER_HAS_GTK3
-#include <glib.h>
+#include "detail/standalone/linux/gtkutils.h"
 #endif
 #endif
 
@@ -184,67 +184,43 @@ void StandaloneHost::clapProcess(void *pOutput, const void *pInput, uint32_t fra
 }
 
 #if LIN
-int time_handler(void *userData)
-{
-  auto sh = (StandaloneHost *)userData;
-  sh->runTimerFn();
-  return true;
-}
 
 bool StandaloneHost::register_timer(uint32_t period_ms, clap_id *timer_id)
 {
-  if (!timersStarted)
-  {
-#if CLAP_WRAPPER_HAS_GTK3
-    LOG << "Starting Timers" << std::endl;
-    g_timeout_add(30, time_handler, this);
+#if LIN && CLAP_WRAPPER_HAS_GTK3
+  return gtkGui->register_timer(period_ms, timer_id);
 #else
-    LOG << "No linux timer support absent GTK3 right now" << std::endl;
-    return false;
+  return false;
 #endif
-  }
-  std::lock_guard<std::mutex> g(timerMapMutex);
-  auto nid = currTimer++;
-  timerIdToPeriod[nid] = period_ms;
-  *timer_id = nid;
-  return true;
 }
 bool StandaloneHost::unregister_timer(clap_id timer_id)
 {
-  std::lock_guard<std::mutex> g(timerMapMutex);
-  timerIdToPeriod.erase(timer_id);
-  return true;
-}
-void StandaloneHost::runTimerFn()
-{
-  std::lock_guard<std::mutex> g(timerMapMutex);
-  for (const auto &[id, period] : timerIdToPeriod)
-  {
-    // To Do - don't ignore period
-    if (period > 0)
-    {
-      if (clapPlugin->_ext._timer)
-      {
-        clapPlugin->_ext._timer->on_timer(clapPlugin->_plugin, id);
-      }
-    }
-  }
+#if LIN && CLAP_WRAPPER_HAS_GTK3
+  return gtkGui->unregister_timer(timer_id);
+#else
+  return false;
+#endif
 }
 
 bool StandaloneHost::register_fd(int fd, clap_posix_fd_flags_t flags)
 {
-  TRACE;
+#if LIN && CLAP_WRAPPER_HAS_GTK3
+  return gtkGui->register_fd(fd, flags);
+#else
   return false;
+#endif
 }
 bool StandaloneHost::modify_fd(int fd, clap_posix_fd_flags_t flags)
 {
-  TRACE;
-  return false;
+  return true;
 }
 bool StandaloneHost::unregister_fd(int fd)
 {
-  TRACE;
+#if LIN && CLAP_WRAPPER_HAS_GTK3
+  return gtkGui->unregister_fd(fd);
+#else
   return false;
+#endif
 }
 
 #else

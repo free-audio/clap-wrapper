@@ -55,7 +55,8 @@ int main(int argc, char **argv)
 #if LIN
 #if CLAP_WRAPPER_HAS_GTK3
   Clap::Standalone::Linux::GtkGui gtkGui{};
-  gtkGui.initialize();
+
+  gtkGui.initialize(Clap::Standalone::getStandaloneHost());
   gtkGui.setPlugin(plugin);
   gtkGui.runloop(argc, argv);
   gtkGui.shutdown();

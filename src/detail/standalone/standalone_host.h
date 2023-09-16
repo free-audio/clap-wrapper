@@ -23,6 +23,14 @@
 
 namespace Clap::Standalone
 {
+#if LIN
+#if CLAP_WRAPPER_HAS_GTK3
+namespace Linux
+{
+struct GtkGui;
+}
+#endif
+#endif
 
 struct StandaloneHost : Clap::IHost
 {
@@ -159,11 +167,9 @@ struct StandaloneHost : Clap::IHost
   }
 
 #if LIN
-  std::unordered_map<clap_id, uint32_t> timerIdToPeriod;
-  clap_id currTimer{8675309};
-  std::mutex timerMapMutex;
-  void runTimerFn();
-  bool timersStarted{false};
+#if CLAP_WRAPPER_HAS_GTK3
+  Clap::Standalone::Linux::GtkGui *gtkGui{nullptr};
+#endif
 #endif
 
   bool register_timer(uint32_t period_ms, clap_id *timer_id) override;
@@ -172,8 +178,7 @@ struct StandaloneHost : Clap::IHost
   bool register_fd(int fd, clap_posix_fd_flags_t flags) override;
   bool modify_fd(int fd, clap_posix_fd_flags_t flags) override;
   bool unregister_fd(int fd) override;
-  bool firePosixFD();
-  std::unordered_set<int> fds;
+
 #endif
 
   void latency_changed() override
