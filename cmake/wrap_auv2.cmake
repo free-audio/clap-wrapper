@@ -48,6 +48,14 @@ function(target_add_auv2_wrapper)
             "-framework CoreFoundation"
             )
     set(bhtgoutdir "${CMAKE_CURRENT_BINARY_DIR}/${AUV2_TARGET}-build-helper-output")
+
+    if (NOT ${CMAKE_GENERATOR} STREQUAL "Xcode")
+        add_custom_command(TARGET ${bhtg} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E echo "clap-wrapper: blank signing ${bhtg}"
+                COMMAND ${CMAKE_COMMAND} -E codesign -s - -f "$<TARGET_FILE:${bhtg}>"
+                )
+    endif()
+
     add_custom_command(TARGET ${bhtg} POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E echo "clap-wrapper: auv2 configuration output dir is ${bhtgoutdir}"
             COMMAND ${CMAKE_COMMAND} -E make_directory "${bhtgoutdir}"
@@ -71,6 +79,7 @@ function(target_add_auv2_wrapper)
                 POST_BUILD
                 WORKING_DIRECTORY ${bhtgoutdir}
                 BYPRODUCTS ${bhtgoutdir}/auv2_Info.plist ${bhtgoutdir}/generated_entrypoints.hxx
+                COMMAND codesign -s - -f "$<TARGET_FILE:${bhtg}>"
                 COMMAND $<TARGET_FILE:${bhtg}> --fromclap
                 "${AUV2_OUTPUT_NAME}"
                 "$<TARGET_FILE:${clpt}>"
@@ -103,6 +112,7 @@ function(target_add_auv2_wrapper)
                 POST_BUILD
                 WORKING_DIRECTORY ${bhtgoutdir}
                 BYPRODUCTS ${bhtgoutdir}/auv2_Info.plist ${bhtgoutdir}/generated_entrypoints.hxx
+                COMMAND codesign -s - -f "$<TARGET_FILE:${bhtg}>"
                 COMMAND $<TARGET_FILE:${bhtg}> --explicit
                 "${AUV2_OUTPUT_NAME}" "${AUV2_BUNDLE_VERSION}"
                 "${AUV2_INSTRUMENT_TYPE}" "${AUV2_SUBTYPE_CODE}"
@@ -171,11 +181,15 @@ function(target_add_auv2_wrapper)
             MACOSX_BUNDLE_BUNDLE_VERSION ${AUV2_BUNDLE_VERSION}
             MACOSX_BUNDLE_SHORT_VERSION_STRING ${AUV2_BUNDLE_VERSION}
             )
+
     # This is "PRE_BUILD" because the target is created at cmake time and we want to beat xcode signing in order
     # it is *not* a MACOSX_BUNDLE_INFO_PLIST since that is a configure not build time concept so doesn't work
     # with compile time generated files
     add_custom_command(TARGET ${AUV2_TARGET} PRE_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy ${bhtgoutdir}/auv2_Info.plist $<TARGET_FILE_DIR:${AUV2_TARGET}>/../Info.plist)
+        COMMAND ${CMAKE_COMMAND} -E copy ${bhtgoutdir}/auv2_Info.plist $<TARGET_FILE_DIR:${AUV2_TARGET}>/../Info.plist)
+
+    # XCode needs a special extra flag
+    set_target_properties(${AUV2_TARGET} PROPERTIES XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${AUV2_BUNDLE_IDENTIFIER}.component")
 
     macos_include_clap_in_bundle(TARGET ${AUV2_TARGET}
             MACOS_EMBEDDED_CLAP_LOCATION ${AUV2_MACOS_EMBEDDED_CLAP_LOCATION})
