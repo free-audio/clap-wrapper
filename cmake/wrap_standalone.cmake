@@ -74,6 +74,7 @@ function(target_add_standalone_wrapper)
         set_target_properties(${SA_TARGET} PROPERTIES
                 BUNDLE TRUE
                 BUNDLE_NAME ${SA_OUTPUT_NAME}
+                BUNDLE_EXTENSION app
                 OUTPUT_NAME ${SA_OUTPUT_NAME}
                 MACOSX_BUNDLE_BUNDLE_NAME ${SA_OUTPUT_NAME}
                 MACOSX_BUNDLE TRUE
