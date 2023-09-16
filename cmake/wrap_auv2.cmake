@@ -49,13 +49,6 @@ function(target_add_auv2_wrapper)
             )
     set(bhtgoutdir "${CMAKE_CURRENT_BINARY_DIR}/${AUV2_TARGET}-build-helper-output")
 
-    if (NOT ${CMAKE_GENERATOR} STREQUAL "Xcode")
-        add_custom_command(TARGET ${bhtg} POST_BUILD
-                COMMAND ${CMAKE_COMMAND} -E echo "clap-wrapper: blank signing ${bhtg}"
-                COMMAND ${CMAKE_COMMAND} -E codesign -s - -f "$<TARGET_FILE:${bhtg}>"
-                )
-    endif()
-
     add_custom_command(TARGET ${bhtg} POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E echo "clap-wrapper: auv2 configuration output dir is ${bhtgoutdir}"
             COMMAND ${CMAKE_COMMAND} -E make_directory "${bhtgoutdir}"
