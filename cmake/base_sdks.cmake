@@ -241,6 +241,10 @@ function(guarantee_rtaudio)
     set(RTAUDIO_TARGETNAME_UNINSTALL "rtaudio-uninstall" CACHE STRING "Name of 'uninstall' build target")
     set(RTAUDIO_BUILD_STATIC_LIBS TRUE CACHE BOOL "static rdmidi")
     set(RTAUDIO_BUILD_TESTING OFF CACHE BOOL "don't eject test targets")
+    # Until https://github.com/thestk/rtaudio/pull/413/files
+    # is in a versioned RTAudio we have to do this to stop the
+    # ctest targets emerging
+    set(BUILD_TESTING OFF CACHE BOOL "don't eject test targets")
 
 
     if (NOT "${RTAUDIO_SDK_ROOT}" STREQUAL "")
