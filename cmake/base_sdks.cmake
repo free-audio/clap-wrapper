@@ -185,7 +185,7 @@ function(guarantee_vst3sdk)
 endfunction(guarantee_vst3sdk)
 
 function(guarantee_auv2sdk)
-    if (TARGET bsase-sdk-auv2)
+    if (TARGET base-sdk-auv2)
         return()
     endif()
     if (NOT APPLE)
