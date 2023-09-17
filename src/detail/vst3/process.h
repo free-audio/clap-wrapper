@@ -36,6 +36,18 @@
 
 namespace Clap
 {
+struct IndexedEvent
+{
+  uint16_t index;
+  uint16_t sample_offset;
+};
+
+inline static auto index_queue_compare = [](const IndexedEvent& a, const IndexedEvent& b)
+{ return a.sample_offset > b.sample_offset; };
+
+using index_queue =
+    std::priority_queue<IndexedEvent, std::vector<IndexedEvent>, decltype(index_queue_compare)>;
+
 class ProcessAdapter
 {
  public:
@@ -132,17 +144,7 @@ class ProcessAdapter
   std::vector<clap_multi_event_t> _events;
   std::vector<uint16_t> _eventindices;
 
-  struct IndexedEvent
-  {
-    uint16_t index;
-    uint16_t sample_offset;
-  };
-
-  inline static auto compare = [](const IndexedEvent& a, const IndexedEvent& b)
-  { return a.sample_offset > b.sample_offset; };
-
-  using index_queue = std::priority_queue<IndexedEvent, std::vector<IndexedEvent>, decltype(compare)>;
-  index_queue _prio_queue = index_queue(compare,
+  index_queue _prio_queue = index_queue(index_queue_compare,
                                         []
                                         {
                                           auto storage = std::vector<IndexedEvent>();
