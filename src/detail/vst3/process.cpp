@@ -333,7 +333,8 @@ void ProcessAdapter::process(Steinberg::Vst::ProcessData& data)
                 break;
             }
 
-            _eventindices.push_back(_events.size());
+            _prio_queue.emplace(IndexedEvent{static_cast<uint16_t>(_events.size()),
+                                             static_cast<uint16_t>(n.header.time)});
             _events.push_back(n);
           }
         }
@@ -361,7 +362,9 @@ void ProcessAdapter::process(Steinberg::Vst::ProcessData& data)
             n.param.key = -1;
 
             n.param.value = param->asClapValue(value);
-            _eventindices.push_back(_events.size());
+            _prio_queue.emplace(IndexedEvent{static_cast<uint16_t>(_events.size()),
+                                             static_cast<uint16_t>(n.header.time)});
+
             _events.push_back(n);
           }
         }
@@ -369,7 +372,11 @@ void ProcessAdapter::process(Steinberg::Vst::ProcessData& data)
     }
   }
 
-  sortEventIndices();
+  while (!_prio_queue.empty())
+  {
+    _eventindices.push_back(_prio_queue.top().sample_offset);
+    _prio_queue.pop();
+  }
 
   bool doProcess = true;
 
@@ -456,14 +463,6 @@ bool ProcessAdapter::output_events_try_push(const struct clap_output_events* lis
   return self->enqueueOutputEvent(event);
 }
 
-void ProcessAdapter::sortEventIndices()
-{
-  // just sorting the index
-  std::sort(_eventindices.begin(), _eventindices.end(),
-            [&](size_t const& a, size_t const& b)
-            { return _events[a].header.time < _events[b].header.time; });
-}
-
 void ProcessAdapter::processInputEvents(Steinberg::Vst::IEventList* eventlist)
 {
   if (eventlist)
@@ -487,7 +486,8 @@ void ProcessAdapter::processInputEvents(Steinberg::Vst::IEventList* eventlist)
           n.note.port_index = 0;
           n.note.velocity = vstevent.noteOn.velocity;
           n.note.key = vstevent.noteOn.pitch;
-          _eventindices.push_back(_events.size());
+          _prio_queue.emplace(
+              IndexedEvent{static_cast<uint16_t>(_events.size()), static_cast<uint16_t>(n.header.time)});
           _events.push_back(n);
           addToActiveNotes(&n.note);
 
@@ -512,7 +512,8 @@ void ProcessAdapter::processInputEvents(Steinberg::Vst::IEventList* eventlist)
             // VST3 Tuning is float in cents. We are in semitones. So
             n.noteexpression.value = vstevent.noteOn.tuning * 0.01;
             n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_TUNING;
-            _eventindices.push_back(_events.size());
+            _prio_queue.emplace(IndexedEvent{static_cast<uint16_t>(_events.size()),
+                                             static_cast<uint16_t>(n.header.time)});
             _events.push_back(n);
           }
         }
@@ -529,7 +530,8 @@ void ProcessAdapter::processInputEvents(Steinberg::Vst::IEventList* eventlist)
           n.note.port_index = 0;
           n.note.velocity = vstevent.noteOff.velocity;
           n.note.key = vstevent.noteOff.pitch;
-          _eventindices.push_back(_events.size());
+          _prio_queue.emplace(
+              IndexedEvent{static_cast<uint16_t>(_events.size()), static_cast<uint16_t>(n.header.time)});
           _events.push_back(n);
         }
         if (vstevent.type == Vst::Event::kDataEvent)
@@ -545,7 +547,8 @@ void ProcessAdapter::processInputEvents(Steinberg::Vst::IEventList* eventlist)
             n.sysex.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
             n.sysex.header.time = vstevent.sampleOffset;
             n.sysex.header.size = sizeof(n.sysex);
-            _eventindices.push_back(_events.size());
+            _prio_queue.emplace(IndexedEvent{static_cast<uint16_t>(_events.size()),
+                                             static_cast<uint16_t>(n.header.time)});
             _events.push_back(n);
           }
           else
@@ -574,7 +577,8 @@ void ProcessAdapter::processInputEvents(Steinberg::Vst::IEventList* eventlist)
               n.noteexpression.value = vstevent.polyPressure.pressure;
             }
           }
-          _eventindices.push_back(_events.size());
+          _prio_queue.emplace(
+              IndexedEvent{static_cast<uint16_t>(_events.size()), static_cast<uint16_t>(n.header.time)});
           _events.push_back(n);
         }
         if (vstevent.type == Vst::Event::kNoteExpressionValueEvent)
@@ -620,7 +624,8 @@ void ProcessAdapter::processInputEvents(Steinberg::Vst::IEventList* eventlist)
                 default:
                   continue;
               }
-              _eventindices.push_back(_events.size());
+              _prio_queue.emplace(IndexedEvent{static_cast<uint16_t>(_events.size()),
+                                               static_cast<uint16_t>(n.header.time)});
               _events.push_back(n);
             }
           }

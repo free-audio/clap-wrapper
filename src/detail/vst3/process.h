@@ -30,6 +30,7 @@
 
 #include <vector>
 #include <memory>
+#include <queue>
 
 #include "../clap/automation.h"
 
@@ -129,7 +130,25 @@ class ProcessAdapter
   Steinberg::Vst::ProcessData* _vstdata = nullptr;
 
   std::vector<clap_multi_event_t> _events;
-  std::vector<size_t> _eventindices;
+  std::vector<uint16_t> _eventindices;
+
+  struct IndexedEvent
+  {
+    uint16_t index;
+    uint16_t sample_offset;
+  };
+
+  inline static auto compare = [](const IndexedEvent& a, const IndexedEvent& b)
+  { return a.sample_offset > b.sample_offset; };
+
+  using index_queue = std::priority_queue<IndexedEvent, std::vector<IndexedEvent>, decltype(compare)>;
+  index_queue _prio_queue = index_queue(compare,
+                                        []
+                                        {
+                                          auto storage = std::vector<IndexedEvent>();
+                                          storage.reserve(8192);
+                                          return storage;
+                                        }());
 
   bool _supportsPolyPressure = false;
   bool _supportsTuningNoteExpression = false;
