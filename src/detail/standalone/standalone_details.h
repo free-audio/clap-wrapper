@@ -21,7 +21,7 @@ class fixedqueue
   inline void push(const T* val)
   {
     _elements[_head] = *val;
-    _head = (_head + 1) % Q;
+    _head = (_head + 1) & Q;
   }
   inline bool pop(T& out)
   {
@@ -30,7 +30,7 @@ class fixedqueue
       return false;
     }
     out = _elements[_tail];
-    _tail = (_tail + 1) % Q;
+    _tail = (_tail + 1) & Q;
     return true;
   }
 
@@ -38,5 +38,7 @@ class fixedqueue
   T _elements[Q] = {};
   std::atomic_uint32_t _head = 0u;
   std::atomic_uint32_t _tail = 0u;
+
+  static_assert((Q & (Q - 1)) == 0, "Q needs to be a multiple of 2");
 };
 }  // namespace Clap::Standalone
