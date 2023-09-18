@@ -1,8 +1,8 @@
 #include "sha1.h"
-#include <stdint.h>
+#include <cstdint>
 #include <memory>
 #include <cassert>
-#include <string.h>
+#include <cstring>
 
 static constexpr bool isBigEndian = false;
 
