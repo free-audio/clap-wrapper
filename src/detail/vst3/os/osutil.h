@@ -1,8 +1,7 @@
 #pragma once
 
 /*
-		a minimalistic OS layer
-
+    a minimalistic OS layer
 */
 
 #include <atomic>

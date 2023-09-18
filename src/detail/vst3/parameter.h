@@ -20,6 +20,7 @@
 
     The create function will apply everything necessary to the Vst::Parameter object in terms
     of value range conversion.
+
 */
 
 #include <clap/ext/params.h>

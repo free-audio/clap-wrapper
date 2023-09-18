@@ -1,7 +1,6 @@
 #pragma once
 
 /*
-
     Copyright (c) 2022 Timo Kaluza (defiantnerd)
 
     This file is part of the clap-wrappers project which is released under MIT License.

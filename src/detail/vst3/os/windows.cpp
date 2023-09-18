@@ -1,12 +1,12 @@
 #define NOMINMAX 1
 
-/**
-*		the windows helper
-* 
-*		provides services for all plugin instances regarding Windows
-*		- global timer object
-*		- dispatch to UI thread
-* 
+/*
+    the windows helper
+    
+    provides services for all plugin instances regarding Windows
+    - global timer object
+    - dispatch to UI thread
+ 
 */
 
 #include <Windows.h>

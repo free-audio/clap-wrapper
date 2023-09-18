@@ -1,6 +1,5 @@
 #include "plugview.h"
 #include <clap/clap.h>
-// #include <crtdbg.h>
 #include <cassert>
 
 WrappedView::WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui,

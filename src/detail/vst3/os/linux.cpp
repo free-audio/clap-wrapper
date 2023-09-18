@@ -1,11 +1,10 @@
-/**
-*		the Linux helper
-* 
-*		provides services for all plugin instances regarding Linux
-*		- global timer object
-*		- dispatch to UI thread
-*		- get binary name
-* 
+/*
+    the Linux helper
+    
+    provides services for all plugin instances regarding Linux
+    - global timer object
+    - dispatch to UI thread
+    - get binary name
 */
 
 #include "public.sdk/source/main/moduleinit.h"

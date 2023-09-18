@@ -1,3 +1,5 @@
+#pragma once
+
 /*
     CLAP Proxy
 
@@ -10,8 +12,6 @@
     is implemented by the different wrapper flavors.
 
 */
-
-#pragma once
 
 #include <clap/clap.h>
 #include <vector>

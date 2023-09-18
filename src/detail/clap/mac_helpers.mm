@@ -1,5 +1,4 @@
 /* 
-
     Copyright (c) 2022 Paul Walker
                        Timo Kaluza (defiantnerd)
                        
@@ -101,4 +100,4 @@ std::vector<fs::path> getMacCLAPSearchPaths()
   }
   return res;
 }
-}
+}  // namespace Clap
