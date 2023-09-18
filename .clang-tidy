@@ -1,0 +1,12 @@
+Checks: '-*,\
+bugprone-macro-parentheses,\
+misc-unused-parameters,\
+modernize-deprecated-headers,\
+modernize-use-auto,\
+modernize-use-emplace,\
+modernize-use-equals-default,\
+modernize-use-nullptr,\
+readability-container-size-empty,\
+readability-else-after-return,\
+readability-inconsistent-declaration-parameter-name\
+'
