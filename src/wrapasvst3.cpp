@@ -467,8 +467,8 @@ Vst::UnitID ClapAsVst3::getOrCreateUnitInfo(const char* modulename)
       std::string u8name(path[i]);
       if (VST3::StringConvert::convert(u8name, name))
       {
-        Vst::UnitID newid = static_cast<Steinberg::int32>(units.size());
-        Vst::Unit* newunit = new Vst::Unit(name, newid, id);  // a new unit without a program list
+        auto newid = static_cast<Steinberg::int32>(units.size());
+        auto* newunit = new Vst::Unit(name, newid, id);  // a new unit without a program list
         addUnit(newunit);
         _moduleToUnit[u8name] = newid;
         id = newid;
