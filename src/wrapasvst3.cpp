@@ -50,9 +50,7 @@ tresult PLUGIN_API ClapAsVst3::initialize(FUnknown* context)
       _useIMidiMapping = checkMIDIDialectSupport();
     }
   }
-  if (_plugin)
-  {
-  }
+
   return result;
 }
 
@@ -494,8 +492,7 @@ void ClapAsVst3::setupWrapperSpecifics(const clap_plugin_t* plugin)
 bool ClapAsVst3::checkMIDIDialectSupport()
 {
   // check if the plugin supports noteports and if one of the note ports supports MIDI dialect
-  auto noteports = _plugin->_ext._noteports;
-  if (noteports)
+  if (auto noteports = _plugin->_ext._noteports; noteports)
   {
     auto numMIDIInputs = noteports->count(_plugin->_plugin, true);
     for (uint32_t i = 0; i < numMIDIInputs; ++i)
@@ -677,29 +674,29 @@ void ClapAsVst3::param_rescan(clap_param_rescan_flags flags)
   vstflags |= ((flags & CLAP_PARAM_RESCAN_INFO)
                    ? Vst::RestartFlags::kParamValuesChanged | Vst::RestartFlags::kParamTitlesChanged
                    : 0u);
-  if (vstflags != 0)
+
+  if (vstflags == 0) return;
+
+  // update parameter values in our own tree
+  auto len = parameters.getParameterCount();
+  for (decltype(len) i = 0; i < len; ++i)
   {
-    // update parameter values in our own tree
-    auto len = parameters.getParameterCount();
-    for (decltype(len) i = 0; i < len; ++i)
+    auto p = static_cast<Vst3Parameter*>(parameters.getParameterByIndex(i));
+    if (!p->isMidi)
     {
-      auto p = parameters.getParameterByIndex(i);
-      auto p1 = static_cast<Vst3Parameter*>(p);
-      if (!p1->isMidi)
+      double val;
+      if (_plugin->_ext._params->get_value(_plugin->_plugin, p->id, &val))
       {
-        double val;
-        if (_plugin->_ext._params->get_value(_plugin->_plugin, p1->id, &val))
+        auto newval = p->asVst3Value(val);
+        if (p->getNormalized() != newval)
         {
-          auto newval = p1->asVst3Value(val);
-          if (p1->getNormalized() != newval)
-          {
-            p1->setNormalized(newval);
-          }
+          p->setNormalized(newval);
         }
       }
     }
-    this->componentHandler->restartComponent(vstflags);
   }
+
+  this->componentHandler->restartComponent(vstflags);
 }
 
 void ClapAsVst3::param_clear(clap_id param, clap_param_clear_flags flags)
@@ -893,13 +890,10 @@ void ClapAsVst3::onIdle()
     auto now = os::getTickInMS();
     for (auto&& to : _timersObjects)
     {
-      if (to.period > 0)
+      if (to.period > 0 && to.nexttick < now)
       {
-        if (to.nexttick < now)
-        {
-          to.nexttick = now + to.period;
-          this->_plugin->_ext._timer->on_timer(_plugin->_plugin, to.timer_id);
-        }
+        to.nexttick = now + to.period;
+        this->_plugin->_ext._timer->on_timer(_plugin->_plugin, to.timer_id);
       }
     }
   }

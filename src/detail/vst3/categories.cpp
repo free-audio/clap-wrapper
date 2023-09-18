@@ -110,31 +110,24 @@ static const struct _translate
 std::string clapCategoriesToVST3(const char* const* clap_categories)
 {
   std::vector<std::string> r;
-  auto f = clap_categories;
-  while (f && *f)
+  for (auto f = clap_categories; f && *f; ++f)
   {
-    int i = 0;
-    while (translationTable[i].clapattribute)
+    auto it = std::find_if(std::begin(translationTable), std::end(translationTable),
+                           [&](const auto& entry)
+                           { return entry.clapattribute && !strcmp(entry.clapattribute, *f); });
+
+    if (it != std::end(translationTable))
     {
-      if (!strcmp(translationTable[i].clapattribute, *f))
-      {
-        r.push_back(translationTable[i].vst3attribute);
-      }
-      ++i;
-    }
-    ++f;
-  }
-  std::vector<std::string> r2;
-  for (auto& i : r)
-  {
-    if (std::find(r2.begin(), r2.end(), i) == r2.end())
-    {
-      r2.push_back(i);
+      r.push_back(it->vst3attribute);
     }
   }
 
+  // Sort and remove duplicates
+  std::sort(r.begin(), r.end());
+  r.erase(std::unique(r.begin(), r.end()), r.end());
+
   std::string result;
-  for (auto& i : r2)
+  for (auto& i : r)
   {
     if (result.size() + i.size() <= Steinberg::PClassInfo2::kSubCategoriesSize)
     {
