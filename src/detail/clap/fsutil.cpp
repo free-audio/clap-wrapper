@@ -88,9 +88,9 @@ std::vector<fs::path> getValidCLAPSearchPaths()
     {
       auto item = cp.substr(0, pos);
       cp = cp.substr(pos + 1);
-      res.emplace_back(fs::path{item});
+      res.emplace_back(item);
     }
-    if (!cp.empty()) res.emplace_back(fs::path{cp});
+    if (!cp.empty()) res.emplace_back(cp);
   }
 
   return res;

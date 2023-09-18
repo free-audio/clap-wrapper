@@ -118,7 +118,7 @@ std::string clapCategoriesToVST3(const char* const* clap_categories)
     {
       if (!strcmp(translationTable[i].clapattribute, *f))
       {
-        r.push_back(translationTable[i].vst3attribute);
+        r.emplace_back(translationTable[i].vst3attribute);
       }
       ++i;
     }
