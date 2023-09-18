@@ -127,7 +127,7 @@ class Plugin
   static std::shared_ptr<Plugin> createInstance(const clap_plugin_factory*, const std::string& id,
                                                 IHost* host);
   static std::shared_ptr<Plugin> createInstance(const clap_plugin_factory*, size_t idx, IHost* host);
-  static std::shared_ptr<Plugin> createInstance(Clap::Library& library, size_t idx, IHost* host);
+  static std::shared_ptr<Plugin> createInstance(Clap::Library& library, size_t index, IHost* host);
 
  protected:
   // only the Clap::Library is allowed to create instances
