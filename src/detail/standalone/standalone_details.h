@@ -39,7 +39,7 @@ class fixedqueue
   std::atomic_uint32_t _head = 0u;
   std::atomic_uint32_t _tail = 0u;
 
-  uint32_t _wrapMask = Q - 1;
-  static_assert((Q & (Q - 1)) == 0, "Q needs to be a multiple of 2");
+  static constexpr uint32_t _wrapMask = Q - 1;
+  static_assert((Q & _wrapMask) == 0, "Q needs to be a multiple of 2");
 };
 }  // namespace Clap::Standalone
