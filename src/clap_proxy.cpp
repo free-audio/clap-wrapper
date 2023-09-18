@@ -416,7 +416,7 @@ void Plugin::param_request_flush()
 
 // Query an extension.
 // [thread-safe]
-const void* Plugin::clapExtension(const clap_host* host, const char* extension)
+const void* Plugin::clapExtension(const clap_host* /*host*/, const char* extension)
 {
   if (!strcmp(extension, CLAP_EXT_LOG)) return &HostExt::log;
   if (!strcmp(extension, CLAP_EXT_PARAMS)) return &HostExt::params;

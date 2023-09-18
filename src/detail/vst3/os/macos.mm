@@ -64,7 +64,7 @@ void MacOSHelper::executeDefered()
   }
 }
 
-void MacOSHelper::timerCallback(CFRunLoopTimerRef t, void* info)
+void MacOSHelper::timerCallback(CFRunLoopTimerRef /*t*/, void* info)
 {
   auto self = static_cast<MacOSHelper*>(info);
   self->executeDefered();

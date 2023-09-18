@@ -16,7 +16,8 @@ using namespace Steinberg;
 
 void ProcessAdapter::setupProcessing(const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params,
                                      Vst::BusList& audioinputs, Vst::BusList& audiooutputs,
-                                     uint32_t numSamples, size_t numEventInputs, size_t numEventOutputs,
+                                     uint32_t numSamples, size_t /*numEventInputs*/,
+                                     size_t /*numEventOutputs*/,
                                      Steinberg::Vst::ParameterContainer& params,
                                      Steinberg::Vst::IComponentHandler* componenthandler,
                                      IAutomation* automation, bool enablePolyPressure,
