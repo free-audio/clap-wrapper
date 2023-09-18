@@ -284,10 +284,8 @@ uint32_t swapOrder32(uint32_t n)
     return ((n >> 24) & 0x000000FF) | ((n >> 8) & 0x0000FF00) | ((n << 8) & 0x00FF0000) |
            ((n << 24) & 0xFF000000);
   }
-  else
-  {
-    return n;
-  }
+
+  return n;
 }
 
 uint16_t swapOrder16(uint16_t n)
