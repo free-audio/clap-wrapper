@@ -276,11 +276,11 @@ Library::Library()
   if (!selfp.empty())
   {
     std::string name = selfp.u8string();
-    CFURLRef bundleUrl = CFURLCreateFromFileSystemRepresentation(0, (const unsigned char *)name.c_str(),
-                                                                 name.size(), true);
+    CFURLRef bundleUrl = CFURLCreateFromFileSystemRepresentation(
+        nullptr, (const unsigned char *)name.c_str(), name.size(), true);
     if (bundleUrl)
     {
-      auto pluginBundle = CFBundleCreate(0, bundleUrl);
+      auto pluginBundle = CFBundleCreate(nullptr, bundleUrl);
       CFRelease(bundleUrl);
 
       if (pluginBundle)
