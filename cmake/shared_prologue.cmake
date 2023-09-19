@@ -141,8 +141,15 @@ function(macos_bundle_flag)
     if (NOT ${CMAKE_GENERATOR} STREQUAL "Xcode")
         add_custom_command(TARGET ${MBF_TARGET} POST_BUILD
             WORKING_DIRECTORY $<TARGET_PROPERTY:${MBF_TARGET},LIBRARY_OUTPUT_DIRECTORY>
-            COMMAND SetFile -a B "$<TARGET_PROPERTY:${MBF_TARGET},MACOSX_BUNDLE_BUNDLE_NAME>.$<TARGET_PROPERTY:${MBF_TARGET},BUNDLE_EXTENSION>")
+            COMMAND ${CMAKE_COMMAND} -E copy
+                ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/cmake/macBundlePkgInfo
+                "$<TARGET_PROPERTY:${MBF_TARGET},MACOSX_BUNDLE_BUNDLE_NAME>.$<TARGET_PROPERTY:${MBF_TARGET},BUNDLE_EXTENSION>/Contents/PkgInfo")
     endif()
+    set_target_properties(${MBF_TARGET}
+            PROPERTIES
+            MACOSX_BUNDLE TRUE
+            XCODE_ATTRIBUTE_GENERATE_PKGINFO_FILE "YES"
+            )
 endfunction(macos_bundle_flag)
 
 # MacOS can load from bundle/Contents/PlugIns. This allows you to stage a clap into that
