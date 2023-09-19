@@ -1,3 +1,5 @@
+#pragma once
+
 /* 
 
     Copyright (c) 2022 Timo Kaluza (defiantnerd)
@@ -7,8 +9,6 @@
     See file LICENSE or go to https://github.com/free-audio/clap-wrapper for full license details.
 
 */
-
-#pragma once
 
 #if MAC
 #if MACOS_USE_STD_FILESYSTEM

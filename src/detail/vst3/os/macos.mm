@@ -1,13 +1,13 @@
 #define NOMINMAX 1
 
-/**
-*		the macos helper
-* 
-*		provides services for all plugin instances regarding macos
-*        - global timer object
-*        - dispatch to UI thread
-*        - get the bundle name
-* 
+/*
+    the macos helper
+    
+    provides services for all plugin instances regarding macos
+     - global timer object
+     - dispatch to UI thread
+     - get the bundle name
+ 
 */
 
 #include <Foundation/Foundation.h>
@@ -100,7 +100,7 @@ void MacOSHelper::detach(IPlugObject* plugobject)
   }
 }
 
-}
+}  // namespace os
 
 // the dummy class so we can use NSBundle bundleForClass
 @interface clapwrapper_dummy_object_to_trick_the_os : NSObject
@@ -160,4 +160,4 @@ std::string getBinaryName()
   fs::path k = [identifier UTF8String];
   return k.stem();
 }
-}
+}  // namespace os

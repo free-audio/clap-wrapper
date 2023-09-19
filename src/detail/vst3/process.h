@@ -1,17 +1,18 @@
 #pragma once
 
 /*
-	  VST3 process adapter
+    VST3 process adapter
 
-		Copyright (c) 2022 Timo Kaluza (defiantnerd)
-
-		This file is part of the clap-wrappers project which is released under MIT License.
-		See file LICENSE or go to https://github.com/free-audio/clap-wrapper for full license details.
-
-
-		The process adapter is responible to translate events, timing information 
+    Copyright (c) 2022 Timo Kaluza (defiantnerd)
+    
+    This file is part of the clap-wrappers project which is released under MIT License.
+    See file LICENSE or go to https://github.com/free-audio/clap-wrapper for full license details.
+    
+    
+    The process adapter is responible to translate events, timing information 
 
 */
+
 #include <clap/clap.h>
 
 #ifdef __GNUC__

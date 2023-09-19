@@ -1,8 +1,8 @@
+#pragma once
+
 /*
  * document
  */
-
-#pragma once
 
 #include <AudioUnitSDK/AUEffectBase.h>
 #include <AudioUnitSDK/AUMIDIEffectBase.h>

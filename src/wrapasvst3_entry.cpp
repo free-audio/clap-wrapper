@@ -1,50 +1,49 @@
 /*
+    CLAP AS VST3 - Entrypoint
 
-		CLAP AS VST3 - Entrypoint
+    Copyright (c) 2022 Timo Kaluza (defiantnerd)
 
-		Copyright (c) 2022 Timo Kaluza (defiantnerd)
+    This file is part of the clap-wrappers project which is released under MIT License.
+    See file LICENSE or go to https://github.com/free-audio/clap-wrapper for full license details.
 
-		This file is part of the clap-wrappers project which is released under MIT License.
-		See file LICENSE or go to https://github.com/free-audio/clap-wrapper for full license details.
+    Provides the entry function for the VST3 flavor of the wrapped plugin.
 
-		Provides the entry function for the VST3 flavor of the wrapped plugin.
+    When the VST3 factory is being scanned, this tries to locate a clap_entry function
+    in the following order and stops if a .clap binary has been found:
 
-		When the VST3 factory is being scanned, this tries to locate a clap_entry function
-		in the following order and stops if a .clap binary has been found:
+    1) checks for exported `clap_enty` in this binary itself (statically linked wrapper)
+    2) determines it's own filename without the .vst3 ending and determines a list of all valid CLAP search paths (see below) and
+       a) checks each CLAP search path for a matching .clap
+         b) checks it's own parent folder name and tries to add it to the .clap path. This allows a vst3 wrapper placed in
+                {any VST3 Folder}/mevendor/myplugin.vst3 to match {any CLAP folder}/mevendor/myplugin.clap
+         c) checks all subfolders in the CLAP folders for a matching .clap.
 
-		1) checks for exported `clap_enty` in this binary itself (statically linked wrapper)
-		2) determines it's own filename without the .vst3 ending and determines a list of all valid CLAP search paths (see below) and
-		   a) checks each CLAP search path for a matching .clap
-			 b) checks it's own parent folder name and tries to add it to the .clap path. This allows a vst3 wrapper placed in
-					{any VST3 Folder}/mevendor/myplugin.vst3 to match {any CLAP folder}/mevendor/myplugin.clap
-			 c) checks all subfolders in the CLAP folders for a matching .clap.
-		
-		Valid CLAP search paths are also documented in clap/include/clap/entry.h:
+    Valid CLAP search paths are also documented in clap/include/clap/entry.h:
 
-		// CLAP plugins standard search path:
+    // CLAP plugins standard search path:
 
     Linux
       - ~/.clap
       - /usr/lib/clap
-   
+
     Windows
       - %CommonFilesFolder%/CLAP/
       - %LOCALAPPDATA%/Programs/Common/CLAP/
-   
+
     MacOS
       - /Library/Audio/Plug-Ins/CLAP
       - ~/Library/Audio/Plug-Ins/CLAP
-   
+
     In addition to the OS-specific default locations above, a CLAP host must query the environment
     for a CLAP_PATH variable, which is a list of directories formatted in the same manner as the host
     OS binary search path (PATH on Unix, separated by `:` and Path on Windows, separated by ';', as
     of this writing).
-   
+
     Each directory should be recursively searched for files and/or bundles as appropriate in your OS
     ending with the extension `.clap`.
 
-
 */
+
 #include "detail/sha1.h"
 #include "wrapasvst3.h"
 #include "public.sdk/source/main/pluginfactory.h"
@@ -206,6 +205,7 @@ IPluginFactory* GetPluginFactoryEntryPoint()
       LOGDETAIL("  plugin #{}: '{}'", ctr, clapdescr->name);
 
       std::string n(clapdescr->name);
+
 #ifdef _DEBUG
       n.append(" (CLAP->VST3)");
 #endif
@@ -293,8 +293,8 @@ IPluginFactory* GetPluginFactoryEntryPoint()
 }
 
 /*
-*		creates an Instance from the creationContext.
-*		actually, there is always a valid entrypoint, otherwise no factory would have been provided.
+    creates an Instance from the creationContext.
+    actually, there is always a valid entrypoint, otherwise no factory would have been provided.
 */
 FUnknown* ClapAsVst3::createInstance(void* context)
 {
