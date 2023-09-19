@@ -77,7 +77,7 @@ void log(const char* format_str, Args&&... args)
   fmt::format_to(std::back_inserter(buf), format_str, args...);
   buf.push_back(0);
   log((const char*)buf.data());
-};
+}
 }  // namespace os
 
 #ifndef CLAP_WRAPPER_LOGLEVEL
@@ -134,4 +134,4 @@ class fixedqueue
   static constexpr uint32_t _wrapMask = Q - 1;
   static_assert((Q & _wrapMask) == 0, "Q needs to be a multiple of 2");
 };
-};  // namespace util
+}  // namespace util
