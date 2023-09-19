@@ -366,7 +366,8 @@ void ClapAsVst3::addAudioBusFrom(const clap_audio_port_info_t* info, bool is_inp
   auto bustype = (info->flags & CLAP_AUDIO_PORT_IS_MAIN) ? Vst::BusTypes::kMain : Vst::BusTypes::kAux;
   // bool supports64bit = (info->flags & CLAP_AUDIO_PORT_SUPPORTS_64BITS);
   Steinberg::char16 name16[256];
-  Steinberg::str8ToStr16(&name16[0], info->name, 256);
+  // str8tostr16 writes to position n to terminate, so don't overflow
+  Steinberg::str8ToStr16(&name16[0], info->name, 255);
   if (is_input)
   {
     addAudioInput(name16, spk, bustype, Vst::BusInfo::kDefaultActive);
@@ -389,7 +390,8 @@ void ClapAsVst3::addMIDIBusFrom(const clap_note_port_info_t* info, uint32_t inde
     }
 
     Steinberg::char16 name16[256];
-    Steinberg::str8ToStr16(&name16[0], info->name, 256);
+    // str8tostr16 writes to position n to terminate, so don't overflow
+    Steinberg::str8ToStr16(&name16[0], info->name, 255);
     if (is_input)
     {
       addEventInput(name16, numchannels, Vst::BusTypes::kMain, Vst::BusInfo::kDefaultActive);
