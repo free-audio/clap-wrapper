@@ -156,34 +156,31 @@ tresult PLUGIN_API WrappedView::onSize(ViewRect* newSize)
   // TODO: discussion took place if this call should be ignored completely
   // since it seems not to match the CLAP UI scheme.
   // for now, it is left in and might be removed in the future.
-  if (newSize)
+  if (!newSize) return kResultFalse;
+
+  _rect = *newSize;
+  if (_created && _attached)
   {
-    _rect = *newSize;
-    if (_created && _attached)
+    if (_extgui->can_resize(_plugin))
     {
-      if (_extgui->can_resize(_plugin))
+      uint32_t w = _rect.getWidth();
+      uint32_t h = _rect.getHeight();
+      if (_extgui->adjust_size(_plugin, &w, &h))
       {
-        uint32_t w = _rect.getWidth();
-        uint32_t h = _rect.getHeight();
-        if (_extgui->adjust_size(_plugin, &w, &h))
-        {
-          _rect.right = _rect.left + w;
-          _rect.bottom = _rect.top + h;
-        }
-        if (_extgui->set_size(_plugin, w, h))
-        {
-          return kResultOk;
-        }
+        _rect.right = _rect.left + w;
+        _rect.bottom = _rect.top + h;
       }
-      else
+      if (_extgui->set_size(_plugin, w, h))
       {
-        return kResultFalse;
+        return kResultOk;
       }
     }
-    return kResultOk;
+    else
+    {
+      return kResultFalse;
+    }
   }
-
-  return kResultFalse;
+  return kResultOk;
 }
 
 tresult PLUGIN_API WrappedView::onFocus(TBool /*state*/)

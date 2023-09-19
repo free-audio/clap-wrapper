@@ -31,21 +31,20 @@ struct ClapBridge
         std::cout << "[ERROR] _clapname (" << _clapname << ") empty and no internal entry point"
                   << std::endl;
       }
-      bool loaded{false};
-      auto csp = Clap::getValidCLAPSearchPaths();
-      for (auto &cs : csp)
-      {
-        auto fp = cs / (_clapname + ".clap");
 
-        if (fs::is_directory(fp))
-          if (_library.load(fp.u8string().c_str()))
-          {
-            std::cout << "[clap-wrapper] auv2 loaded clap from " << cs.u8string() << std::endl;
-            loaded = true;
-            break;
-          }
+      auto csp = Clap::getValidCLAPSearchPaths();
+      auto it = std::find_if(csp.begin(), csp.end(),
+                             [this](const auto &cs)
+                             {
+                               auto fp = cs / (_clapname + ".clap");
+                               return fs::is_directory(fp) && _library.load(fp.u8string().c_str());
+                             });
+
+      if (it != csp.end())
+      {
+        std::cout << "[clap-wrapper] auv2 loaded clap from " << it->u8string() << std::endl;
       }
-      if (!loaded)
+      else
       {
         std::cout << "[ERROR] cannot load clap" << std::endl;
         return;
