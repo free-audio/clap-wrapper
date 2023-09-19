@@ -53,11 +53,11 @@ jobs:
 
 
   build_feature_cpm_download:
-    name: Wrapper + CPM Downloads (lin/win)
+    name: Wrapper + CPM Downloads (win)
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [windows-latest]
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
@@ -106,20 +106,24 @@ jobs:
 
 
   build_feature_xcode:
-    name: Wrapper + CPM Downloads + XCode
+    name: Wrapper + CPM Downloads + Gens
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [macos-latest]
+        gen: [Ninja, Xcode, "Ninja Multi-Config", "Unix Makefiles"]
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
         with:
           submodules: recursive
 
+      - name: Install Ninja
+        uses: seanmiddleditch/gha-setup-ninja@master
+
       - name: Build project
         run: |
-          cmake -S . -B ./build -GXcode -DCMAKE_BUILD_TYPE=Debug -DCLAP_WRAPPER_DOWNLOAD_DEPENDENCIES=TRUE -DCLAP_WRAPPER_BUILD_AUV2=TRUE  -DCLAP_WRAPPER_BUILD_STANDALONE=TRUE -DCLAP_WRAPPER_OUTPUT_NAME=downloadplug
+          cmake -S . -B ./build -G "${{ matrix.gen }}" -DCMAKE_BUILD_TYPE=Debug -DCLAP_WRAPPER_DOWNLOAD_DEPENDENCIES=TRUE -DCLAP_WRAPPER_BUILD_AUV2=TRUE  -DCLAP_WRAPPER_BUILD_STANDALONE=TRUE -DCLAP_WRAPPER_OUTPUT_NAME=downloadplug
           cmake --build ./build --config Debug
 
       - name: Show Build Results
