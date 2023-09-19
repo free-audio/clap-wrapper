@@ -123,7 +123,7 @@ jobs:
 
       - name: Build project
         run: |
-          cmake -S . -B ./build -G ${{ matrix.gen }} -DCMAKE_BUILD_TYPE=Debug -DCLAP_WRAPPER_DOWNLOAD_DEPENDENCIES=TRUE -DCLAP_WRAPPER_BUILD_AUV2=TRUE  -DCLAP_WRAPPER_BUILD_STANDALONE=TRUE -DCLAP_WRAPPER_OUTPUT_NAME=downloadplug
+          cmake -S . -B ./build -G "${{ matrix.gen }}" -DCMAKE_BUILD_TYPE=Debug -DCLAP_WRAPPER_DOWNLOAD_DEPENDENCIES=TRUE -DCLAP_WRAPPER_BUILD_AUV2=TRUE  -DCLAP_WRAPPER_BUILD_STANDALONE=TRUE -DCLAP_WRAPPER_OUTPUT_NAME=downloadplug
           cmake --build ./build --config Debug
 
       - name: Show Build Results
