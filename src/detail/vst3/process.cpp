@@ -460,9 +460,18 @@ bool ProcessAdapter::output_events_try_push(const struct clap_output_events* lis
 void ProcessAdapter::sortEventIndices()
 {
   // just sorting the index
+  // an item must be sorted to front of
+  // if the timestamp if event[a] is earlier than
+  // the timestamp of event[b].
+  // if they have the same timestamp, the index must be preserved
+
   std::sort(_eventindices.begin(), _eventindices.end(),
             [&](size_t const& a, size_t const& b)
-            { return _events[a].header.time < _events[b].header.time; });
+            {
+              auto t1 = _events[a].header.time;
+              auto t2 = _events[b].header.time;
+              return (t1 == t2) ? (a < b) : (t1 < t2);
+            });
 }
 
 void ProcessAdapter::processInputEvents(Steinberg::Vst::IEventList* eventlist)
