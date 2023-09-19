@@ -112,7 +112,6 @@ std::string clapCategoriesToVST3(const char* const* clap_categories)
   std::vector<std::string> r;
   for (auto f = clap_categories; f && *f; ++f)
   {
-
     auto it = std::find_if(std::begin(translationTable), std::end(translationTable),
                            [&](const auto& entry)
                            { return entry.clapattribute && !strcmp(entry.clapattribute, *f); });
