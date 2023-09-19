@@ -260,7 +260,7 @@ IPluginFactory* GetPluginFactoryEntryPoint()
 
 #if CLAP_WRAPPER_LOGLEVEL > 1
       {
-        const uint8_t* v = reinterpret_cast<const uint8_t*>(&g);
+        const auto* v = reinterpret_cast<const uint8_t*>(&g);
         char x[sizeof(g) * 2 + 8];
         char* o = x;
         constexpr char hexchar[] = "0123456789ABCDEF";

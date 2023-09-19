@@ -16,8 +16,8 @@ Vst3Parameter::Vst3Parameter(const Steinberg::Vst::ParameterInfo& vst3info,
   //
 }
 
-Vst3Parameter::Vst3Parameter(const Steinberg::Vst::ParameterInfo& vst3info, uint8_t bus, uint8_t channel,
-                             uint8_t cc)
+Vst3Parameter::Vst3Parameter(const Steinberg::Vst::ParameterInfo& vst3info, uint8_t /*bus*/,
+                             uint8_t channel, uint8_t cc)
   : Steinberg::Vst::Parameter(vst3info)
   , id(vst3info.id)
   , cookie(nullptr)
@@ -32,9 +32,7 @@ Vst3Parameter::Vst3Parameter(const Steinberg::Vst::ParameterInfo& vst3info, uint
     max_value = 16383;
   }
 }
-Vst3Parameter::~Vst3Parameter()
-{
-}
+Vst3Parameter::~Vst3Parameter() = default;
 
 bool Vst3Parameter::setNormalized(Steinberg::Vst::ParamValue v)
 {

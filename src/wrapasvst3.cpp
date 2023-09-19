@@ -204,7 +204,7 @@ tresult PLUGIN_API ClapAsVst3::getBusArrangement(Vst::BusDirection dir, int32 in
   return super::getBusArrangement(dir, index, arr);
 }
 
-IPlugView* PLUGIN_API ClapAsVst3::createView(FIDString name)
+IPlugView* PLUGIN_API ClapAsVst3::createView(FIDString /*name*/)
 {
   if (_plugin->_ext._gui)
   {
@@ -313,7 +313,7 @@ tresult ClapAsVst3::getNoteExpressionInfo(int32 busIndex, int16 channel, int32 n
 }
 
 /** Gets a user readable representation of the normalized note change value. */
-tresult ClapAsVst3::getNoteExpressionStringByValue(int32 busIndex, int16 channel,
+tresult ClapAsVst3::getNoteExpressionStringByValue(int32 /*busIndex*/, int16 /*channel*/,
                                                    Vst::NoteExpressionTypeID id,
                                                    Vst::NoteExpressionValue valueNormalized /*in*/,
                                                    Vst::String128 string /*out*/)
@@ -322,7 +322,7 @@ tresult ClapAsVst3::getNoteExpressionStringByValue(int32 busIndex, int16 channel
 }
 
 /** Converts the user readable representation to the normalized note change value. */
-tresult ClapAsVst3::getNoteExpressionValueByString(int32 busIndex, int16 channel,
+tresult ClapAsVst3::getNoteExpressionValueByString(int32 /*busIndex*/, int16 /*channel*/,
                                                    Vst::NoteExpressionTypeID id,
                                                    const Vst::TChar* string /*in*/,
                                                    Vst::NoteExpressionValue& valueNormalized /*out*/)
@@ -467,8 +467,8 @@ Vst::UnitID ClapAsVst3::getOrCreateUnitInfo(const char* modulename)
       std::string u8name(path[i]);
       if (VST3::StringConvert::convert(u8name, name))
       {
-        Vst::UnitID newid = static_cast<Steinberg::int32>(units.size());
-        Vst::Unit* newunit = new Vst::Unit(name, newid, id);  // a new unit without a program list
+        auto newid = static_cast<Steinberg::int32>(units.size());
+        auto* newunit = new Vst::Unit(name, newid, id);  // a new unit without a program list
         addUnit(newunit);
         _moduleToUnit[u8name] = newid;
         id = newid;

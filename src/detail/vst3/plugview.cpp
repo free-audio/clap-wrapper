@@ -79,7 +79,7 @@ tresult PLUGIN_API WrappedView::isPlatformTypeSupported(FIDString type)
   return kResultFalse;
 }
 
-tresult PLUGIN_API WrappedView::attached(void* parent, FIDString type)
+tresult PLUGIN_API WrappedView::attached(void* parent, FIDString /*type*/)
 {
 #if WIN
   _window = {CLAP_WINDOW_API_WIN32, {parent}};
@@ -118,17 +118,17 @@ tresult PLUGIN_API WrappedView::removed()
   return kResultOk;
 }
 
-tresult PLUGIN_API WrappedView::onWheel(float distance)
+tresult PLUGIN_API WrappedView::onWheel(float /*distance*/)
 {
   return kResultFalse;
 }
 
-tresult PLUGIN_API WrappedView::onKeyDown(char16 key, int16 keyCode, int16 modifiers)
+tresult PLUGIN_API WrappedView::onKeyDown(char16 /*key*/, int16 /*keyCode*/, int16 /*modifiers*/)
 {
   return kResultFalse;
 }
 
-tresult PLUGIN_API WrappedView::onKeyUp(char16 key, int16 keyCode, int16 modifiers)
+tresult PLUGIN_API WrappedView::onKeyUp(char16 /*key*/, int16 /*keyCode*/, int16 /*modifiers*/)
 {
   return kResultFalse;
 }
@@ -186,7 +186,7 @@ tresult PLUGIN_API WrappedView::onSize(ViewRect* newSize)
   return kResultFalse;
 }
 
-tresult PLUGIN_API WrappedView::onFocus(TBool state)
+tresult PLUGIN_API WrappedView::onFocus(TBool /*state*/)
 {
   // TODO: this might be something for the wrapperhost API
   // to notify the plugin about a focus change

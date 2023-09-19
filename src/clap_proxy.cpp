@@ -4,8 +4,8 @@
 
 #if MAC || LIN
 #include <iostream>
-#define OutputDebugString(x) std::cout << __FILE__ << ":" << __LINE__ << " " << x << std::endl;
-#define OutputDebugStringA(x) std::cout << __FILE__ << ":" << __LINE__ << " " << x << std::endl;
+#define OutputDebugString(x) std::cout << __FILE__ << ":" << __LINE__ << " " << (x) << std::endl;
+#define OutputDebugStringA(x) std::cout << __FILE__ << ":" << __LINE__ << " " << (x) << std::endl;
 #endif
 
 namespace Clap
@@ -268,7 +268,7 @@ void Plugin::setBlockSizes(uint32_t minFrames, uint32_t maxFrames)
   _audioSetup.maxFrames = maxFrames;
 }
 
-bool Plugin::load(const clap_istream_t* stream)
+bool Plugin::load(const clap_istream_t* stream) const
 {
   if (_ext._state)
   {
@@ -277,7 +277,7 @@ bool Plugin::load(const clap_istream_t* stream)
   return false;
 }
 
-bool Plugin::save(const clap_ostream_t* stream)
+bool Plugin::save(const clap_ostream_t* stream) const
 {
   if (_ext._state)
   {
@@ -286,13 +286,13 @@ bool Plugin::save(const clap_ostream_t* stream)
   return false;
 }
 
-bool Plugin::activate()
+bool Plugin::activate() const
 {
   return _plugin->activate(_plugin, _audioSetup.sampleRate, _audioSetup.minFrames,
                            _audioSetup.maxFrames);
 }
 
-void Plugin::deactivate()
+void Plugin::deactivate() const
 {
   _plugin->deactivate(_plugin);
 }
@@ -315,7 +315,7 @@ void Plugin::stop_processing()
 //  _plugin->process(_plugin, data);
 //}
 
-const clap_plugin_gui_t* Plugin::getUI()
+const clap_plugin_gui_t* Plugin::getUI() const
 {
   if (_ext._gui)
   {
@@ -416,7 +416,7 @@ void Plugin::param_request_flush()
 
 // Query an extension.
 // [thread-safe]
-const void* Plugin::clapExtension(const clap_host* host, const char* extension)
+const void* Plugin::clapExtension(const clap_host* /*host*/, const char* extension)
 {
   if (!strcmp(extension, CLAP_EXT_LOG)) return &HostExt::log;
   if (!strcmp(extension, CLAP_EXT_PARAMS)) return &HostExt::params;
