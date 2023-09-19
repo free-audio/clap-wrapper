@@ -111,7 +111,7 @@ jobs:
     strategy:
       matrix:
         os: [macos-latest]
-        gen: [Ninja, Xcode, "Ninja Multi-Config"]
+        gen: [Ninja, Xcode, "Ninja Multi-Config", "Unix Makefiles"]
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
