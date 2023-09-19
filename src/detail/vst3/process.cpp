@@ -16,7 +16,8 @@ using namespace Steinberg;
 
 void ProcessAdapter::setupProcessing(const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params,
                                      Vst::BusList& audioinputs, Vst::BusList& audiooutputs,
-                                     uint32_t numSamples, size_t numEventInputs, size_t numEventOutputs,
+                                     uint32_t numSamples, size_t /*numEventInputs*/,
+                                     size_t /*numEventOutputs*/,
                                      Steinberg::Vst::ParameterContainer& params,
                                      Steinberg::Vst::IComponentHandler* componenthandler,
                                      IAutomation* automation, bool enablePolyPressure,
@@ -59,8 +60,8 @@ void ProcessAdapter::setupProcessing(const clap_plugin_t* plugin, const clap_plu
         bus.channel_count = info.channelCount;
         bus.constant_mask = 0;
         bus.latency = 0;
-        bus.data64 = 0;
-        bus.data32 = 0;
+        bus.data64 = nullptr;
+        bus.data32 = nullptr;
       }
     }
     _processData.audio_inputs = _input_ports;
@@ -86,8 +87,8 @@ void ProcessAdapter::setupProcessing(const clap_plugin_t* plugin, const clap_plu
         bus.channel_count = info.channelCount;
         bus.constant_mask = 0;
         bus.latency = 0;
-        bus.data64 = 0;
-        bus.data32 = 0;
+        bus.data64 = nullptr;
+        bus.data32 = nullptr;
       }
     }
     _processData.audio_outputs = _output_ports;

@@ -88,9 +88,9 @@ std::vector<fs::path> getValidCLAPSearchPaths()
     {
       auto item = cp.substr(0, pos);
       cp = cp.substr(pos + 1);
-      res.emplace_back(fs::path{item});
+      res.emplace_back(item);
     }
-    if (cp.size()) res.emplace_back(fs::path{cp});
+    if (!cp.empty()) res.emplace_back(cp);
   }
 
   return res;
@@ -161,7 +161,7 @@ bool Library::load(const char *name)
 #endif
 }
 
-const clap_plugin_info_as_vst3_t *Library::get_vst3_info(uint32_t index)
+const clap_plugin_info_as_vst3_t *Library::get_vst3_info(uint32_t index) const
 {
   if (_pluginFactoryVst3Info && _pluginFactoryVst3Info->get_vst3_info)
   {
@@ -276,11 +276,11 @@ Library::Library()
   if (!selfp.empty())
   {
     std::string name = selfp.u8string();
-    CFURLRef bundleUrl = CFURLCreateFromFileSystemRepresentation(0, (const unsigned char *)name.c_str(),
-                                                                 name.size(), true);
+    CFURLRef bundleUrl = CFURLCreateFromFileSystemRepresentation(
+        nullptr, (const unsigned char *)name.c_str(), name.size(), true);
     if (bundleUrl)
     {
-      auto pluginBundle = CFBundleCreate(0, bundleUrl);
+      auto pluginBundle = CFBundleCreate(nullptr, bundleUrl);
       CFRelease(bundleUrl);
 
       if (pluginBundle)

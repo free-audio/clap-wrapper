@@ -1,3 +1,5 @@
+#pragma once
+
 /*
     CLAP Proxy
 
@@ -10,8 +12,6 @@
     is implemented by the different wrapper flavors.
 
 */
-
-#pragma once
 
 #include <clap/clap.h>
 #include <vector>
@@ -127,7 +127,7 @@ class Plugin
   static std::shared_ptr<Plugin> createInstance(const clap_plugin_factory*, const std::string& id,
                                                 IHost* host);
   static std::shared_ptr<Plugin> createInstance(const clap_plugin_factory*, size_t idx, IHost* host);
-  static std::shared_ptr<Plugin> createInstance(Clap::Library& library, size_t idx, IHost* host);
+  static std::shared_ptr<Plugin> createInstance(Clap::Library& library, size_t index, IHost* host);
 
  protected:
   // only the Clap::Library is allowed to create instances
@@ -151,14 +151,14 @@ class Plugin
   void setSampleRate(double sampleRate);
   void setBlockSizes(uint32_t minFrames, uint32_t maxFrames);
 
-  bool load(const clap_istream_t* stream);
-  bool save(const clap_ostream_t* stream);
-  bool activate();
-  void deactivate();
+  bool load(const clap_istream_t* stream) const;
+  bool save(const clap_ostream_t* stream) const;
+  bool activate() const;
+  void deactivate() const;
   bool start_processing();
   void stop_processing();
   // void process(const clap_process_t* data);
-  const clap_plugin_gui_t* getUI();
+  const clap_plugin_gui_t* getUI() const;
 
   ClapPluginExtensions _ext;
   const clap_plugin_t* _plugin = nullptr;

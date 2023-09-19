@@ -1,9 +1,10 @@
+#pragma once
+
 /*
+    Copyright (c) 2022 Timo Kaluza (defiantnerd)
 
-		Copyright (c) 2022 Timo Kaluza (defiantnerd)
-
-		This file is part of the clap-wrappers project which is released under MIT License.
-		See file LICENSE or go to https://github.com/free-audio/clap-wrapper for full license details.
+    This file is part of the clap-wrappers project which is released under MIT License.
+    See file LICENSE or go to https://github.com/free-audio/clap-wrapper for full license details.
 
 */
 

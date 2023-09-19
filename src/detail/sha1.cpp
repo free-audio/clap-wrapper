@@ -1,8 +1,8 @@
 #include "sha1.h"
-#include <stdint.h>
+#include <cstdint>
 #include <memory>
 #include <cassert>
-#include <string.h>
+#include <cstring>
 
 static constexpr bool isBigEndian = false;
 
@@ -284,10 +284,8 @@ uint32_t swapOrder32(uint32_t n)
     return ((n >> 24) & 0x000000FF) | ((n >> 8) & 0x0000FF00) | ((n << 8) & 0x00FF0000) |
            ((n << 24) & 0xFF000000);
   }
-  else
-  {
-    return n;
-  }
+
+  return n;
 }
 
 uint16_t swapOrder16(uint16_t n)
@@ -308,8 +306,8 @@ uuid_object create_sha1_guid_from_name(const char* name, size_t namelen)
 {
   uuid_object uuid;
 
-  /*put name space ID in network byte order so it hashes the same
-      no matter what endian machine we're on */
+  /* put name space ID in network byte order so it hashes the same no matter what endian machine we're on */
+
   // namespace DNS
   uuid_object net_nsid = {/* 6ba7b810-9dad-11d1-80b4-00c04fd430c8 */
                           0x6ba7b810, 0x9dad, 0x11d1, 0x80, 0xb4, {0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8}};

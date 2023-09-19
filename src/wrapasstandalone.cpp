@@ -1,4 +1,3 @@
-
 #include <iostream>
 
 #include "detail/standalone/standalone_details.h"
