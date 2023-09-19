@@ -470,9 +470,7 @@ void ProcessAdapter::sortEventIndices()
             {
               auto t1 = _events[a].header.time;
               auto t2 = _events[b].header.time;
-              if (t1 < t2) return true;
-              if (t1 == t2) return (a < b);
-              return false;
+              return (t1 == t2) ? (a < b) : (t1 < t2);
             });
 }
 
