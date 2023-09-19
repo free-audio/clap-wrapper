@@ -143,7 +143,7 @@ function(macos_bundle_flag)
             WORKING_DIRECTORY $<TARGET_PROPERTY:${MBF_TARGET},LIBRARY_OUTPUT_DIRECTORY>
             COMMAND ${CMAKE_COMMAND} -E copy
                 ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/cmake/macBundlePkgInfo
-                "$<TARGET_PROPERTY:${MBF_TARGET},MACOSX_BUNDLE_BUNDLE_NAME>.$<TARGET_PROPERTY:${MBF_TARGET},BUNDLE_EXTENSION>/Contents/PkgInfo")
+                "$<TARGET_FILE_DIR:${MBF_TARGET}>/../PkgInfo")
     endif()
     set_target_properties(${MBF_TARGET}
             PROPERTIES
