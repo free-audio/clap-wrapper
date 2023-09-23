@@ -74,7 +74,7 @@ template <typename... Args>
 void log(fmt::string_view format_str, Args&&... args)
 {
   fmt::memory_buffer buf;
-  fmt::vformat_to (std::back_inserter(buf), format_str, fmt::make_format_args ( args...));
+  fmt::vformat_to(std::back_inserter(buf), format_str, fmt::make_format_args(args...));
   buf.push_back(0);
   log((const char*)buf.data());
 }
