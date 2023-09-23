@@ -86,8 +86,8 @@ function(target_add_standalone_wrapper)
             message(STATUS "cmake-wrapper: ejecting xib->nib rules manually for ${CMAKE_GENERATOR} on ${SA_TARGET}")
             find_program(IBTOOL ibtool REQUIRED)
             add_custom_command(TARGET ${SA_TARGET} PRE_BUILD
-                    COMMAND ${CMAKE_COMMAND} -E echo ${IBTOOL} --compile "$<TARGET_PROPERTY:${SA_TARGET},MACOSX_BUNDLE_BUNDLE_NAME>.app/Contents/Resources/MainMenu.nib" ${GEN_XIB}
-                    COMMAND ${IBTOOL} --compile "$<TARGET_PROPERTY:${SA_TARGET},MACOSX_BUNDLE_BUNDLE_NAME>.app/Contents/Resources/MainMenu.nib" ${GEN_XIB}
+                    COMMAND ${CMAKE_COMMAND} -E echo ${IBTOOL} --compile "$<TARGET_FILE_DIR:${SA_TARGET}>/../Resources/MainMenu.nib" ${GEN_XIB}
+                    COMMAND ${IBTOOL} --compile "$<TARGET_FILE_DIR:${SA_TARGET}>/../Resources/MainMenu.nib" ${GEN_XIB}
                     )
         endif()
 

@@ -47,6 +47,7 @@ function(target_add_auv2_wrapper)
             "-framework Foundation"
             "-framework CoreFoundation"
             )
+    target_compile_options(${bhtg} PRIVATE -fno-char8_t)
     set(bhtgoutdir "${CMAKE_CURRENT_BINARY_DIR}/${AUV2_TARGET}-build-helper-output")
 
     add_custom_command(TARGET ${bhtg} POST_BUILD
@@ -140,7 +141,7 @@ function(target_add_auv2_wrapper)
             ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv2/auv2_shared.h
             ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv2/auv2_base_classes.h
             ${bhtgoutdir}/generated_entrypoints.hxx)
-
+    target_compile_options(${AUV2_TARGET} PRIVATE -fno-char8_t)
 
     if (NOT TARGET ${AUV2_TARGET}-clap-wrapper-auv2-lib)
         # For now make this an interface
