@@ -47,7 +47,6 @@ function(target_add_auv2_wrapper)
             "-framework Foundation"
             "-framework CoreFoundation"
             )
-    target_compile_options(${bhtg} PRIVATE -fno-char8_t)
     set(bhtgoutdir "${CMAKE_CURRENT_BINARY_DIR}/${AUV2_TARGET}-build-helper-output")
 
     add_custom_command(TARGET ${bhtg} POST_BUILD

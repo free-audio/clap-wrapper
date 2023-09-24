@@ -51,39 +51,57 @@ jobs:
           find build -name testplug.component -print
 
 
-
   build_feature_cpm_download:
-    name: Wrapper + CPM Downloads (win)
+    name: Wrapper + CPM Downloads
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [windows-latest]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
-        with:
-          submodules: recursive
+        include:
+          - os: windows-latest
+            cmakeargs: -A x64
+            install_ninja: false
+            run_aptget: false
 
-      - name: Build project
-        run: |
-          cmake -S . -B ./build -DCMAKE_BUILD_TYPE=Debug -DCLAP_WRAPPER_DOWNLOAD_DEPENDENCIES=TRUE -DCLAP_WRAPPER_BUILD_AUV2=TRUE  -DCLAP_WRAPPER_BUILD_STANDALONE=TRUE -DCLAP_WRAPPER_OUTPUT_NAME=downloadplug
-          cmake --build ./build --config Debug
+          - os: windows-latest
+            cmakeargs: -A x64 -DCLAP_WRAPPER_CXX_STANDARD=20
+            install_ninja: false
+            run_aptget: false
 
-      - name: Show Build Results
-        shell: bash
-        run: |
-          find build -name downloadplug.vst3 -print
-          find build -name downloadplug.component -print
+          - os: ubuntu-latest
+            cmakeargs: -DCMAKE_CXX_COMPILER=g++-11 -DCMAKE_C_COMPILER=gcc-11
+            install_ninja: false
+            run_aptget: true
 
+          - os: ubuntu-latest
+            cmakeargs: -DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_C_COMPILER=gcc-12
+            install_ninja: false
+            run_aptget: true
 
+          - os: ubuntu-latest
+            cmakeargs: -DCLAP_WRAPPER_CXX_STANDARD=20 -DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_C_COMPILER=gcc-12
+            install_ninja: false
+            run_aptget: true
 
-  build_feature_cpm_download_linuxsa:
-    name: Wrapper + CPM Downloads (Lin)
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ ubuntu-latest ]
-        gccver: [11, 12]
+          - os: macos-latest
+            cmakeargs: -GNinja
+            install_ninja: true
+            run_aptget: false
+
+          - os: macos-latest
+            cmakeargs: -GNinja -DCLAP_WRAPPER_CXX_STANDARD=20
+            install_ninja: true
+            run_aptget: false
+
+          - os: macos-latest
+            cmakeargs: -G"Ninja Multi-Config"
+            install_ninja: true
+            run_aptget: false
+
+          - os: macos-latest
+            cmakeargs: -G"Unix Makefiles"
+            install_ninja: false
+            run_aptget: false
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
@@ -91,40 +109,16 @@ jobs:
           submodules: recursive
 
       - name: Get Deps
+        if: ${{ matrix.run_aptget }}
         run: sudo apt-get install -y alsa alsa-tools libasound2-dev libjack-dev libgtk-3-dev
 
-      - name: Build project
-        run: |
-          cmake -S . -B ./build -DCMAKE_CXX_COMPILER=g++-${{ matrix.gccver }} -DCMAKE_C_COMPILER=gcc-${{ matrix.gccver }} -DCMAKE_BUILD_TYPE=Debug -DCLAP_WRAPPER_DOWNLOAD_DEPENDENCIES=TRUE -DCLAP_WRAPPER_BUILD_AUV2=TRUE  -DCLAP_WRAPPER_BUILD_STANDALONE=TRUE -DCLAP_WRAPPER_OUTPUT_NAME=downloadplug
-          cmake --build ./build --config Debug
-
-      - name: Show Build Results
-        shell: bash
-        run: |
-          find build -name downloadplug.vst3 -print
-          find build -name downloadplug.component -print
-
-
-
-  build_feature_xcode:
-    name: Wrapper + CPM Downloads + Gens
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [macos-latest]
-        gen: [Ninja, Xcode, "Ninja Multi-Config", "Unix Makefiles"]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
-        with:
-          submodules: recursive
-
       - name: Install Ninja
+        if: ${{ matrix.install_ninja }}
         uses: seanmiddleditch/gha-setup-ninja@master
 
       - name: Build project
         run: |
-          cmake -S . -B ./build -G "${{ matrix.gen }}" -DCMAKE_BUILD_TYPE=Debug -DCLAP_WRAPPER_DOWNLOAD_DEPENDENCIES=TRUE -DCLAP_WRAPPER_BUILD_AUV2=TRUE  -DCLAP_WRAPPER_BUILD_STANDALONE=TRUE -DCLAP_WRAPPER_OUTPUT_NAME=downloadplug
+          cmake -S . -B ./build ${{ matrix.cmakeargs }} -DCMAKE_BUILD_TYPE=Debug -DCLAP_WRAPPER_DOWNLOAD_DEPENDENCIES=TRUE -DCLAP_WRAPPER_BUILD_AUV2=TRUE  -DCLAP_WRAPPER_BUILD_STANDALONE=TRUE -DCLAP_WRAPPER_OUTPUT_NAME=downloadplug
           cmake --build ./build --config Debug
 
       - name: Show Build Results
@@ -132,4 +126,4 @@ jobs:
         run: |
           find build -name downloadplug.vst3 -print
           find build -name downloadplug.component -print
-          
+
