@@ -50,7 +50,7 @@ if (DEFINED CLAP_WRAPPER_CXX_STANDARD)
 else()
 	set(CMAKE_CXX_STANDARD 17)
 endif()
-message(STATUS "Building clap-wrapper with C++ standard ${CMAKE_CXX_STANDARD}")
+message(STATUS "clap-wrapper: Building with C++ standard ${CMAKE_CXX_STANDARD}")
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
