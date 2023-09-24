@@ -62,6 +62,11 @@ jobs:
             install_ninja: false
             run_aptget: false
 
+          - os: windows-latest
+            cmakeargs: -A x64 -DCLAP_WRAPPER_CXX_STANDARD=20
+            install_ninja: false
+            run_aptget: false
+
           - os: ubuntu-latest
             cmakeargs: -DCMAKE_CXX_COMPILER=g++-11 -DCMAKE_C_COMPILER=gcc-11
             install_ninja: false
@@ -72,8 +77,18 @@ jobs:
             install_ninja: false
             run_aptget: true
 
+          - os: ubuntu-latest
+            cmakeargs: -DCLAP_WRAPPER_CXX_STANDARD=20 -DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_C_COMPILER=gcc-12
+            install_ninja: false
+            run_aptget: true
+
           - os: macos-latest
             cmakeargs: -GNinja
+            install_ninja: true
+            run_aptget: false
+
+          - os: macos-latest
+            cmakeargs: -GNinja -DCLAP_WRAPPER_CXX_STANDARD=20
             install_ninja: true
             run_aptget: false
 
