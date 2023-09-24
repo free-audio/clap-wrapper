@@ -6,7 +6,7 @@ plugin run in hosts which don't support the CLAP format and
 allowing you to distribute standalone executable versions of your 
 CLAP.
 
-Our [wiki](wiki) is the root of our developer documentation.
+Our [wiki](https://github.com/free-audio/clap-wrapper/wiki) is the root of our developer documentation.
 
 Currently the `clap-wrapper` supports projecting a CLAP into
 
@@ -32,7 +32,7 @@ host or can appear to be a self contained standalone executable.
 
 ## Getting Started
 
-Our [wiki](wiki) is the root of our developer documentation.
+Our [wiki](https://github.com/free-audio/clap-wrapper/wiki) is the root of our developer documentation.
 Since building a `clap-wrapper` involves several choices we
 strongly suggest you consult it first.
 
