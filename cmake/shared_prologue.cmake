@@ -63,7 +63,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     endif()
 endif()
 
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
     if (${CMAKE_CXX_STANDARD} GREATER_EQUAL 20)
         message(STATUS "clap-wrapper: Turning of char8_t c++20 changes")
         target_compile_options(clap-wrapper-compile-options INTERFACE /Zc:char8_t-)
