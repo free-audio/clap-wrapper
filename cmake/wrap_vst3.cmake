@@ -89,11 +89,6 @@ function(target_add_vst3_wrapper)
         target_compile_options(${V3_TARGET}-clap-wrapper-vst3-lib PRIVATE
                 -DCLAP_SUPPORTS_ALL_NOTE_EXPRESSIONS=$<IF:$<BOOL:${V3_SUPPORTS_ALL_NOTE_EXPRESSIONS}>,1,0>
                 )
-        if (MSVC)
-            target_compile_options(${V3_TARGET}-clap-wrapper-vst3-lib PRIVATE /Zc:char8_t-)
-        else()
-            target_compile_options(${V3_TARGET}-clap-wrapper-vst3-lib PRIVATE -fno-char8_t)
-        endif()
     endif()
 
 
