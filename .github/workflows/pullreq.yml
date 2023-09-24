@@ -70,7 +70,7 @@ jobs:
           - os: ubuntu-latest
             cmakeargs: -DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_C_COMPILER=gcc-12
             install_ninja: false
-            run_aptget: false
+            run_aptget: true
 
           - os: macos-latest
             cmakeargs: -GNinja
