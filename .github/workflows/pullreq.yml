@@ -70,22 +70,22 @@ jobs:
           - os: ubuntu-latest
             cmakeargs: -DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_C_COMPILER=gcc-12
             install_ninja: false
-            run_aptget: true
+            run_aptget: false
 
           - os: macos-latest
             cmakeargs: -GNinja
-            install_ninja: false
-            run_aptget: true
+            install_ninja: true
+            run_aptget: false
 
           - os: macos-latest
             cmakeargs: -G"Ninja Multi-Config"
-            install_ninja: false
-            run_aptget: true
+            install_ninja: true
+            run_aptget: false
 
           - os: macos-latest
             cmakeargs: -G"Unix Makefiles"
             install_ninja: false
-            run_aptget: true
+            run_aptget: false
 
     steps:
       - name: Checkout code
