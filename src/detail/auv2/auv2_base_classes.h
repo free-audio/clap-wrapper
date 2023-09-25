@@ -19,9 +19,9 @@ namespace free_audio::auv2_wrapper
 
 // -------------------------------------------------------------------------------------------------
 
-class ClapWrapper_AUV2_Effect : public ClapAUv2_Base<ausdk::AUEffectBase, false, true, false>
+class ClapWrapper_AUV2_Effect : public ClapAUv2_Base<ausdk::AUEffectBase>
 {
-  using Base = ClapAUv2_Base<ausdk::AUEffectBase, false, true, false>;
+  using Base = ClapAUv2_Base<ausdk::AUEffectBase>;
 
  public:
   explicit ClapWrapper_AUV2_Effect(const std::string &clapname, const std::string &clapid, int clapidx,
@@ -31,9 +31,9 @@ class ClapWrapper_AUV2_Effect : public ClapAUv2_Base<ausdk::AUEffectBase, false,
   }
 };
 
-class ClapWrapper_AUV2_NoteEffect : public ClapAUv2_Base<ausdk::AUMIDIEffectBase, false, false, true>
+class ClapWrapper_AUV2_NoteEffect : public ClapAUv2_Base<ausdk::AUMIDIEffectBase>
 {
-  using Base = ClapAUv2_Base<ausdk::AUMIDIEffectBase, false, false, true>;
+  using Base = ClapAUv2_Base<ausdk::AUMIDIEffectBase>;
 
  public:
   explicit ClapWrapper_AUV2_NoteEffect(const std::string &clapname, const std::string &clapid,
@@ -45,9 +45,9 @@ class ClapWrapper_AUV2_NoteEffect : public ClapAUv2_Base<ausdk::AUMIDIEffectBase
 
 // -------------------------------------------------------------------------------------------------
 
-class ClapWrapper_AUV2_Instrument : public ClapAUv2_Base<ausdk::MusicDeviceBase, true, false, false>
+class ClapWrapper_AUV2_Instrument : public ClapAUv2_Base<ausdk::MusicDeviceBase>
 {
-  using Base = ClapAUv2_Base<ausdk::MusicDeviceBase, true, false, false>;
+  using Base = ClapAUv2_Base<ausdk::MusicDeviceBase>;
 
  public:
   explicit ClapWrapper_AUV2_Instrument(const std::string &clapname, const std::string &clapid,

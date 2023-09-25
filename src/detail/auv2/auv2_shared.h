@@ -10,9 +10,16 @@
 
 namespace free_audio::auv2_wrapper
 {
-template <typename AUBase, bool isInstrument, bool isEffect, bool isNoteEffect>
+template <typename AUBase>
 struct ClapAUv2_Base : public AUBase
 {
+  static constexpr bool isInstrument{std::is_same_v<AUBase, ausdk::MusicDeviceBase>};
+  static constexpr bool isEffect{std::is_same_v<AUBase, ausdk::AUEffectBase>};
+  static constexpr bool isNoteEffect{std::is_same_v<AUBase, ausdk::AUMIDIEffectBase>};
+
+  static_assert(isInstrument + isEffect + isNoteEffect == 1,
+                "You must be one and only one of instrument, effect, or note effect");
+
   std::string _clapname;
   std::string _clapid;
   int _idx;
@@ -105,8 +112,8 @@ struct ClapAUv2_Base : public AUBase
       return;
     }
 
-    std::cout << "[clap-wrapper] auv2: Initialized '" << _desc->id << "' / '" << _desc->name << "'"
-              << std::endl;
+    std::cout << "[clap-wrapper] auv2: Initialized '" << _desc->id << "' / '" << _desc->name << "' / '"
+              << _desc->version << "'" << std::endl;
   }
 
   bool StreamFormatWritable(AudioUnitScope, AudioUnitElement) override
