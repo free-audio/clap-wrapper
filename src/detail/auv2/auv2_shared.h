@@ -9,7 +9,7 @@
 #include <iostream>
 
 #define CWAUTRACE                                                                               \
-  std::cout << "[clap-wrapper auv2 trace] " << __func__ << " @ " << __FILE__ << ":" << __LINE__ \
+  std::cout << "[clap-wrapper auv2 trace] " << __func__ << " @ auv2_shared.h line " << __LINE__ \
             << std::endl
 
 namespace free_audio::auv2_wrapper

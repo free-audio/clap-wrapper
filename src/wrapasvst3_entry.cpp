@@ -44,7 +44,7 @@
 
 */
 
-#include "detail/sha1.h"
+#include "detail/shared/sha1.h"
 #include "wrapasvst3.h"
 #include "public.sdk/source/main/pluginfactory.h"
 #include <array>

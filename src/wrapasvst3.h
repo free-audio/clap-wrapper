@@ -32,6 +32,7 @@
 #include "detail/vst3/plugview.h"
 #include "detail/vst3/os/osutil.h"
 #include "detail/clap/automation.h"
+#include "detail/shared/fixedqueue.h"
 #include <mutex>
 
 using namespace Steinberg;
@@ -261,7 +262,7 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   std::atomic_bool _requestUICallback = false;
 
   // the queue from audiothread to UI thread
-  util::fixedqueue<queueEvent, 8192> _queueToUI;
+  ClapWrapper::detail::shared::fixedqueue<queueEvent, 8192> _queueToUI;
 
   // for IMidiMapping
   bool _useIMidiMapping = false;

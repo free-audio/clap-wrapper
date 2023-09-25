@@ -21,6 +21,7 @@
 #endif
 
 #include "clap_proxy.h"
+#include "detail/shared/fixedqueue.h"
 
 namespace Clap::Standalone
 {
@@ -200,7 +201,7 @@ struct StandaloneHost : Clap::IHost
       memset(dat, 0, sizeof(dat));
     }
   };
-  fixedqueue<midiChunk, 4096> midiToAudioQueue;
+  ClapWrapper::detail::shared::fixedqueue<midiChunk, 4096> midiToAudioQueue;
   std::vector<std::unique_ptr<RtMidiIn>> midiIns;
   void startMIDIThread();
   void stopMIDIThread();

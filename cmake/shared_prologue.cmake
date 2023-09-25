@@ -121,8 +121,8 @@ function(guarantee_clap_wrapper_shared)
     add_library(clap-wrapper-shared-detail STATIC
             src/clap_proxy.h
             src/clap_proxy.cpp
-            src/detail/sha1.h
-            src/detail/sha1.cpp
+            src/detail/shared/sha1.h
+            src/detail/shared/sha1.cpp
             src/detail/clap/fsutil.h
             src/detail/clap/fsutil.cpp
             src/detail/clap/automation.h
