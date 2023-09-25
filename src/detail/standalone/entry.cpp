@@ -4,7 +4,7 @@
 #include "standalone_host.h"
 #include "entry.h"
 
-namespace Clap::Standalone
+namespace freeaudio::clap_wrapper::standalone
 {
 
 static std::unique_ptr<StandaloneHost> standaloneHost;
@@ -107,4 +107,4 @@ int mainFinish()
   }
   return 0;
 }
-}  // namespace Clap::Standalone
+}  // namespace freeaudio::clap_wrapper::standalone

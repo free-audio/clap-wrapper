@@ -233,7 +233,6 @@ void Plugin::schnick()
 
 bool Plugin::initialize()
 {
-  fprintf(stderr, "Plugin Initialize\n");
   if (_ext._audioports)
   {
     _parentHost->setupAudioBusses(_plugin, _ext._audioports);

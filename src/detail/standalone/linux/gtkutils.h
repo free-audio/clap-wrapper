@@ -5,14 +5,14 @@
 #include "detail/standalone/standalone_host.h"
 
 struct _GtkApplication;  // sigh their typedef screws up forward decls
-namespace Clap::Standalone::Linux
+namespace freeaudio::clap_wrapper::standalone::linux
 {
 struct GtkGui
 {
   _GtkApplication *app{nullptr};
   std::shared_ptr<Clap::Plugin> plugin;
 
-  void initialize(Clap::Standalone::StandaloneHost *);
+  void initialize(freeaudio::clap_wrapper::standalone::StandaloneHost *);
   void setPlugin(std::shared_ptr<Clap::Plugin>);
   void runloop(int argc, char **argv);
   void shutdown();
@@ -47,4 +47,4 @@ struct GtkGui
   bool unregister_fd(int fd);
   int runFD(int fd, clap_posix_fd_flags_t flags);
 };
-}  // namespace Clap::Standalone::Linux
+}  // namespace freeaudio::clap_wrapper::standalone::linux

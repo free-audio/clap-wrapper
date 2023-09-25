@@ -23,11 +23,11 @@
 #include "clap_proxy.h"
 #include "detail/shared/fixedqueue.h"
 
-namespace Clap::Standalone
+namespace freeaudio::clap_wrapper::standalone
 {
 #if LIN
 #if CLAP_WRAPPER_HAS_GTK3
-namespace Linux
+namespace linux
 {
 struct GtkGui;
 }
@@ -145,7 +145,6 @@ struct StandaloneHost : Clap::IHost
   }
   void param_request_flush() override
   {
-    TRACE;
   }
   bool gui_can_resize() override
   {
@@ -170,7 +169,7 @@ struct StandaloneHost : Clap::IHost
 
 #if LIN
 #if CLAP_WRAPPER_HAS_GTK3
-  Clap::Standalone::Linux::GtkGui *gtkGui{nullptr};
+  freeaudio::clap_wrapper::standalone::linux::GtkGui *gtkGui{nullptr};
 #endif
 #endif
 
@@ -229,4 +228,4 @@ struct StandaloneHost : Clap::IHost
   static constexpr int utilityBufferMaxChannels{16};
   float utilityBuffer[utilityBufferMaxChannels][utilityBufferSize]{};
 };
-}  // namespace Clap::Standalone
+}  // namespace freeaudio::clap_wrapper::standalone
