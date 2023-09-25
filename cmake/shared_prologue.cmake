@@ -70,7 +70,6 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
     endif()
 endif()
 
-
 # A platform-specific way to copy after build
 function(target_copy_after_build)
     set(oneValueArgs
@@ -94,8 +93,8 @@ function(target_copy_after_build)
         set(products_folder "${CMAKE_BINARY_DIR}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_DIR>")
         add_custom_command(TARGET ${CAB_TARGET} POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E make_directory "~/Library/Audio/Plug-Ins/${macdir}"
-                COMMAND ${CMAKE_COMMAND} -E echo installing "${products_folder}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}" "~/Library/Audio/Plug-Ins/${macdir}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}"
-                COMMAND ${CMAKE_COMMAND} -E copy_directory "${products_folder}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}" "~/Library/Audio/Plug-Ins/${macdir}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}"
+                COMMAND ${CMAKE_COMMAND} -E echo installing "${products_folder}/$<$<CONFIG:Debug>:Debug>$<$<CONFIG:Release>:Release>/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}" "~/Library/Audio/Plug-Ins/${macdir}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}"
+                COMMAND ${CMAKE_COMMAND} -E copy_directory "${products_folder}/$<$<CONFIG:Debug>:Debug>$<$<CONFIG:Release>:Release>/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}" "~/Library/Audio/Plug-Ins/${macdir}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}"
                 )
     elseif (UNIX)
         message(STATUS "clap-wrapper: will copy ${CAB_TARGET} / ${CAB_FLAVOR} after build (untested)")
