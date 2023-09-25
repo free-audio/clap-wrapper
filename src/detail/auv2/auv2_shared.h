@@ -1,11 +1,17 @@
 #pragma once
 
+/*
+ * This is the base class of all our AU. It is templated on the AU base class and the configuration
+ * type (instrument, effect, note effect).
+ */
+
 #include "detail/clap/fsutil.h"
 #include <iostream>
 
 namespace free_audio::auv2_wrapper
 {
-struct ClapBridge
+template <typename AUBase, bool isInstrument, bool isEffect, bool isNoteEffect>
+struct ClapAUv2_Base : public AUBase
 {
   std::string _clapname;
   std::string _clapid;
@@ -15,15 +21,37 @@ struct ClapBridge
 
   const clap_plugin_descriptor_t *_desc{nullptr};
 
-  ClapBridge(const std::string &clapname, const std::string &clapid, int idx)
-    : _clapname(clapname), _clapid(clapid), _idx(idx)
+  ClapAUv2_Base(const std::string &clapname, const std::string &clapid, int idx,
+                AudioComponentInstance ci)
+    : AUBase{ci, true}, _clapname(clapname), _clapid(clapid), _idx(idx)
   {
-    std::cout << "[clap-wrapper] auv2: creating clap bridge nm=" << clapname << " id=" << clapid
-              << " idx=" << idx << std::endl;
+    initialize();
+  }
+
+  ClapAUv2_Base(const std::string &clapname, const std::string &clapid, int idx,
+                AudioComponentInstance ci, uint32_t inP, uint32_t outP)
+    : AUBase{ci, inP, outP}, _clapname(clapname), _clapid(clapid), _idx(idx)
+  {
+    initialize();
   }
 
   void initialize()
   {
+    if constexpr (isEffect)
+    {
+      std::cout << "[clap-wrapper] auv2: creating audio effect" << std::endl;
+    }
+    else if constexpr (isInstrument)
+    {
+      std::cout << "[clap-wrapper] auv2: creating instrument" << std::endl;
+    }
+    else if constexpr (isNoteEffect)
+    {
+      std::cout << "[clap-wrapper] auv2: creating note effect" << std::endl;
+    }
+
+    std::cout << "[clap-wrapper] auv2: id='" << _clapid << "' index=" << _idx << std::endl;
+
     if (!_library.hasEntryPoint())
     {
       if (_clapname.empty())
@@ -79,6 +107,16 @@ struct ClapBridge
 
     std::cout << "[clap-wrapper] auv2: Initialized '" << _desc->id << "' / '" << _desc->name << "'"
               << std::endl;
+  }
+
+  bool StreamFormatWritable(AudioUnitScope, AudioUnitElement) override
+  {
+    return true;
+  }
+
+  bool CanScheduleParameters() const override
+  {
+    return false;
   }
 };
 }  // namespace free_audio::auv2_wrapper

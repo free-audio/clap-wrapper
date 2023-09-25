@@ -1,7 +1,9 @@
 #pragma once
 
 /*
- * document
+ * This is the set of wedge classes which the auv2 code generator projects onto. It is very
+ * unlikely you would need to edit these classes since they almost entirely delegate to the
+ * base class `ClapAUv2_Base` which uses CRTP to have the appropriate AU base class.
  */
 
 #include <AudioUnitSDK/AUEffectBase.h>
@@ -17,66 +19,41 @@ namespace free_audio::auv2_wrapper
 
 // -------------------------------------------------------------------------------------------------
 
-class ClapWrapper_AUV2_Effect : public ausdk::AUEffectBase
+class ClapWrapper_AUV2_Effect : public ClapAUv2_Base<ausdk::AUEffectBase, false, true, false>
 {
-  using Base = ausdk::AUEffectBase;
-  ClapBridge bridge;
+  using Base = ClapAUv2_Base<ausdk::AUEffectBase, false, true, false>;
 
  public:
   explicit ClapWrapper_AUV2_Effect(const std::string &clapname, const std::string &clapid, int clapidx,
                                    AudioComponentInstance ci)
-    : Base{ci, true}, bridge(clapname, clapid, clapidx)
+    : Base{clapname, clapid, clapidx, ci}
   {
-    std::cout << "[clap-wrapper] auv2: creating effect" << std::endl;
-    std::cout << "[clap-wrapper] auv2: id='" << clapid << "' index=" << clapidx << std::endl;
-
-    bridge.initialize();
   }
 };
 
-class ClapWrapper_AUV2_NoteEffect : public ausdk::AUMIDIEffectBase
+class ClapWrapper_AUV2_NoteEffect : public ClapAUv2_Base<ausdk::AUMIDIEffectBase, false, false, true>
 {
-  using Base = ausdk::AUMIDIEffectBase;
-  ClapBridge bridge;
+  using Base = ClapAUv2_Base<ausdk::AUMIDIEffectBase, false, false, true>;
 
  public:
   explicit ClapWrapper_AUV2_NoteEffect(const std::string &clapname, const std::string &clapid,
                                        int clapidx, AudioComponentInstance ci)
-    : Base{ci, true}, bridge(clapname, clapid, clapidx)
+    : Base{clapname, clapid, clapidx, ci}
   {
-    std::cout << "[clap-wrapper] auv2: creating note effect" << std::endl;
-    std::cout << "[clap-wrapper] auv2: id='" << clapid << "' index=" << clapidx << std::endl;
-
-    bridge.initialize();
   }
 };
 
 // -------------------------------------------------------------------------------------------------
 
-class ClapWrapper_AUV2_Instrument : public ausdk::MusicDeviceBase
+class ClapWrapper_AUV2_Instrument : public ClapAUv2_Base<ausdk::MusicDeviceBase, true, false, false>
 {
-  using Base = ausdk::MusicDeviceBase;
-  ClapBridge bridge;
+  using Base = ClapAUv2_Base<ausdk::MusicDeviceBase, true, false, false>;
 
  public:
   explicit ClapWrapper_AUV2_Instrument(const std::string &clapname, const std::string &clapid,
                                        int clapidx, AudioComponentInstance ci)
-    : Base{ci, 0, 1}, bridge(clapname, clapid, clapidx)
+    : Base{clapname, clapid, clapidx, ci, 0, 1}
   {
-    std::cout << "[clap-wrapper] auv2: creating instrument" << std::endl;
-    std::cout << "[clap-wrapper] auv2: id='" << clapid << "' index=" << clapidx << std::endl;
-
-    bridge.initialize();
-  }
-
-  bool StreamFormatWritable(AudioUnitScope, AudioUnitElement) override
-  {
-    return true;
-  }
-
-  bool CanScheduleParameters() const override
-  {
-    return false;
   }
 };
 }  // namespace free_audio::auv2_wrapper
