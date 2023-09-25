@@ -91,11 +91,11 @@ function(target_copy_after_build)
 
     if (APPLE)
         message(STATUS "clap-wrapper: will copy ${CAB_TARGET} / ${CAB_FLAVOR} after build")
-        set(products_folder "${CMAKE_BINARY_DIR}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_DIR>")
+        set(input_bundle "$<TARGET_FILE_DIR:${CAB_TARGET}>/../../../$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}")
         add_custom_command(TARGET ${CAB_TARGET} POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E make_directory "~/Library/Audio/Plug-Ins/${macdir}"
-                COMMAND ${CMAKE_COMMAND} -E echo installing "${products_folder}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}" "~/Library/Audio/Plug-Ins/${macdir}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}"
-                COMMAND ${CMAKE_COMMAND} -E copy_directory "${products_folder}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}" "~/Library/Audio/Plug-Ins/${macdir}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}"
+                COMMAND ${CMAKE_COMMAND} -E echo installing "${input_bundle}" "~/Library/Audio/Plug-Ins/${macdir}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}"
+                COMMAND ${CMAKE_COMMAND} -E copy_directory "${input_bundle}" "~/Library/Audio/Plug-Ins/${macdir}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}"
                 )
     elseif (UNIX)
         message(STATUS "clap-wrapper: will copy ${CAB_TARGET} / ${CAB_FLAVOR} after build (untested)")
