@@ -4,7 +4,7 @@
 #include <clap_proxy.h>
 #include <string>
 
-namespace Clap::Standalone
+namespace freeaudio::clap_wrapper::standalone
 {
 std::shared_ptr<Clap::Plugin> mainCreatePlugin(const clap_plugin_entry *entry, const std::string &clapId,
                                                uint32_t clapIndex, int argc, char **argv);
@@ -17,4 +17,4 @@ StandaloneHost *getStandaloneHost();
 
 int mainWait();
 int mainFinish();
-}  // namespace Clap::Standalone
+}  // namespace freeaudio::clap_wrapper::standalone

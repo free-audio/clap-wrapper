@@ -10,7 +10,7 @@
 
 #include <cassert>
 
-namespace Clap::Standalone::Linux
+namespace freeaudio::clap_wrapper::standalone::linux
 {
 
 static void activate(GtkApplication *app, gpointer user_data)
@@ -49,7 +49,7 @@ void GtkGui::setupPlugin(_GtkApplication *app)
   }
 }
 
-void GtkGui::initialize(Clap::Standalone::StandaloneHost *sah)
+void GtkGui::initialize(freeaudio::clap_wrapper::standalone::StandaloneHost *sah)
 {
   sah->gtkGui = this;
   app = gtk_application_new("org.gtk.example", G_APPLICATION_FLAGS_NONE);
@@ -162,6 +162,6 @@ int GtkGui::runFD(int fd, clap_posix_fd_flags_t flags)
   return true;
 }
 
-}  // namespace Clap::Standalone::Linux
+}  // namespace freeaudio::clap_wrapper::standalone::linux
 
 #endif

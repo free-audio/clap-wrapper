@@ -15,7 +15,7 @@
 
 #include "standalone_host.h"
 
-namespace Clap::Standalone
+namespace freeaudio::clap_wrapper::standalone
 {
 int rtaCallback(void *outputBuffer, void *inputBuffer, unsigned int nBufferFrames,
                 double /* streamTime */, RtAudioStreamStatus status, void *data)
@@ -104,4 +104,4 @@ void StandaloneHost::stopAudioThread()
   LOG << "RtAudio stream stopped" << std::endl;
   return;
 }
-}  // namespace Clap::Standalone
+}  // namespace freeaudio::clap_wrapper::standalone

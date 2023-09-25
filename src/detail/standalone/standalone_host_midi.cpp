@@ -12,7 +12,7 @@
 #pragma GCC diagnostic pop
 #endif
 
-namespace Clap::Standalone
+namespace freeaudio::clap_wrapper::standalone
 {
 void StandaloneHost::startMIDIThread()
 {
@@ -55,8 +55,6 @@ void StandaloneHost::processMIDIEvents(double deltatime, std::vector<unsigned ch
   {
     midiChunk ck;
     memcpy(ck.dat, message->data(), 3);
-    LOG << "Sending midi to audio thread: dat[0] = " << std::hex << (int)(*message)[0] << std::dec
-        << std::endl;
     midiToAudioQueue.push(ck);
   }
 }
@@ -75,4 +73,4 @@ void StandaloneHost::stopMIDIThread()
   }
 }
 
-}  // namespace Clap::Standalone
+}  // namespace freeaudio::clap_wrapper::standalone

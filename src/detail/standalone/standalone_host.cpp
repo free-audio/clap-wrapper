@@ -8,7 +8,7 @@
 #endif
 #endif
 
-namespace Clap::Standalone
+namespace freeaudio::clap_wrapper::standalone
 {
 StandaloneHost::~StandaloneHost()
 {
@@ -234,4 +234,4 @@ bool StandaloneHost::unregister_timer(clap_id timer_id)
 }
 #endif
 
-}  // namespace Clap::Standalone
+}  // namespace freeaudio::clap_wrapper::standalone

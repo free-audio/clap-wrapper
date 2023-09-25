@@ -48,25 +48,26 @@ int main(int argc, char **argv)
   std::string pid{PLUGIN_ID};
   int pindex{PLUGIN_INDEX};
 
-  auto plugin = Clap::Standalone::mainCreatePlugin(entry, pid, pindex, 1, (char **)argv);
-  Clap::Standalone::mainStartAudio();
+  auto plugin =
+      freeaudio::clap_wrapper::standalone::mainCreatePlugin(entry, pid, pindex, 1, (char **)argv);
+  freeaudio::clap_wrapper::standalone::mainStartAudio();
 
 #if LIN
 #if CLAP_WRAPPER_HAS_GTK3
-  Clap::Standalone::Linux::GtkGui gtkGui{};
+  freeaudio::clap_wrapper::standalone::Linux::GtkGui gtkGui{};
 
-  gtkGui.initialize(Clap::Standalone::getStandaloneHost());
+  gtkGui.initialize(freeaudio::clap_wrapper::standalone::getStandaloneHost());
   gtkGui.setPlugin(plugin);
   gtkGui.runloop(argc, argv);
   gtkGui.shutdown();
   gtkGui.setPlugin(nullptr);
 #else
-  Clap::Standalone::mainWait();
+  freeaudio::clap_wrapper::standalone::mainWait();
 #endif
 #else
-  Clap::Standalone::mainWait();
+  freeaudio::clap_wrapper::standalone::mainWait();
 #endif
 
   plugin = nullptr;
-  Clap::Standalone::mainFinish();
+  freeaudio::clap_wrapper::standalone::mainFinish();
 }

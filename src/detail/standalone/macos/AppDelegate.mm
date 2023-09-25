@@ -71,7 +71,8 @@
   }
 #endif
 
-  auto plugin = Clap::Standalone::mainCreatePlugin(entry, pid, pindex, 1, (char **)argv);
+  auto plugin =
+      freeaudio::clap_wrapper::standalone::mainCreatePlugin(entry, pid, pindex, 1, (char **)argv);
 
   [[self window] orderFrontRegardless];
 
@@ -101,13 +102,13 @@
     ui->show(p);
   }
 
-  Clap::Standalone::mainStartAudio();
+  freeaudio::clap_wrapper::standalone::mainStartAudio();
 }
 
 - (void)applicationWillTerminate:(NSNotification *)aNotification
 {
   LOG << "applicationWillTerminate shutdown" << std::endl;
-  auto plugin = Clap::Standalone::getMainPlugin();
+  auto plugin = freeaudio::clap_wrapper::standalone::getMainPlugin();
 
   if (plugin && plugin->_ext._gui)
   {
@@ -116,7 +117,7 @@
   }
 
   // Insert code here to tear down your application
-  Clap::Standalone::mainFinish();
+  freeaudio::clap_wrapper::standalone::mainFinish();
 }
 
 @end
