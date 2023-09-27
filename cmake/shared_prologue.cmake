@@ -63,8 +63,11 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     endif()
     if (WIN32)
         if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+            # Darned VST3 confuses "windows" with "msvc"
             message(STATUS "clap-wrapper: Turning off some warnings for windows gcc")
-            target_compile_options(clap-wrapper-compile-options INTERFACE -Wno-expansion-to-defined)
+            target_compile_options(clap-wrapper-compile-options INTERFACE
+                    -Wno-expansion-to-defined
+                    -Wno-unknown-pragmas)
         endif()
     endif()
 endif()
