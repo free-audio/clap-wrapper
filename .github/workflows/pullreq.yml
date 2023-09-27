@@ -52,7 +52,7 @@ jobs:
 
 
   build_feature_cpm_download:
-    name: Wrapper + CPM Downloads
+    name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -61,46 +61,73 @@ jobs:
             cmakeargs: -A x64
             install_ninja: false
             run_aptget: false
+            name: Windows 64bit MSVC
 
           - os: windows-latest
             cmakeargs: -A x64 -DCLAP_WRAPPER_CXX_STANDARD=20
             install_ninja: false
             run_aptget: false
+            name: Windows 64bit C++20 MSVC
+
+          - os: windows-latest
+            cmakeargs: -GNinja -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc
+            install_ninja: true
+            run_aptget: false
+            name: Windows minGW
 
           - os: ubuntu-latest
             cmakeargs: -DCMAKE_CXX_COMPILER=g++-11 -DCMAKE_C_COMPILER=gcc-11
             install_ninja: false
             run_aptget: true
+            name: Linux gcc11
 
           - os: ubuntu-latest
             cmakeargs: -DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_C_COMPILER=gcc-12
             install_ninja: false
             run_aptget: true
+            name: Linux gcc12
 
           - os: ubuntu-latest
             cmakeargs: -DCLAP_WRAPPER_CXX_STANDARD=20 -DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_C_COMPILER=gcc-12
             install_ninja: false
             run_aptget: true
+            name: Linux gcc12 C++20
+
+          - os: ubuntu-latest
+            cmakeargs: -DCLAP_WRAPPER_CXX_STANDARD=23 -DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_C_COMPILER=gcc-12
+            install_ninja: false
+            run_aptget: true
+            name: Linux gcc12 C++23
 
           - os: macos-latest
             cmakeargs: -GNinja
             install_ninja: true
             run_aptget: false
+            name: MacOS Ninja
 
           - os: macos-latest
             cmakeargs: -GNinja -DCLAP_WRAPPER_CXX_STANDARD=20
             install_ninja: true
             run_aptget: false
+            name: MacOS Ninja C++20
+
+          - os: macos-latest
+            cmakeargs: -G"Xcode"
+            install_ninja: false
+            run_aptget: false
+            name: MacOS Xcode
 
           - os: macos-latest
             cmakeargs: -G"Ninja Multi-Config"
             install_ninja: true
             run_aptget: false
+            name: MacOS Ninja MultiConfig
 
           - os: macos-latest
             cmakeargs: -G"Unix Makefiles"
             install_ninja: false
             run_aptget: false
+            name: MacOS Unix Makefiles
 
     steps:
       - name: Checkout code
