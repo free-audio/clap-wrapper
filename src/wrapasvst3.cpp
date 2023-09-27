@@ -4,6 +4,7 @@
 #include <pluginterfaces/vst/ivstevents.h>
 #include <pluginterfaces/vst/ivstnoteexpression.h>
 #include <public.sdk/source/vst/utility/stringconvert.h>
+#include <base/source/fstring.h>
 #include "detail/vst3/state.h"
 #include "detail/vst3/process.h"
 #include "detail/vst3/parameter.h"
