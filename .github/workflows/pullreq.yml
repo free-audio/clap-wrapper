@@ -71,7 +71,13 @@ jobs:
             cmakeargs: -GNinja -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc
             install_ninja: true
             run_aptget: false
-            name: Windows minGW
+            name: Windows gcc/minGW
+
+          - os: windows-latest
+            cmakeargs: -GNinja -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang
+            install_ninja: true
+            run_aptget: false
+            name: Windows clang
 
           - os: ubuntu-latest
             cmakeargs: -DCMAKE_CXX_COMPILER=g++-11 -DCMAKE_C_COMPILER=gcc-11
