@@ -85,7 +85,7 @@ static std::string getModuleName()
   {
     return info.dli_fname;
   }
-  return nullptr;
+  return std::string();
 }
 
 std::string getParentFolderName()
