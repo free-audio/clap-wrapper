@@ -9,7 +9,7 @@
  
 */
 
-#include <Windows.h>
+#include <windows.h>
 #include <tchar.h>
 #include "public.sdk/source/main/moduleinit.h"
 #include "osutil.h"

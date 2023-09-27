@@ -27,7 +27,7 @@ namespace fs = std::filesystem;
 #include <functional>
 #include <clap/clap.h>
 #if WIN
-#include <Windows.h>
+#include <windows.h>
 #endif
 
 #include "clapwrapper/vst3.h"

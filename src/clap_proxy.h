@@ -21,7 +21,7 @@
 #include <atomic>
 
 #if WIN
-#include <Windows.h>
+#include <windows.h>
 #endif
 
 #include "detail/clap/fsutil.h"

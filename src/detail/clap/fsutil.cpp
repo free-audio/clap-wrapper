@@ -11,7 +11,7 @@
 #include "fsutil.h"
 #include <cassert>
 #if WIN
-#include <Windows.h>
+#include <windows.h>
 #endif
 
 #if MAC

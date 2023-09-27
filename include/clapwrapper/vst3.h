@@ -25,7 +25,7 @@ typedef uint8_t array_of_16_bytes[16];
 
 
 // VST3GUID allows you to provide the 4 uint32_t parts of the GUID and transforms them to the 16 byte array
-#if WIN32
+#if WIN
 #define VST3GUID(g1, g2, g3, g4) \
 {                                \
 (uint8_t)((g1 & 0x000000FF)      ),    \
