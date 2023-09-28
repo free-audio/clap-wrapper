@@ -41,7 +41,21 @@ if (APPLE)
     target_link_libraries(clap-wrapper-compile-options INTERFACE macos_filesystem_support)
 endif()
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-    target_compile_options(clap-wrapper-compile-options INTERFACE -Wall -Wextra -Wno-unused-parameter -Wpedantic -Werror)
+    target_compile_options(clap-wrapper-compile-options INTERFACE -Wall -Wextra -Wno-unused-parameter -Wpedantic)
+    if (WIN32)
+        # CLang cant do werror on linux thanks to vst3 sdk
+        if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+            target_compile_options(clap-wrapper-compile-options INTERFACE -Werror)
+            # Darned VST3 confuses "windows" with "msvc"
+            message(STATUS "clap-wrapper: Turning off some warnings for windows gcc")
+            target_compile_options(clap-wrapper-compile-options INTERFACE
+                    -Wno-expansion-to-defined
+                    -Wno-unknown-pragmas)
+        endif()
+    else()
+        message(STATUS "clap-wrapper: Warnings are Errors")
+        target_compile_options(clap-wrapper-compile-options INTERFACE -Werror)
+    endif()
     if (${CMAKE_CXX_STANDARD} GREATER_EQUAL 20)
         message(STATUS "clap-wrapper: Turning off char8_t c++20 changes")
         target_compile_options(clap-wrapper-compile-options INTERFACE -fno-char8_t)
@@ -61,13 +75,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
                 )
         target_link_libraries(clap-wrapper-compile-options INTERFACE clap-wrapper-sanitizer-options)
     endif()
-    if (WIN32)
-        # Darned VST3 confuses "windows" with "msvc"
-        message(STATUS "clap-wrapper: Turning off some warnings for windows gcc")
-        target_compile_options(clap-wrapper-compile-options INTERFACE
-                -Wno-expansion-to-defined
-                -Wno-unknown-pragmas)
-    endif()
+
 endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
