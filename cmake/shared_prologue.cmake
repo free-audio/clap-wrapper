@@ -61,6 +61,13 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
                 )
         target_link_libraries(clap-wrapper-compile-options INTERFACE clap-wrapper-sanitizer-options)
     endif()
+    if (WIN32)
+        # Darned VST3 confuses "windows" with "msvc"
+        message(STATUS "clap-wrapper: Turning off some warnings for windows gcc")
+        target_compile_options(clap-wrapper-compile-options INTERFACE
+                -Wno-expansion-to-defined
+                -Wno-unknown-pragmas)
+    endif()
 endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
