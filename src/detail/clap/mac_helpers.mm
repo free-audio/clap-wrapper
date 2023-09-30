@@ -100,4 +100,23 @@ std::vector<fs::path> getMacCLAPSearchPaths()
   }
   return res;
 }
+std::string toString(const CFStringRef aString ) {
+  if (aString == NULL) {
+    return std::string();
+  }
+
+  std::string result;
+
+  CFIndex length = CFStringGetLength(aString);
+  CFIndex maxSize =
+  CFStringGetMaximumSizeForEncoding(length, kCFStringEncodingUTF8) + 1;
+  result.reserve(maxSize);
+  
+  if (CFStringGetCString(aString, result.data(), maxSize,
+                         kCFStringEncodingUTF8)) {
+    return result;
+  }
+  
+  return std::string();
+}
 }  // namespace Clap
