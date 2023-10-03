@@ -29,8 +29,8 @@
 #pragma GCC diagnostic pop
 #endif
 
+#include "detail/os/osutil.h"
 #include "detail/vst3/plugview.h"
-#include "detail/vst3/os/osutil.h"
 #include "detail/clap/automation.h"
 #include "detail/shared/fixedqueue.h"
 #include <mutex>

@@ -6,11 +6,11 @@ function(private_add_vst3_wrapper_sources)
     set(sd ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR})
 
     if(WIN32)
-        target_sources(${tg} PRIVATE ${sd}/src/detail/vst3/os/windows.cpp)
+        target_sources(${tg} PRIVATE ${sd}/src/detail/os/windows.cpp)
     elseif (APPLE)
-        target_sources(${tg} PRIVATE ${sd}/src/detail/vst3/os/macos.mm)
+        target_sources(${tg} PRIVATE ${sd}/src/detail/os/macos.mm)
     elseif(UNIX)
-        target_sources(${tg} PRIVATE ${sd}/src/detail/vst3/os/linux.cpp)
+        target_sources(${tg} PRIVATE ${sd}/src/detail/os/linux.cpp)
     endif()
 
     target_sources(${tg} PRIVATE

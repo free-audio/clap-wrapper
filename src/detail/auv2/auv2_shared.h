@@ -12,6 +12,8 @@
 
 #include "clap_proxy.h"
 
+#include <AudioToolbox/AudioUnitProperties.h>
+#include <CoreMIDI/MIDIServices.h>
 #define CWAUTRACE                                                                               \
   std::cout << "[clap-wrapper auv2 trace] " << __func__ << " @ auv2_shared.h line " << __LINE__ \
             << std::endl
@@ -158,6 +160,11 @@ struct ClapAUv2_Base : public AUBase_t
     return noErr;
   }
 
+  OSStatus Start() override
+  {
+    return AUBase_t::Start();
+  }
+  
   void Cleanup() override
   {
     // TODO: Destroy the plugin etc
@@ -183,7 +190,7 @@ struct ClapAUv2_Base : public AUBase_t
     AudioUnitElement inElement, UInt32& outDataSize, bool& outWritable) override
   {
     auto result =  AUBase_t::GetPropertyInfo(inID,inScope,inElement,outDataSize,outWritable);
-    printf("[auv2-wrapper] Property Info %d @%d: element: %d (%s)\n",inID,inScope,inElement,(result != noErr)? "ok" : "not okay");
+
     return result;
   }
   
@@ -191,7 +198,7 @@ struct ClapAUv2_Base : public AUBase_t
                        AudioUnitPropertyID inID, AudioUnitScope inScope, AudioUnitElement inElement, void* outData) override
   {
     auto result = AUBase_t::GetProperty(inID,inScope,inElement,outData);
-    printf("[auv2-wrapper] Property Get %d @%d: element %d\n",inID,inScope,inElement);
+
     return result;
   }
   
@@ -211,7 +218,6 @@ struct ClapAUv2_Base : public AUBase_t
         result = AUBase_t::SetProperty(inID,inScope,inElement,inData,inDataSize);
     }
     
-    printf("[auv2-wrapper] Property Set %d @%d: element: %d (%s)\n",inID,inScope,inElement,(result != noErr)?"ok" : "not okay");
     return result;
   }
   
@@ -222,6 +228,15 @@ struct ClapAUv2_Base : public AUBase_t
   {
     return AUBase_t::MIDIEvent(inStatus, inData1, inData2, inOffsetSampleFrame);
   }
+  
+  OSStatus StartNote(MusicDeviceInstrumentID /*inInstrument*/,
+    MusicDeviceGroupID /*inGroupID*/, NoteInstanceID* outNoteInstanceID,
+                     UInt32 /*inOffsetSampleFrame*/, const MusicDeviceNoteParams& inParams) override
+  {
+    if ( outNoteInstanceID)   *outNoteInstanceID = 12;
+    return noErr;
+  }
+  
   OSStatus SysEx(const UInt8* inData, UInt32 inLength) override
   {
     return AUBase_t::SysEx(inData, inLength);
@@ -259,6 +274,16 @@ struct ClapAUv2_Base : public AUBase_t
             fprintf(stderr, "\tAUDIO in: %d, out: %d\n", (int)numAudioInputs, (int)numAudioOutputs);
 
             ausdk::AUBase::GetScope(kAudioUnitScope_Input).SetNumberOfElements(numAudioInputs);
+            
+            for ( decltype(numAudioInputs) i = 0 ; i < numAudioInputs ; ++i)
+            {
+              clap_audio_port_info_t info;
+              if (audioports->get(plugin, i, true, &info))
+              {
+                // Inputs();
+                // addAudioBusFrom(&info, true);
+              }
+            }
             
             ausdk::AUBase::GetScope(kAudioUnitScope_Output).SetNumberOfElements(numAudioOutputs);
             
