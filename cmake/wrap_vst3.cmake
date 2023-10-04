@@ -4,7 +4,7 @@ function(private_add_vst3_wrapper_sources)
 
     set(tg ${PV3_TARGET})
     set(sd ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR})
-
+    target_compile_definitions(${tg} PUBLIC CLAP_WRAPPER_BUILD_FOR_VST3=1)
     if(WIN32)
         target_sources(${tg} PRIVATE ${sd}/src/detail/os/windows.cpp)
     elseif (APPLE)

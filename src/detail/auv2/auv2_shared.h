@@ -8,8 +8,7 @@
 #include "detail/clap/fsutil.h"
 #include <iostream>
 
-#include "fmt/format.h"
-
+#include "detail/os/osutil.h"
 #include "clap_proxy.h"
 
 #include <AudioToolbox/AudioUnitProperties.h>
@@ -261,8 +260,7 @@ struct ClapAUv2_Base : public AUBase_t
   void restartPlugin() override {}
   void request_callback() override {}
 
-  void setupWrapperSpecifics(
-      const clap_plugin_t* plugin) override {}  // called when a wrapper could scan for wrapper specific plugins
+  void setupWrapperSpecifics(const clap_plugin_t* plugin) override; // called when a wrapper could scan for wrapper specific plugins
 
   void setupAudioBusses(
       const clap_plugin_t* plugin,

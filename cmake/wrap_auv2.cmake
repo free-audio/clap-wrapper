@@ -130,6 +130,8 @@ function(target_add_auv2_wrapper)
 
     message(STATUS "clap-wrapper: Adding AUV2 Wrapper to target ${AUV2_TARGET} generating '${AUV2_OUTPUT_NAME}.component'")
 
+    target_sources(${AUV2_TARGET} PRIVATE ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/os/macos.mm)
+
     # This is a placeholder dummy until we actually write the AUv2
     # Similarly the subordinate library being an interface below
     # is a placeholder. When we write it we will follow a similar

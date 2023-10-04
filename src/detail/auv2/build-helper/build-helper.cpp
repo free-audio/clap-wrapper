@@ -279,11 +279,11 @@ int main(int argc, char **argv)
 
     if (u.type == "aumu")
     {
-      std::cout << "    + " << u.name << " entry " << on << " from ClapWrapper_AUV2_Instrument"
+      std::cout << "    + " << u.name << " entry " << on << " from WrapAsAUV2"
                 << std::endl;
-      cppf << "struct " << on << " : free_audio::auv2_wrapper::ClapWrapper_AUV2_Instrument {\n"
+      cppf << "struct " << on << " : free_audio::auv2_wrapper::WrapAsAUV2 {\n"
            << "   " << on << "(AudioComponentInstance ci) :\n"
-           << "         free_audio::auv2_wrapper::ClapWrapper_AUV2_Instrument(" << args << ", ci) {}"
+           << "         free_audio::auv2_wrapper::WrapAsAUV2(" << args << ", ci) {}"
            << "};\n"
            << "AUSDK_COMPONENT_ENTRY(ausdk::AUMusicDeviceFactory, " << on << ");\n";
     }
