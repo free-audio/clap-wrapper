@@ -54,7 +54,7 @@ int main(int argc, char **argv)
 
 #if LIN
 #if CLAP_WRAPPER_HAS_GTK3
-  freeaudio::clap_wrapper::standalone::Linux::GtkGui gtkGui{};
+  freeaudio::clap_wrapper::standalone::linux::GtkGui gtkGui{};
 
   gtkGui.initialize(freeaudio::clap_wrapper::standalone::getStandaloneHost());
   gtkGui.setPlugin(plugin);
