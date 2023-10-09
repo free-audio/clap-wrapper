@@ -1,61 +1,26 @@
 #pragma once
 
 /*
- * This is the set of wedge classes which the auv2 code generator projects onto. It is very
- * unlikely you would need to edit these classes since they almost entirely delegate to the
- * base class `ClapAUv2_Base` which uses CRTP to have the appropriate AU base class.
+ Copyright (c) 2023 Timo Kaluza (defiantnerd)
+
+ This file i spart of the clap-wrappers project which is released under MIT License
+
+ See file LICENSE or go to https://github.com/free-audio/clap-wrapper for full license details.
+ 
+ WrapAsAUV2 is the wrapper class for any AUv2 version of a clap.
+
+ It is very unlikely you would need to edit this class since it almost entirely handles everything.
+ You just go ahead and write your CLAP.
+ 
  */
 
-#include <AudioUnitSDK/AUEffectBase.h>
-#include <AudioUnitSDK/AUMIDIEffectBase.h>
-#include <AudioUnitSDK/MusicDeviceBase.h>
-
-#include <iostream>
+#include <AudioUnitSDK/AUBase.h>
 #include "auv2_shared.h"
+#include <iostream>
 #include <memory>
 
 namespace free_audio::auv2_wrapper
 {
-
-// -------------------------------------------------------------------------------------------------
-
-class ClapWrapper_AUV2_Effect : public ClapAUv2_Base<ausdk::AUEffectBase>
-{
-  using Base = ClapAUv2_Base<ausdk::AUEffectBase>;
-
- public:
-  explicit ClapWrapper_AUV2_Effect(const std::string &clapname, const std::string &clapid, int clapidx,
-                                   AudioComponentInstance ci)
-    : Base{clapname, clapid, clapidx, ci}
-  {
-  }
-};
-
-class ClapWrapper_AUV2_NoteEffect : public ClapAUv2_Base<ausdk::AUMIDIEffectBase>
-{
-  using Base = ClapAUv2_Base<ausdk::AUMIDIEffectBase>;
-
- public:
-  explicit ClapWrapper_AUV2_NoteEffect(const std::string &clapname, const std::string &clapid,
-                                       int clapidx, AudioComponentInstance ci)
-    : Base{clapname, clapid, clapidx, ci}
-  {
-  }
-};
-
-// -------------------------------------------------------------------------------------------------
-
-class ClapWrapper_AUV2_Instrument : public ClapAUv2_Base<ausdk::MusicDeviceBase>
-{
-  using Base = ClapAUv2_Base<ausdk::MusicDeviceBase>;
-
- public:
-  explicit ClapWrapper_AUV2_Instrument(const std::string &clapname, const std::string &clapid,
-                                       int clapidx, AudioComponentInstance ci)
-    : Base{clapname, clapid, clapidx, ci, 0, 1}
-  {
-  }
-};
 
 class WrapAsAUV2 : public ausdk::AUBase, public Clap::IHost
 {
@@ -67,13 +32,7 @@ public:
   : Base{ci, 0,1}, Clap::IHost(), _clapname{clapname}, _clapid{clapid}, _idx{idx}
   {}
 private:
-  
-  // the wrapped CLAP:
-  std::string _clapname;
-  std::string _clapid;
-  int _idx;
-  std::shared_ptr<Clap::Plugin> _plugin = nullptr;
-  const clap_plugin_descriptor_t *_desc{nullptr};
+
   
   bool initializeClapDesc();
   
@@ -168,10 +127,29 @@ public:
   bool register_timer(uint32_t period_ms, clap_id* timer_id) override {return false;}
   bool unregister_timer(clap_id timer_id) override {return false;}
 
-  
+protected:
+  void addAudioBusFrom(int bus, const clap_audio_port_info_t* info, bool is_input);
 private:
+  
+  // ---------------- glue code stuff
+  void addInputBus(int bus, const clap_audio_port_info_t* info);
+  void addOutputBus(int bus, const clap_audio_port_info_t* info);
+  
   bool IsBypassEffect() { return false; }
   void SetBypassEffect(bool bypass) {};
+  
+  // --------------- internals
+  
+  // the wrapped CLAP:
+  std::string _clapname;
+  std::string _clapid;
+  int _idx;
+  const clap_plugin_descriptor_t *_desc{nullptr};
+  std::shared_ptr<Clap::Plugin> _plugin = nullptr;
+  
+  // Clap::AU::ProcessAdapter* _processAdapter = nullptr;
+  
+  
 };
 
 }  // namespace free_audio::auv2_wrapper

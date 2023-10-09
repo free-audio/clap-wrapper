@@ -22,8 +22,27 @@ namespace fs = ghc::filesystem;
 
 #include <Foundation/Foundation.h>
 
+@interface free_audio_clap_wrapper_ffowefe : NSObject
+- (void) foo;
+@end
+
+@implementation free_audio_clap_wrapper_ffowefe
+- (void) foo {
+}
+@end
+
+
 namespace Clap
 {
+/*
+    this could be anything apparantly
+*/
+
+NSBundle * getMyBundle()
+{
+  return [NSBundle bundleForClass:[free_audio_clap_wrapper_ffowefe class]];
+}
+
 fs::path sharedLibraryBundlePath()
 {
   Dl_info info;

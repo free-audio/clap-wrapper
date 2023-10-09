@@ -1,8 +1,28 @@
 #include "generated_entrypoints.hxx"
 
+extern bool fillAudioUnitCocoaView(AudioUnitCocoaViewInfo* viewInfo);
 
 namespace free_audio::auv2_wrapper
 {
+
+Clap::Library _library; // holds the library with plugins
+
+#if 0
+--- 8< ---
+struct ClapHostExtensions
+{
+  static inline WrapAsAUV2* self(const clap_host_t* host)
+  {
+    return static_cast<WrapAsAUV2*>(host->host_data);
+  }
+  static void mark_dirty(const clap_host_t* host)
+  {
+    self(host)->mark_dirty();
+  }
+  const clap_host_state_t _state = {mark_dirty};
+};
+#endif
+
 bool WrapAsAUV2::initializeClapDesc()
 {
   LOGINFO("[clap-wrapper auv2: id={} index: {}\n",_clapid,_idx);
@@ -64,6 +84,7 @@ bool WrapAsAUV2::initializeClapDesc()
 
 // the very very reduced state machine
 OSStatus WrapAsAUV2::Initialize() {
+  
   if (!_desc)
   {
     if (!initializeClapDesc())
@@ -179,14 +200,7 @@ void WrapAsAUV2::setupAudioBusses(
     clap_audio_port_info_t info;
     if (audioports->get(plugin, i, true, &info))
     {
-      auto& bus = Input(i);
-      CFStringRef busNameString = CFStringCreateWithCString(NULL,info.name,kCFStringEncodingUTF8);
-      bus.SetName (busNameString);
-      CFRelease (busNameString);
-      // addAudioBusFrom(&info, true);
-      auto sf = bus.GetStreamFormat();
-      sf.mChannelsPerFrame = info.channel_count;
-      bus.SetStreamFormat(sf);
+      addAudioBusFrom(i, &info, true);
     }
   }
   
@@ -196,15 +210,7 @@ void WrapAsAUV2::setupAudioBusses(
     clap_audio_port_info_t info;
     if (audioports->get(plugin, i, false, &info))
     {
-      auto& bus = Output(i);
-      
-      CFStringRef busNameString = CFStringCreateWithCString(NULL,info.name,kCFStringEncodingUTF8);
-      bus.SetName (busNameString);
-      CFRelease (busNameString);
-      
-      auto sf = bus.GetStreamFormat();
-      sf.mChannelsPerFrame = info.channel_count;
-      bus.SetStreamFormat(sf);
+      addAudioBusFrom(i, &info,false);
     }
   }
 
@@ -234,7 +240,6 @@ OSStatus WrapAsAUV2::Stop() {
 void WrapAsAUV2::Cleanup() {
   _plugin->terminate();
   _plugin.reset();
-  
   Base::Cleanup();
 }
 
@@ -253,12 +258,24 @@ OSStatus WrapAsAUV2::GetPropertyInfo(AudioUnitPropertyID inID, AudioUnitScope in
       outWritable = true;
       outDataSize = sizeof(UInt32);
       return noErr;
+      case kAudioUnitProperty_CocoaUI:
+        outWritable = false;
+        outDataSize = sizeof(struct AudioUnitCocoaViewInfo);
+        return noErr;
+        break;
+      case kAudioUnitProperty_ClapWrapper_UIConnection_id:
+        outWritable = false;
+        outDataSize = 24;
+        return noErr;
+        break;
     default:
       break;
     }
   }
   return Base::GetPropertyInfo(inID,inScope,inElement,outDataSize,outWritable);
 }
+
+ui_connection _uiconn;
 
 OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScope,
   AudioUnitElement inElement, void* outData) {
@@ -277,6 +294,20 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
 //    case kAudioUnitProperty_InPlaceProcessing:
 //      *static_cast<UInt32*>(outData) = (mProcessesInPlace ? 1 : 0); // NOLINT
 //      return noErr;
+      case kAudioUnitProperty_ClapWrapper_UIConnection_id:
+        _uiconn._plugin = _plugin.get();
+        _uiconn._window = nullptr;
+        *static_cast<ui_connection*>(outData) = _uiconn;
+        return noErr;
+      case kAudioUnitProperty_CocoaUI:
+        if ( _plugin->_ext._gui->is_api_supported(_plugin->_plugin, CLAP_WINDOW_API_COCOA, false))
+        {
+          fillAudioUnitCocoaView( ((AudioUnitCocoaViewInfo *)outData));
+          // *((AudioUnitCocoaViewInfo *)outData) = cocoaInfo;
+          return noErr; // sizeof(AudioUnitCocoaViewInfo);
+        }
+        return kAudioUnitErr_InvalidProperty;
+        break;
     default:
       break;
     }
@@ -336,5 +367,44 @@ OSStatus WrapAsAUV2::RemoveRenderNotification(AURenderCallback inProc, void* inR
 
 }
 
+void WrapAsAUV2::addAudioBusFrom(int bus, const clap_audio_port_info_t* info, bool is_input)
+{
+  // add/set audio bus configuration from info to appropriate scope
+
+  if ( is_input )
+  {
+    addInputBus(bus,info);
+  }
+  else
+  {
+    addOutputBus(bus,info);
+  }
+  
+}
+
+void WrapAsAUV2::addInputBus(int bus, const clap_audio_port_info_t* info){
+  
+  auto& busref = Input(bus);
+  
+  CFStringRef busNameString = CFStringCreateWithCString(NULL,info->name,kCFStringEncodingUTF8);
+  busref.SetName (busNameString);
+  CFRelease (busNameString);
+  
+  auto sf = busref.GetStreamFormat();
+  sf.mChannelsPerFrame = info->channel_count;
+  busref.SetStreamFormat(sf);
+
+}
+void WrapAsAUV2::addOutputBus(int bus, const clap_audio_port_info_t* info){
+  auto& busref = Output(bus);
+  
+  CFStringRef busNameString = CFStringCreateWithCString(NULL,info->name,kCFStringEncodingUTF8);
+  busref.SetName (busNameString);
+  CFRelease (busNameString);
+  
+  auto sf = busref.GetStreamFormat();
+  sf.mChannelsPerFrame = info->channel_count;
+  busref.SetStreamFormat(sf);
+}
 
 }
