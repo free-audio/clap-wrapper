@@ -19,6 +19,13 @@
 #include <iostream>
 #include <memory>
 
+enum class AUV2_Type : uint32_t
+{
+  aufx_effect = 1,
+  aumu_musicdevice = 2,
+  aumi_noteeffect = 3
+
+};
 namespace free_audio::auv2_wrapper
 {
 
@@ -27,12 +34,12 @@ class WrapAsAUV2 : public ausdk::AUBase, public Clap::IHost
   using Base = ausdk::AUBase;
   
 public:
-  explicit WrapAsAUV2(const std::string &clapname, const std::string &clapid, int idx,
+  explicit WrapAsAUV2(AUV2_Type type, const std::string &clapname, const std::string &clapid, int idx,
                       AudioComponentInstance ci)
-  : Base{ci, 0,1}, Clap::IHost(), _clapname{clapname}, _clapid{clapid}, _idx{idx}
+  : Base{ci, 0,1}, Clap::IHost(), _autype(type), _clapname{clapname}, _clapid{clapid}, _idx{idx}
   {}
 private:
-
+  AUV2_Type _autype;
   
   bool initializeClapDesc();
   

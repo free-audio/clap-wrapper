@@ -277,13 +277,38 @@ int main(int argc, char **argv)
 
     auto args = std::string("\"") + u.clapname + "\", \"" + u.clapid + "\", " + std::to_string(idx);
 
+#if 1
+    {
+      std::cout << "    + " << u.name << " entry " << on << " from WrapAsAUV2"
+                << std::endl;
+      cppf << "struct " << on << " : free_audio::auv2_wrapper::WrapAsAUV2 {\n"
+           << "   " << on << "(AudioComponentInstance ci) :\n"
+      << "         free_audio::auv2_wrapper::WrapAsAUV2(";
+      if (u.type == "aumu")
+      {
+        cppf << "AUV2_Type::aumu_musicdevice";
+      }
+      if (u.type == "aumi")
+      {
+        cppf << "AUV2_Type::aumi_noteeffect";
+      }
+      if (u.type == "aufx")
+      {
+        cppf << "AUV2_Type::aufx_effect";
+      }
+      cppf << "," << args << ", ci) {}"
+           << "};\n"
+           << "AUSDK_COMPONENT_ENTRY(ausdk::AUMusicDeviceFactory, " << on << ");\n";
+    }
+#else
+    // TODO: this will be remove
     if (u.type == "aumu")
     {
       std::cout << "    + " << u.name << " entry " << on << " from WrapAsAUV2"
                 << std::endl;
       cppf << "struct " << on << " : free_audio::auv2_wrapper::WrapAsAUV2 {\n"
            << "   " << on << "(AudioComponentInstance ci) :\n"
-           << "         free_audio::auv2_wrapper::WrapAsAUV2(" << args << ", ci) {}"
+           << "         free_audio::auv2_wrapper::WrapAsAUV2(AUV2_Type::aumu_musicdevice," << args << ", ci) {}"
            << "};\n"
            << "AUSDK_COMPONENT_ENTRY(ausdk::AUMusicDeviceFactory, " << on << ");\n";
     }
@@ -306,7 +331,7 @@ int main(int argc, char **argv)
            << "};\n"
            << "AUSDK_COMPONENT_ENTRY(ausdk::AUBaseFactory, " << on << ");\n";
     }
-
+#endif
     idx++;
   }
   cppf.close();

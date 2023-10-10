@@ -84,7 +84,7 @@ bool WrapAsAUV2::initializeClapDesc()
 
 // the very very reduced state machine
 OSStatus WrapAsAUV2::Initialize() {
-  
+  (void) _autype; // TODO: will be used for dynamic property adaption
   if (!_desc)
   {
     if (!initializeClapDesc())
