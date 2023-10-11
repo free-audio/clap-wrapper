@@ -19,6 +19,8 @@
 #include <iostream>
 #include <memory>
 
+#include "process.h"
+
 enum class AUV2_Type : uint32_t
 {
   aufx_effect = 1,
@@ -49,6 +51,11 @@ public:
   OSStatus Start() override;
   OSStatus Stop() override;
   void Cleanup() override;
+  
+  // latency/tailtime/processing
+  virtual Float64 GetLatency() override;
+  virtual Float64 GetTailTime() override;
+  virtual bool SupportsTail() override { return false; }
   
   bool StreamFormatWritable(AudioUnitScope, AudioUnitElement) override
   {
@@ -122,9 +129,9 @@ public:
   void param_clear(clap_id param, clap_param_clear_flags flags) override {}
   void param_request_flush() override {}
 
-  void latency_changed() override {}
+  void latency_changed() override;
 
-  void tail_changed() override {}
+  void tail_changed() override;
   
   bool gui_can_resize() override { return false; }
   bool gui_request_resize(uint32_t width, uint32_t height) override { return false;}
@@ -154,7 +161,7 @@ private:
   const clap_plugin_descriptor_t *_desc{nullptr};
   std::shared_ptr<Clap::Plugin> _plugin = nullptr;
   
-  // Clap::AU::ProcessAdapter* _processAdapter = nullptr;
+  // Clap::AUv2::ProcessAdapter* _processAdapter = nullptr;
   
   
 };

@@ -243,6 +243,32 @@ void WrapAsAUV2::Cleanup() {
   Base::Cleanup();
 }
 
+Float64 WrapAsAUV2::GetLatency()
+{
+  if ( _plugin && _plugin->_ext._latency )
+  {
+    auto samplerate = this->GetStreamFormat(kAudioUnitScope_Output, 0).mSampleRate;
+    auto latency_in_samples = (double) (_plugin->_ext._latency->get(_plugin->_plugin));
+    Float64 latencytime = latency_in_samples / samplerate;
+    
+    return latencytime;
+  }
+  return 0.0;
+}
+
+Float64 WrapAsAUV2::GetTailTime()
+{
+  if ( _plugin && _plugin->_ext._tail )
+  {
+    auto samplerate = this->GetStreamFormat(kAudioUnitScope_Output, 0).mSampleRate;
+    auto tailtime_in_samples = (double) (_plugin->_ext._tail->get(_plugin->_plugin));
+    Float64 tailtime = tailtime_in_samples / samplerate;
+    
+    return tailtime;
+  }
+  return 0.0;
+}
+
 OSStatus WrapAsAUV2::GetPropertyInfo(AudioUnitPropertyID inID, AudioUnitScope inScope,
                                      AudioUnitElement inElement, UInt32& outDataSize, bool& outWritable)
 {
@@ -365,6 +391,16 @@ OSStatus WrapAsAUV2::RemoveRenderNotification(AURenderCallback inProc, void* inR
   }
   return Base::RemoveRenderNotification(inProc, inRefCon);
 
+}
+
+void WrapAsAUV2::latency_changed()
+{
+  PropertyChanged(kAudioUnitProperty_Latency,kAudioUnitScope_Global,0);
+}
+
+void WrapAsAUV2::tail_changed()
+{
+  PropertyChanged(kAudioUnitProperty_TailTime, kAudioUnitScope_Global, 0);
 }
 
 void WrapAsAUV2::addAudioBusFrom(int bus, const clap_audio_port_info_t* info, bool is_input)
