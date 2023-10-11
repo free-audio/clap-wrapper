@@ -51,10 +51,11 @@ void StandaloneHost::processMIDIEvents(double deltatime, std::vector<unsigned ch
 {
   auto nBytes = message->size();
 
-  if (nBytes == 3)
+  if (nBytes <= 3)
   {
     midiChunk ck;
-    memcpy(ck.dat, message->data(), 3);
+    memset(ck.dat, 0, sizeof(ck.dat));
+    memcpy(ck.dat, message->data(), nBytes);
     midiToAudioQueue.push(ck);
   }
 }
