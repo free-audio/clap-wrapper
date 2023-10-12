@@ -30,6 +30,7 @@ jobs:
           mkdir deps
           cd deps
           git clone https://github.com/free-audio/clap
+          git clone https://github.com/free-audio/clap-helpers
           git clone https://github.com/steinbergmedia/vst3sdk
           cd vst3sdk
           # temporary workaround, switch to vst3 sdk 3.7.7
@@ -39,7 +40,7 @@ jobs:
 
       - name: Build project
         run: |
-          cmake -S . -B ./build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCLAP_SDK_ROOT=deps/clap -DVST3_SDK_ROOT=deps/vst3sdk -DCLAP_WRAPPER_OUTPUT_NAME=testplug
+          cmake -S . -B ./build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCLAP_SDK_ROOT=deps/clap -DCLAP_HELPERS_SDK_ROOT=deps/clap-helpers -DVST3_SDK_ROOT=deps/vst3sdk -DCLAP_WRAPPER_OUTPUT_NAME=testplug
           cmake --build ./build --config Debug
 
       - name: Show Build Results

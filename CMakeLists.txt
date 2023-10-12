@@ -10,6 +10,7 @@
 # complete description
 #
 # CLAP_SDK_ROOT The location of the clap library. Defaults to ../clap
+# CLAP_HELPERS_SDK_ROOT The location of the clap-helpers library. Defaults to ../clap-helpers
 # VST3_SDK_ROOT The location of the VST3 sdk. Defaults tp ../vst3sdk
 #
 # CLAP_WRAPPER_OUTPUT_NAME   The name of the resulting .vst3 or .component

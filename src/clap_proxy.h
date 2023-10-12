@@ -25,6 +25,17 @@
 #endif
 
 #include "detail/clap/fsutil.h"
+#include <clap/helpers/host.hh>
+
+namespace Clap
+{
+constexpr auto Plugin_MH = clap::helpers::MisbehaviourHandler::Ignore;
+constexpr auto Plugin_CL = clap::helpers::CheckingLevel::Maximal;
+
+using PluginHostBase = clap::helpers::Host<Plugin_MH, Plugin_CL>;
+}  // namespace Clap
+
+extern template class clap::helpers::Host<Clap::Plugin_MH, Clap::Plugin_CL>;
 
 namespace Clap
 {
@@ -119,7 +130,7 @@ class Raise
 /// Plugin is the `host` for the CLAP plugin instance
 /// and the interface for the VST3 plugin wrapper
 /// </summary>
-class Plugin
+class Plugin : Clap::PluginHostBase
 {
  public:
   static std::shared_ptr<Plugin> createInstance(const clap_plugin_factory*, const std::string& id,
@@ -130,10 +141,6 @@ class Plugin
  protected:
   // only the Clap::Library is allowed to create instances
   Plugin(IHost* host);
-  const clap_host_t* getClapHostInterface()
-  {
-    return &_host;
-  }
   void connectClap(const clap_plugin_t* clap);
 
  public:
@@ -164,71 +171,101 @@ class Plugin
 
   ClapPluginExtensions _ext;
   const clap_plugin_t* _plugin = nullptr;
-  void log(clap_log_severity severity, const char* msg);
 
-  // threadcheck
-  bool is_main_thread() const;
-  bool is_audio_thread() const;
-
-  // param
-  void param_rescan(clap_param_rescan_flags flags);
-  void param_clear(clap_id param, clap_param_clear_flags flags);
-  void param_request_flush();
-
-  // latency
-  void latency_changed();
-
-  // tail
-  void tail_changed();
-
-  // hostgui
-  void resize_hints_changed()
-  {
-  }
-  bool request_resize(uint32_t width, uint32_t height)
-  {
-    if (_parentHost->gui_can_resize())
-    {
-      _parentHost->gui_request_resize(width, height);
-      return true;
-    }
-    return false;
-  }
-  bool request_show()
-  {
-    return _parentHost->gui_request_show();
-  }
-  bool request_hide()
-  {
-    return false;
-  }
-  void closed(bool was_destroyed)
-  {
-  }
-
-  // clap_timer support
-  bool register_timer(uint32_t period_ms, clap_id* timer_id);
-  bool unregister_timer(clap_id timer_id);
-
-#if LIN
-  bool register_fd(int fd, clap_posix_fd_flags_t flags);
-  bool modify_fd(int fd, clap_posix_fd_flags_t flags);
-  bool unregister_fd(int fd);
-
-#endif
   CLAP_NODISCARD Raise AlwaysAudioThread();
   CLAP_NODISCARD Raise AlwaysMainThread();
 
+ protected:
+  ////////////////////
+  // PluginHostBase //
+  ////////////////////
+
+  // clap_host
+  void requestRestart() noexcept override;
+  void requestProcess() noexcept override;
+  void requestCallback() noexcept override;
+
+  // clap_host_gui
+  bool implementsGui() const noexcept override
+  {
+    return true;
+  }
+  void guiResizeHintsChanged() noexcept override
+  {
+  }
+  bool guiRequestResize(uint32_t width, uint32_t height) noexcept override
+  {
+    if (!_parentHost->gui_can_resize()) return false;
+
+    _parentHost->gui_request_resize(width, height);
+    return true;
+  }
+  bool guiRequestShow() noexcept override
+  {
+    return _parentHost->gui_request_show();
+  }
+  bool guiRequestHide() noexcept override
+  {
+    return false;
+  }
+  void guiClosed(bool /*wasDestroyed*/) noexcept override
+  {
+  }
+
+  // clap_host_latency
+  bool implementsLatency() const noexcept override
+  {
+    return true;
+  }
+  void latencyChanged() noexcept override;
+
+  // clap_host_log
+  bool implementsLog() const noexcept override
+  {
+    return true;
+  }
+  void logLog(clap_log_severity severity, const char* message) const noexcept override;
+
+  // clap_host_params
+  bool implementsParams() const noexcept override
+  {
+    return true;
+  }
+  void paramsRescan(clap_param_rescan_flags flags) noexcept override;
+  void paramsClear(clap_id paramId, clap_param_clear_flags flags) noexcept override;
+  void paramsRequestFlush() noexcept override;
+
+#if LIN
+  // clap_host_posix_fd_support
+  bool implementsPosixFdSupport() const noexcept override
+  {
+    return true;
+  }
+  bool posixFdSupportRegisterFd(int fd, clap_posix_fd_flags_t flags) noexcept override;
+  bool posixFdSupportModifyFd(int fd, clap_posix_fd_flags_t flags) noexcept override;
+  bool posixFdSupportUnregisterFd(int fd) noexcept override;
+#endif
+
+  // clap_host_tail
+  bool implementsTail() const noexcept override
+  {
+    return true;
+  }
+  void tailChanged() noexcept override;
+
+  // clap_host_timer_support
+  bool implementsTimerSupport() const noexcept override
+  {
+    return true;
+  }
+  bool timerSupportRegisterTimer(uint32_t periodMs, clap_id* timerId) noexcept override;
+  bool timerSupportUnregisterTimer(clap_id timerId) noexcept override;
+
+  // clap_host_thread_check
+  bool threadCheckIsMainThread() const noexcept override;
+  bool threadCheckIsAudioThread() const noexcept override;
+
  private:
-  static const void* clapExtension(const clap_host* host, const char* extension);
-  static void clapRequestCallback(const clap_host* host);
-  static void clapRequestRestart(const clap_host* host);
-  static void clapRequestProcess(const clap_host* host);
-
-  //static bool clapIsMainThread(const clap_host* host);
-  //static bool clapIsAudioThread(const clap_host* host);
-
-  clap_host_t _host;  // the host_t structure for the proxy
   IHost* _parentHost = nullptr;
   const std::thread::id _main_thread_id = std::this_thread::get_id();
   std::atomic<uint32_t> _audio_thread_override = 0;

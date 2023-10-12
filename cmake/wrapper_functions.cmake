@@ -21,6 +21,7 @@ include(cmake/shared_prologue.cmake)
 include(cmake/base_sdks.cmake)
 
 guarantee_clap()
+guarantee_clap_helpers()
 guarantee_clap_wrapper_shared()
 
 

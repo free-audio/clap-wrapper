@@ -91,6 +91,41 @@ function(guarantee_clap)
     add_subdirectory(${CLAP_SDK_ROOT} base-sdk-clap EXCLUDE_FROM_ALL)
 endfunction(guarantee_clap)
 
+function(guarantee_clap_helpers)
+    if (TARGET clap-helpers)
+        if (NOT TARGET base-sdk-clap-helpers)
+            add_library(base-sdk-clap-helpers ALIAS clap-helpers)
+        endif()
+        return()
+    endif()
+
+
+    if (NOT "${CLAP_HELPERS_SDK_ROOT}" STREQUAL "")
+        # Use the provided root
+    elseif (${CLAP_WRAPPER_DOWNLOAD_DEPENDENCIES})
+        guarantee_cpm()
+        CPMAddPackage(
+                NAME "clap-helpers"
+                GITHUB_REPOSITORY "free-audio/clap-helpers"
+                GIT_TAG "7b53a685e11465154b4ccba3065224dbcbf8a893"
+                EXCLUDE_FROM_ALL TRUE
+                DOWNLOAD_ONLY TRUE
+                SOURCE_DIR cpm/clap-helpers
+        )
+        set(CLAP_HELPERS_SDK_ROOT "${CMAKE_CURRENT_BINARY_DIR}/cpm/clap-helpers")
+    else()
+        search_for_sdk_source(SDKDIR clap-helpers RESULT CLAP_HELPERS_SDK_ROOT)
+    endif()
+
+    cmake_path(CONVERT "${CLAP_HELPERS_SDK_ROOT}" TO_CMAKE_PATH_LIST CLAP_HELPERS_SDK_ROOT)
+    if(NOT EXISTS "${CLAP_HELPERS_SDK_ROOT}/include/clap/helpers/macros.hh")
+        message(FATAL_ERROR "There is no CLAP_HELPERS SDK at ${CLAP_HELPERS_SDK_ROOT}. Please set CLAP_HELPERS_SDK_ROOT appropriately ")
+    endif()
+
+    message(STATUS "clap-wrapper: Configuring clap-helpers sdk")
+    add_subdirectory(${CLAP_HELPERS_SDK_ROOT} base-sdk-clap-helpers EXCLUDE_FROM_ALL)
+endfunction(guarantee_clap_helpers)
+
 function(guarantee_vst3sdk)
     if (TARGET base-sdk-vst3)
         return()
