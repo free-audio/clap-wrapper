@@ -49,18 +49,17 @@ StandaloneHost::~StandaloneHost()
 {
 }
 
-void StandaloneHost::setupAudioBusses(const clap_plugin_t *plugin,
-                                      const clap_plugin_audio_ports_t *audioports)
+void StandaloneHost::setupAudioBusses(const Clap::PluginProxy &plugin)
 {
-  if (!audioports) return;
-  numAudioInputs = audioports->count(plugin, true);
-  numAudioOutputs = audioports->count(plugin, false);
+  if (!plugin.canUseAudioPorts()) return;
+  numAudioInputs = plugin.audioPortsCount(true);
+  numAudioOutputs = plugin.audioPortsCount(false);
   LOG << "inputs/outputs : " << numAudioInputs << "/" << numAudioOutputs << std::endl;
 
   clap_audio_port_info_t info;
   for (auto i = 0U; i < numAudioInputs; ++i)
   {
-    audioports->get(plugin, i, true, &info);
+    plugin.audioPortsGet(i, true, &info);
     // LOG << "  - input " << i << " " << info.name << std::endl;
     inputChannelByBus.push_back(info.channel_count);
     totalInputChannels += info.channel_count;
@@ -68,7 +67,7 @@ void StandaloneHost::setupAudioBusses(const clap_plugin_t *plugin,
   }
   for (auto i = 0U; i < numAudioOutputs; ++i)
   {
-    audioports->get(plugin, i, false, &info);
+    plugin.audioPortsGet(i, false, &info);
     // LOG << "  - output " << i << " " << info.name << std::endl;
     outputChannelByBus.push_back(info.channel_count);
     totalOutputChannels += info.channel_count;
@@ -81,14 +80,13 @@ void StandaloneHost::setupAudioBusses(const clap_plugin_t *plugin,
   if (numAudioOutputs > 0) LOG << "main audio output is " << mainOutput << std::endl;
 }
 
-void StandaloneHost::setupMIDIBusses(const clap_plugin_t *plugin,
-                                     const clap_plugin_note_ports_t *noteports)
+void StandaloneHost::setupMIDIBusses(const Clap::PluginProxy &plugin)
 {
-  auto numMIDIInPorts = noteports->count(plugin, true);
+  auto numMIDIInPorts = plugin.notePortsCount(true);
   if (numMIDIInPorts > 0)
   {
     clap_note_port_info_t info;
-    noteports->get(plugin, 0, true, &info);
+    plugin.notePortsGet(0, true, &info);
     if (info.supported_dialects & CLAP_NOTE_DIALECT_MIDI)
     {
       hasMIDIInput = true;
@@ -99,7 +97,7 @@ void StandaloneHost::setupMIDIBusses(const clap_plugin_t *plugin,
     }
     LOG << "Set up input: midi=" << hasMIDIInput << " clapNote=" << hasClapNoteInput << std::endl;
   }
-  auto numMIDIOutPorts = noteports->count(plugin, false);
+  auto numMIDIOutPorts = plugin.notePortsCount(false);
   if (numMIDIOutPorts > 0)
   {
     createsMidiOutput = true;
@@ -209,7 +207,7 @@ void StandaloneHost::clapProcess(void *pOutput, const void *pInput, uint32_t fra
     pushInputEvent(&(midi.header));
   }
 
-  clapPlugin->_plugin->process(clapPlugin->_plugin, &process);
+  clapPlugin->getProxy()->process(&process);
 
   for (auto i = 0U; i < frameCount; ++i)
   {
@@ -222,10 +220,9 @@ bool StandaloneHost::gui_can_resize()
 {
   if (!clapPlugin) return false;
 
-  auto g = clapPlugin->_ext._gui;
-  if (!g) return false;
+  if (!clapPlugin->getProxy()->canUseGui()) return false;
 
-  auto res = g->can_resize(clapPlugin->_plugin);
+  auto res = clapPlugin->getProxy()->guiCanResize();
   return res;
 }
 
@@ -322,14 +319,14 @@ bool StandaloneHost::saveStandaloneAndPluginSettings(const fs::path &intoDir, co
     LOG << "Unable to open for writing " << (intoDir / withName).u8string() << std::endl;
     return false;
   }
-  if (!clapPlugin || !clapPlugin->_ext._state)
+  if (!clapPlugin || !clapPlugin->getProxy()->canUseState())
   {
     return false;
   }
   clap_ostream cos{};
   cos.ctx = &ofs;
   cos.write = clapwrite;
-  clapPlugin->_ext._state->save(clapPlugin->_plugin, &cos);
+  clapPlugin->getProxy()->stateSave(&cos);
   ofs.close();
 
   return true;
@@ -347,14 +344,14 @@ bool StandaloneHost::tryLoadStandaloneAndPluginSettings(const fs::path &fromDir,
     LOG << "Unable to open for reading " << fsp.u8string() << std::endl;
     return false;
   }
-  if (!clapPlugin || !clapPlugin->_ext._state)
+  if (!clapPlugin || !clapPlugin->getProxy()->canUseState())
   {
     return false;
   }
   clap_istream cis{};
   cis.ctx = &ifs;
   cis.read = clapread;
-  clapPlugin->_ext._state->load(clapPlugin->_plugin, &cis);
+  clapPlugin->getProxy()->stateLoad(&cis);
   ifs.close();
   return true;
 }

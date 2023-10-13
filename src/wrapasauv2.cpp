@@ -238,17 +238,16 @@ OSStatus WrapAsAUV2::Initialize()
   return noErr;
 }
 
-void WrapAsAUV2::setupWrapperSpecifics(const clap_plugin_t* plugin)
+void WrapAsAUV2::setupWrapperSpecifics(const Clap::PluginProxy& pluginProxy)
 {
   // TODO: if there are AUv2 specific extensions, they can be retrieved here
-  // _auv2_specifics = (clap_plugin_as_auv2_t*)plugin->get_extension(plugin, CLAP_PLUGIN_AS_AUV2);
+  // pluginProxy.getExtension(_auv2_specifics, CLAP_PLUGIN_AS_AUV2);
 }
 
-void WrapAsAUV2::setupAudioBusses(const clap_plugin_t* plugin,
-                                  const clap_plugin_audio_ports_t* audioports)
+void WrapAsAUV2::setupAudioBusses(const Clap::PluginProxy& pluginProxy)
 {
-  auto numAudioInputs = audioports->count(plugin, true);
-  auto numAudioOutputs = audioports->count(plugin, false);
+  auto numAudioInputs = pluginProxy.audioPortsCount(true);
+  auto numAudioOutputs = pluginProxy.audioPortsCount(false);
 
   LOGINFO("[clap-wrapper] Setup Busses: audio in: {}, out: {}", (int)numAudioInputs,
           (int)numAudioOutputs);
@@ -258,7 +257,7 @@ void WrapAsAUV2::setupAudioBusses(const clap_plugin_t* plugin,
   for (decltype(numAudioInputs) i = 0; i < numAudioInputs; ++i)
   {
     clap_audio_port_info_t info;
-    if (audioports->get(plugin, i, true, &info))
+    if (pluginProxy.audioPortsGet(i, true, &info))
     {
       addAudioBusFrom(i, &info, true);
     }
@@ -270,7 +269,7 @@ void WrapAsAUV2::setupAudioBusses(const clap_plugin_t* plugin,
   for (decltype(numAudioOutputs) i = 0; i < numAudioOutputs; ++i)
   {
     clap_audio_port_info_t info;
-    if (audioports->get(plugin, i, false, &info))
+    if (pluginProxy.audioPortsGet(i, false, &info))
     {
       addAudioBusFrom(i, &info, false);
     }
@@ -280,12 +279,12 @@ void WrapAsAUV2::setupAudioBusses(const clap_plugin_t* plugin,
 
 }  // called from initialize() to allow the setup of audio ports
 
-void WrapAsAUV2::setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_note_ports_t* noteports)
+void WrapAsAUV2::setupMIDIBusses(const Clap::PluginProxy& pluginProxy)
 {
   // TODO: figure out if MIDI is is preferred as CLAP or Notes
-  if (!noteports) return;
-  auto numMIDIInPorts = noteports->count(plugin, true);
-  auto numMIDIOutPorts = noteports->count(plugin, false);
+  if (!pluginProxy.canUseNotePorts()) return;
+  auto numMIDIInPorts = pluginProxy.notePortsCount(true);
+  auto numMIDIOutPorts = pluginProxy.notePortsCount(false);
   (void)numMIDIOutPorts;  // TODO: remove this when MIDI out is implemented
 
   // fprintf(stderr, "\tMIDI in: %d, out: %d\n", (int)numMIDIInPorts, (int)numMIDIOutPorts);
@@ -301,7 +300,7 @@ void WrapAsAUV2::setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_
   if (numMIDIInPorts > 0)
   {
     clap_note_port_info_t info;
-    if (noteports->get(plugin, 0, true, &info))
+    if (pluginProxy.notePortsGet(0, true, &info))
     {
       _midi_preferred_dialect = info.preferred_dialect;
       _midi_understands_midi2 = (info.supported_dialects & CLAP_NOTE_DIALECT_MIDI2);
@@ -311,7 +310,7 @@ void WrapAsAUV2::setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_
   for (decltype(numMIDIInPorts) i = 0; i < numMIDIInPorts; ++i)
   {
     clap_note_port_info_t info;
-    if (noteports->get(plugin, i, true, &info))
+    if (pluginProxy.notePortsGet(i, true, &info))
     {
       addMIDIBusFrom(&info, i, true);
     }
@@ -322,7 +321,7 @@ void WrapAsAUV2::setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_
   for (decltype(numMIDIOutPorts) i = 0; i < numMIDIOutPorts; ++i)
   {
     clap_note_port_info_t info;
-    if (noteports->get(plugin, i, false, &info))
+    if (pluginProxy.notePortsGet(i, false, &info))
     {
       addMIDIBusFrom(&info, i, false);
     }
@@ -330,23 +329,22 @@ void WrapAsAUV2::setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_
    */
 }
 
-void WrapAsAUV2::setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params)
+void WrapAsAUV2::setupParameters(const Clap::PluginProxy& pluginProxy)
 {
   auto guarantee_mainthread = _plugin->AlwaysMainThread();
   // creating parameters.
 
   _clumps.reset();
-  auto* p = _plugin->_ext._params;
-  if (p)
+  if (pluginProxy.canUseParams())
   {
-    uint32_t numparams = p->count(_plugin->_plugin);
+    uint32_t numparams = pluginProxy.paramsCount();
     clap_param_info_t paraminfo;
     for (uint32_t i = 0; i < numparams; ++i)
     {
-      if (p->get_info(_plugin->_plugin, i, &paraminfo))
+      if (pluginProxy.paramsGetInfo(i, &paraminfo))
       {
         double result;
-        if (p->get_value(_plugin->_plugin, paraminfo.id, &result))
+        if (pluginProxy.paramsGetValue(paraminfo.id, &result))
         {
           // creating the mapping object and insert it into the tree
           // this will also create Clumps if necessary
@@ -446,10 +444,10 @@ OSStatus WrapAsAUV2::GetParameterInfo(AudioUnitScope inScope, AudioUnitParameter
       // we can't get the value since we are not in the audio thread
       auto guarantee_mainthread = _plugin->AlwaysMainThread();
       double value;
-      if (_plugin->_ext._params->get_value(_plugin->_plugin, info.id, &value))
+      if (_plugin->getProxy()->paramsGetValue(info.id, &value))
       {
         char buf[200];
-        if (_plugin->_ext._params->value_to_text(_plugin->_plugin, info.id, value, buf, sizeof(buf)))
+        if (_plugin->getProxy()->paramsValueToText(info.id, value, buf, sizeof(buf)))
         {
           flags |= kAudioUnitParameterFlag_HasName;
         }
@@ -543,10 +541,10 @@ void WrapAsAUV2::Cleanup()
 
 Float64 WrapAsAUV2::GetLatency()
 {
-  if (_plugin && _plugin->_ext._latency)
+  if (_plugin && _plugin->getProxy()->canUseLatency())
   {
     auto samplerate = this->GetStreamFormat(kAudioUnitScope_Output, 0).mSampleRate;
-    auto latency_in_samples = (double)(_plugin->_ext._latency->get(_plugin->_plugin));
+    auto latency_in_samples = (double)(_plugin->getProxy()->latencyGet());
     Float64 latencytime = latency_in_samples / samplerate;
 
     return latencytime;
@@ -556,10 +554,10 @@ Float64 WrapAsAUV2::GetLatency()
 
 Float64 WrapAsAUV2::GetTailTime()
 {
-  if (_plugin && _plugin->_ext._tail)
+  if (_plugin && _plugin->getProxy()->canUseTail())
   {
     auto samplerate = this->GetStreamFormat(kAudioUnitScope_Output, 0).mSampleRate;
-    auto tailtime_in_samples = (double)(_plugin->_ext._tail->get(_plugin->_plugin));
+    auto tailtime_in_samples = (double)(_plugin->getProxy()->tailGet());
     Float64 tailtime = tailtime_in_samples / samplerate;
 
     return tailtime;
@@ -644,13 +642,13 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
     {
       case kAudioUnitProperty_ParameterStringFromValue:
       {
-        //         _plugin->_ext._params->value_to_text(
+        //         _plugin->getProxy()->paramsValueToText(
         auto guarantee_mainthread = _plugin->AlwaysMainThread();
 
         char buf[200];
         auto p = (AudioUnitParameterStringFromValue*)(outData);
         double value = *p->inValue;
-        if (_plugin->_ext._params->value_to_text(_plugin->_plugin, p->inParamID, value, buf, 200))
+        if (_plugin->getProxy()->paramsValueToText(p->inParamID, value, buf, 200))
         {
           p->outString = CFStringCreateWithCString(NULL, buf, kCFStringEncodingUTF8);
           return noErr;
@@ -685,8 +683,7 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
       case kAudioUnitProperty_CocoaUI:
         LOGINFO("[clap-wrapper] Property: kAudioUnitProperty_CocoaUI {}",
                 (_plugin) ? "plugin" : "no plugin");
-        if (_plugin &&
-            (_plugin->_ext._gui->is_api_supported(_plugin->_plugin, CLAP_WINDOW_API_COCOA, false)))
+        if (_plugin && (_plugin->getProxy()->guiIsApiSupported(CLAP_WINDOW_API_COCOA, false)))
         {
           fillAudioUnitCocoaView(((AudioUnitCocoaViewInfo*)outData), _plugin);
           LOGINFO("[clap-wrapper] kAudioUnitProperty_CocoaUI complete");
@@ -842,14 +839,15 @@ void WrapAsAUV2::activateCLAP()
   if (_plugin)
   {
     assert(!_initialized);
-    if (!_processAdapter) _processAdapter = std::make_unique<Clap::AUv2::ProcessAdapter>();
+    if (!_processAdapter)
+      _processAdapter = std::make_unique<Clap::AUv2::ProcessAdapter>(*_plugin->getProxy());
     auto maxSampleFrames = Base::GetMaxFramesPerSlice();
     auto minSampleFrames = (maxSampleFrames >= 16) ? 16 : 1;
     _plugin->setBlockSizes(minSampleFrames, maxSampleFrames);
     _plugin->setSampleRate(Output(0).GetStreamFormat().mSampleRate);
 
-    _processAdapter->setupProcessing(Inputs(), Outputs(), _plugin->_plugin, _plugin->_ext._params, this,
-                                     &_parametertree, maxSampleFrames, _midi_preferred_dialect);
+    _processAdapter->setupProcessing(Inputs(), Outputs(), this, &_parametertree, maxSampleFrames,
+                                     _midi_preferred_dialect);
 
     _plugin->activate();
     _plugin->start_processing();
@@ -1018,7 +1016,7 @@ void WrapAsAUV2::onIdle()
           auto guarantee_mainthread = _plugin->AlwaysMainThread();
 
           // and give the plugin some UI time...
-          _plugin->_plugin->on_main_thread(_plugin->_plugin);
+          _plugin->getProxy()->onMainThread();
         }
       }
       break;
@@ -1034,14 +1032,14 @@ OSStatus WrapAsAUV2::SaveState(CFPropertyListRef* ptPList)
 
   auto guarantee_mainthread = _plugin->AlwaysMainThread();
 
-  if (!_plugin->_ext._state)
+  if (!_plugin->getProxy()->canUseState())
   {
     return AUBase::SaveState(ptPList);
   }
   else
   {
     Clap::StateMemento chunk;
-    _plugin->_ext._state->save(_plugin->_plugin, chunk);
+    _plugin->getProxy()->stateSave(chunk);
 
     CFDataRef tData = CFDataCreate(0, (UInt8*)chunk.data(), chunk.size());
     const AudioComponentDescription desc = GetComponentDescription();
@@ -1110,7 +1108,7 @@ OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
     {
       Clap::StateMemento chunk;
       chunk.setData(pData, lLen);
-      _plugin->_ext._state->load(_plugin->_plugin, chunk);
+      _plugin->getProxy()->stateLoad(chunk);
     }
   }
   return noErr;
@@ -1119,7 +1117,7 @@ OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
 bool WrapAsAUV2::ValidFormat(AudioUnitScope inScope, AudioUnitElement inElement,
                              const AudioStreamBasicDescription& inNewFormat)
 {
-  if (!_plugin->_ext._audioports)
+  if (!_plugin->getProxy()->canUseAudioPorts())
   {
     return false;
   }
@@ -1127,18 +1125,15 @@ bool WrapAsAUV2::ValidFormat(AudioUnitScope inScope, AudioUnitElement inElement,
   // Logic Pro does not call this in the main thread - so we just pretend..
   auto guarantee_mainthread = _plugin->AlwaysMainThread();
 
-  auto ap = _plugin->_ext._audioports;
-  auto pl = _plugin->_plugin;
-
   if (inScope == kAudioUnitScope_Input)
   {
-    auto numAudioInputs = ap->count(pl, true);
+    auto numAudioInputs = _plugin->getProxy()->audioPortsCount(true);
     if (inElement >= numAudioInputs)
     {
       return false;
     }
     clap_audio_port_info inf;
-    ap->get(pl, inElement, true, &inf);
+    _plugin->getProxy()->audioPortsGet(inElement, true, &inf);
     if (inNewFormat.mChannelsPerFrame == inf.channel_count)
     {
       // LOGINFO("In True");
@@ -1147,14 +1142,14 @@ bool WrapAsAUV2::ValidFormat(AudioUnitScope inScope, AudioUnitElement inElement,
   }
   else if (inScope == kAudioUnitScope_Output)
   {
-    auto numAudioOutputs = ap->count(pl, false);
+    auto numAudioOutputs = _plugin->getProxy()->audioPortsCount(false);
     if (inElement >= numAudioOutputs)
     {
       return false;
     }
 
     clap_audio_port_info inf;
-    ap->get(pl, inElement, false, &inf);
+    _plugin->getProxy()->audioPortsGet(inElement, false, &inf);
     if (inNewFormat.mChannelsPerFrame == inf.channel_count)
     {
       // LOGINFO("Out True");
@@ -1179,12 +1174,10 @@ OSStatus WrapAsAUV2::ChangeStreamFormat(AudioUnitScope inScope, AudioUnitElement
 
 UInt32 WrapAsAUV2::SupportedNumChannels(const AUChannelInfo** outInfo)
 {
-  if (cinfo.empty() && _plugin->_ext._audioports)
+  if (cinfo.empty() && _plugin->getProxy()->canUseAudioPorts())
   {
-    auto ap = _plugin->_ext._audioports;
-    auto pl = _plugin->_plugin;
-    auto numAudioInputs = ap->count(pl, true);
-    auto numAudioOutputs = ap->count(pl, false);
+    auto numAudioInputs = _plugin->getProxy()->audioPortsCount(true);
+    auto numAudioOutputs = _plugin->getProxy()->audioPortsCount(false);
 
     std::set<int> inSets, outSets;
 
@@ -1192,7 +1185,7 @@ UInt32 WrapAsAUV2::SupportedNumChannels(const AUChannelInfo** outInfo)
     for (int i = 0; i < numAudioInputs; ++i)
     {
       clap_audio_port_info inf;
-      ap->get(pl, i, true, &inf);
+      _plugin->getProxy()->audioPortsGet(i, true, &inf);
       inSets.insert(inf.channel_count);
       hasInMain |= (inf.flags & CLAP_AUDIO_PORT_IS_MAIN);
     }
@@ -1202,7 +1195,7 @@ UInt32 WrapAsAUV2::SupportedNumChannels(const AUChannelInfo** outInfo)
     for (int i = 0; i < numAudioOutputs; ++i)
     {
       clap_audio_port_info inf;
-      ap->get(pl, i, false, &inf);
+      _plugin->getProxy()->audioPortsGet(i, false, &inf);
       outSets.insert(inf.channel_count);
       hasOutMain |= (inf.flags & CLAP_AUDIO_PORT_IS_MAIN);
     }
@@ -1231,20 +1224,17 @@ void WrapAsAUV2::PostConstructor()
 {
   Base::PostConstructor();
 
-  if (_plugin->_ext._audioports)
+  if (_plugin->getProxy()->canUseAudioPorts())
   {
-    auto ap = _plugin->_ext._audioports;
-    auto pl = _plugin->_plugin;
-
-    auto numAudioInputs = ap->count(pl, true);
-    auto numAudioOutputs = ap->count(pl, false);
+    auto numAudioInputs = _plugin->getProxy()->audioPortsCount(true);
+    auto numAudioOutputs = _plugin->getProxy()->audioPortsCount(false);
 
     SetNumberOfElements(kAudioUnitScope_Input, numAudioInputs);
     Inputs().SetNumberOfElements(numAudioInputs);
     for (int i = 0; i < numAudioInputs; ++i)
     {
       clap_audio_port_info inf;
-      ap->get(pl, i, true, &inf);
+      _plugin->getProxy()->audioPortsGet(i, true, &inf);
       auto b = CFStringCreateWithCString(nullptr, inf.name, kCFStringEncodingUTF8);
       Inputs().GetElement(i)->SetName(b);
 
@@ -1262,7 +1252,7 @@ void WrapAsAUV2::PostConstructor()
     for (int i = 0; i < numAudioOutputs; ++i)
     {
       clap_audio_port_info inf;
-      ap->get(pl, i, false, &inf);
+      _plugin->getProxy()->audioPortsGet(i, false, &inf);
       auto b = CFStringCreateWithCString(nullptr, inf.name, kCFStringEncodingUTF8);
       Outputs().GetElement(i)->SetName(b);
 

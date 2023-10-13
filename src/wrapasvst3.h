@@ -183,12 +183,11 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
 
   //---Clap::IHost------------------------------------------------------------------------
 
-  void setupWrapperSpecifics(const clap_plugin_t* plugin) override;
+  void setupWrapperSpecifics(const Clap::PluginProxy& pluginProxy) override;
 
-  void setupAudioBusses(const clap_plugin_t* plugin,
-                        const clap_plugin_audio_ports_t* audioports) override;
-  void setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_note_ports_t* noteports) override;
-  void setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params) override;
+  void setupAudioBusses(const Clap::PluginProxy& pluginProxy) override;
+  void setupMIDIBusses(const Clap::PluginProxy& pluginProxy) override;
+  void setupParameters(const Clap::PluginProxy& pluginProxy) override;
 
   void param_rescan(clap_param_rescan_flags flags) override;
   void param_clear(clap_id param, clap_param_clear_flags flags) override;
@@ -244,7 +243,7 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   Clap::Library* _library = nullptr;
   int _libraryIndex = 0;
   std::shared_ptr<Clap::Plugin> _plugin;
-  clap_plugin_as_vst3_t* _vst3specifics = nullptr;
+  const clap_plugin_as_vst3_t* _vst3specifics = nullptr;
   Clap::ProcessAdapter* _processAdapter = nullptr;
   WrappedView* _wrappedview = nullptr;
 

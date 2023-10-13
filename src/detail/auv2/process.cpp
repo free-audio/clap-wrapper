@@ -40,12 +40,9 @@ ProcessAdapter::~ProcessAdapter()
 }
 
 void ProcessAdapter::setupProcessing(ausdk::AUScope& audioInputs, ausdk::AUScope& audioOutputs,
-                                     const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params,
                                      Clap::IAutomation* automationInterface, ParameterTree* parameters,
                                      uint32_t numMaxSamples, uint32_t preferredMIDIDialect)
 {
-  _plugin = plugin;
-  _ext_params = ext_params;
   _automation = automationInterface;
   _parameters = parameters;
 
@@ -265,7 +262,7 @@ void ProcessAdapter::process(ProcessData& data)
   }
 #endif
 
-  _plugin->process(_plugin, &_processData);
+  _pluginProxy.process(&_processData);
 
   processOutputEvents();
 

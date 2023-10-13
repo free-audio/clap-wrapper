@@ -226,10 +226,10 @@ int Window::OnDestroy(HWND h, UINT m, WPARAM w, LPARAM l)
 {
   auto plugin{freeaudio::clap_wrapper::standalone::getMainPlugin()};
 
-  if (plugin && plugin->_ext._gui)
+  if (plugin && plugin->getProxy()->canUseGui())
   {
-    plugin->_ext._gui->hide(plugin->_plugin);
-    plugin->_ext._gui->destroy(plugin->_plugin);
+    plugin->getProxy()->guiHide();
+    plugin->getProxy()->guiDestroy();
   }
 
   ::PostQuitMessage(0);
@@ -240,13 +240,11 @@ int Window::OnDestroy(HWND h, UINT m, WPARAM w, LPARAM l)
 int Window::OnDpiChanged(HWND h, UINT m, WPARAM w, LPARAM l)
 {
   auto plugin{freeaudio::clap_wrapper::standalone::getMainPlugin()};
-  auto ui{plugin->_ext._gui};
-  auto p{plugin->_plugin};
 
   auto dpi{::GetDpiForWindow(h)};
   auto scaleFactor{static_cast<float>(dpi) / static_cast<float>(USER_DEFAULT_SCREEN_DPI)};
 
-  ui->set_scale(p, scaleFactor);
+  plugin->getProxy()->guiSetScale(scaleFactor);
 
   auto bounds{(RECT*)l};
   ::SetWindowPos(h, nullptr, bounds->left, bounds->top, (bounds->right - bounds->left),
@@ -258,14 +256,12 @@ int Window::OnDpiChanged(HWND h, UINT m, WPARAM w, LPARAM l)
 int Window::OnKeyDown(HWND h, UINT m, WPARAM w, LPARAM l)
 {
   auto plugin{freeaudio::clap_wrapper::standalone::getMainPlugin()};
-  auto ui{plugin->_ext._gui};
-  auto p{plugin->_plugin};
 
   switch (w)
   {
     case VK_F11:
     {
-      if (ui->can_resize(p)) fullscreen();
+      if (plugin->getProxy()->guiCanResize()) fullscreen();
 
       break;
     }
@@ -280,20 +276,19 @@ int Window::OnKeyDown(HWND h, UINT m, WPARAM w, LPARAM l)
 int Window::OnWindowPosChanged(HWND h, UINT m, WPARAM w, LPARAM l)
 {
   auto plugin{freeaudio::clap_wrapper::standalone::getMainPlugin()};
-  auto ui{plugin->_ext._gui};
-  auto p{plugin->_plugin};
+  auto pluginProxy = plugin->getProxy();
 
   auto dpi{::GetDpiForWindow(h)};
   auto scaleFactor{static_cast<float>(dpi) / static_cast<float>(USER_DEFAULT_SCREEN_DPI)};
 
-  if (ui->can_resize(p))
+  if (pluginProxy->guiCanResize())
   {
     RECT r{0, 0, 0, 0};
     ::GetClientRect(h, &r);
     uint32_t w = (r.right - r.left);
     uint32_t h = (r.bottom - r.top);
-    ui->adjust_size(p, &w, &h);
-    ui->set_size(p, w, h);
+    pluginProxy->guiAdjustSize(&w, &h);
+    pluginProxy->guiSetSize(w, h);
   }
 
 #ifdef _DEBUG
@@ -311,10 +306,6 @@ int Window::OnWindowPosChanged(HWND h, UINT m, WPARAM w, LPARAM l)
 
 bool Window::fullscreen()
 {
-  auto plugin{freeaudio::clap_wrapper::standalone::getMainPlugin()};
-  auto ui{plugin->_ext._gui};
-  auto p{plugin->_plugin};
-
   static RECT pos;
 
   auto style{::GetWindowLongPtr(m_hwnd, GWL_STYLE)};

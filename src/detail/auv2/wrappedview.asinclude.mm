@@ -86,32 +86,32 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
   LOGINFO("[clap-wrapper] creating NSView");
 
   ui = *cont;
-  ui._plugin->_ext._gui->create(ui._plugin->_plugin, CLAP_WINDOW_API_COCOA, false);
-  auto gui = ui._plugin->_ext._gui;
+  auto pluginProxy = ui._plugin->getProxy();
+  pluginProxy->guiCreate(CLAP_WINDOW_API_COCOA, false);
 
   // actually, the host should send an appropriate size,
   // yet, they actually just send utter garbage, so: don't care
   // if (size.width == 0 || size.height == 0)
   {
-    // gui->get_size(ui._plugin->_plugin,)
+    // pluginProxy->guiGetSize(,)
     uint32_t w, h;
-    if (gui->get_size(ui._plugin->_plugin, &w, &h))
+    if (pluginProxy->guiGetSize(&w, &h))
     {
       size = {(double)w, (double)h};
     }
   }
   self = [super initWithFrame:NSMakeRect(0, 0, size.width, size.height)];
 
-  // gui->show(ui._plugin->_plugin);
+  // pluginProxy->guiShow();
 
   clap_window_t m;
   m.api = CLAP_WINDOW_API_COCOA;
   m.ptr = self;
 
-  gui->set_parent(ui._plugin->_plugin, &m);
-  gui->set_scale(ui._plugin->_plugin, 1.0);
+  pluginProxy->guiSetParent(&m);
+  pluginProxy->guiSetScale(1.0);
 
-  if (gui->can_resize(ui._plugin->_plugin)) gui->set_size(ui._plugin->_plugin, size.width, size.height);
+  if (pluginProxy->guiCanResize()) pluginProxy->guiSetSize(size.width, size.height);
 
   idleTimer = nil;
   CFTimeInterval TIMER_INTERVAL = .05;  // In SurgeGUISynthesizer.h it uses 50 ms
@@ -126,7 +126,6 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
 
 - (void)doIdle
 {
-  // auto gui = ui._plugin->_ext._gui;
 }
 - (void)dealloc
 {
@@ -135,8 +134,8 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
   {
     CFRunLoopTimerInvalidate(idleTimer);
   }
-  auto gui = ui._plugin->_ext._gui;
-  gui->destroy(ui._plugin->_plugin);
+  auto pluginProxy = ui._plugin->getProxy();
+  pluginProxy->guiDestroy();
 
   [super dealloc];
 }
@@ -145,11 +144,11 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
   LOGINFO("[clap-wrapper] new size");
 
   [super setFrame:newSize];
-  auto gui = ui._plugin->_ext._gui;
-  gui->set_scale(ui._plugin->_plugin, 1.0);
-  gui->set_size(ui._plugin->_plugin, newSize.size.width, newSize.size.height);
+  auto pluginProxy = ui._plugin->getProxy();
+  pluginProxy->guiSetScale(1.0);
+  pluginProxy->guiSetSize(newSize.size.width, newSize.size.height);
 
-  // gui->show(ui._plugin->_plugin);
+  // pluginProxy->guiShow();
 }
 
 @end

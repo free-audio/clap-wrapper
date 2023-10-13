@@ -33,6 +33,7 @@
 #include <memory>
 
 #include "../clap/automation.h"
+#include "clap_proxy.h"
 
 namespace Clap
 {
@@ -64,8 +65,11 @@ class ProcessAdapter
 		}
 #endif
 
-  void setupProcessing(const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params,
-                       Steinberg::Vst::BusList& audioinputs, Steinberg::Vst::BusList& audiooutputs,
+  ProcessAdapter(const Clap::PluginProxy& pluginProxy) : _pluginProxy{pluginProxy}
+  {
+  }
+
+  void setupProcessing(Steinberg::Vst::BusList& audioinputs, Steinberg::Vst::BusList& audiooutputs,
                        uint32_t numSamples, size_t numEventInputs, size_t numEventOutputs,
                        Steinberg::Vst::ParameterContainer& params,
                        Steinberg::Vst::IComponentHandler* componenthandler, IAutomation* automation,
@@ -93,8 +97,7 @@ class ProcessAdapter
   void removeFromActiveNotes(const clap_event_note* note);
 
   // the plugin
-  const clap_plugin_t* _plugin = nullptr;
-  const clap_plugin_params_t* _ext_params = nullptr;
+  const Clap::PluginProxy& _pluginProxy;
 
   Steinberg::Vst::ParameterContainer* parameters = nullptr;
   Steinberg::Vst::IComponentHandler* _componentHandler = nullptr;

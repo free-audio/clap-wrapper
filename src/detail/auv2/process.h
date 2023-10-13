@@ -15,6 +15,8 @@
  */
 
 #include <clap/clap.h>
+#include "clap_proxy.h"
+#include <clap/helpers/plugin-proxy.hxx>
 
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -72,6 +74,10 @@ struct ProcessData
 class ProcessAdapter
 {
  public:
+  ProcessAdapter(const Clap::PluginProxy& pluginProxy) : _pluginProxy{pluginProxy}
+  {
+  }
+
   typedef union clap_multi_event
   {
     clap_event_header_t header;
@@ -83,7 +89,6 @@ class ProcessAdapter
   } clap_multi_event_t;
 
   void setupProcessing(ausdk::AUScope& audioInputs, ausdk::AUScope& audioOutputs,
-                       const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params,
                        Clap::IAutomation* automationInterface, ParameterTree* parameters,
 
                        uint32_t numMaxSamples, uint32_t preferredMIDIDialect);
@@ -116,8 +121,7 @@ class ProcessAdapter
   void removeFromActiveNotes(const clap_event_note* note);
 
   // the plugin
-  const clap_plugin_t* _plugin = nullptr;
-  const clap_plugin_params_t* _ext_params = nullptr;
+  const Clap::PluginProxy& _pluginProxy;
 
   // for automation gestures
   std::vector<clap_id> _gesturedParameters;

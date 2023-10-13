@@ -55,7 +55,7 @@ std::shared_ptr<Clap::Plugin> mainCreatePlugin(const clap_plugin_entry *ee, cons
   auto pt = getStandaloneSettingsPath();
   if (pt.has_value())
   {
-    auto loadPath = *pt / plugin->_plugin->desc->id;
+    auto loadPath = *pt / plugin->getProxy()->clapPlugin()->desc->id;
     try
     {
       if (fs::exists(loadPath / "settings.clapwrapper"))
@@ -117,7 +117,7 @@ int mainFinish()
     auto pt = getStandaloneSettingsPath();
     if (pt.has_value())
     {
-      auto savePath = *pt / plugin->_plugin->desc->id;
+      auto savePath = *pt / plugin->getProxy()->clapPlugin()->desc->id;
       LOG << "Saving settings to '" << savePath << "'" << std::endl;
       try
       {

@@ -284,15 +284,13 @@ class WrapAsAUV2 : public ausdk::AUBase,
     _queueToUI.push(TriggerUICallback());
   }
 
-  void setupWrapperSpecifics(const clap_plugin_t* plugin)
+  void setupWrapperSpecifics(const Clap::PluginProxy& pluginProxy)
       override;  // called when a wrapper could scan for wrapper specific plugins
 
-  void setupAudioBusses(const clap_plugin_t* plugin,
-                        const clap_plugin_audio_ports_t* audioports) override final;
-  void setupMIDIBusses(const clap_plugin_t* plugin,
-                       const clap_plugin_note_ports_t* noteports)
+  void setupAudioBusses(const Clap::PluginProxy& pluginProxy) override final;
+  void setupMIDIBusses(const Clap::PluginProxy& pluginProxy)
       override final;  // called from initialize() to allow the setup of MIDI ports
-  void setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params) override final;
+  void setupParameters(const Clap::PluginProxy& pluginProxy) override final;
 
   void param_rescan(clap_param_rescan_flags flags) override;
 

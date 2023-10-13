@@ -14,8 +14,7 @@ namespace Clap
 {
 using namespace Steinberg;
 
-void ProcessAdapter::setupProcessing(const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params,
-                                     Vst::BusList& audioinputs, Vst::BusList& audiooutputs,
+void ProcessAdapter::setupProcessing(Vst::BusList& audioinputs, Vst::BusList& audiooutputs,
                                      uint32_t numSamples, size_t /*numEventInputs*/,
                                      size_t /*numEventOutputs*/,
                                      Steinberg::Vst::ParameterContainer& params,
@@ -23,8 +22,6 @@ void ProcessAdapter::setupProcessing(const clap_plugin_t* plugin, const clap_plu
                                      IAutomation* automation, bool enablePolyPressure,
                                      bool supportsTuningNoteExpression)
 {
-  _plugin = plugin;
-  _ext_params = ext_params;
   _audioinputs = &audioinputs;
   _audiooutputs = &audiooutputs;
 
@@ -159,14 +156,14 @@ inline clap_sectime doubleToSecTime(double t)
 
 void ProcessAdapter::flush()
 {
-  // minimal processing if _ext_params is existent
-  if (_ext_params)
+  // minimal processing if params are supported by the plugin
+  if (_pluginProxy.canUseParams())
   {
     _events.clear();
     _eventindices.clear();
 
     // sortEventIndices(); call only if there would be any input event
-    _ext_params->flush(_plugin, _processData.in_events, _processData.out_events);
+    _pluginProxy.paramsFlush(_processData.in_events, _processData.out_events);
   }
 }
 
@@ -395,20 +392,20 @@ void ProcessAdapter::process(Steinberg::Vst::ProcessData& data)
         doProcess = false;
     }
     if (doProcess)
-      _plugin->process(_plugin, &_processData);
+      _pluginProxy.process(&_processData);
     else
     {
-      if (_ext_params)
+      if (_pluginProxy.canUseParams())
       {
-        _ext_params->flush(_plugin, _processData.in_events, _processData.out_events);
+        _pluginProxy.paramsFlush(_processData.in_events, _processData.out_events);
       }
     }
   }
   else
   {
-    if (_ext_params)
+    if (_pluginProxy.canUseParams())
     {
-      _ext_params->flush(_plugin, _processData.in_events, _processData.out_events);
+      _pluginProxy.paramsFlush(_processData.in_events, _processData.out_events);
     }
     else
     {

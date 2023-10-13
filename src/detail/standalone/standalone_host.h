@@ -129,7 +129,7 @@ struct StandaloneHost : Clap::IHost
   {
     TRACE;
   }
-  void setupWrapperSpecifics(const clap_plugin_t *plugin) override
+  void setupWrapperSpecifics(const Clap::PluginProxy &plugin) override
   {
     TRACE;
   }
@@ -142,13 +142,12 @@ struct StandaloneHost : Clap::IHost
   std::vector<uint32_t> outputChannelByBus;
   uint32_t mainInput{0}, mainOutput{0};
   uint32_t totalInputChannels{0}, totalOutputChannels{0};
-  void setupAudioBusses(const clap_plugin_t *plugin,
-                        const clap_plugin_audio_ports_t *audioports) override;
+  void setupAudioBusses(const Clap::PluginProxy &plugin) override;
 
   bool hasMIDIInput{false}, hasClapNoteInput{false}, createsMidiOutput{false};
-  void setupMIDIBusses(const clap_plugin_t *plugin, const clap_plugin_note_ports_t *noteports) override;
+  void setupMIDIBusses(const Clap::PluginProxy &plugin) override;
 
-  void setupParameters(const clap_plugin_t *plugin, const clap_plugin_params_t *params) override
+  void setupParameters(const Clap::PluginProxy &plugin) override
   {
     TRACE;
   }

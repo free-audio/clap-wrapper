@@ -2,6 +2,7 @@
 #include "detail/clap/fsutil.h"
 #include <clap/helpers/host.hxx>
 #include <cstring>
+#include <clap/helpers/plugin-proxy.hxx>
 
 #if MAC || LIN
 #include <iostream>
@@ -13,6 +14,7 @@
 #endif
 
 template class clap::helpers::Host<Clap::Plugin_MH, Clap::Plugin_CL>;
+template class clap::helpers::PluginProxy<Clap::Plugin_MH, Clap::Plugin_CL>;
 
 namespace Clap
 {
@@ -63,31 +65,18 @@ void getExtension(const clap_plugin_t* plugin, T& ref, const char* name)
 
 void Plugin::connectClap(const clap_plugin_t* clap)
 {
-  _plugin = clap;
+  if (!clap) return;
+
+  _pluginProxy = std::make_unique<PluginProxy>(*clap, *this);
 
   // initialize the plugin
-  if (!_plugin->init(_plugin))
+  if (!_pluginProxy->init())
   {
-    _plugin->destroy(_plugin);
-    _plugin = nullptr;
+    terminate();
     return;
   }
 
-  // if successful, query the extensions the wrapper might want to use
-  getExtension(_plugin, _ext._state, CLAP_EXT_STATE);
-  getExtension(_plugin, _ext._params, CLAP_EXT_PARAMS);
-  getExtension(_plugin, _ext._audioports, CLAP_EXT_AUDIO_PORTS);
-  getExtension(_plugin, _ext._noteports, CLAP_EXT_NOTE_PORTS);
-  getExtension(_plugin, _ext._latency, CLAP_EXT_LATENCY);
-  getExtension(_plugin, _ext._render, CLAP_EXT_RENDER);
-  getExtension(_plugin, _ext._tail, CLAP_EXT_TAIL);
-  getExtension(_plugin, _ext._gui, CLAP_EXT_GUI);
-  getExtension(_plugin, _ext._timer, CLAP_EXT_TIMER_SUPPORT);
-#if LIN
-  getExtension(_plugin, _ext._posixfd, CLAP_EXT_POSIX_FD_SUPPORT);
-#endif
-
-  if (_ext._gui)
+  if (_pluginProxy->canUseGui())
   {
     const char* api;
 #if WIN
@@ -100,20 +89,19 @@ void Plugin::connectClap(const clap_plugin_t* clap)
     api = CLAP_WINDOW_API_X11;
 #endif
 
-    if (!_ext._gui->is_api_supported(_plugin, api, false))
+    if (!_pluginProxy->guiIsApiSupported(api, false))
     {
       // disable GUI if not win32
-      _ext._gui = nullptr;
+      // TODO _pluginProxy->_pluginGui = nullptr;
     }
   }
 }
 
 Plugin::~Plugin()
 {
-  if (_plugin)
+  if (_pluginProxy.get())
   {
-    _plugin->destroy(_plugin);
-    _plugin = nullptr;
+    terminate();
   }
 }
 
@@ -123,27 +111,28 @@ void Plugin::schnick()
 
 bool Plugin::initialize()
 {
-  if (_ext._audioports)
+  const auto& proxy = *getProxy();
+  if (proxy.canUseAudioPorts())
   {
-    _parentHost->setupAudioBusses(_plugin, _ext._audioports);
+    _parentHost->setupAudioBusses(proxy);
   }
-  if (_ext._noteports)
+  if (proxy.canUseNotePorts())
   {
-    _parentHost->setupMIDIBusses(_plugin, _ext._noteports);
+    _parentHost->setupMIDIBusses(proxy);
   }
-  if (_ext._params)
+  if (proxy.canUseParams())
   {
-    _parentHost->setupParameters(_plugin, _ext._params);
+    _parentHost->setupParameters(proxy);
   }
 
-  _parentHost->setupWrapperSpecifics(_plugin);
+  _parentHost->setupWrapperSpecifics(proxy);
   return true;
 }
 
 void Plugin::terminate()
 {
-  _plugin->destroy(_plugin);
-  _plugin = nullptr;
+  _pluginProxy->destroy();
+  _pluginProxy.reset();
 }
 
 void Plugin::setSampleRate(double sampleRate)
@@ -159,58 +148,57 @@ void Plugin::setBlockSizes(uint32_t minFrames, uint32_t maxFrames)
 
 bool Plugin::load(const clap_istream_t* stream) const
 {
-  if (_ext._state)
+  if (_pluginProxy->canUseState())
   {
-    return _ext._state->load(_plugin, stream);
+    return _pluginProxy->stateLoad(stream);
   }
   return false;
 }
 
 bool Plugin::save(const clap_ostream_t* stream) const
 {
-  if (_ext._state)
+  if (_pluginProxy->canUseState())
   {
-    return _ext._state->save(_plugin, stream);
+    return _pluginProxy->stateSave(stream);
   }
   return false;
 }
 
 bool Plugin::activate() const
 {
-  return _plugin->activate(_plugin, _audioSetup.sampleRate, _audioSetup.minFrames,
-                           _audioSetup.maxFrames);
+  return _pluginProxy->activate(_audioSetup.sampleRate, _audioSetup.minFrames, _audioSetup.maxFrames);
 }
 
 void Plugin::deactivate() const
 {
-  _plugin->deactivate(_plugin);
+  _pluginProxy->deactivate();
 }
 
 bool Plugin::start_processing()
 {
   auto thisFn = AlwaysAudioThread();
-  return _plugin->start_processing(_plugin);
+  return _pluginProxy->startProcessing();
 }
 
 void Plugin::stop_processing()
 {
   auto thisFn = AlwaysAudioThread();
-  _plugin->stop_processing(_plugin);
+  _pluginProxy->stopProcessing();
 }
 
 //void Plugin::process(const clap_process_t* data)
 //{
 //  auto thisFn = AlwaysAudioThread();
-//  _plugin->process(_plugin, data);
+//  _pluginProxy->process(data);
 //}
 
 const clap_plugin_gui_t* Plugin::getUI() const
 {
-  if (_ext._gui)
+  if (_pluginProxy->canUseGui())
   {
-    if (_ext._gui->is_api_supported(_plugin, CLAP_WINDOW_API_WIN32, false))
+    if (_pluginProxy->guiIsApiSupported(CLAP_WINDOW_API_WIN32, false))
     {
-      // _ext._g
+      // _pluginProxy->gui...
     }
   }
   return nullptr;
@@ -224,6 +212,11 @@ void Plugin::latencyChanged() noexcept
 void Plugin::tailChanged() noexcept
 {
   _parentHost->tail_changed();
+}
+
+PluginProxy* Plugin::getProxy() const
+{
+  return _pluginProxy.get();
 }
 
 void Plugin::logLog(clap_log_severity severity, const char* msg) const noexcept

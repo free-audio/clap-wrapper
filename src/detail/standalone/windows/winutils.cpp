@@ -49,6 +49,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR pCmdLine
   int pindex{PLUGIN_INDEX};
 
   auto plugin{freeaudio::clap_wrapper::standalone::mainCreatePlugin(entry, pid, pindex, 1, __argv)};
+  auto pluginProxy = plugin->getProxy();
 
   freeaudio::clap_wrapper::standalone::mainStartAudio();
 
@@ -60,27 +61,24 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR pCmdLine
 
   win32Gui.plugin = plugin;
 
-  if (plugin->_ext._gui)
+  if (pluginProxy->canUseGui())
   {
-    auto ui{plugin->_ext._gui};
-    auto p{plugin->_plugin};
-
-    ui->create(p, CLAP_WINDOW_API_WIN32, false);
+    pluginProxy->guiCreate(CLAP_WINDOW_API_WIN32, false);
 
     freeaudio::clap_wrapper::standalone::windows::Window window;
 
     auto dpi{::GetDpiForWindow(window.m_hwnd)};
     auto scaleFactor{static_cast<float>(dpi) / static_cast<float>(USER_DEFAULT_SCREEN_DPI)};
-    ui->set_scale(p, scaleFactor);
+    pluginProxy->guiSetScale(scaleFactor);
 
-    if (ui->can_resize(p))
+    if (pluginProxy->guiCanResize())
     {
       // We can check here if we had a previous size but we aren't saving state yet
     }
 
     uint32_t w{0};
     uint32_t h{0};
-    ui->get_size(p, &w, &h);
+    pluginProxy->guiGetSize(&w, &h);
 
     RECT r{0, 0, 0, 0};
     r.right = w;
@@ -88,7 +86,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR pCmdLine
     ::AdjustWindowRectExForDpi(&r, WS_OVERLAPPEDWINDOW, 0, 0, dpi);
     ::SetWindowPos(window.m_hwnd, nullptr, 0, 0, (r.right - r.left), (r.bottom - r.top), SWP_NOMOVE);
 
-    if (!ui->can_resize(p))
+    if (!pluginProxy->guiCanResize())
     {
       ::SetWindowLongPtr(window.m_hwnd, GWL_STYLE,
                          ::GetWindowLongPtr(window.m_hwnd, GWL_STYLE) & ~WS_OVERLAPPEDWINDOW |
@@ -98,9 +96,9 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR pCmdLine
     clap_window win;
     win.api = CLAP_WINDOW_API_WIN32;
     win.win32 = (void*)window.m_hwnd;
-    ui->set_parent(p, &win);
+    pluginProxy->guiSetParent(&win);
 
-    ui->show(p);
+    pluginProxy->guiShow();
 
     ::ShowWindow(window.m_hwnd, SW_SHOWDEFAULT);
   }

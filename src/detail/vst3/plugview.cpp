@@ -2,12 +2,11 @@
 #include <clap/clap.h>
 #include <cassert>
 
-WrappedView::WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui,
-                         std::function<void()> onDestroy, std::function<void()> onRunLoopAvailable)
+WrappedView::WrappedView(const Clap::PluginProxy& pluginProxy, std::function<void()> onDestroy,
+                         std::function<void()> onRunLoopAvailable)
   : IPlugView()
   , FObject()
-  , _plugin(plugin)
-  , _extgui(gui)
+  , _pluginProxy(pluginProxy)
   , _onDestroy(onDestroy)
   , _onRunLoopAvailable(onRunLoopAvailable)
 {
@@ -37,7 +36,7 @@ void WrappedView::ensure_ui()
     api = CLAP_WINDOW_API_X11;
 #endif
 
-    if (_extgui->is_api_supported(_plugin, api, false)) _extgui->create(_plugin, api, false);
+    if (_pluginProxy.guiIsApiSupported(api, false)) _pluginProxy.guiCreate(api, false);
 
     _created = true;
   }
@@ -49,7 +48,7 @@ void WrappedView::drop_ui()
   {
     _created = false;
     _attached = false;
-    _extgui->destroy(_plugin);
+    _pluginProxy.guiDestroy();
   }
 }
 
@@ -68,7 +67,7 @@ tresult PLUGIN_API WrappedView::isPlatformTypeSupported(FIDString type)
   {
     if (!strcmp(type, n->VST3))
     {
-      if (_extgui->is_api_supported(_plugin, n->CLAP, false))
+      if (_pluginProxy.guiIsApiSupported(n->CLAP, false))
       {
         return kResultOk;
       }
@@ -94,20 +93,20 @@ tresult PLUGIN_API WrappedView::attached(void* parent, FIDString /*type*/)
 #endif
 
   ensure_ui();
-  _extgui->set_parent(_plugin, &_window);
+  _pluginProxy.guiSetParent(&_window);
   _attached = true;
-  if (_extgui->can_resize(_plugin))
+  if (_pluginProxy.guiCanResize())
   {
     uint32_t w = _rect.getWidth();
     uint32_t h = _rect.getHeight();
-    if (_extgui->adjust_size(_plugin, &w, &h))
+    if (_pluginProxy.guiAdjustSize(&w, &h))
     {
       _rect.right = _rect.left + w + 1;
       _rect.bottom = _rect.top + h + 1;
     }
-    _extgui->set_size(_plugin, w, h);
+    _pluginProxy.guiSetSize(w, h);
   }
-  _extgui->show(_plugin);
+  _pluginProxy.guiShow();
   return kResultOk;
 }
 
@@ -139,7 +138,7 @@ tresult PLUGIN_API WrappedView::getSize(ViewRect* size)
   if (size)
   {
     uint32_t w, h;
-    if (_extgui->get_size(_plugin, &w, &h))
+    if (_pluginProxy.guiGetSize(&w, &h))
     {
       size->right = size->left + w;
       size->bottom = size->top + h;
@@ -161,16 +160,16 @@ tresult PLUGIN_API WrappedView::onSize(ViewRect* newSize)
   _rect = *newSize;
   if (_created && _attached)
   {
-    if (_extgui->can_resize(_plugin))
+    if (_pluginProxy.guiCanResize())
     {
       uint32_t w = _rect.getWidth();
       uint32_t h = _rect.getHeight();
-      if (_extgui->adjust_size(_plugin, &w, &h))
+      if (_pluginProxy.guiAdjustSize(&w, &h))
       {
         _rect.right = _rect.left + w;
         _rect.bottom = _rect.top + h;
       }
-      if (_extgui->set_size(_plugin, w, h))
+      if (_pluginProxy.guiSetSize(w, h))
       {
         return kResultOk;
       }
@@ -212,7 +211,7 @@ tresult PLUGIN_API WrappedView::setFrame(IPlugFrame* frame)
 tresult PLUGIN_API WrappedView::canResize()
 {
   ensure_ui();
-  return _extgui->can_resize(_plugin) ? kResultOk : kResultFalse;
+  return _pluginProxy.guiCanResize() ? kResultOk : kResultFalse;
 }
 
 tresult PLUGIN_API WrappedView::checkSizeConstraint(ViewRect* rect)
@@ -220,7 +219,7 @@ tresult PLUGIN_API WrappedView::checkSizeConstraint(ViewRect* rect)
   ensure_ui();
   uint32_t w = rect->getWidth();
   uint32_t h = rect->getHeight();
-  if (_extgui->adjust_size(_plugin, &w, &h))
+  if (_pluginProxy.guiAdjustSize(&w, &h))
   {
     rect->right = rect->left + w;
     rect->bottom = rect->top + h;

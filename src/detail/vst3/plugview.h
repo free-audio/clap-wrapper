@@ -12,13 +12,14 @@
 #include <pluginterfaces/gui/iplugview.h>
 #include <clap/clap.h>
 #include <functional>
+#include "clap_proxy.h"
 
 using namespace Steinberg;
 
 class WrappedView : public Steinberg::IPlugView, public Steinberg::FObject
 {
  public:
-  WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui, std::function<void()> onDestroy,
+  WrappedView(const Clap::PluginProxy& pluginProxy, std::function<void()> onDestroy,
               std::function<void()> onRunLoopAvailable);
   ~WrappedView();
 
@@ -90,8 +91,7 @@ class WrappedView : public Steinberg::IPlugView, public Steinberg::FObject
  private:
   void ensure_ui();
   void drop_ui();
-  const clap_plugin_t* _plugin = nullptr;
-  const clap_plugin_gui_t* _extgui = nullptr;
+  const Clap::PluginProxy& _pluginProxy;
   std::function<void()> _onDestroy = nullptr, _onRunLoopAvailable = nullptr;
   clap_window_t _window = {nullptr, {nullptr}};
   IPlugFrame* _plugFrame = nullptr;

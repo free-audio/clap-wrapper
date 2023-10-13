@@ -77,17 +77,16 @@
 
   [[self window] orderFrontRegardless];
 
-  if (plugin->_ext._gui)
+  auto pluginProxy = plugin->getProxy();
+  if (pluginProxy->canUseGui())
   {
-    auto ui = plugin->_ext._gui;
-    auto p = plugin->_plugin;
-    if (!ui->is_api_supported(p, CLAP_WINDOW_API_COCOA, false)) LOG << "NO COCOA " << std::endl;
+    if (!pluginProxy->guiIsApiSupported(CLAP_WINDOW_API_COCOA, false)) LOG << "NO COCOA " << std::endl;
 
-    ui->create(p, CLAP_WINDOW_API_COCOA, false);
-    ui->set_scale(p, 1);
+    pluginProxy->guiCreate(CLAP_WINDOW_API_COCOA, false);
+    pluginProxy->guiSetScale(1);
 
     uint32_t w, h;
-    ui->get_size(p, &w, &h);
+    pluginProxy->guiGetSize(&w, &h);
 
     NSView *view = [[self window] contentView];
 
@@ -99,8 +98,8 @@
     clap_window win;
     win.api = CLAP_WINDOW_API_COCOA;
     win.cocoa = view;
-    ui->set_parent(p, &win);
-    ui->show(p);
+    pluginProxy->guiSetParent(&win);
+    pluginProxy->guiShow();
   }
 
   freeaudio::clap_wrapper::standalone::getStandaloneHost()->onRequestResize =
@@ -120,10 +119,10 @@
   LOG << "applicationWillTerminate shutdown" << std::endl;
   auto plugin = freeaudio::clap_wrapper::standalone::getMainPlugin();
 
-  if (plugin && plugin->_ext._gui)
+  if (plugin && plugin->getProxy()->canUseGui())
   {
-    plugin->_ext._gui->hide(plugin->_plugin);
-    plugin->_ext._gui->destroy(plugin->_plugin);
+    plugin->getProxy()->guiHide();
+    plugin->getProxy()->guiDestroy();
   }
 
   // Insert code here to tear down your application

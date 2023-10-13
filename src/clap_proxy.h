@@ -14,6 +14,7 @@
 */
 
 #include <clap/clap.h>
+#include <clap/helpers/plugin-proxy.hh>
 #include <vector>
 #include <string>
 #include <memory>
@@ -33,9 +34,11 @@ constexpr auto Plugin_MH = clap::helpers::MisbehaviourHandler::Ignore;
 constexpr auto Plugin_CL = clap::helpers::CheckingLevel::Maximal;
 
 using PluginHostBase = clap::helpers::Host<Plugin_MH, Plugin_CL>;
+using PluginProxy = clap::helpers::PluginProxy<Plugin_MH, Plugin_CL>;
 }  // namespace Clap
 
 extern template class clap::helpers::Host<Clap::Plugin_MH, Clap::Plugin_CL>;
+extern template class clap::helpers::PluginProxy<Clap::Plugin_MH, Clap::Plugin_CL>;
 
 namespace Clap
 {
@@ -51,17 +54,13 @@ class IHost
   virtual void request_callback() = 0;
 
   virtual void setupWrapperSpecifics(
-      const clap_plugin_t* plugin) = 0;  // called when a wrapper could scan for wrapper specific plugins
+      const PluginProxy& plugin) = 0;  // called when a wrapper could scan for wrapper specific plugins
 
   virtual void setupAudioBusses(
-      const clap_plugin_t* plugin,
-      const clap_plugin_audio_ports_t*
-          audioports) = 0;  // called from initialize() to allow the setup of audio ports
+      const PluginProxy& plugin) = 0;  // called from initialize() to allow the setup of audio ports
   virtual void setupMIDIBusses(
-      const clap_plugin_t* plugin,
-      const clap_plugin_note_ports_t*
-          noteports) = 0;  // called from initialize() to allow the setup of MIDI ports
-  virtual void setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params) = 0;
+      const PluginProxy& plugin) = 0;  // called from initialize() to allow the setup of MIDI ports
+  virtual void setupParameters(const PluginProxy& plugin) = 0;
 
   virtual void param_rescan(clap_param_rescan_flags flags) = 0;  // ext_host_params
   virtual void param_clear(clap_id param, clap_param_clear_flags flags) = 0;
@@ -85,29 +84,11 @@ class IHost
 #endif
 };
 
-struct ClapPluginExtensions;
-
 struct AudioSetup
 {
   double sampleRate = 44100.;
   uint32_t minFrames = 0;
   uint32_t maxFrames = 0;
-};
-
-struct ClapPluginExtensions
-{
-  const clap_plugin_state_t* _state = nullptr;
-  const clap_plugin_params_t* _params = nullptr;
-  const clap_plugin_audio_ports_t* _audioports = nullptr;
-  const clap_plugin_gui_t* _gui = nullptr;
-  const clap_plugin_note_ports_t* _noteports = nullptr;
-  const clap_plugin_latency_t* _latency = nullptr;
-  const clap_plugin_render_t* _render = nullptr;
-  const clap_plugin_tail_t* _tail = nullptr;
-  const clap_plugin_timer_support_t* _timer = nullptr;
-#if LIN
-  const clap_plugin_posix_fd_support* _posixfd = nullptr;
-#endif
 };
 
 class Raise
@@ -130,7 +111,7 @@ class Raise
 /// Plugin is the `host` for the CLAP plugin instance
 /// and the interface for the VST3 plugin wrapper
 /// </summary>
-class Plugin : Clap::PluginHostBase
+class Plugin : public Clap::PluginHostBase
 {
  public:
   static std::shared_ptr<Plugin> createInstance(const clap_plugin_factory*, const std::string& id,
@@ -169,8 +150,7 @@ class Plugin : Clap::PluginHostBase
   // void process(const clap_process_t* data);
   const clap_plugin_gui_t* getUI() const;
 
-  ClapPluginExtensions _ext;
-  const clap_plugin_t* _plugin = nullptr;
+  PluginProxy* getProxy() const;
 
   CLAP_NODISCARD Raise AlwaysAudioThread();
   CLAP_NODISCARD Raise AlwaysMainThread();
@@ -267,6 +247,7 @@ class Plugin : Clap::PluginHostBase
 
  private:
   IHost* _parentHost = nullptr;
+  std::unique_ptr<PluginProxy> _pluginProxy;
   const std::thread::id _main_thread_id = std::this_thread::get_id();
   std::atomic<uint32_t> _audio_thread_override = 0;
   std::atomic<uint32_t> _main_thread_override = 0;
