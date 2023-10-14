@@ -1,21 +1,20 @@
 #pragma once
 
 /*
- * This is the base class of all our AU. It is templated on the AU base class and the configuration
- * type (instrument, effect, note effect).
+ * this is a shared header to connect the wrapped view with the actual AU
+ *
+ * the connection will be created when the wrapped View (cocoa) is asked to connect
+ * via the uiViewForAudioUnit call which provides an instance of the audiounit component.
+ * this (private) property is being asked then to know the actual instance the view
+ * is connected to.
+ *
+ * With the hinting, the view can access all necessary structures in the
+ * audiounit connected.
  */
 
-#include "detail/clap/fsutil.h"
 #include <iostream>
-
-#include "detail/os/osutil.h"
 #include "clap_proxy.h"
-
 #include <AudioToolbox/AudioUnitProperties.h>
-#include <CoreMIDI/MIDIServices.h>
-#define CWAUTRACE                                                                               \
-  std::cout << "[clap-wrapper auv2 trace] " << __func__ << " @ auv2_shared.h line " << __LINE__ \
-            << std::endl
 
 static const AudioUnitPropertyID kAudioUnitProperty_ClapWrapper_UIConnection_id = 0x00010911;
 
@@ -30,5 +29,3 @@ typedef struct ui_connection {
 
 
 }  // namespace free_audio::auv2_wrapper
-
-#undef CWAUTRACE

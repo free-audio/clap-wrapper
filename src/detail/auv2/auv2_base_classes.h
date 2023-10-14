@@ -85,6 +85,10 @@ public:
     const UInt32 strippedStatus = inStatus & 0xf0U; // NOLINT
     const UInt32 channel = inStatus & 0x0fU;        // NOLINT
 
+    if ( _processAdapter )
+    {
+      _processAdapter->addMIDIEvent(inStatus, inData1, inData2, inOffsetSampleFrame);
+    }
     (void) strippedStatus;
     (void) channel;
     return noErr; //  HandleMIDIEvent(strippedStatus, channel, inData1, inData2, inOffsetSampleFrame);
@@ -106,6 +110,11 @@ public:
   {
     return kAudio_UnimplementedError;
   }
+  
+  // render
+  OSStatus Render(  AudioUnitRenderActionFlags&  inFlags,
+                  const AudioTimeStamp&    inTimeStamp,
+                                    UInt32            inFrames) override;
   
   // ---------------- Clap::IHost
   void mark_dirty() override {}
@@ -161,7 +170,7 @@ private:
   const clap_plugin_descriptor_t *_desc{nullptr};
   std::shared_ptr<Clap::Plugin> _plugin = nullptr;
   
-  // Clap::AUv2::ProcessAdapter* _processAdapter = nullptr;
+  std::unique_ptr<Clap::AUv2::ProcessAdapter> _processAdapter;
   
   
 };

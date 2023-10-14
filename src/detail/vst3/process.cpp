@@ -119,7 +119,7 @@ void ProcessAdapter::setupProcessing(const clap_plugin_t* plugin, const clap_plu
 
   _gesturedParameters.reserve(8192);
 
-  _activeNotes.reserve(256);
+  _activeNotes.reserve(32);
 
   _supportsPolyPressure = enablePolyPressure;
   _supportsTuningNoteExpression = supportsTuningNoteExpression;
@@ -782,7 +782,7 @@ void ProcessAdapter::addToActiveNotes(const clap_event_note* note)
       return;
     }
   }
-  _activeNotes.push_back({true, note->note_id, note->port_index, note->channel, note->key});
+  _activeNotes.emplace_back(ActiveNote{true, note->note_id, note->port_index, note->channel, note->key});
 }
 
 void ProcessAdapter::removeFromActiveNotes(const clap_event_note* note)

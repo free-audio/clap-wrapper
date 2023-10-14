@@ -1,4 +1,6 @@
 #include "generated_entrypoints.hxx"
+#include "detail/auv2/process.h"
+#include "detail/os/osutil.h"
 
 extern bool fillAudioUnitCocoaView(AudioUnitCocoaViewInfo* viewInfo);
 
@@ -193,7 +195,7 @@ void WrapAsAUV2::setupAudioBusses(
   
   fprintf(stderr, "\tAUDIO in: %d, out: %d\n", (int)numAudioInputs, (int)numAudioOutputs);
   
-  ausdk::AUBase::GetScope(kAudioUnitScope_Input).SetNumberOfElements(numAudioInputs);
+  ausdk::AUBase::GetScope(kAudioUnitScope_Input).Initialize(this, kAudioUnitScope_Input, numAudioInputs);
   
   for ( decltype(numAudioInputs) i = 0 ; i < numAudioInputs ; ++i)
   {
@@ -205,6 +207,7 @@ void WrapAsAUV2::setupAudioBusses(
   }
   
   ausdk::AUBase::GetScope(kAudioUnitScope_Output).Initialize(this, kAudioUnitScope_Global, numAudioOutputs);
+  
   for ( decltype(numAudioOutputs) i = 0 ; i < numAudioOutputs ; ++i)
   {
     clap_audio_port_info_t info;
@@ -283,7 +286,17 @@ OSStatus WrapAsAUV2::GetPropertyInfo(AudioUnitPropertyID inID, AudioUnitScope in
     // case kAudioUnitProperty_InPlaceProcessing:
       outWritable = true;
       outDataSize = sizeof(UInt32);
-      return noErr;
+        return noErr;
+      case kMusicDeviceProperty_DualSchedulingMode:
+        outWritable = true;
+        outDataSize = sizeof(UInt32);
+        return noErr;
+        break;
+      case kMusicDeviceProperty_SupportsStartStopNote:
+        outWritable = true;
+        outDataSize = sizeof(UInt32);
+        return noErr;
+        break;
       case kAudioUnitProperty_CocoaUI:
         outWritable = false;
         outDataSize = sizeof(struct AudioUnitCocoaViewInfo);
@@ -291,7 +304,7 @@ OSStatus WrapAsAUV2::GetPropertyInfo(AudioUnitPropertyID inID, AudioUnitScope in
         break;
       case kAudioUnitProperty_ClapWrapper_UIConnection_id:
         outWritable = false;
-        outDataSize = 24;
+        outDataSize = sizeof(free_audio::auv2_wrapper::ui_connection);
         return noErr;
         break;
     default:
@@ -334,6 +347,15 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         }
         return kAudioUnitErr_InvalidProperty;
         break;
+      case kMusicDeviceProperty_DualSchedulingMode:
+        // yes we do
+        *static_cast<UInt32*>(outData) = 1;
+        return noErr;
+        break;
+      case kMusicDeviceProperty_SupportsStartStopNote:
+        *static_cast<UInt32*>(outData) = 0;
+        return noErr;
+        break;
     default:
       break;
     }
@@ -364,6 +386,19 @@ OSStatus WrapAsAUV2::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
 //    case kAudioUnitProperty_InPlaceProcessing:
 //      mProcessesInPlace = *static_cast<const UInt32*>(inData) != 0;
 //      return noErr;
+        break;
+      case kMusicDeviceProperty_SupportsStartStopNote:
+      {
+        
+        auto x = *static_cast<const UInt32*>(inData);
+        (void) x;
+        return noErr;
+      }
+        break;
+      case kMusicDeviceProperty_DualSchedulingMode:
+        return noErr;
+        break;
+
     default:
       break;
     }
@@ -374,11 +409,19 @@ OSStatus WrapAsAUV2::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
 OSStatus WrapAsAUV2::SetRenderNotification(AURenderCallback inProc, void* inRefCon){
   if ( _plugin)
   {
-    _plugin->setBlockSizes(16, Base::GetMaxFramesPerSlice());
-    _plugin->setSampleRate(Output(0).GetStreamFormat().mSampleRate);
+    _processAdapter = std::make_unique<Clap::AUv2::ProcessAdapter>();
+    auto maxSampleFrames = Base::GetMaxFramesPerSlice();
+    auto minSampleFrames = (maxSampleFrames >= 16) ? 16 : 1;
+    _plugin->setBlockSizes(minSampleFrames, maxSampleFrames);
+        _plugin->setSampleRate(Output(0).GetStreamFormat().mSampleRate);
+    
+    this->Inputs();
+    _processAdapter->setupProcessing(Inputs(), Outputs(), _plugin->_plugin, _plugin->_ext._params, maxSampleFrames);
+
     _plugin->activate();
     _plugin->start_processing();
   }
+
   return Base::SetRenderNotification(inProc, inRefCon);
 }
 
@@ -386,6 +429,7 @@ OSStatus WrapAsAUV2::RemoveRenderNotification(AURenderCallback inProc, void* inR
 {
   if ( _plugin)
   {
+    _processAdapter.reset();
     _plugin->stop_processing();
     _plugin->deactivate();
   }
@@ -442,5 +486,25 @@ void WrapAsAUV2::addOutputBus(int bus, const clap_audio_port_info_t* info){
   sf.mChannelsPerFrame = info->channel_count;
   busref.SetStreamFormat(sf);
 }
+
+OSStatus WrapAsAUV2::Render( AudioUnitRenderActionFlags&  inFlags,
+                const AudioTimeStamp&    inTimeStamp,
+                                  UInt32            inFrames)
+{
+  // do the render dance
+  Clap::AUv2::ProcessData data{inFlags, inTimeStamp, inFrames,this};
+
+  // retrieve musical information for this render block
+
+  data._transportValid = (noErr == CallHostTransportState(&data._isPlaying, &data._transportChanged, &data._currentSongPos, &data._isLooping, &data._cycleStart, &data._cycleEnd) );
+  data._beatAndTempoValid = (noErr ==
+                                CallHostBeatAndTempo(&data._beat, &data._tempo));
+  data._musicalTimeValid = (noErr ==
+                            CallHostMusicalTimeLocation(&data._offsetToNextBeat, &data._musicalNumerator, &data._musicalDenominator, &data._currentDownBeat));
+  
+  _processAdapter->process(data);
+  return noErr;
+}
+
 
 }

@@ -24,12 +24,46 @@
 #include <AudioUnitSDK/AUBase.h>
 
 // TODO: check if additional AU headers are needed
-//#include <AudioToolbox/AudioToolbox.h>
-//#include <AudioUnit/AudioUnitParameters.h>
+#include <AudioToolbox/AudioToolbox.h>
+#include <AudioUnit/AudioUnitParameters.h>
+#include <AudioUnit/AUComponent.h>
 
 namespace Clap::AUv2
 {
-  class ProcessAdapter
+
+struct ProcessData
+{
+  AudioUnitRenderActionFlags& flags;
+  const AudioTimeStamp& timestamp;
+  uint32_t numSamples = 0;
+  void* audioUnit = nullptr;
+
+  // -------------
+  bool _transportValid;
+  
+  // information from the AU Host
+  Float64 _cycleStart;
+  Float64 _cycleEnd;
+  Float64 _currentSongPos;    // outCurrentSampleInTimeLine
+ 
+  Boolean _isPlaying;
+  Boolean _transportChanged;
+  Boolean _isLooping;
+
+  // --------------
+  bool _beatAndTempoValid;
+  Float64 _beat;
+  Float64 _tempo;
+
+  // --------------
+  bool _musicalTimeValid;
+  UInt32 _offsetToNextBeat;
+  Float32 _musicalNumerator;
+  UInt32 _musicalDenominator;
+  Float64 _currentDownBeat;
+};
+
+class ProcessAdapter
 {
 public:
   typedef union clap_multi_event
@@ -42,9 +76,9 @@ public:
     clap_event_note_expression_t noteexpression;
   } clap_multi_event_t;
 
-  void setupProcessing(const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params, uint32_t numMaxSamples);
+  void setupProcessing(ausdk::AUScope& audioInputs, ausdk::AUScope& audioOutputs, const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params, uint32_t numMaxSamples);
   
-  void process(); // AU Data
+  void process(ProcessData& data); // AU Data
   void flush();
   
   // necessary C callbacks:
@@ -54,6 +88,11 @@ public:
 
   static bool output_events_try_push(const struct clap_output_events* list,
                                      const clap_event_header_t* event);
+  
+  // interface for AUv2 wrapper:
+  void addMIDIEvent(
+                    UInt32 inStatus, UInt32 inData1, UInt32 inData2, UInt32 inOffsetSampleFrame);
+  
 private:
   void sortEventIndices();
   
@@ -94,6 +133,8 @@ private:
   std::vector<size_t> _eventindices;
   
   // AU Process Data?
+  ausdk::AUScope* _audioInputs = nullptr;
+  ausdk::AUScope* _audioOutputs = nullptr;
 };
 }
 
