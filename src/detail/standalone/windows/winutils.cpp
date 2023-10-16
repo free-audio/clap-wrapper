@@ -99,20 +99,20 @@ Window::Window()
   std::wstring clapName{widen(WIN32_TITLE)};
 
   WNDCLASSEXW wcex{
-    sizeof(WNDCLASSEX),
-    CS_HREDRAW | CS_VREDRAW,
-    Window::WndProc,
-    0,
-    0,
-    ::GetModuleHandleW(nullptr),
-    (HICON)::LoadImageW(nullptr, (LPCWSTR)IDI_APPLICATION, IMAGE_ICON, 0, 0,
-                                   LR_DEFAULTCOLOR | LR_DEFAULTSIZE | LR_SHARED),
-    (HCURSOR)::LoadImageW(nullptr, (LPCWSTR)IDC_ARROW, IMAGE_CURSOR, 0, 0, LR_SHARED),
-    (HBRUSH)::GetStockObject(BLACK_BRUSH),
-    clapName.c_str(),
-    clapName.c_str(),
-    (HICON)::LoadImageW(nullptr, (LPCWSTR)IDI_APPLICATION, IMAGE_ICON, 0, 0,
-                                   LR_DEFAULTCOLOR | LR_DEFAULTSIZE | LR_SHARED),
+      sizeof(WNDCLASSEX),
+      CS_HREDRAW | CS_VREDRAW,
+      Window::WndProc,
+      0,
+      0,
+      ::GetModuleHandleW(nullptr),
+      (HICON)::LoadImageW(nullptr, (LPCWSTR)IDI_APPLICATION, IMAGE_ICON, 0, 0,
+                          LR_DEFAULTCOLOR | LR_DEFAULTSIZE | LR_SHARED),
+      (HCURSOR)::LoadImageW(nullptr, (LPCWSTR)IDC_ARROW, IMAGE_CURSOR, 0, 0, LR_SHARED),
+      (HBRUSH)::GetStockObject(BLACK_BRUSH),
+      clapName.c_str(),
+      clapName.c_str(),
+      (HICON)::LoadImageW(nullptr, (LPCWSTR)IDI_APPLICATION, IMAGE_ICON, 0, 0,
+                          LR_DEFAULTCOLOR | LR_DEFAULTSIZE | LR_SHARED),
   };
 
   ::RegisterClassExW(&wcex);
@@ -143,7 +143,7 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
     {
       case WM_SIZE:
       {
-        RECT r;
+        RECT r{0, 0, 0, 0};
         ::GetClientRect(hwnd, &r);
 
         auto plugin{freeaudio::clap_wrapper::standalone::getMainPlugin()};
@@ -190,7 +190,7 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
         uint32_t h;
         plugin->_ext._gui->get_size(plugin->_plugin, &w, &h);
 
-        RECT r;
+        RECT r{0, 0, 0, 0};
         r.right = w;
         r.bottom = h;
 
@@ -245,7 +245,7 @@ void Win32Gui::run()
     ui->get_size(p, &w, &h);
 
     Window window;
-    RECT r;
+    RECT r{0, 0, 0, 0};
     r.right = w;
     r.bottom = h;
 
