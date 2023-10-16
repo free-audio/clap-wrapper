@@ -98,22 +98,24 @@ Window::Window()
 
   std::wstring clapName{widen(WIN32_TITLE)};
 
-  WNDCLASSEXW wcex{sizeof(WNDCLASSEX)};
-  wcex.lpszClassName = clapName.c_str();
-  wcex.lpszMenuName = clapName.c_str();
-  wcex.lpfnWndProc = Window::WndProc;
-  wcex.style = CS_HREDRAW | CS_VREDRAW;
-  wcex.cbClsExtra = 0;
-  wcex.cbWndExtra = 0;
-  wcex.hInstance = ::GetModuleHandleW(nullptr);
-  wcex.hbrBackground = (HBRUSH)::GetStockObject(BLACK_BRUSH);
-  wcex.hCursor = (HCURSOR)::LoadImageW(nullptr, (LPCWSTR)IDC_ARROW, IMAGE_CURSOR, 0, 0, LR_SHARED);
-  wcex.hIcon = (HICON)::LoadImageW(nullptr, (LPCWSTR)IDI_APPLICATION, IMAGE_ICON, 0, 0,
-                                   LR_DEFAULTCOLOR | LR_DEFAULTSIZE | LR_SHARED);
-  wcex.hIconSm = (HICON)::LoadImageW(nullptr, (LPCWSTR)IDI_APPLICATION, IMAGE_ICON, 0, 0,
-                                     LR_DEFAULTCOLOR | LR_DEFAULTSIZE | LR_SHARED);
+  WNDCLASSEXW wcex{
+    sizeof(WNDCLASSEX),
+    CS_HREDRAW | CS_VREDRAW,
+    Window::WndProc,
+    0,
+    0,
+    ::GetModuleHandleW(nullptr),
+    (HICON)::LoadImageW(nullptr, (LPCWSTR)IDI_APPLICATION, IMAGE_ICON, 0, 0,
+                                   LR_DEFAULTCOLOR | LR_DEFAULTSIZE | LR_SHARED),
+    (HCURSOR)::LoadImageW(nullptr, (LPCWSTR)IDC_ARROW, IMAGE_CURSOR, 0, 0, LR_SHARED),
+    (HBRUSH)::GetStockObject(BLACK_BRUSH),
+    clapName.c_str(),
+    clapName.c_str(),
+    (HICON)::LoadImageW(nullptr, (LPCWSTR)IDI_APPLICATION, IMAGE_ICON, 0, 0,
+                                   LR_DEFAULTCOLOR | LR_DEFAULTSIZE | LR_SHARED),
+  };
 
-  auto atom{::RegisterClassExW(&wcex)};
+  ::RegisterClassExW(&wcex);
 
   ::CreateWindowExW(0, clapName.c_str(), clapName.c_str(), WS_OVERLAPPEDWINDOW, CW_USEDEFAULT,
                     CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, nullptr, nullptr,
@@ -188,16 +190,16 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
         uint32_t h;
         plugin->_ext._gui->get_size(plugin->_plugin, &w, &h);
 
-        RECT r{0};
+        RECT r;
         r.right = w;
         r.bottom = h;
 
         auto dpi{::GetDpiForWindow(hwnd)};
 
-        auto scaleFactor{static_cast<float>(dpi) / static_cast<float>(USER_DEFAULT_SCREEN_DPI)};
+        // auto scaleFactor{static_cast<float>(dpi) / static_cast<float>(USER_DEFAULT_SCREEN_DPI)};
 
-        LOG << "dpi: " << dpi << std::endl;
-        LOG << "scaleFactor: " << scaleFactor << std::endl;
+        // LOG << "dpi: " << dpi << std::endl;
+        // LOG << "scaleFactor: " << scaleFactor << std::endl;
 
         ::AdjustWindowRectExForDpi(&r, WS_OVERLAPPEDWINDOW, 0, 0, dpi);
         ::SetWindowPos(hwnd, nullptr, 0, 0, (r.right - r.left), (r.bottom - r.top), SWP_NOMOVE);
@@ -219,7 +221,6 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 void Win32Gui::initialize(freeaudio::clap_wrapper::standalone::StandaloneHost* sah)
 {
   sah->win32Gui = this;
-  sah->gui_can_resize();
 }
 
 void Win32Gui::setPlugin(std::shared_ptr<Clap::Plugin> p)
@@ -244,12 +245,13 @@ void Win32Gui::run()
     ui->get_size(p, &w, &h);
 
     Window window;
-    RECT r{0};
+    RECT r;
     r.right = w;
     r.bottom = h;
 
     auto dpi{::GetDpiForWindow(window.get_hwnd())};
-    auto scaleFactor{static_cast<float>(dpi) / static_cast<float>(USER_DEFAULT_SCREEN_DPI)};
+    // auto scaleFactor{static_cast<float>(dpi) / static_cast<float>(USER_DEFAULT_SCREEN_DPI)};
+
     ::AdjustWindowRectExForDpi(&r, WS_OVERLAPPEDWINDOW, 0, 0, dpi);
     ::SetWindowPos(window.get_hwnd(), nullptr, 0, 0, (r.right - r.left), (r.bottom - r.top), SWP_NOMOVE);
 
