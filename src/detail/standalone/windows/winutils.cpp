@@ -96,7 +96,7 @@ Window::Window()
 {
   ::SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
-  std::wstring clapName{widen(OUTPUT_NAME)};
+  std::wstring clapName{widen(WIN32_TITLE)};
 
   WNDCLASSEXW wcex{sizeof(WNDCLASSEX)};
   wcex.lpszClassName = clapName.c_str();

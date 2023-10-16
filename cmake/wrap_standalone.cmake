@@ -94,14 +94,14 @@ function(target_add_standalone_wrapper)
         macos_include_clap_in_bundle(TARGET ${SA_TARGET}
                 MACOS_EMBEDDED_CLAP_LOCATION ${SA_MACOS_EMBEDDED_CLAP_LOCATION})
 
-    elseif(WIN32)
+    elseif(WIN32 AND (CMAKE_CXX_COMPILER_ID MATCHES "MSVC" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
         target_sources(${SA_TARGET} PRIVATE
             ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/wrapasstandalone.cpp
             ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/windows/winutils.cpp)
 
         target_compile_definitions(${SA_TARGET} PRIVATE
             CLAP_WRAPPER_HAS_WIN32
-            OUTPUT_NAME="${SA_OUTPUT_NAME}"
+            WIN32_TITLE="${SA_OUTPUT_NAME}"
         )
 
     elseif(UNIX)
