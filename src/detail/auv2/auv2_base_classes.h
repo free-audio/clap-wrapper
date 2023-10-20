@@ -101,7 +101,7 @@ public:
     MusicDeviceGroupID /*inGroupID*/, NoteInstanceID* /*outNoteInstanceID*/,
     UInt32 /*inOffsetSampleFrame*/, const MusicDeviceNoteParams& /*inParams*/) override
   {
-    _processAdapter
+    // _processAdapter
     // _processAdapter->addMIDIEvent(, <#UInt32 inData1#>, <#UInt32 inData2#>, <#UInt32 inOffsetSampleFrame#>)
     return kAudio_UnimplementedError;
   }

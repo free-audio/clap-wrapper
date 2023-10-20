@@ -214,6 +214,7 @@ class Plugin
 
 #endif
   CLAP_NODISCARD Raise AlwaysAudioThread();
+  CLAP_NODISCARD Raise AlwaysMainThread();
 
  private:
   static const void* clapExtension(const clap_host* host, const char* extension);
@@ -228,6 +229,8 @@ class Plugin
   IHost* _parentHost = nullptr;
   const std::thread::id _main_thread_id = std::this_thread::get_id();
   std::atomic<uint32_t> _audio_thread_override = 0;
+  std::atomic<uint32_t> _main_thread_override = 0;
+
   AudioSetup _audioSetup;
 };
 }  // namespace Clap

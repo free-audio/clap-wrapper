@@ -39,8 +39,7 @@ struct ProcessData
   void* audioUnit = nullptr;
   
   // -------------
-  bool _transportValid;
-  
+  bool _AUtransportValid; // true if:
   // information from the AU Host
   Float64 _cycleStart;
   Float64 _cycleEnd;
@@ -51,12 +50,14 @@ struct ProcessData
   Boolean _isLooping;
 
   // --------------
-  bool _beatAndTempoValid;
+  bool _AUbeatAndTempoValid; // true if:
+  // information from the AU host
   Float64 _beat;
   Float64 _tempo;
 
   // --------------
-  bool _musicalTimeValid;
+  bool _AUmusicalTimeValid; // true if:
+  // information from the AU host
   UInt32 _offsetToNextBeat;
   Float32 _musicalNumerator;
   UInt32 _musicalDenominator;
@@ -92,7 +93,7 @@ public:
   // interface for AUv2 wrapper:
   void addMIDIEvent(
                     UInt32 inStatus, UInt32 inData1, UInt32 inData2, UInt32 inOffsetSampleFrame);
-  void startNote()
+  // void startNote()
   ~ProcessAdapter();
 private:
   void sortEventIndices();

@@ -16,14 +16,16 @@ ProcessAdapter::~ProcessAdapter()
       delete[] _input_ports[i].data32;
     }
     delete[] _input_ports;
+    _input_ports = nullptr;
   }
-  if ( _output_ports)
+  if ( _output_ports ) 
   {
     for ( uint32_t i = 0 ; i < _numOutputs ; ++i)
     {
-      delete[] _output_ports;
+      delete[] _output_ports[i].data32;
     }
     delete[] _output_ports;
+    _output_ports = nullptr;
   }
 }
 
@@ -148,8 +150,20 @@ void ProcessAdapter::sortEventIndices()
 
 void ProcessAdapter::process(ProcessData& data)
 {
+  
   sortEventIndices();
   _processData.frames_count = data.numSamples;
+  _transport.flags = 0;
+  
+  if ( data._AUtransportValid)
+  {
+    _transport.flags += data._isPlaying ? CLAP_TRANSPORT_IS_PLAYING : 0;
+    _transport.flags += data._isLooping ? CLAP_TRANSPORT_IS_LOOP_ACTIVE : 0;
+    // CLAP_TRANSPORT_IS_RECORDING can not be retrieved from the AudioUnit API
+    _transport.loop_start_beats = data._cycleStart;
+    _transport.loop_end_beats = data._cycleEnd;
+  }
+  
 
   if ( _numInputs )
   {

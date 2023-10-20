@@ -111,9 +111,39 @@ WrapAsAUV2::~WrapAsAUV2()
   _plugin.reset();
 }
 
+void pffffrzz()
+{
+  auto pid = getpid();
+  
+  char buf[200];
+  snprintf(buf,sizeof(buf),"process %d",pid);
+  SInt32 nRes = 0;
+  CFUserNotificationRef pDlg = NULL;
+  CFStringRef b = CFStringCreateWithCString(NULL, buf, kCFStringEncodingASCII);
+  const void* keys[] = { kCFUserNotificationAlertHeaderKey,
+   kCFUserNotificationAlertMessageKey };
+  const void* vals[] = {
+   CFSTR("Test Foundation Message Box"),
+   b
+  };
+  
+  CFDictionaryRef dict = CFDictionaryCreate(0, keys, vals,
+                 sizeof(keys)/sizeof(*keys),
+                 &kCFTypeDictionaryKeyCallBacks,
+                 &kCFTypeDictionaryValueCallBacks);
+  
+  pDlg = CFUserNotificationCreate(kCFAllocatorDefault, 0,
+                      kCFUserNotificationPlainAlertLevel,
+                      &nRes, dict);
+ 
+  (void) pDlg;
+  CFRelease(b);
+  // usleep(20000000);
+  }
 // the very very reduced state machine
 OSStatus WrapAsAUV2::Initialize() {
 
+  // pffffrzz();
   if (!_desc) return 2;
 
   // first need to initialize the base to create
@@ -121,6 +151,8 @@ OSStatus WrapAsAUV2::Initialize() {
   auto res = Base::Initialize();
   if (res != noErr) return res;
 
+  auto keeper = _plugin->AlwaysMainThread();
+  
   // initialize will call IHost functions to set up busses etc, so be ready
   _plugin->initialize();
   
@@ -313,6 +345,17 @@ OSStatus WrapAsAUV2::GetPropertyInfo(AudioUnitPropertyID inID, AudioUnitScope in
         LOGINFO("query Property Info: kAudioUnitProperty_CocoaUI");
         return noErr;
         break;
+#if 0
+        // TODO: for CLAPs that have MIDI output, we need these two properties.
+      case kAudioUnitProperty_MIDIOutputCallbackInfo:
+        return noErr;
+        break;
+      case kAudioUnitProperty_MIDIOutputCallback:
+        outWritable = true;
+        outDataSize = sizeof(AUMIDIOutputCallbackStruct);
+        break;
+#endif
+      // custom
       case kAudioUnitProperty_ClapWrapper_UIConnection_id:
         outWritable = false;
         outDataSize = sizeof(free_audio::auv2_wrapper::ui_connection);
@@ -368,7 +411,7 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         break;
       case kMusicDeviceProperty_DualSchedulingMode:
         // yes we do
-        *static_cast<UInt32*>(outData) = 1;
+        *static_cast<UInt32*>(outData) = 0;
         return noErr;
         break;
       case kMusicDeviceProperty_SupportsStartStopNote:
@@ -519,6 +562,7 @@ OSStatus WrapAsAUV2::Render( AudioUnitRenderActionFlags&  inFlags,
                 const AudioTimeStamp&    inTimeStamp,
                                   UInt32            inFrames)
 {
+  
   assert( inFlags == 0);
   if ( _initialized && (inFlags == 0) )
   {
@@ -526,13 +570,13 @@ OSStatus WrapAsAUV2::Render( AudioUnitRenderActionFlags&  inFlags,
     Clap::AUv2::ProcessData data{inFlags, inTimeStamp, inFrames,this};
     
     // retrieve musical information for this render block
-    
-    data._transportValid = (noErr == CallHostTransportState(&data._isPlaying, &data._transportChanged, &data._currentSongPos, &data._isLooping, &data._cycleStart, &data._cycleEnd) );
-    data._beatAndTempoValid = (noErr ==
+#if 0
+    data._AUtransportValid = (noErr == CallHostTransportState(&data._isPlaying, &data._transportChanged, &data._currentSongPos, &data._isLooping, &data._cycleStart, &data._cycleEnd) );
+    data._AUbeatAndTempoValid = (noErr ==
                                CallHostBeatAndTempo(&data._beat, &data._tempo));
-    data._musicalTimeValid = (noErr ==
+    data._AUmusicalTimeValid = (noErr ==
                               CallHostMusicalTimeLocation(&data._offsetToNextBeat, &data._musicalNumerator, &data._musicalDenominator, &data._currentDownBeat));
-    
+#endif
     // Get output buffer list and extract the i/o buffer pointers.
     // The loop is done so that an arbitrary number of output busses
     // with an arbitrary number of output channels is mapped onto a
