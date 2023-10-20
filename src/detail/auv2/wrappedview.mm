@@ -57,17 +57,20 @@ free_audio::auv2_wrapper::ui_connection uiconn;
   
   return [[[Clap_Wrapper_View_NSView alloc] initWithAUv2:&uiconn
                                preferredSize:inPreferredSize] autorelease];
+  LOGINFO("[clap-wrapper] get ui View for AudioUnit");
   // return nil;
 }
 
 - (unsigned int)interfaceVersion
 {
+  LOGINFO("[clap-wrapper] get interface version");
     return 0;
 }
 
+
 - (NSString *)description
 {
-  
+  LOGINFO("[clap-wrapper] get description");
    return [NSString stringWithUTF8String:"Wrap Window"];  // TODO: get name from plugin
 }
 
@@ -84,6 +87,7 @@ void timerCallback(CFRunLoopTimerRef timer, void *info)
 
 - (id)initWithAUv2:(free_audio::auv2_wrapper::ui_connection *)cont preferredSize:(NSSize)size
 {
+  LOGINFO("[clap-wrapper] create NS View begin");
   ui = *cont;
   ui._plugin->_ext._gui->create(ui._plugin->_plugin, CLAP_WINDOW_API_COCOA, false);
   auto gui = ui._plugin->_ext._gui;
@@ -117,28 +121,33 @@ void timerCallback(CFRunLoopTimerRef timer, void *info)
   if (idleTimer)
       CFRunLoopAddTimer(CFRunLoopGetMain(), idleTimer, kCFRunLoopCommonModes);
   
-
+  LOGINFO("[clap-wrapper] create NS View end");
   return self;
 }
 
 - (void)doIdle
 {
   // auto gui = ui._plugin->_ext._gui;
+  
 }
 - (void)dealloc
 {
+  LOGINFO("[clap-wrapper] NS View dealloc");
   if (idleTimer)
   {
       CFRunLoopTimerInvalidate(idleTimer);
   }
+  auto gui = ui._plugin->_ext._gui;
+  gui->destroy(ui._plugin->_plugin);
 
   [super dealloc];
 }
 - (void)setFrame:(NSRect)newSize
 {
+  LOGINFO("[clap-wrapper] new size");
   auto gui = ui._plugin->_ext._gui;
   gui->set_size(ui._plugin->_plugin,newSize.size.width,newSize.size.height);
-  // gui->show(ui._plugin->_plugin);
+  gui->show(ui._plugin->_plugin);
 
 }
 
@@ -149,6 +158,7 @@ bool fillAudioUnitCocoaView(AudioUnitCocoaViewInfo* viewInfo)
   // now we are in m&m land..
   auto bundle = [NSBundle bundleForClass:[Clap_Wrapper_View_CocoaUI class]];
   
+  LOGINFO("[clap-wrapper] fill AudioUnitCocoaViewInfo");
   if ( bundle )
   {
     // Get the URL for the main bundle
@@ -159,9 +169,11 @@ bool fillAudioUnitCocoaView(AudioUnitCocoaViewInfo* viewInfo)
     CFStringRef className = CFSTR("Clap_Wrapper_View_CocoaUI");
     
     *viewInfo = { cfUrl, { className }};
-    
+    LOGINFO("[clap-wrapper] fill AudioUnitCocoaViewInfo: OK");
     return true;
+    
   }
+  LOGINFO("[clap-wrapper] fill AudioUnitCocoaViewInfo: FAILED");
   return false;
 }
 

@@ -84,32 +84,42 @@ bool WrapAsAUV2::initializeClapDesc()
   return true;
 }
 
-// the very very reduced state machine
-OSStatus WrapAsAUV2::Initialize() {
+WrapAsAUV2::WrapAsAUV2(AUV2_Type type, const std::string &clapname, const std::string &clapid, int idx,
+                    AudioComponentInstance ci)
+: Base{ci, 0,1}, Clap::IHost(), _autype(type), _clapname{clapname}, _clapid{clapid}, _idx{idx}
+{
   (void) _autype; // TODO: will be used for dynamic property adaption
   if (!_desc)
   {
-    if (!initializeClapDesc())
-    {
-      return 1;
-    }
-    else
+    if (initializeClapDesc())
     {
       std::cout << "[clap-wrapper] auv2: Initialized '" << _desc->id << "' / '" << _desc->name
                 << "' / '" << _desc->version << "'" << std::endl;
+      /*
+       * ToDo: Stand up the host, create the plugin instance here
+       */
+      _plugin = Clap::Plugin::createInstance(_library._pluginFactory, _desc->id, this);
+
     }
   }
+}
+
+WrapAsAUV2::~WrapAsAUV2()
+{
+  if ( _plugin )
+    _plugin->terminate();
+  _plugin.reset();
+}
+
+// the very very reduced state machine
+OSStatus WrapAsAUV2::Initialize() {
+
   if (!_desc) return 2;
 
   // first need to initialize the base to create
   // all elements needed
   auto res = Base::Initialize();
   if (res != noErr) return res;
-
-  /*
-   * ToDo: Stand up the host, create the plugin instance here
-   */
-  _plugin = Clap::Plugin::createInstance(_library._pluginFactory, _desc->id, this);
 
   // initialize will call IHost functions to set up busses etc, so be ready
   _plugin->initialize();
@@ -241,8 +251,8 @@ OSStatus WrapAsAUV2::Stop() {
   
 }
 void WrapAsAUV2::Cleanup() {
-  _plugin->terminate();
-  _plugin.reset();
+  LOGINFO("Cleaning up Plugin");
+  
   Base::Cleanup();
 }
 
@@ -300,6 +310,7 @@ OSStatus WrapAsAUV2::GetPropertyInfo(AudioUnitPropertyID inID, AudioUnitScope in
       case kAudioUnitProperty_CocoaUI:
         outWritable = false;
         outDataSize = sizeof(struct AudioUnitCocoaViewInfo);
+        LOGINFO("query Property Info: kAudioUnitProperty_CocoaUI");
         return noErr;
         break;
       case kAudioUnitProperty_ClapWrapper_UIConnection_id:
@@ -339,11 +350,19 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         *static_cast<ui_connection*>(outData) = _uiconn;
         return noErr;
       case kAudioUnitProperty_CocoaUI:
-        if ( _plugin->_ext._gui->is_api_supported(_plugin->_plugin, CLAP_WINDOW_API_COCOA, false))
+        LOGINFO("query Property: kAudioUnitProperty_CocoaUI {}", (_plugin)? "plugin" : "no plugin" );
+        if ( _plugin  && (_plugin->_ext._gui->is_api_supported(_plugin->_plugin, CLAP_WINDOW_API_COCOA, false)))
         {
+          LOGINFO("now getting cocoa ui");
           fillAudioUnitCocoaView( ((AudioUnitCocoaViewInfo *)outData));
           // *((AudioUnitCocoaViewInfo *)outData) = cocoaInfo;
+          LOGINFO("query Property: kAudioUnitProperty_CocoaUI complete");
           return noErr; // sizeof(AudioUnitCocoaViewInfo);
+        }
+        else{
+          LOGINFO("query Property: kAudioUnitProperty_CocoaUI although now plugin ext");
+          fillAudioUnitCocoaView( ((AudioUnitCocoaViewInfo *)outData));
+          return noErr;
         }
         return kAudioUnitErr_InvalidProperty;
         break;
@@ -353,6 +372,8 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         return noErr;
         break;
       case kMusicDeviceProperty_SupportsStartStopNote:
+        // TODO: change this when figured out how the NoteParamsControlValue actually do work.
+        
         *static_cast<UInt32*>(outData) = 0;
         return noErr;
         break;
@@ -388,15 +409,19 @@ OSStatus WrapAsAUV2::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
 //      return noErr;
         break;
       case kMusicDeviceProperty_SupportsStartStopNote:
-      {
-        
-        auto x = *static_cast<const UInt32*>(inData);
-        (void) x;
-        return noErr;
-      }
+        {
+          
+          auto x = *static_cast<const UInt32*>(inData);
+          (void) x;
+          return noErr;
+        }
         break;
       case kMusicDeviceProperty_DualSchedulingMode:
+      {
+        auto x = *static_cast<const UInt32*>(inData);
+        (void)x;
         return noErr;
+      }
         break;
 
     default:
@@ -409,17 +434,19 @@ OSStatus WrapAsAUV2::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
 OSStatus WrapAsAUV2::SetRenderNotification(AURenderCallback inProc, void* inRefCon){
   if ( _plugin)
   {
-    _processAdapter = std::make_unique<Clap::AUv2::ProcessAdapter>();
+    assert(!_initialized);
+    if ( !_processAdapter)
+      _processAdapter = std::make_unique<Clap::AUv2::ProcessAdapter>();
     auto maxSampleFrames = Base::GetMaxFramesPerSlice();
     auto minSampleFrames = (maxSampleFrames >= 16) ? 16 : 1;
     _plugin->setBlockSizes(minSampleFrames, maxSampleFrames);
         _plugin->setSampleRate(Output(0).GetStreamFormat().mSampleRate);
     
-    this->Inputs();
     _processAdapter->setupProcessing(Inputs(), Outputs(), _plugin->_plugin, _plugin->_ext._params, maxSampleFrames);
 
     _plugin->activate();
     _plugin->start_processing();
+    _initialized = true;
   }
 
   return Base::SetRenderNotification(inProc, inRefCon);
@@ -429,6 +456,7 @@ OSStatus WrapAsAUV2::RemoveRenderNotification(AURenderCallback inProc, void* inR
 {
   if ( _plugin)
   {
+    _initialized = false;
     _processAdapter.reset();
     _plugin->stop_processing();
     _plugin->deactivate();
@@ -491,18 +519,28 @@ OSStatus WrapAsAUV2::Render( AudioUnitRenderActionFlags&  inFlags,
                 const AudioTimeStamp&    inTimeStamp,
                                   UInt32            inFrames)
 {
-  // do the render dance
-  Clap::AUv2::ProcessData data{inFlags, inTimeStamp, inFrames,this};
-
-  // retrieve musical information for this render block
-
-  data._transportValid = (noErr == CallHostTransportState(&data._isPlaying, &data._transportChanged, &data._currentSongPos, &data._isLooping, &data._cycleStart, &data._cycleEnd) );
-  data._beatAndTempoValid = (noErr ==
-                                CallHostBeatAndTempo(&data._beat, &data._tempo));
-  data._musicalTimeValid = (noErr ==
-                            CallHostMusicalTimeLocation(&data._offsetToNextBeat, &data._musicalNumerator, &data._musicalDenominator, &data._currentDownBeat));
-  
-  _processAdapter->process(data);
+  assert( inFlags == 0);
+  if ( _initialized && (inFlags == 0) )
+  {
+    // do the render dance
+    Clap::AUv2::ProcessData data{inFlags, inTimeStamp, inFrames,this};
+    
+    // retrieve musical information for this render block
+    
+    data._transportValid = (noErr == CallHostTransportState(&data._isPlaying, &data._transportChanged, &data._currentSongPos, &data._isLooping, &data._cycleStart, &data._cycleEnd) );
+    data._beatAndTempoValid = (noErr ==
+                               CallHostBeatAndTempo(&data._beat, &data._tempo));
+    data._musicalTimeValid = (noErr ==
+                              CallHostMusicalTimeLocation(&data._offsetToNextBeat, &data._musicalNumerator, &data._musicalDenominator, &data._currentDownBeat));
+    
+    // Get output buffer list and extract the i/o buffer pointers.
+    // The loop is done so that an arbitrary number of output busses
+    // with an arbitrary number of output channels is mapped onto a
+    // continuous array of float buffers for the VST process function
+    
+    
+    _processAdapter->process(data);
+  }
   return noErr;
 }
 

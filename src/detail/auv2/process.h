@@ -37,7 +37,7 @@ struct ProcessData
   const AudioTimeStamp& timestamp;
   uint32_t numSamples = 0;
   void* audioUnit = nullptr;
-
+  
   // -------------
   bool _transportValid;
   
@@ -92,7 +92,8 @@ public:
   // interface for AUv2 wrapper:
   void addMIDIEvent(
                     UInt32 inStatus, UInt32 inData1, UInt32 inData2, UInt32 inOffsetSampleFrame);
-  
+  void startNote()
+  ~ProcessAdapter();
 private:
   void sortEventIndices();
   
@@ -118,6 +119,9 @@ private:
   };
   std::vector<ActiveNote> _activeNotes;
   
+  uint32_t _numInputs = 0;
+  uint32_t _numOutputs = 0;
+  
   clap_audio_buffer_t* _input_ports = nullptr;
   clap_audio_buffer_t* _output_ports = nullptr;
   clap_event_transport_t _transport = {};
@@ -133,8 +137,8 @@ private:
   std::vector<size_t> _eventindices;
   
   // AU Process Data?
-  ausdk::AUScope* _audioInputs = nullptr;
-  ausdk::AUScope* _audioOutputs = nullptr;
+  ausdk::AUScope* _audioInputScope = nullptr;
+  ausdk::AUScope* _audioOutputScope = nullptr;
 };
 }
 

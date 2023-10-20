@@ -31,15 +31,14 @@ enum class AUV2_Type : uint32_t
 namespace free_audio::auv2_wrapper
 {
 
-class WrapAsAUV2 : public ausdk::AUBase, public Clap::IHost
+class WrapAsAUV2 : public ausdk::AUBase, public Clap::IHost 
 {
   using Base = ausdk::AUBase;
   
 public:
   explicit WrapAsAUV2(AUV2_Type type, const std::string &clapname, const std::string &clapid, int idx,
-                      AudioComponentInstance ci)
-  : Base{ci, 0,1}, Clap::IHost(), _autype(type), _clapname{clapname}, _clapid{clapid}, _idx{idx}
-  {}
+                      AudioComponentInstance ci);
+  virtual ~WrapAsAUV2();
 private:
   AUV2_Type _autype;
   
@@ -102,6 +101,8 @@ public:
     MusicDeviceGroupID /*inGroupID*/, NoteInstanceID* /*outNoteInstanceID*/,
     UInt32 /*inOffsetSampleFrame*/, const MusicDeviceNoteParams& /*inParams*/) override
   {
+    _processAdapter
+    // _processAdapter->addMIDIEvent(, <#UInt32 inData1#>, <#UInt32 inData2#>, <#UInt32 inOffsetSampleFrame#>)
     return kAudio_UnimplementedError;
   }
 
@@ -127,12 +128,12 @@ public:
   void setupAudioBusses(
       const clap_plugin_t* plugin,
       const clap_plugin_audio_ports_t*
-                        audioports) override;
+                        audioports) override final;
   void setupMIDIBusses(
       const clap_plugin_t* plugin,
       const clap_plugin_note_ports_t*
-                      noteports ) override;  // called from initialize() to allow the setup of MIDI ports
-  void setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params) override {}
+                      noteports ) override final;  // called from initialize() to allow the setup of MIDI ports
+  void setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params) override final {}
 
   void param_rescan(clap_param_rescan_flags flags) override {}  // ext_host_params
   void param_clear(clap_id param, clap_param_clear_flags flags) override {}
@@ -171,6 +172,7 @@ private:
   std::shared_ptr<Clap::Plugin> _plugin = nullptr;
   
   std::unique_ptr<Clap::AUv2::ProcessAdapter> _processAdapter;
+  std::atomic<bool> _initialized = false;
   
   
 };

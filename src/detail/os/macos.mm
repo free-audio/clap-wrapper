@@ -29,7 +29,8 @@ namespace os
 {
 void log(const char* text)
 {
-  NSLog(@"%s", text);
+  printf("%s\n", text);
+  // NSLog(@"%s", text);
 }
 
 class MacOSHelper
