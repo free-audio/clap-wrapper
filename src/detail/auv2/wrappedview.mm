@@ -88,10 +88,13 @@ void timerCallback(CFRunLoopTimerRef timer, void *info)
 - (id)initWithAUv2:(free_audio::auv2_wrapper::ui_connection *)cont preferredSize:(NSSize)size
 {
   LOGINFO("[clap-wrapper] create NS View begin");
+  
   ui = *cont;
   ui._plugin->_ext._gui->create(ui._plugin->_plugin, CLAP_WINDOW_API_COCOA, false);
   auto gui = ui._plugin->_ext._gui;
   
+  // actually, the host should send an appropriate size,
+  // yet, they actually just send utter garbage, so: don't care
   // if (size.width == 0 || size.height == 0)
   {
     // gui->get_size(ui._plugin->_plugin,)
@@ -162,7 +165,7 @@ void timerCallback(CFRunLoopTimerRef timer, void *info)
 
 bool fillAudioUnitCocoaView(AudioUnitCocoaViewInfo* viewInfo)
 {
-  // now we are in m&m land..
+  // now we are in m&m land.. 
   auto bundle = [NSBundle bundleForClass:[Clap_Wrapper_View_CocoaUI class]];
   
   LOGINFO("[clap-wrapper] fill AudioUnitCocoaViewInfo");

@@ -21,11 +21,11 @@ static const AudioUnitPropertyID kAudioUnitProperty_ClapWrapper_UIConnection_id 
 namespace free_audio::auv2_wrapper
 {
 
-typedef struct ui_connection {
+typedef struct ui_connection
+{
   uint32_t identifier = kAudioUnitProperty_ClapWrapper_UIConnection_id;
   Clap::Plugin* _plugin = nullptr;
   clap_window_t* _window = nullptr;
 } ui_connection;
-
 
 }  // namespace free_audio::auv2_wrapper
