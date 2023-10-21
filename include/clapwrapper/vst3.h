@@ -48,17 +48,25 @@ typedef uint8_t array_of_16_bytes[16];
 }
 
 #else
-#define VST3GUID(g1, g2, g3, g4)                                                \
-  {                                                                             \
-    (uint8_t)((g1 & 0xFF000000) >> 24), (uint8_t)((g1 & 0x00FF0000) >> 16),     \
-        (uint8_t)((g1 & 0x0000FF00) >> 8), (uint8_t)((g1 & 0x000000FF)),        \
-        (uint8_t)((g2 & 0xFF000000) >> 24), (uint8_t)((g2 & 0x00FF0000) >> 16), \
-        (uint8_t)((g2 & 0x0000FF00) >> 8), (uint8_t)((g2 & 0x000000FF)),        \
-        (uint8_t)((g3 & 0xFF000000) >> 24), (uint8_t)((g3 & 0x00FF0000) >> 16), \
-        (uint8_t)((g3 & 0x0000FF00) >> 8), (uint8_t)((g3 & 0x000000FF)),        \
-        (uint8_t)((g4 & 0xFF000000) >> 24), (uint8_t)((g4 & 0x00FF0000) >> 16), \
-        (uint8_t)((g4 & 0x0000FF00) >> 8), (uint8_t)((g4 & 0x000000FF)),        \
-  }
+#define VST3GUID(g1, g2, g3, g4) \
+{                                \
+(uint8_t)((g1 & 0xFF000000) >> 24),    \
+(uint8_t)((g1 & 0x00FF0000) >> 16),    \
+(uint8_t)((g1 & 0x0000FF00) >>  8),    \
+(uint8_t)((g1 & 0x000000FF)      ),    \
+(uint8_t)((g2 & 0xFF000000) >> 24),    \
+(uint8_t)((g2 & 0x00FF0000) >> 16),    \
+(uint8_t)((g2 & 0x0000FF00) >>  8),    \
+(uint8_t)((g2 & 0x000000FF)      ),    \
+(uint8_t)((g3 & 0xFF000000) >> 24),    \
+(uint8_t)((g3 & 0x00FF0000) >> 16),    \
+(uint8_t)((g3 & 0x0000FF00) >>  8),    \
+(uint8_t)((g3 & 0x000000FF)      ),    \
+(uint8_t)((g4 & 0xFF000000) >> 24),    \
+(uint8_t)((g4 & 0x00FF0000) >> 16),    \
+(uint8_t)((g4 & 0x0000FF00) >>  8),    \
+(uint8_t)((g4 & 0x000000FF)      ),    \
+}
 
 #endif
 
