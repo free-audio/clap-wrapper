@@ -385,6 +385,10 @@ void Plugin::log(clap_log_severity severity, const char* msg)
 
 bool Plugin::is_main_thread() const
 {
+  if (this->_main_thread_override > 0)
+  {
+    return true;
+  }
   return _main_thread_id == std::this_thread::get_id();
 }
 
@@ -394,12 +398,17 @@ bool Plugin::is_audio_thread() const
   {
     return true;
   }
-  return !is_main_thread();
+  return !(_main_thread_id == std::this_thread::get_id());
 }
 
 CLAP_NODISCARD Raise Plugin::AlwaysAudioThread()
 {
   return Raise(this->_audio_thread_override);
+}
+
+CLAP_NODISCARD Raise Plugin::AlwaysMainThread()
+{
+  return Raise(this->_main_thread_override);
 }
 
 void Plugin::param_rescan(clap_param_rescan_flags flags)

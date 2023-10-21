@@ -11,7 +11,9 @@
 */
 
 #include <Foundation/Foundation.h>
+#ifdef CLAP_WRAPPER_BUILD_FOR_VST3
 #include "public.sdk/source/main/moduleinit.h"
+#endif
 #include "osutil.h"
 #include <vector>
 #if MACOS_USE_STD_FILESYSTEM
@@ -27,7 +29,8 @@ namespace os
 {
 void log(const char* text)
 {
-  NSLog(@"%s", text);
+  printf("%s\n", text);
+  // NSLog(@"%s", text);
 }
 
 class MacOSHelper
@@ -45,8 +48,13 @@ class MacOSHelper
   std::vector<IPlugObject*> _plugs;
 } gMacOSHelper;
 
+// standard specific extensions
+// ----------------------------------------------------------
+#ifdef CLAP_WRAPPER_BUILD_FOR_VST3
 static Steinberg::ModuleInitializer createMessageWindow([] { gMacOSHelper.init(); });
 static Steinberg::ModuleTerminator dropMessageWindow([] { gMacOSHelper.terminate(); });
+#endif
+// ----------------------------------------------------------
 
 void MacOSHelper::init()
 {

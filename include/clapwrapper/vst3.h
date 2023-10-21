@@ -16,14 +16,15 @@
 #endif
 
 // the factory extension
-static const CLAP_CONSTEXPR char CLAP_PLUGIN_FACTORY_INFO_VST3[] = "clap.plugin-factory-info-as-vst3.draft0";
+static const CLAP_CONSTEXPR char CLAP_PLUGIN_FACTORY_INFO_VST3[] =
+    "clap.plugin-factory-info-as-vst3.draft0";
 
 // the plugin extension
 static const CLAP_CONSTEXPR char CLAP_PLUGIN_AS_VST3[] = "clap.plugin-info-as-vst3.draft0";
 
 typedef uint8_t array_of_16_bytes[16];
 
-
+// clang-format off
 // VST3GUID allows you to provide the 4 uint32_t parts of the GUID and transforms them to the 16 byte array
 #if WIN
 #define VST3GUID(g1, g2, g3, g4) \
@@ -45,6 +46,7 @@ typedef uint8_t array_of_16_bytes[16];
 (uint8_t)((g4 & 0x0000FF00) >>  8),    \
 (uint8_t)((g4 & 0x000000FF)      ),    \
 }
+
 #else
 #define VST3GUID(g1, g2, g3, g4) \
 {                                \
@@ -68,6 +70,8 @@ typedef uint8_t array_of_16_bytes[16];
 
 #endif
 
+// clang-format on
+
 /*
   clap_plugin_as_vst3
 
@@ -77,9 +81,9 @@ typedef uint8_t array_of_16_bytes[16];
 
 typedef struct clap_plugin_info_as_vst3
 {
-  const char* vendor;                   // vendor
-  const array_of_16_bytes* componentId; // compatibility GUID
-  const char* features;                 // feature string for SubCategories
+  const char* vendor;                    // vendor
+  const array_of_16_bytes* componentId;  // compatibility GUID
+  const char* features;                  // feature string for SubCategories
 } clap_plugin_info_as_vst3_t;
 
 /*
@@ -94,13 +98,14 @@ typedef struct clap_plugin_info_as_vst3
 typedef struct clap_plugin_factory_as_vst3
 {
   // optional values for the Steinberg::PFactoryInfo structure
-  const char* vendor;             // if not nullptr, the vendor string in the 
+  const char* vendor;  // if not nullptr, the vendor string in the
   const char* vendor_url;
   const char* email_contact;
 
   // retrieve additional information for the Steinberg::PClassInfo2 struct by pointer to clap_plugin_as_vst3
   // returns nullptr if no additional information is provided or can be a nullptr itself
-  const clap_plugin_info_as_vst3_t* (CLAP_ABI* get_vst3_info)(const clap_plugin_factory_as_vst3* factory, uint32_t index);
+  const clap_plugin_info_as_vst3_t*(CLAP_ABI* get_vst3_info)(const clap_plugin_factory_as_vst3* factory,
+                                                             uint32_t index);
 } clap_plugin_factory_as_vst3_t;
 
 enum clap_supported_note_expressions
@@ -113,7 +118,7 @@ enum clap_supported_note_expressions
   AS_VST3_NOTE_EXPRESSION_BRIGHTNESS = 1 << 5,
   AS_VST3_NOTE_EXPRESSION_PRESSURE = 1 << 6,
 
-  AS_VST3_NOTE_EXPRESSION_ALL = (1<<7)-1 // just the and of the above
+  AS_VST3_NOTE_EXPRESSION_ALL = (1 << 7) - 1  // just the and of the above
 
 };
 
@@ -123,7 +128,7 @@ enum clap_supported_note_expressions
 */
 typedef struct clap_plugin_as_vst3
 {
-  uint32_t(CLAP_ABI* getNumMIDIChannels) (const clap_plugin* plugin, uint32_t note_port); // return 1-16
-  uint32_t(CLAP_ABI* supportedNoteExpressions) (const clap_plugin* plugin); // returns a bitmap of clap_supported_note_expressions
+  uint32_t(CLAP_ABI* getNumMIDIChannels)(const clap_plugin* plugin, uint32_t note_port);  // return 1-16
+  uint32_t(CLAP_ABI* supportedNoteExpressions)(
+      const clap_plugin* plugin);  // returns a bitmap of clap_supported_note_expressions
 } clap_plugin_as_vst3_t;
-

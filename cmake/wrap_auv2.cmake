@@ -130,6 +130,8 @@ function(target_add_auv2_wrapper)
 
     message(STATUS "clap-wrapper: Adding AUV2 Wrapper to target ${AUV2_TARGET} generating '${AUV2_OUTPUT_NAME}.component'")
 
+    target_sources(${AUV2_TARGET} PRIVATE ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/os/macos.mm)
+
     # This is a placeholder dummy until we actually write the AUv2
     # Similarly the subordinate library being an interface below
     # is a placeholder. When we write it we will follow a similar
@@ -139,7 +141,12 @@ function(target_add_auv2_wrapper)
             ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/wrapasauv2.cpp
             ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv2/auv2_shared.h
             ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv2/auv2_base_classes.h
-            ${bhtgoutdir}/generated_entrypoints.hxx)
+            ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv2/process.h
+            ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv2/process.cpp
+            ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv2/wrappedview.h
+            ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv2/wrappedview.mm
+            
+	    ${bhtgoutdir}/generated_entrypoints.hxx)
     target_compile_options(${AUV2_TARGET} PRIVATE -fno-char8_t)
 
     if (NOT TARGET ${AUV2_TARGET}-clap-wrapper-auv2-lib)
@@ -163,6 +170,7 @@ function(target_add_auv2_wrapper)
     target_link_libraries(${AUV2_TARGET} PUBLIC
             "-framework Foundation"
             "-framework CoreFoundation"
+            "-framework AppKit"
             "-framework AudioToolbox")
 
     set_target_properties(${AUV2_TARGET} PROPERTIES

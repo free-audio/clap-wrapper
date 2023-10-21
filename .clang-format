@@ -2,10 +2,8 @@
 UseTab: Never
 ---
 Language: Cpp
-AlignAfterOpenBracket: BAS_Align
 ConstructorInitializerIndentWidth: 2 
 SpaceBeforeParens: ControlStatements
-ColumnLimit: 105
 BasedOnStyle: Google
 IndentWidth: 2
 AlignAfterOpenBracket: Align
@@ -20,7 +18,6 @@ AllowShortFunctionsOnASingleLine: None
 ---
 Language: ObjC
 BasedOnStyle: Google
-AlignAfterOpenBracket: BAS_Align
 ConstructorInitializerIndentWidth: 2 
 SpaceBeforeParens: ControlStatements
 IndentWidth: 2

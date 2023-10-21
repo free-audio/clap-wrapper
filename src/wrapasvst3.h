@@ -29,15 +29,14 @@
 #pragma GCC diagnostic pop
 #endif
 
+#include "detail/os/osutil.h"
 #include "detail/vst3/plugview.h"
-#include "detail/vst3/os/osutil.h"
 #include "detail/clap/automation.h"
 #include "detail/shared/fixedqueue.h"
 #include <mutex>
 
 using namespace Steinberg;
 
-struct ClapHostExtensions;
 namespace Clap
 {
 class ProcessAdapter;
@@ -246,7 +245,6 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   Clap::Library* _library = nullptr;
   int _libraryIndex = 0;
   std::shared_ptr<Clap::Plugin> _plugin;
-  ClapHostExtensions* _hostextensions = nullptr;
   clap_plugin_as_vst3_t* _vst3specifics = nullptr;
   Clap::ProcessAdapter* _processAdapter = nullptr;
   WrappedView* _wrappedview = nullptr;

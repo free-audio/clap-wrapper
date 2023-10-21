@@ -23,6 +23,8 @@
 #define S16(x) u##x
 #endif
 
+#if 0
+--- 8< ---
 struct ClapHostExtensions
 {
   static inline ClapAsVst3* self(const clap_host_t* host)
@@ -35,6 +37,7 @@ struct ClapHostExtensions
   }
   const clap_host_state_t _state = {mark_dirty};
 };
+#endif
 
 tresult PLUGIN_API ClapAsVst3::initialize(FUnknown* context)
 {
@@ -63,6 +66,7 @@ tresult PLUGIN_API ClapAsVst3::terminate()
     _plugin->terminate();
     _plugin.reset();
   }
+
   return super::terminate();
 }
 
