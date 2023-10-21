@@ -41,7 +41,6 @@ namespace Clap
 {
 
 std::vector<fs::path> getValidCLAPSearchPaths();
-std::string toString(const CFStringRef aString);
 class Plugin;
 class IHost;
 
