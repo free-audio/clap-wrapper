@@ -139,6 +139,7 @@ WrapAsAUV2::~WrapAsAUV2()
 }
 
 // the very very reduced state machine
+// this is where AUv2 transitions to render-ready
 OSStatus WrapAsAUV2::Initialize()
 {
   if (!_desc) return 2;
@@ -417,7 +418,7 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         break;
       case kMusicDeviceProperty_DualSchedulingMode:
         // yes we do
-        *static_cast<UInt32*>(outData) = 0;
+        *static_cast<UInt32*>(outData) = 1;
         return noErr;
         break;
       case kMusicDeviceProperty_SupportsStartStopNote:
@@ -472,6 +473,8 @@ OSStatus WrapAsAUV2::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
       case kMusicDeviceProperty_DualSchedulingMode:
       {
         auto x = *static_cast<const UInt32*>(inData);
+        if ( x > 0)
+          LOGINFO("Host supports DualSchedulung Mode");
         (void)x;
         return noErr;
       }
