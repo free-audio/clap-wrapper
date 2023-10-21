@@ -8,7 +8,7 @@ static const CLAP_CONSTEXPR char CLAP_PLUGIN_FACTORY_INFO_AUV2[] =
 
 typedef struct clap_plugin_info_as_auv2
 {
-  char au_type[5];  // the au_type. If empty (best choice) use the features[0] to aumu aufx aumi
+     char au_type[5];  // the au_type. If empty (best choice) use the features[0] to aumu aufx aumi
   char au_subt[5];  // the subtype. If empty (worst choice) we try a bad 32 bit hash of the id
 } clap_plugin_info_as_auv2_t;
 
