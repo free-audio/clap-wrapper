@@ -9,6 +9,12 @@
 #endif
 #endif
 
+#if WIN
+#if CLAP_WRAPPER_HAS_WIN32
+#include "detail/standalone/windows/winutils.h"
+#endif
+#endif
+
 // For now just a simple main. In the future this will branch out to
 // an [NSApplicationMain ] and so on depending on platform
 int main(int argc, char **argv)
@@ -54,7 +60,7 @@ int main(int argc, char **argv)
 
 #if LIN
 #if CLAP_WRAPPER_HAS_GTK3
-  freeaudio::clap_wrapper::standalone::Linux::GtkGui gtkGui{};
+  freeaudio::clap_wrapper::standalone::linux::GtkGui gtkGui{};
 
   gtkGui.initialize(freeaudio::clap_wrapper::standalone::getStandaloneHost());
   gtkGui.setPlugin(plugin);
@@ -64,6 +70,19 @@ int main(int argc, char **argv)
 #else
   freeaudio::clap_wrapper::standalone::mainWait();
 #endif
+
+#elif WIN
+#if CLAP_WRAPPER_HAS_WIN32
+  freeaudio::clap_wrapper::standalone::windows::Win32Gui win32Gui{};
+
+  win32Gui.initialize(freeaudio::clap_wrapper::standalone::getStandaloneHost());
+  win32Gui.setPlugin(plugin);
+  win32Gui.run();
+  win32Gui.setPlugin(nullptr);
+#else
+  freeaudio::clap_wrapper::standalone::mainWait();
+#endif
+
 #else
   freeaudio::clap_wrapper::standalone::mainWait();
 #endif

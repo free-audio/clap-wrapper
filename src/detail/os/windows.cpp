@@ -9,7 +9,7 @@
  
 */
 
-#include <Windows.h>
+#include <windows.h>
 #include <tchar.h>
 #include "public.sdk/source/main/moduleinit.h"
 #include "osutil.h"
@@ -52,7 +52,8 @@ static char* getModuleNameA()
   HMODULE selfmodule;
   if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCSTR)getModuleNameA, &selfmodule))
   {
-    auto size = GetModuleFileNameA(selfmodule, modulename, 2048);
+    /* auto size = */
+    GetModuleFileNameA(selfmodule, modulename, 2048);
   }
   return modulename;
 }
@@ -63,7 +64,8 @@ static TCHAR* getModuleName()
   HMODULE selfmodule;
   if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCTSTR)getModuleName, &selfmodule))
   {
-    auto size = GetModuleFileName(selfmodule, modulename, 2048);
+    /* auto size = */
+    GetModuleFileName(selfmodule, modulename, 2048);
   }
   return modulename;
 }
@@ -118,7 +120,8 @@ void WindowsHelper::init()
   wc.hInstance = ghInst;
   wc.lpfnWndProc = (WNDPROC)&Wndproc;
   wc.lpszClassName = modulename;
-  auto a = RegisterClassEx(&wc);
+  /* auto a = */
+  RegisterClassEx(&wc);
 
   _msgWin = ::CreateWindowEx(0, modulename, NULL, 0, 0, 0, 0, 0, HWND_MESSAGE, 0, 0, 0);
   ::SetWindowLongW(_msgWin, GWLP_WNDPROC, (LONG_PTR)&Wndproc);

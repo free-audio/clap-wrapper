@@ -7,6 +7,9 @@
 #define OutputDebugString(x) std::cout << __FILE__ << ":" << __LINE__ << " " << (x) << std::endl;
 #define OutputDebugStringA(x) std::cout << __FILE__ << ":" << __LINE__ << " " << (x) << std::endl;
 #endif
+#if WIN
+#include <crtdbg.h>
+#endif
 
 namespace Clap
 {
@@ -361,7 +364,7 @@ void Plugin::log(clap_log_severity severity, const char* msg)
       break;
     case CLAP_LOG_HOST_MISBEHAVING:
       n.append("PLUGIN: HOST MISBEHAVING: ");
-#if WIN32
+#if WIN
       OutputDebugStringA(msg);
       _CrtDbgBreak();
 #endif
@@ -371,7 +374,7 @@ void Plugin::log(clap_log_severity severity, const char* msg)
       break;
   }
   n.append(msg);
-#if WIN32
+#if WIN
   OutputDebugStringA(n.c_str());
   OutputDebugStringA("\n");
 #endif
