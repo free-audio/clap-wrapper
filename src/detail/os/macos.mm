@@ -11,7 +11,7 @@
 */
 
 #include <Foundation/Foundation.h>
-#ifdef  CLAP_WRAPPER_BUILD_FOR_VST3
+#ifdef CLAP_WRAPPER_BUILD_FOR_VST3
 #include "public.sdk/source/main/moduleinit.h"
 #endif
 #include "osutil.h"
@@ -50,7 +50,7 @@ class MacOSHelper
 
 // standard specific extensions
 // ----------------------------------------------------------
-#ifdef  CLAP_WRAPPER_BUILD_FOR_VST3
+#ifdef CLAP_WRAPPER_BUILD_FOR_VST3
 static Steinberg::ModuleInitializer createMessageWindow([] { gMacOSHelper.init(); });
 static Steinberg::ModuleTerminator dropMessageWindow([] { gMacOSHelper.terminate(); });
 #endif

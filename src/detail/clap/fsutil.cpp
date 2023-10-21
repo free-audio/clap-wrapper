@@ -271,7 +271,7 @@ Library::Library()
 #endif
 
 #if MAC
-  extern std::string toString(const CFStringRef aString );
+  extern std::string toString(const CFStringRef aString);
   extern fs::path sharedLibraryBundlePath();
   auto selfp = sharedLibraryBundlePath();
   if (!selfp.empty())

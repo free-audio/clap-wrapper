@@ -382,7 +382,7 @@ void Plugin::log(clap_log_severity severity, const char* msg)
 
 bool Plugin::is_main_thread() const
 {
-  if ( this->_main_thread_override > 0)
+  if (this->_main_thread_override > 0)
   {
     return true;
   }

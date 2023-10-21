@@ -9,18 +9,18 @@ namespace Clap::AUv2
 
 ProcessAdapter::~ProcessAdapter()
 {
-  if (_input_ports )
+  if (_input_ports)
   {
-    for ( uint32_t i = 0 ; i < _numInputs ; ++i )
+    for (uint32_t i = 0; i < _numInputs; ++i)
     {
       delete[] _input_ports[i].data32;
     }
     delete[] _input_ports;
     _input_ports = nullptr;
   }
-  if ( _output_ports ) 
+  if (_output_ports)
   {
-    for ( uint32_t i = 0 ; i < _numOutputs ; ++i)
+    for (uint32_t i = 0; i < _numOutputs; ++i)
     {
       delete[] _output_ports[i].data32;
     }
@@ -29,7 +29,10 @@ ProcessAdapter::~ProcessAdapter()
   }
 }
 
-void ProcessAdapter::setupProcessing(ausdk::AUScope& audioInputs, ausdk::AUScope& audioOutputs, const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params, uint32_t numMaxSamples){
+void ProcessAdapter::setupProcessing(ausdk::AUScope& audioInputs, ausdk::AUScope& audioOutputs,
+                                     const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params,
+                                     uint32_t numMaxSamples)
+{
   _plugin = plugin;
   _ext_params = ext_params;
 
@@ -46,14 +49,14 @@ void ProcessAdapter::setupProcessing(ausdk::AUScope& audioInputs, ausdk::AUScope
     delete[] _silent_output;
     _silent_output = new float[numMaxSamples];
   }
-  
+
   _numInputs = _audioInputScope->GetNumberOfElements();
   _numOutputs = _audioOutputScope->GetNumberOfElements();
-  
+
   _processData.audio_inputs_count = _numInputs;
   delete[] _input_ports;
   _input_ports = nullptr;
-  
+
   if (_numInputs > 0)
   {
     _input_ports = new clap_audio_buffer_t[_numInputs];
@@ -75,7 +78,7 @@ void ProcessAdapter::setupProcessing(ausdk::AUScope& audioInputs, ausdk::AUScope
   {
     _processData.audio_inputs = nullptr;
   }
-  
+
   _processData.audio_outputs_count = _numOutputs;
   delete[] _output_ports;
   _output_ports = nullptr;
@@ -86,8 +89,7 @@ void ProcessAdapter::setupProcessing(ausdk::AUScope& audioInputs, ausdk::AUScope
     for (auto i = 0U; i < _numOutputs; ++i)
     {
       clap_audio_buffer_t& bus = _output_ports[i];
-      
-      
+
       auto& info = static_cast<ausdk::AUOutputElement&>(*_audioOutputScope->SafeGetElement(i));
       {
         bus.channel_count = info.NumberChannels();
@@ -96,7 +98,6 @@ void ProcessAdapter::setupProcessing(ausdk::AUScope& audioInputs, ausdk::AUScope
         bus.data64 = nullptr;
         bus.data32 = new float*[info.NumberChannels()];
       }
-        
     }
     _processData.audio_outputs = _output_ports;
   }
@@ -117,7 +118,7 @@ void ProcessAdapter::setupProcessing(ausdk::AUScope& audioInputs, ausdk::AUScope
 
   _out_events.ctx = this;
   _out_events.try_push = output_events_try_push;
-  
+
   _events.clear();
   _events.reserve(8192);
   _eventindices.clear();
@@ -147,15 +148,13 @@ void ProcessAdapter::sortEventIndices()
             });
 }
 
-
 void ProcessAdapter::process(ProcessData& data)
 {
-  
   sortEventIndices();
   _processData.frames_count = data.numSamples;
   _transport.flags = 0;
-  
-  if ( data._AUtransportValid)
+
+  if (data._AUtransportValid)
   {
     _transport.flags += data._isPlaying ? CLAP_TRANSPORT_IS_PLAYING : 0;
     _transport.flags += data._isLooping ? CLAP_TRANSPORT_IS_LOOP_ACTIVE : 0;
@@ -163,21 +162,20 @@ void ProcessAdapter::process(ProcessData& data)
     _transport.loop_start_beats = data._cycleStart;
     _transport.loop_end_beats = data._cycleEnd;
   }
-  
 
-  if ( _numInputs )
+  if (_numInputs)
   {
-    for ( uint32_t i = 0 ; i < _numInputs ; ++i)
+    for (uint32_t i = 0; i < _numInputs; ++i)
     {
-      auto& m = static_cast<ausdk::AUInputElement&>(* _audioInputScope->SafeGetElement(0));
-      if ( m.PullInput(data.flags, data.timestamp, 0, data.numSamples) )
+      auto& m = static_cast<ausdk::AUInputElement&>(*_audioInputScope->SafeGetElement(0));
+      if (m.PullInput(data.flags, data.timestamp, 0, data.numSamples))
       {
-        AudioBufferList  &myInBuffers = m.GetBufferList();
+        AudioBufferList& myInBuffers = m.GetBufferList();
         auto num = myInBuffers.mBuffers[0].mNumberChannels;
         this->_input_ports[i].channel_count = num;
-        for ( uint32_t j = 0 ; j < num ; ++j)
+        for (uint32_t j = 0; j < num; ++j)
           this->_input_ports[i].data32[j] = (float*)myInBuffers.mBuffers[j].mData;
-        
+
         // _input_ports[0].data32 = myInBuffers[0].mData;
       }
     }
@@ -203,17 +201,17 @@ void ProcessAdapter::process(ProcessData& data)
   // long myChannel = 0;
   for (uint32_t i = 0; i < _numOutputs; i++)
   {
-    auto& m = static_cast<ausdk::AUOutputElement&>(* _audioOutputScope->SafeGetElement(0));
-    AudioBufferList &myOutBuffers = m.PrepareBuffer(data.numSamples);
+    auto& m = static_cast<ausdk::AUOutputElement&>(*_audioOutputScope->SafeGetElement(0));
+    AudioBufferList& myOutBuffers = m.PrepareBuffer(data.numSamples);
     auto num = myOutBuffers.mBuffers[0].mNumberChannels;
     this->_output_ports[i].channel_count = num;
-    for ( uint32_t j = 0 ; j < num ; ++j)
+    for (uint32_t j = 0; j < num; ++j)
       this->_output_ports[i].data32[j] = (float*)myOutBuffers.mBuffers[j].mData;
   }
 #endif
 
-  _plugin->process(_plugin,&_processData);
-  
+  _plugin->process(_plugin, &_processData);
+
   // clean up and prepare the events for the next cycle
   _events.clear();
   _eventindices.clear();
@@ -273,7 +271,7 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
 
       if (_vstdata && _vstdata->outputEvents) _vstdata->outputEvents->addEvent(oe);
 #endif
-      (void) nevt;
+      (void)nevt;
     }
       return true;
     case CLAP_EVENT_NOTE_OFF:
@@ -293,7 +291,7 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
 
       if (_vstdata && _vstdata->outputEvents) _vstdata->outputEvents->addEvent(oe);
 #endif
-      (void) nevt;
+      (void)nevt;
     }
       return true;
     case CLAP_EVENT_NOTE_END:
@@ -343,7 +341,7 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
         }
       }
 #endif
-      (void) ev;
+      (void)ev;
     }
 
       return true;
@@ -359,17 +357,16 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
       _gesturedParameters.push_back(param->getInfo().id);
       _automation->onBeginEdit(param->getInfo().id);
 #endif
-      (void) ev;
+      (void)ev;
     }
 
-      
       return true;
 
       break;
     case CLAP_EVENT_PARAM_GESTURE_END:
     {
       auto ev = (clap_event_param_gesture*)event;
-      (void) ev;
+      (void)ev;
 #if 0
       auto param = (Vst3Parameter*)this->parameters->getParameter(ev->param_id & 0x7FFFFFFF);
 
@@ -424,44 +421,44 @@ void ProcessAdapter::removeFromActiveNotes(const clap_event_note* note)
   }
 }
 
-  void ProcessAdapter::addMIDIEvent(
-                                         UInt32 inStatus, UInt32 inData1, UInt32 inData2, UInt32 inOffsetSampleFrame)
+void ProcessAdapter::addMIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData2,
+                                  UInt32 inOffsetSampleFrame)
+{
+  const UInt32 strippedStatus = inStatus & 0xf0U;  // NOLINT
+  const UInt32 channel = inStatus & 0x0fU;         // NOLINT
+
+  auto deltaFrames = inOffsetSampleFrame & kMusicDeviceSampleFrameMask_SampleOffset;
+
+  bool live = (inOffsetSampleFrame & kMusicDeviceSampleFrameMask_IsScheduled) != 0;
+
+  if (strippedStatus == 0x90)
   {
-    const UInt32 strippedStatus = inStatus & 0xf0U; // NOLINT
-    const UInt32 channel = inStatus & 0x0fU;        // NOLINT
-    
-    auto deltaFrames = inOffsetSampleFrame & kMusicDeviceSampleFrameMask_SampleOffset;
-    
-    bool live = (inOffsetSampleFrame & kMusicDeviceSampleFrameMask_IsScheduled) != 0;
-    
-    if ( strippedStatus == 0x90 )
-    {
-      clap_multi_event n;
-      n.header.time = 0; // deltaFrames;
-      n.header.type = CLAP_EVENT_NOTE_ON;
-      n.header.flags = 0 + (live ? CLAP_EVENT_IS_LIVE : 0);
-      n.header.size = sizeof( clap_event_note_t);
-      n.header.space_id = 0;
-      n.note.key = (inData1 & 0x7F);
-      n.note.velocity = (inData2 & 0x7F);
-      n.note.channel = channel;
-      this->_eventindices.emplace_back((this->_events.size()));
-      this->_events.emplace_back(n);
-    }
-    if ( strippedStatus == 0x80 )
-    {
-      clap_multi_event n;
-      n.header.time = 0; // deltaFrames;
-      n.header.type = CLAP_EVENT_NOTE_OFF;
-      n.header.flags = 0 + (live ? CLAP_EVENT_IS_LIVE : 0);
-      n.header.size = sizeof( clap_event_note_t);
-      n.header.space_id = 0;
-      n.note.key = (inData1 & 0x7F);
-      n.note.velocity = (inData2 & 0x7F);
-      n.note.channel = channel;
-      this->_eventindices.emplace_back((this->_events.size()));
-      this->_events.emplace_back(n);
-    }
-    (void)deltaFrames;
+    clap_multi_event n;
+    n.header.time = 0;  // deltaFrames;
+    n.header.type = CLAP_EVENT_NOTE_ON;
+    n.header.flags = 0 + (live ? CLAP_EVENT_IS_LIVE : 0);
+    n.header.size = sizeof(clap_event_note_t);
+    n.header.space_id = 0;
+    n.note.key = (inData1 & 0x7F);
+    n.note.velocity = (inData2 & 0x7F);
+    n.note.channel = channel;
+    this->_eventindices.emplace_back((this->_events.size()));
+    this->_events.emplace_back(n);
   }
+  if (strippedStatus == 0x80)
+  {
+    clap_multi_event n;
+    n.header.time = 0;  // deltaFrames;
+    n.header.type = CLAP_EVENT_NOTE_OFF;
+    n.header.flags = 0 + (live ? CLAP_EVENT_IS_LIVE : 0);
+    n.header.size = sizeof(clap_event_note_t);
+    n.header.space_id = 0;
+    n.note.key = (inData1 & 0x7F);
+    n.note.velocity = (inData2 & 0x7F);
+    n.note.channel = channel;
+    this->_eventindices.emplace_back((this->_events.size()));
+    this->_events.emplace_back(n);
+  }
+  (void)deltaFrames;
 }
+}  // namespace Clap::AUv2

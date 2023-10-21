@@ -41,7 +41,7 @@ namespace Clap
 {
 
 std::vector<fs::path> getValidCLAPSearchPaths();
-std::string toString(const CFStringRef aString );
+std::string toString(const CFStringRef aString);
 class Plugin;
 class IHost;
 
@@ -65,7 +65,7 @@ class Library
     return _bundle;
   }
 #endif
-  
+
   bool hasEntryPoint() const
   {
 #if WIN

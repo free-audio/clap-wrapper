@@ -23,14 +23,14 @@ namespace fs = ghc::filesystem;
 #include <Foundation/Foundation.h>
 
 @interface free_audio_clap_wrapper_ffowefe : NSObject
-- (void) foo;
+- (void)foo;
 @end
 
 @implementation free_audio_clap_wrapper_ffowefe
-- (void) foo {
+- (void)foo
+{
 }
 @end
-
 
 namespace Clap
 {
@@ -38,7 +38,7 @@ namespace Clap
     this could be anything apparantly
 */
 
-NSBundle * getMyBundle()
+NSBundle *getMyBundle()
 {
   return [NSBundle bundleForClass:[free_audio_clap_wrapper_ffowefe class]];
 }
@@ -119,23 +119,24 @@ std::vector<fs::path> getMacCLAPSearchPaths()
   }
   return res;
 }
-std::string toString(const CFStringRef aString ) {
-  if (aString == NULL) {
+std::string toString(const CFStringRef aString)
+{
+  if (aString == NULL)
+  {
     return std::string();
   }
 
   std::string result;
 
   CFIndex length = CFStringGetLength(aString);
-  CFIndex maxSize =
-  CFStringGetMaximumSizeForEncoding(length, kCFStringEncodingUTF8) + 1;
+  CFIndex maxSize = CFStringGetMaximumSizeForEncoding(length, kCFStringEncodingUTF8) + 1;
   result.reserve(maxSize);
-  
-  if (CFStringGetCString(aString, result.data(), maxSize,
-                         kCFStringEncodingUTF8)) {
+
+  if (CFStringGetCString(aString, result.data(), maxSize, kCFStringEncodingUTF8))
+  {
     return result;
   }
-  
+
   return std::string();
 }
 }  // namespace Clap

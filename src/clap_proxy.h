@@ -58,7 +58,7 @@ class IHost
 
   virtual void latency_changed() = 0;
   virtual void tail_changed() = 0;
-  
+
   virtual bool gui_can_resize() = 0;
   virtual bool gui_request_resize(uint32_t width, uint32_t height) = 0;
   virtual bool gui_request_show() = 0;
@@ -66,7 +66,7 @@ class IHost
 
   virtual bool register_timer(uint32_t period_ms, clap_id* timer_id) = 0;
   virtual bool unregister_timer(clap_id timer_id) = 0;
-  
+
 #if LIN
   virtual bool register_fd(int fd, clap_posix_fd_flags_t flags) = 0;
   virtual bool modify_fd(int fd, clap_posix_fd_flags_t flags) = 0;

@@ -125,7 +125,6 @@ WrapAsAUV2::WrapAsAUV2(AUV2_Type type, const std::string& clapname, const std::s
       _plugin = Clap::Plugin::createInstance(_library._pluginFactory, _desc->id, this);
       // pffffrzz();
       _plugin->initialize();
-      
     }
   }
 }
@@ -138,7 +137,6 @@ WrapAsAUV2::~WrapAsAUV2()
     _plugin.reset();
   }
 }
-
 
 // the very very reduced state machine
 OSStatus WrapAsAUV2::Initialize()

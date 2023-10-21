@@ -40,7 +40,6 @@ struct ClapHostExtensions
 
 tresult PLUGIN_API ClapAsVst3::initialize(FUnknown* context)
 {
-  
   auto result = super::initialize(context);
   if (result == kResultOk)
   {

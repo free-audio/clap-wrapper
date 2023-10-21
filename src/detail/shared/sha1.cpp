@@ -225,11 +225,11 @@ void Sha1::padmessage()
   _messageBlock[56] = (_length_high >> 24) & 0xFF;
   _messageBlock[57] = (_length_high >> 16) & 0xFF;
   _messageBlock[58] = (_length_high >> 8) & 0xFF;
-  _messageBlock[59] = (_length_high)&0xFF;
+  _messageBlock[59] = (_length_high) & 0xFF;
   _messageBlock[60] = (_lengthLow >> 24) & 0xFF;
   _messageBlock[61] = (_lengthLow >> 16) & 0xFF;
   _messageBlock[62] = (_lengthLow >> 8) & 0xFF;
-  _messageBlock[63] = (_lengthLow)&0xFF;
+  _messageBlock[63] = (_lengthLow) & 0xFF;
 
   processMessageBlock();
 }
