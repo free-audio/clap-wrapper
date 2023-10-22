@@ -285,6 +285,7 @@ void WrapAsAUV2::setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_
     if (noteports->get(plugin, 0, true, &info))
     {
       _midi_preferred_dialect = info.preferred_dialect;
+      _midi_understands_midi2 = ( info.supported_dialects & CLAP_NOTE_DIALECT_MIDI2);
     }
   }
   /*
@@ -430,7 +431,8 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         // For a MusicDevice that doesn't support separate instruments (ie. is mono-timbral)
         // then this call should return an instrument count of zero and noErr
         *static_cast<UInt32*>(outData) = 0;
-        return (_autype == AUV2_Type::aumu_musicdevice) ? noErr : kAudioUnitErr_InvalidProperty;
+        if (_autype == AUV2_Type::aumu_musicdevice) return noErr;
+        return kAudioUnitErr_InvalidProperty;
         // return  GetInstrumentCount(*static_cast<UInt32*>(outData));
       case kAudioUnitProperty_BypassEffect:
         *static_cast<UInt32*>(outData) = (IsBypassEffect() ? 1 : 0);  // NOLINT

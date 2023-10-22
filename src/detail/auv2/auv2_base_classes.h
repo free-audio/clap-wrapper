@@ -216,6 +216,7 @@ class WrapAsAUV2 : public ausdk::AUBase, public Clap::IHost
   // some info about the wrapped clap
   uint32_t _midi_preferred_dialect = 0;
   bool _midi_wants_midi_input = false;  // takes any input
+  bool _midi_understands_midi2 = false;
 };
 
 }  // namespace free_audio::auv2_wrapper
