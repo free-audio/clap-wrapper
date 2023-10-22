@@ -285,7 +285,7 @@ void WrapAsAUV2::setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_
     if (noteports->get(plugin, 0, true, &info))
     {
       _midi_preferred_dialect = info.preferred_dialect;
-      _midi_understands_midi2 = ( info.supported_dialects & CLAP_NOTE_DIALECT_MIDI2);
+      _midi_understands_midi2 = (info.supported_dialects & CLAP_NOTE_DIALECT_MIDI2);
     }
   }
   /*
