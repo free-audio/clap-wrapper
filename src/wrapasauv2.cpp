@@ -263,7 +263,51 @@ void WrapAsAUV2::setupAudioBusses(const clap_plugin_t* plugin,
 
 void WrapAsAUV2::setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_note_ports_t* noteports)
 {
-  // TODO: figure out if MIDI is is prefered as CLAP or Notes
+  // TODO: figure out if MIDI is is preferred as CLAP or Notes
+  if (!noteports) return;
+  auto numMIDIInPorts = noteports->count(plugin, true);
+  auto numMIDIOutPorts = noteports->count(plugin, false);
+  (void)numMIDIOutPorts;  // TODO: remove this when MIDI out is implemented
+
+  // fprintf(stderr, "\tMIDI in: %d, out: %d\n", (int)numMIDIInPorts, (int)numMIDIOutPorts);
+  /*
+  std::vector<clap_note_port_info_t> inputs;
+  std::vector<clap_note_port_info_t> outputs;
+
+  inputs.resize(numMIDIInPorts);
+  outputs.resize(numMIDIOutPorts);
+*/
+  _midi_wants_midi_input = (numMIDIInPorts > 0);
+  // in AU we don't have different MIDI INs, therefore we just use one
+  if (numMIDIInPorts > 0)
+  {
+    clap_note_port_info_t info;
+    if (noteports->get(plugin, 0, true, &info))
+    {
+      _midi_preferred_dialect = info.preferred_dialect;
+    }
+  }
+  /*
+  for (decltype(numMIDIInPorts) i = 0; i < numMIDIInPorts; ++i)
+  {
+    clap_note_port_info_t info;
+    if (noteports->get(plugin, i, true, &info))
+    {
+      addMIDIBusFrom(&info, i, true);
+    }
+  }
+   */
+  // TODO: Outputs need the host MIDI list output thing
+  /*
+  for (decltype(numMIDIOutPorts) i = 0; i < numMIDIOutPorts; ++i)
+  {
+    clap_note_port_info_t info;
+    if (noteports->get(plugin, i, false, &info))
+    {
+      addMIDIBusFrom(&info, i, false);
+    }
+  }
+   */
 }
 
 OSStatus WrapAsAUV2::Start()
@@ -383,8 +427,10 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         {
           return kAudioUnitErr_InvalidScope;
         }
+        // For a MusicDevice that doesn't support separate instruments (ie. is mono-timbral)
+        // then this call should return an instrument count of zero and noErr
         *static_cast<UInt32*>(outData) = 0;
-        return noErr;
+        return (_autype == AUV2_Type::aumu_musicdevice) ? noErr : kAudioUnitErr_InvalidProperty;
         // return  GetInstrumentCount(*static_cast<UInt32*>(outData));
       case kAudioUnitProperty_BypassEffect:
         *static_cast<UInt32*>(outData) = (IsBypassEffect() ? 1 : 0);  // NOLINT
@@ -560,7 +606,7 @@ void WrapAsAUV2::activateCLAP()
     _plugin->setSampleRate(Output(0).GetStreamFormat().mSampleRate);
 
     _processAdapter->setupProcessing(Inputs(), Outputs(), _plugin->_plugin, _plugin->_ext._params,
-                                     maxSampleFrames);
+                                     maxSampleFrames, _midi_preferred_dialect);
 
     _plugin->activate();
     _plugin->start_processing();

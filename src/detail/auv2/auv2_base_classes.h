@@ -212,6 +212,10 @@ class WrapAsAUV2 : public ausdk::AUBase, public Clap::IHost
 
   std::unique_ptr<Clap::AUv2::ProcessAdapter> _processAdapter;
   std::atomic<bool> _initialized = false;
+
+  // some info about the wrapped clap
+  uint32_t _midi_preferred_dialect = 0;
+  bool _midi_wants_midi_input = false;  // takes any input
 };
 
 }  // namespace free_audio::auv2_wrapper

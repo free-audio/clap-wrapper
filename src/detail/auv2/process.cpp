@@ -32,10 +32,12 @@ ProcessAdapter::~ProcessAdapter()
 
 void ProcessAdapter::setupProcessing(ausdk::AUScope& audioInputs, ausdk::AUScope& audioOutputs,
                                      const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params,
-                                     uint32_t numMaxSamples)
+                                     uint32_t numMaxSamples, uint32_t preferredMIDIDialect)
 {
   _plugin = plugin;
   _ext_params = ext_params;
+
+  _preferred_midi_dialect = preferredMIDIDialect;
 
   // rewrite the buffer structures
   _audioInputScope = &audioInputs;
@@ -459,28 +461,55 @@ void ProcessAdapter::addMIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData
       break;
     case 8:  // note off
 
-      n.header.type = CLAP_EVENT_NOTE_OFF;
-      n.header.size = sizeof(clap_event_note_t);
+      if (_preferred_midi_dialect == CLAP_NOTE_DIALECT_CLAP)
+      {
+        n.header.type = CLAP_EVENT_NOTE_OFF;
+        n.header.size = sizeof(clap_event_note_t);
 
-      n.note.port_index = 0;
-      n.note.note_id = -1;
-      n.note.key = (inData1 & 0x7F);
-      n.note.velocity = 1.f * (inData2 & 0x7F) / 127.f;
-      n.note.channel = channel;
+        n.note.port_index = 0;
+        n.note.note_id = -1;
+        n.note.key = (inData1 & 0x7F);
+        n.note.velocity = 1.f * (inData2 & 0x7F) / 127.f;
+        n.note.channel = channel;
+      }
+      else
+      {
+        n.header.type = CLAP_EVENT_MIDI;
+        n.header.size = sizeof(clap_event_midi_t);
+
+        n.midi.port_index = 0;
+        n.midi.data[0] = inStatus;
+        n.midi.data[1] = inData1;
+        n.midi.data[2] = inData2;
+      }
       this->_eventindices.emplace_back((this->_events.size()));
       this->_events.emplace_back(n);
 
       break;
     case 9:  // note on
 
-      n.header.type = CLAP_EVENT_NOTE_ON;
-      n.header.size = sizeof(clap_event_note_t);
+      if (_preferred_midi_dialect == CLAP_NOTE_DIALECT_CLAP)
+      {
+        n.header.type = CLAP_EVENT_NOTE_ON;
+        n.header.size = sizeof(clap_event_note_t);
 
-      n.note.port_index = 0;
-      n.note.note_id = -1;
-      n.note.key = (inData1 & 0x7F);
-      n.note.velocity = 1.f * (inData2 & 0x7F) / 127.f;
-      n.note.channel = channel;
+        n.note.port_index = 0;
+        n.note.note_id = -1;
+        n.note.key = (inData1 & 0x7F);
+        n.note.velocity = 1.f * (inData2 & 0x7F) / 127.f;
+        n.note.channel = channel;
+      }
+      else
+      {
+        n.header.type = CLAP_EVENT_MIDI;
+        n.header.size = sizeof(clap_event_midi_t);
+
+        n.midi.port_index = 0;
+        n.midi.data[0] = inStatus;
+        n.midi.data[1] = inData1;
+        n.midi.data[2] = inData2;
+      }
+
       this->_eventindices.emplace_back((this->_events.size()));
       this->_events.emplace_back(n);
 

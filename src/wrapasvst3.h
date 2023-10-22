@@ -145,7 +145,6 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
                                                  Vst::CtrlNumber midiControllerNumber,
                                                  Vst::ParamID& id /*out*/) override;
 
-#if 1
   //----from INoteExpressionController-------------------------
   /** Returns number of supported note change types for event bus index and channel. */
   int32 PLUGIN_API getNoteExpressionCount(int32 busIndex, int16 channel) override;
@@ -164,7 +163,7 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   tresult PLUGIN_API getNoteExpressionValueByString(
       int32 busIndex, int16 channel, Vst::NoteExpressionTypeID id, const Vst::TChar* string /*in*/,
       Vst::NoteExpressionValue& valueNormalized /*out*/) override;
-#endif
+
   //---Interface--------------------------------------------------------------------------
   OBJ_METHODS(ClapAsVst3, SingleComponentEffect)
   DEFINE_INTERFACES
