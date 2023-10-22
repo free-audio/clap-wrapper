@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cassert>
 #include "../clap/automation.h"
 
 namespace Clap::AUv2
@@ -171,11 +172,13 @@ void ProcessAdapter::process(ProcessData& data)
       if (m.PullInput(data.flags, data.timestamp, 0, data.numSamples))
       {
         AudioBufferList& myInBuffers = m.GetBufferList();
-        auto num = myInBuffers.mBuffers[0].mNumberChannels;
+        auto num = myInBuffers.mNumberBuffers;
         this->_input_ports[i].channel_count = num;
         for (uint32_t j = 0; j < num; ++j)
+        {
+          assert(myInBuffers.mBuffers[j].mNumberChannels == 1);
           this->_input_ports[i].data32[j] = (float*)myInBuffers.mBuffers[j].mData;
-
+        }
         // _input_ports[0].data32 = myInBuffers[0].mData;
       }
     }
@@ -203,10 +206,13 @@ void ProcessAdapter::process(ProcessData& data)
   {
     auto& m = static_cast<ausdk::AUOutputElement&>(*_audioOutputScope->SafeGetElement(0));
     AudioBufferList& myOutBuffers = m.PrepareBuffer(data.numSamples);
-    auto num = myOutBuffers.mBuffers[0].mNumberChannels;
+    auto num = myOutBuffers.mNumberBuffers;
     this->_output_ports[i].channel_count = num;
     for (uint32_t j = 0; j < num; ++j)
+    {
+      assert(myOutBuffers.mBuffers[j].mNumberChannels == 1);
       this->_output_ports[i].data32[j] = (float*)myOutBuffers.mBuffers[j].mData;
+    }
   }
 #endif
 
