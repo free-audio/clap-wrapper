@@ -473,8 +473,7 @@ OSStatus WrapAsAUV2::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
       case kMusicDeviceProperty_DualSchedulingMode:
       {
         auto x = *static_cast<const UInt32*>(inData);
-        if ( x > 0)
-          LOGINFO("Host supports DualSchedulung Mode");
+        if (x > 0) LOGINFO("Host supports DualSchedulung Mode");
         (void)x;
         return noErr;
       }
