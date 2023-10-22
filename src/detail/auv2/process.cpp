@@ -434,11 +434,13 @@ void ProcessAdapter::addMIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData
   if (strippedStatus == 0x90)
   {
     clap_multi_event n;
-    n.header.time = 0;  // deltaFrames;
+    n.header.time = deltaFrames;
     n.header.type = CLAP_EVENT_NOTE_ON;
     n.header.flags = 0 + (live ? CLAP_EVENT_IS_LIVE : 0);
     n.header.size = sizeof(clap_event_note_t);
     n.header.space_id = 0;
+    n.note.port_index = 0;
+    n.note.note_id = -1;
     n.note.key = (inData1 & 0x7F);
     n.note.velocity = (inData2 & 0x7F);
     n.note.channel = channel;
@@ -448,17 +450,18 @@ void ProcessAdapter::addMIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData
   if (strippedStatus == 0x80)
   {
     clap_multi_event n;
-    n.header.time = 0;  // deltaFrames;
+    n.header.time = deltaFrames;
     n.header.type = CLAP_EVENT_NOTE_OFF;
     n.header.flags = 0 + (live ? CLAP_EVENT_IS_LIVE : 0);
     n.header.size = sizeof(clap_event_note_t);
     n.header.space_id = 0;
+    n.note.port_index = 0;
+    n.note.note_id = -1;
     n.note.key = (inData1 & 0x7F);
     n.note.velocity = (inData2 & 0x7F);
     n.note.channel = channel;
     this->_eventindices.emplace_back((this->_events.size()));
     this->_events.emplace_back(n);
   }
-  (void)deltaFrames;
 }
 }  // namespace Clap::AUv2
