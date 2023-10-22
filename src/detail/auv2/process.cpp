@@ -424,44 +424,79 @@ void ProcessAdapter::removeFromActiveNotes(const clap_event_note* note)
 void ProcessAdapter::addMIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData2,
                                   UInt32 inOffsetSampleFrame)
 {
-  const UInt32 strippedStatus = inStatus & 0xf0U;  // NOLINT
-  const UInt32 channel = inStatus & 0x0fU;         // NOLINT
+  const UInt32 strippedStatus = (inStatus & 0xf0U) >> 4;  // NOLINT
+  const UInt32 channel = inStatus & 0x0fU;                // NOLINT
 
   auto deltaFrames = inOffsetSampleFrame & kMusicDeviceSampleFrameMask_SampleOffset;
 
   bool live = (inOffsetSampleFrame & kMusicDeviceSampleFrameMask_IsScheduled) != 0;
 
-  if (strippedStatus == 0x90)
+  clap_multi_event n;
+  n.header.time = deltaFrames;
+  // type is being set further down
+  n.header.flags = 0 + (live ? CLAP_EVENT_IS_LIVE : 0);
+  // n.header.size = sizeof(clap_event_note_t);
+  n.header.space_id = 0;
+
+  switch (strippedStatus)
   {
-    clap_multi_event n;
-    n.header.time = deltaFrames;
-    n.header.type = CLAP_EVENT_NOTE_ON;
-    n.header.flags = 0 + (live ? CLAP_EVENT_IS_LIVE : 0);
-    n.header.size = sizeof(clap_event_note_t);
-    n.header.space_id = 0;
-    n.note.port_index = 0;
-    n.note.note_id = -1;
-    n.note.key = (inData1 & 0x7F);
-    n.note.velocity = (inData2 & 0x7F);
-    n.note.channel = channel;
-    this->_eventindices.emplace_back((this->_events.size()));
-    this->_events.emplace_back(n);
-  }
-  if (strippedStatus == 0x80)
-  {
-    clap_multi_event n;
-    n.header.time = deltaFrames;
-    n.header.type = CLAP_EVENT_NOTE_OFF;
-    n.header.flags = 0 + (live ? CLAP_EVENT_IS_LIVE : 0);
-    n.header.size = sizeof(clap_event_note_t);
-    n.header.space_id = 0;
-    n.note.port_index = 0;
-    n.note.note_id = -1;
-    n.note.key = (inData1 & 0x7F);
-    n.note.velocity = (inData2 & 0x7F);
-    n.note.channel = channel;
-    this->_eventindices.emplace_back((this->_events.size()));
-    this->_events.emplace_back(n);
+    case 0:
+    case 1:
+    case 2:
+    case 3:
+    case 4:
+    case 5:
+    case 6:
+    case 7:
+    default:
+      // no running status
+      break;
+    case 8:  // note off
+
+      n.header.type = CLAP_EVENT_NOTE_OFF;
+      n.header.size = sizeof(clap_event_note_t);
+
+      n.note.port_index = 0;
+      n.note.note_id = -1;
+      n.note.key = (inData1 & 0x7F);
+      n.note.velocity = (inData2 & 0x7F);
+      n.note.channel = channel;
+      this->_eventindices.emplace_back((this->_events.size()));
+      this->_events.emplace_back(n);
+
+      break;
+    case 9:  // note on
+
+      n.header.type = CLAP_EVENT_NOTE_ON;
+      n.header.size = sizeof(clap_event_note_t);
+
+      n.note.port_index = 0;
+      n.note.note_id = -1;
+      n.note.key = (inData1 & 0x7F);
+      n.note.velocity = (inData2 & 0x7F);
+      n.note.channel = channel;
+      this->_eventindices.emplace_back((this->_events.size()));
+      this->_events.emplace_back(n);
+
+      break;
+    case 0xA:  // any other MIDI message with 1 or 2 data bytes
+    case 0xB:
+    case 0xC:
+    case 0xD:
+    case 0xE:
+      n.header.type = CLAP_EVENT_MIDI;
+      n.header.size = sizeof(clap_event_midi_t);
+
+      n.midi.port_index = 0;
+      n.midi.data[0] = inStatus;
+      n.midi.data[1] = inData1;
+      n.midi.data[2] = inData2;
+
+      this->_eventindices.emplace_back((this->_events.size()));
+      this->_events.emplace_back(n);
+      break;
+    case 0xF:
+      break;
   }
 }
 }  // namespace Clap::AUv2

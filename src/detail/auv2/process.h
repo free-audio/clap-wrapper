@@ -10,7 +10,7 @@
  See file LICENSE or go to https://github.com/free-audio/clap-wrapper for full license details.
  
  
- The process adapter is responible to translate events, timing information
+ The process adapter is responsible to translate events, timing information
  
  */
 
