@@ -459,7 +459,7 @@ void ProcessAdapter::addMIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData
       n.note.port_index = 0;
       n.note.note_id = -1;
       n.note.key = (inData1 & 0x7F);
-      n.note.velocity = (inData2 & 0x7F);
+      n.note.velocity = 1.f * (inData2 & 0x7F) / 127.f;
       n.note.channel = channel;
       this->_eventindices.emplace_back((this->_events.size()));
       this->_events.emplace_back(n);
@@ -473,7 +473,7 @@ void ProcessAdapter::addMIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData
       n.note.port_index = 0;
       n.note.note_id = -1;
       n.note.key = (inData1 & 0x7F);
-      n.note.velocity = (inData2 & 0x7F);
+      n.note.velocity = 1.f * (inData2 & 0x7F) / 127.f;
       n.note.channel = channel;
       this->_eventindices.emplace_back((this->_events.size()));
       this->_events.emplace_back(n);
