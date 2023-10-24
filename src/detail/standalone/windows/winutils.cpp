@@ -55,8 +55,6 @@ Window::Window()
   ::CreateWindowExW(0, randomName.c_str(), clapName.c_str(), WS_OVERLAPPEDWINDOW, CW_USEDEFAULT,
                     CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, nullptr, nullptr,
                     ::GetModuleHandleW(nullptr), this);
-
-  ::ShowWindow(m_hwnd, SW_SHOWDEFAULT);
 }
 
 Window::~Window()
@@ -218,17 +216,13 @@ void Win32Gui::run()
     ::AdjustWindowRectExForDpi(&r, WS_OVERLAPPEDWINDOW, 0, 0, dpi);
     ::SetWindowPos(window.m_hwnd, nullptr, 0, 0, (r.right - r.left), (r.bottom - r.top), SWP_NOMOVE);
 
-    if (ui->can_resize(p))
-    {
-      ui->set_scale(p, scaleFactor);
-      ui->set_size(p, w, h);
-    }
-
     clap_window win;
     win.api = CLAP_WINDOW_API_WIN32;
     win.win32 = (void*)window.m_hwnd;
     ui->set_parent(p, &win);
+
     ui->show(p);
+    ::ShowWindow(window.m_hwnd, SW_SHOWDEFAULT);
   }
 
   MSG msg;
