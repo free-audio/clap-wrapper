@@ -116,23 +116,35 @@ int Window::_OnDpiChanged(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
   auto ui{plugin->_ext._gui};
   auto p{plugin->_plugin};
 
-  auto scaleFactor{static_cast<float>(::GetDpiForWindow(hWnd)) /
-                   static_cast<float>(USER_DEFAULT_SCREEN_DPI)};
+  auto dpi{::GetDpiForWindow(hWnd)};
+  auto scaleFactor{static_cast<float>(dpi) / static_cast<float>(USER_DEFAULT_SCREEN_DPI)};
 
   uint32_t w;
   uint32_t h;
 
-  ui->set_scale(p, scaleFactor);
-  ui->get_size(p, &w, &h);
-  ui->set_size(p, w, h);
+  if (ui->can_resize(p))
+  {
+    ui->set_scale(p, scaleFactor);
+    ui->get_size(p, &w, &h);
+    ui->set_size(p, w, h);
 
-  // We get a suggested window size from the OS and apply it
-  // We may not need this
+    // We get a suggested window size from the OS and apply it
+    // We may not need to do this
+    // auto suggestedRect{(RECT*)lParam};
+    // ::SetWindowPos(hWnd, nullptr, suggestedRect->left, suggestedRect->top,
+    //                (suggestedRect->right - suggestedRect->left),
+    //                (suggestedRect->bottom - suggestedRect->top), SWP_NOZORDER | SWP_NOACTIVATE);
+  }
 
-  // auto suggestedRect{(RECT*)lParam};
-  // ::SetWindowPos(hWnd, nullptr, suggestedRect->left, suggestedRect->top,
-  //                (suggestedRect->right - suggestedRect->left),
-  //                (suggestedRect->bottom - suggestedRect->top), SWP_NOZORDER | SWP_NOACTIVATE);
+  else
+  {
+    ui->get_size(p, &w, &h);
+    RECT r{0, 0, 0, 0};
+    r.right = w;
+    r.bottom = h;
+    ::AdjustWindowRectExForDpi(&r, WS_OVERLAPPEDWINDOW, 0, 0, dpi);
+    ::SetWindowPos(hWnd, nullptr, 0, 0, (r.right - r.left), (r.bottom - r.top), SWP_NOMOVE);
+  }
 
   return 0;
 }
@@ -210,15 +222,20 @@ void Win32Gui::run()
 
     ui->create(p, CLAP_WINDOW_API_WIN32, false);
 
+    std::cout << ui->can_resize(p) << std::endl;
+
     auto dpi{::GetDpiForWindow(window.m_hwnd)};
     auto scaleFactor{static_cast<float>(dpi) / static_cast<float>(USER_DEFAULT_SCREEN_DPI)};
 
     uint32_t w;
     uint32_t h;
 
-    ui->set_scale(p, scaleFactor);
-    ui->get_size(p, &w, &h);
-    ui->set_size(p, w, h);
+    if (ui->can_resize(p))
+    {
+      ui->set_scale(p, scaleFactor);
+      ui->get_size(p, &w, &h);
+      ui->set_size(p, w, h);
+    }
 
     clap_window win;
     win.api = CLAP_WINDOW_API_WIN32;
@@ -226,11 +243,24 @@ void Win32Gui::run()
     ui->set_parent(p, &win);
     ui->show(p);
 
-    RECT r{0, 0, 0, 0};
-    r.right = w;
-    r.bottom = h;
-    ::AdjustWindowRectExForDpi(&r, WS_OVERLAPPEDWINDOW, 0, 0, dpi);
-    ::SetWindowPos(window.m_hwnd, nullptr, 0, 0, (r.right - r.left), (r.bottom - r.top), SWP_NOMOVE);
+    if (ui->can_resize(p))
+    {
+      RECT r{0, 0, 0, 0};
+      r.right = w;
+      r.bottom = h;
+      ::AdjustWindowRectExForDpi(&r, WS_OVERLAPPEDWINDOW, 0, 0, dpi);
+      ::SetWindowPos(window.m_hwnd, nullptr, 0, 0, (r.right - r.left), (r.bottom - r.top), SWP_NOMOVE);
+    }
+
+    else
+    {
+      ui->get_size(p, &w, &h);
+      RECT r{0, 0, 0, 0};
+      r.right = w;
+      r.bottom = h;
+      ::AdjustWindowRectExForDpi(&r, WS_OVERLAPPEDWINDOW, 0, 0, dpi);
+      ::SetWindowPos(window.m_hwnd, nullptr, 0, 0, (r.right - r.left), (r.bottom - r.top), SWP_NOMOVE);
+    }
   }
 
   MSG msg;
