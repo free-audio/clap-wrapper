@@ -205,7 +205,7 @@ void Win32Gui::run()
     uint32_t h;
     ui->get_size(p, &w, &h);
 
-    ui->set_size(p, (w * scaleFactor), (h * scaleFactor));
+    ui->set_size(p, w, h);
 
     clap_window win;
     win.api = CLAP_WINDOW_API_WIN32;
@@ -213,8 +213,8 @@ void Win32Gui::run()
     ui->set_parent(p, &win);
     ui->show(p);
 
-    r.right = w * scaleFactor;
-    r.bottom = h * scaleFactor;
+    r.right = w;
+    r.bottom = h;
 
     ::AdjustWindowRectExForDpi(&r, WS_OVERLAPPEDWINDOW, 0, 0, dpi);
     ::SetWindowPos(window.m_hwnd, nullptr, 0, 0, (r.right - r.left), (r.bottom - r.top), SWP_NOMOVE);
