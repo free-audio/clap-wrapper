@@ -130,10 +130,10 @@ int Window::_OnDpiChanged(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
     // We get a suggested window size from the OS and apply it
     // We may not need to do this
-    // auto suggestedRect{(RECT*)lParam};
-    // ::SetWindowPos(hWnd, nullptr, suggestedRect->left, suggestedRect->top,
-    //                (suggestedRect->right - suggestedRect->left),
-    //                (suggestedRect->bottom - suggestedRect->top), SWP_NOZORDER | SWP_NOACTIVATE);
+    auto suggestedRect{(RECT*)lParam};
+    ::SetWindowPos(hWnd, nullptr, suggestedRect->left, suggestedRect->top,
+                   (suggestedRect->right - suggestedRect->left),
+                   (suggestedRect->bottom - suggestedRect->top), SWP_NOZORDER | SWP_NOACTIVATE);
   }
 
   else
@@ -169,32 +169,17 @@ int Window::_OnKeyDown(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 int Window::_OnSize(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
-  // auto plugin{freeaudio::clap_wrapper::standalone::getMainPlugin()};
+  auto plugin{freeaudio::clap_wrapper::standalone::getMainPlugin()};
 
-  // auto ui{plugin->_ext._gui};
-  // auto p{plugin->_plugin};
+  auto ui{plugin->_ext._gui};
+  auto p{plugin->_plugin};
 
-  // std::cout << "can_resize: " << ui->can_resize << std::endl;
-
-  // clap_gui_resize_hints_t hints;
-
-  // ui->get_resize_hints(p, &hints);
-
-  // std::cout << hints.aspect_ratio_width << " x " << hints.aspect_ratio_height << std::endl;
-
-  // uint32_t adjW;
-  // uint32_t adjH;
-
-  // ui->adjust_size(p, &adjW, &adjH);
-
-  // std::cout << adjW << " x " << adjH << std::endl;
-
-  // if (plugin && plugin->_ext._gui)
-  // {
-  //   RECT r{0, 0, 0, 0};
-  //   ::GetClientRect(hWnd, &r);
-  //   plugin->_ext._gui->set_size(plugin->_plugin, (r.right - r.left), (r.bottom - r.top));
-  // }
+  if (ui->can_resize(p))
+  {
+    RECT r{0, 0, 0, 0};
+    ::GetClientRect(hWnd, &r);
+    plugin->_ext._gui->set_size(plugin->_plugin, (r.right - r.left), (r.bottom - r.top));
+  }
 
   return 0;
 }
@@ -213,8 +198,6 @@ void Win32Gui::run()
 {
   if (plugin->_ext._gui)
   {
-    Window window;
-
     auto ui{plugin->_ext._gui};
     auto p{plugin->_plugin};
 
@@ -222,7 +205,7 @@ void Win32Gui::run()
 
     ui->create(p, CLAP_WINDOW_API_WIN32, false);
 
-    std::cout << ui->can_resize(p) << std::endl;
+    Window window;
 
     auto dpi{::GetDpiForWindow(window.m_hwnd)};
     auto scaleFactor{static_cast<float>(dpi) / static_cast<float>(USER_DEFAULT_SCREEN_DPI)};
