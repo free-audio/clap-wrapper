@@ -43,7 +43,7 @@ Window::Window()
   wcex.cbClsExtra = 0;
   wcex.cbWndExtra = 0;
   wcex.hInstance = ::GetModuleHandleW(nullptr);
-  wcex.hbrBackground = reinterpret_cast<HBRUSH>(::GetStockObject(BLACK_BRUSH));
+  wcex.hbrBackground = reinterpret_cast<HBRUSH>(::GetStockObject(LTGRAY_BRUSH));
   wcex.hCursor = (HCURSOR)::LoadImageW(nullptr, (LPCWSTR)IDC_ARROW, IMAGE_CURSOR, 0, 0, LR_SHARED);
   wcex.hIcon = (HICON)::LoadImageW(nullptr, (LPCWSTR)IDI_APPLICATION, IMAGE_ICON, 0, 0,
                                    LR_DEFAULTCOLOR | LR_DEFAULTSIZE | LR_SHARED);
@@ -117,24 +117,11 @@ int Window::_OnDpiChanged(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
   auto dpi{::GetDpiForWindow(hWnd)};
   auto scaleFactor{static_cast<float>(dpi) / static_cast<float>(USER_DEFAULT_SCREEN_DPI)};
 
-  uint32_t w;
-  uint32_t h;
-  ui->get_size(p, &w, &h);
+  ui->set_scale(p, scaleFactor);
 
-  if (ui->can_resize(p))
-  {
-    ui->set_scale(p, scaleFactor);
-    ui->set_size(p, w, h);
-  }
-
-  else
-  {
-    RECT r{0, 0, 0, 0};
-    r.right = w;
-    r.bottom = h;
-    ::AdjustWindowRectExForDpi(&r, WS_OVERLAPPEDWINDOW, 0, 0, dpi);
-    ::SetWindowPos(hWnd, nullptr, 0, 0, (r.right - r.left), (r.bottom - r.top), SWP_NOMOVE);
-  }
+  auto bounds{(RECT*)lParam};
+  SetWindowPos(hWnd, nullptr, bounds->left, bounds->top, (bounds->right - bounds->left),
+               (bounds->bottom - bounds->top), SWP_NOZORDER | SWP_NOACTIVATE);
 
   return 0;
 }
@@ -160,15 +147,20 @@ int Window::_OnKeyDown(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 int Window::_OnSize(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
   auto plugin{freeaudio::clap_wrapper::standalone::getMainPlugin()};
-
   auto ui{plugin->_ext._gui};
   auto p{plugin->_plugin};
+
+  auto dpi{::GetDpiForWindow(hWnd)};
+  auto scaleFactor{static_cast<float>(dpi) / static_cast<float>(USER_DEFAULT_SCREEN_DPI)};
 
   if (ui->can_resize(p))
   {
     RECT r{0, 0, 0, 0};
     ::GetClientRect(hWnd, &r);
-    ui->set_size(p, (r.right - r.left), (r.bottom - r.top));
+    uint32_t w = (r.right - r.left);
+    uint32_t h = (r.bottom - r.top);
+    ui->adjust_size(p, &w, &h);
+    ui->set_size(p, w, h);
   }
 
   return 0;
@@ -195,20 +187,20 @@ void Win32Gui::run()
 
     ui->create(p, CLAP_WINDOW_API_WIN32, false);
 
-    uint32_t w;
-    uint32_t h;
-    ui->get_size(p, &w, &h);
-
     Window window;
+
     auto dpi{::GetDpiForWindow(window.m_hwnd)};
     auto scaleFactor{static_cast<float>(dpi) / static_cast<float>(USER_DEFAULT_SCREEN_DPI)};
+    ui->set_scale(p, scaleFactor);
 
     if (ui->can_resize(p))
     {
-      ui->set_scale(p, scaleFactor);
-      ui->set_size(p, w, h);
-      ui->get_size(p, &w, &h);
+      // We can check here if we had a previous size but we aren't saving state yet
     }
+
+    uint32_t w;
+    uint32_t h;
+    ui->get_size(p, &w, &h);
 
     RECT r{0, 0, 0, 0};
     r.right = w;
