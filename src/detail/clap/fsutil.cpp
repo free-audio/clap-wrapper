@@ -76,20 +76,13 @@ std::vector<fs::path> getValidCLAPSearchPaths()
 #if WIN
   auto p{windows_path(FOLDERID_ProgramFilesCommon)};
   if (fs::exists(p)) res.emplace_back(p / "CLAP");
+
   auto q{windows_path(FOLDERID_LocalAppData)};
   if (fs::exists(q)) res.emplace_back(q / "Programs" / "Common" / "CLAP");
-#else
-  std::string cp;
-  auto p = getenv("CLAP_PATH");
-  if (p)
-  {
-    cp = std::string(p);
-  }
-  auto sep = ':';
-#endif
-#if WIN
+
   std::wstring cp;
   auto len{::GetEnvironmentVariableW(L"CLAP_PATH", NULL, 0)};
+
   if (len > 0)
   {
     cp.resize(len);
@@ -102,6 +95,14 @@ std::vector<fs::path> getValidCLAPSearchPaths()
     }
   }
 #else
+  std::string cp;
+  auto p = getenv("CLAP_PATH");
+  if (p)
+  {
+    cp = std::string(p);
+  }
+  auto sep = ':';
+
   if (cp.empty())
   {
     size_t pos;
@@ -114,6 +115,15 @@ std::vector<fs::path> getValidCLAPSearchPaths()
     if (!cp.empty()) res.emplace_back(cp);
   }
 #endif
+
+  auto paths{res};
+  for (const auto &path : paths)
+  {
+    for (auto subdirectory : fs::recursive_directory_iterator(path))
+    {
+      if (subdirectory.is_directory()) res.emplace_back(subdirectory.path());
+    }
+  }
 
   return res;
 }
