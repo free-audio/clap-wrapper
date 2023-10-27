@@ -506,8 +506,11 @@ int64_t CLAP_ABI StateMemento::_read(const struct clap_istream *stream, void *bu
   {
     realsize = self->_mem.size() - self->_readoffset;
   }
-  memcpy(buffer, &self->_mem[self->_readoffset], realsize);
-  self->_readoffset += realsize;
+  if ( realsize > 0 )
+  {
+    memcpy(buffer, &self->_mem[self->_readoffset], realsize);
+    self->_readoffset += realsize;
+  }
   return realsize;
 }
 

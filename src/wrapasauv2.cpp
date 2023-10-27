@@ -663,41 +663,49 @@ OSStatus WrapAsAUV2::SaveState(CFPropertyListRef *ptPList)
   if (!IsInitialized())
     return kAudioUnitErr_Uninitialized;
   
-  Clap::StateMemento chunk;
-  _plugin->_ext._state->save(_plugin->_plugin,chunk);
+  auto keepit = _plugin->AlwaysMainThread();
   
-  CFDataRef tData = CFDataCreate(0, (UInt8 *)chunk.data(), chunk.size());
-  const AudioComponentDescription desc = GetComponentDescription();
-
-  auto dict = ausdk::Owned<CFMutableDictionaryRef>::from_create(CFDictionaryCreateMutable(
-    nullptr, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
-
-  // first step -> save the version to the data ref
-  SInt32 value = 0; // kCurrentSavedStateVersion;
-
-  AddNumToDictionary(*dict,CFSTR(kAUPresetVersionKey), value);
-
-  // second step -> save the component type, subtype, manu to the data ref
-  value = static_cast<SInt32>(desc.componentType);
-  AddNumToDictionary(*dict, CFSTR(kAUPresetTypeKey), value);
-
-  value = static_cast<SInt32>(desc.componentSubType);
-  AddNumToDictionary(*dict, CFSTR(kAUPresetSubtypeKey), value);
-
-  value = static_cast<SInt32>(desc.componentManufacturer);
-  AddNumToDictionary(*dict, CFSTR(kAUPresetManufacturerKey), value);
-
-
-  CFDictionarySetValue(*dict, CFSTR(kAUPresetDataKey), tData);
-  CFRelease(tData);
-  chunk.clear();
-  
-  const char  *name = "blarb";
-  
-  // mPlugin->getProgramName(name);
-  CFDictionarySetValue(*dict, CFSTR(kAUPresetNameKey), CFStringCreateWithCString(NULL, name, kCFStringEncodingUTF8));
-
-  *ptPList = static_cast<CFPropertyListRef>(dict.release()); // transfer ownership
+  if ( ! _plugin->_ext._state )
+  {
+    return AUBase::SaveState(ptPList);
+  }
+  else
+  {
+    Clap::StateMemento chunk;
+    _plugin->_ext._state->save(_plugin->_plugin,chunk);
+    
+    CFDataRef tData = CFDataCreate(0, (UInt8 *)chunk.data(), chunk.size());
+    const AudioComponentDescription desc = GetComponentDescription();
+    
+    auto dict = ausdk::Owned<CFMutableDictionaryRef>::from_create(CFDictionaryCreateMutable(
+                                                                                            nullptr, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
+    
+    // first step -> save the version to the data ref
+    SInt32 value = 0; // kCurrentSavedStateVersion;
+    
+    AddNumToDictionary(*dict,CFSTR(kAUPresetVersionKey), value);
+    
+    // second step -> save the component type, subtype, manu to the data ref
+    value = static_cast<SInt32>(desc.componentType);
+    AddNumToDictionary(*dict, CFSTR(kAUPresetTypeKey), value);
+    
+    value = static_cast<SInt32>(desc.componentSubType);
+    AddNumToDictionary(*dict, CFSTR(kAUPresetSubtypeKey), value);
+    
+    value = static_cast<SInt32>(desc.componentManufacturer);
+    AddNumToDictionary(*dict, CFSTR(kAUPresetManufacturerKey), value);
+    
+    
+    CFDictionarySetValue(*dict, CFSTR(kAUPresetDataKey), tData);
+    CFRelease(tData);
+    chunk.clear();
+    
+    // const char  *name = "blarb";
+    // mPlugin->getProgramName(name);
+    // CFDictionarySetValue(*dict, CFSTR(kAUPresetNameKey), CFStringCreateWithCString(NULL, name, kCFStringEncodingUTF8));
+    
+    *ptPList = static_cast<CFPropertyListRef>(dict.release()); // transfer ownership
+  }
   
   return noErr;
 }
