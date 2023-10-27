@@ -637,6 +637,8 @@ OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags& inFlags, const AudioTime
     Clap::AUv2::ProcessData data{inFlags, inTimeStamp, inFrames, this};
 
     // retrieve musical information for this render block
+
+    // mHostCallbackInfo.transportStateProc2
 #if 0
     data._AUtransportValid = (noErr == CallHostTransportState(&data._isPlaying, &data._transportChanged, &data._currentSongPos, &data._isLooping, &data._cycleStart, &data._cycleEnd) );
     data._AUbeatAndTempoValid = (noErr ==
@@ -654,4 +656,81 @@ OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags& inFlags, const AudioTime
   return noErr;
 }
 
+OSStatus WrapAsAUV2::SaveState(CFPropertyListRef *ptPList) 
+{
+  if (!ptPList)  return kAudioUnitErr_InvalidParameter;
+  
+  if (!IsInitialized())
+    return kAudioUnitErr_Uninitialized;
+  
+  Clap::StateMemento chunk;
+  _plugin->_ext._state->save(_plugin->_plugin,chunk);
+  
+  CFDataRef tData = CFDataCreate(0, (UInt8 *)chunk.data(), chunk.size());
+  const AudioComponentDescription desc = GetComponentDescription();
+
+  auto dict = ausdk::Owned<CFMutableDictionaryRef>::from_create(CFDictionaryCreateMutable(
+    nullptr, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
+
+  // first step -> save the version to the data ref
+  SInt32 value = 0; // kCurrentSavedStateVersion;
+
+  AddNumToDictionary(*dict,CFSTR(kAUPresetVersionKey), value);
+
+  // second step -> save the component type, subtype, manu to the data ref
+  value = static_cast<SInt32>(desc.componentType);
+  AddNumToDictionary(*dict, CFSTR(kAUPresetTypeKey), value);
+
+  value = static_cast<SInt32>(desc.componentSubType);
+  AddNumToDictionary(*dict, CFSTR(kAUPresetSubtypeKey), value);
+
+  value = static_cast<SInt32>(desc.componentManufacturer);
+  AddNumToDictionary(*dict, CFSTR(kAUPresetManufacturerKey), value);
+
+
+  CFDictionarySetValue(*dict, CFSTR(kAUPresetDataKey), tData);
+  CFRelease(tData);
+  chunk.clear();
+  
+  const char  *name = "blarb";
+  
+  // mPlugin->getProgramName(name);
+  CFDictionarySetValue(*dict, CFSTR(kAUPresetNameKey), CFStringCreateWithCString(NULL, name, kCFStringEncodingUTF8));
+
+  *ptPList = static_cast<CFPropertyListRef>(dict.release()); // transfer ownership
+  
+  return noErr;
+}
+OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
+{
+  if (!plist) return kAudioUnitErr_InvalidParameter;
+
+  if (!IsInitialized())
+    return kAudioUnitErr_Uninitialized;
+  
+  CFDictionaryRef tDict = CFDictionaryRef(plist);
+
+  // Find 'data' key
+  const void* pData = CFDictionaryGetValue(tDict, CFSTR(kAUPresetDataKey));
+  if (CFGetTypeID(CFTypeRef(pData)) != CFDataGetTypeID())
+    return -1;
+
+  CFDataRef tData = CFDataRef(pData);
+  
+  if (tData)
+  {
+    // Get length and ptr
+    const long lLen = CFDataGetLength(tData);
+    UInt8* pData = (UInt8*)(CFDataGetBytePtr(tData));
+    if (lLen > 0 && pData)
+    {
+      Clap::StateMemento chunk;
+      chunk.setData(pData, lLen);
+      _plugin->_ext._state->load(_plugin->_plugin,chunk);
+      
+    }
+  }
+  return noErr;
+  
+}
 }  // namespace free_audio::auv2_wrapper

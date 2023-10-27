@@ -118,6 +118,17 @@ class WrapAsAUV2 : public ausdk::AUBase, public Clap::IHost
     return kAudio_UnimplementedError;
   }
 
+  // unfortunately hidden in the base c++ file
+  static void AddNumToDictionary(CFMutableDictionaryRef dict, CFStringRef key, SInt32 value)
+  {
+    const CFNumberRef num = CFNumberCreate(nullptr, kCFNumberSInt32Type, &value);
+    CFDictionarySetValue(dict, key, num);
+    CFRelease(num);
+  }
+  
+  OSStatus SaveState(CFPropertyListRef *ptPList) override;
+  OSStatus RestoreState(CFPropertyListRef plist) override;
+  
   // render
   OSStatus Render(AudioUnitRenderActionFlags& inFlags, const AudioTimeStamp& inTimeStamp,
                   UInt32 inFrames) override;
