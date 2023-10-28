@@ -5,8 +5,11 @@
 #include <unordered_set>
 #include <thread>
 #include <mutex>
+#include <optional>
 
 #include "standalone_details.h"
+
+#include "detail/clap/fsutil.h"
 
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -42,6 +45,8 @@ struct Win32Gui;
 }
 #endif
 #endif
+
+std::optional<fs::path> getStandaloneSettingsPath();
 
 struct StandaloneHost : Clap::IHost
 {
@@ -128,6 +133,9 @@ struct StandaloneHost : Clap::IHost
   {
     TRACE;
   }
+
+  bool saveStandaloneAndPluginSettings(const fs::path &intoDir, const fs::path &withName);
+  bool tryLoadStandaloneAndPluginSettings(const fs::path &fromDir, const fs::path &withName);
 
   uint32_t numAudioInputs{0}, numAudioOutputs{0};
   std::vector<uint32_t> inputChannelByBus;

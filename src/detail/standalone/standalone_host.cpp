@@ -1,6 +1,7 @@
 
 #include <cassert>
 #include "standalone_host.h"
+#include <fstream>
 
 #if LIN
 #if CLAP_WRAPPER_HAS_GTK3
@@ -10,6 +11,15 @@
 
 namespace freeaudio::clap_wrapper::standalone
 {
+
+#if !MAC
+std::optional<fs::path> getStandaloneSettingsPath()
+{
+  TRACE;
+  return std::nullopt;
+}
+#endif
+
 StandaloneHost::~StandaloneHost()
 {
 }
@@ -233,5 +243,75 @@ bool StandaloneHost::unregister_timer(clap_id timer_id)
   return false;
 }
 #endif
+
+static int64_t clapwrite(const clap_ostream *s, const void *buffer, uint64_t size)
+{
+  auto ofs = static_cast<std::ofstream *>(s->ctx);
+  ofs->write((const char *)buffer, size);
+  return size;
+}
+
+static int64_t clapread(const struct clap_istream *s, void *buffer, uint64_t size)
+{
+  auto ifs = static_cast<std::ifstream *>(s->ctx);
+
+  // Oh this API is so terrible. I think this is right?
+  ifs->read(static_cast<char *>(buffer), size);
+  if (ifs->rdstate() == std::ios::goodbit || ifs->rdstate() == std::ios::eofbit) return ifs->gcount();
+
+  if (ifs->rdstate() & std::ios::eofbit) return ifs->gcount();
+
+  return -1;
+}
+
+bool StandaloneHost::saveStandaloneAndPluginSettings(const fs::path &intoDir, const fs::path &withName)
+{
+  // This should obviously be a more robust file format. What we
+  // want is an envelope containing the standalone settings and then
+  // the streamed plugin data. What we have here is just the streamed
+  // plugin data with no settings space for audio port selection etc...
+
+  std::ofstream ofs(intoDir / withName, std::ios::out | std::ios::binary);
+  if (!ofs.is_open())
+  {
+    LOG << "Unable to open for writing " << (intoDir / withName).u8string() << std::endl;
+    return false;
+  }
+  if (!clapPlugin || !clapPlugin->_ext._state)
+  {
+    return false;
+  }
+  clap_ostream cos{};
+  cos.ctx = &ofs;
+  cos.write = clapwrite;
+  clapPlugin->_ext._state->save(clapPlugin->_plugin, &cos);
+  ofs.close();
+
+  return true;
+}
+
+bool StandaloneHost::tryLoadStandaloneAndPluginSettings(const fs::path &fromDir,
+                                                        const fs::path &withName)
+{
+  // see comment above on this file format being not just the
+  // raw stream in the future
+  auto fsp = fromDir / withName;
+  std::ifstream ifs(fsp, std::ios::in | std::ios::binary);
+  if (!ifs.is_open())
+  {
+    LOG << "Unable to open for reading " << fsp.u8string() << std::endl;
+    return false;
+  }
+  if (!clapPlugin || !clapPlugin->_ext._state)
+  {
+    return false;
+  }
+  clap_istream cis{};
+  cis.ctx = &ifs;
+  cis.read = clapread;
+  clapPlugin->_ext._state->load(clapPlugin->_plugin, &cis);
+  ifs.close();
+  return true;
+}
 
 }  // namespace freeaudio::clap_wrapper::standalone

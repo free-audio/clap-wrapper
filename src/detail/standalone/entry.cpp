@@ -52,6 +52,24 @@ std::shared_ptr<Clap::Plugin> mainCreatePlugin(const clap_plugin_entry *ee, cons
 
   plugin->initialize();
 
+  auto pt = getStandaloneSettingsPath();
+  if (pt.has_value())
+  {
+    auto loadPath = *pt / plugin->_plugin->desc->id;
+    try
+    {
+      if (fs::exists(loadPath / "settings.clapwrapper"))
+      {
+        LOG << "Trying to load from clap wrapper settings" << std::endl;
+        standaloneHost->tryLoadStandaloneAndPluginSettings(loadPath, "settings.clapwrapper");
+      }
+    }
+    catch (const fs::filesystem_error &e)
+    {
+      // Oh well - whatcha gonna do?
+    }
+  }
+
   plugin->setSampleRate(48000);
   plugin->setBlockSizes(32, 1024);
   plugin->activate();
@@ -95,6 +113,26 @@ int mainFinish()
   {
     standaloneHost->stopAudioThread();
     standaloneHost->stopMIDIThread();
+
+    auto pt = getStandaloneSettingsPath();
+    if (pt.has_value())
+    {
+      auto savePath = *pt / plugin->_plugin->desc->id;
+      LOG << "Saving settings to '" << savePath << "'" << std::endl;
+      try
+      {
+        fs::create_directories(savePath);
+        standaloneHost->saveStandaloneAndPluginSettings(savePath, "settings.clapwrapper");
+      }
+      catch (const fs::filesystem_error &e)
+      {
+        // Oh well - whatcha gonna do?
+      }
+    }
+    else
+    {
+      LOG << "No Standalone Settings Path; not streaming" << std::endl;
+    }
 
     plugin->deactivate();
   }
