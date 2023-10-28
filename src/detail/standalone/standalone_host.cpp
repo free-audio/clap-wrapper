@@ -9,10 +9,36 @@
 #endif
 #endif
 
+#if WIN
+#if CLAP_WRAPPER_HAS_WIN32
+#include <Windows.h>
+#include <ShlObj.h>
+#include <string>
+#endif
+#endif
+
 namespace freeaudio::clap_wrapper::standalone
 {
 
-#if !MAC
+#if CLAP_WRAPPER_HAS_WIN32
+std::optional<fs::path> getStandaloneSettingsPath()
+{
+  std::wstring path;
+  wchar_t *buffer;
+
+  if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &buffer)))
+  {
+    fs::path data{std::wstring(buffer) + fs::path::preferred_separator + L"clap-wrapper-standalone"};
+    CoTaskMemFree(buffer);
+
+    if (!fs::exists(data)) fs::create_directory(data);
+
+    return data;
+  }
+
+  return std::nullopt;
+}
+#elif !MAC
 std::optional<fs::path> getStandaloneSettingsPath()
 {
   TRACE;
