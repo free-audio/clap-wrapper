@@ -492,21 +492,20 @@ bool Plugin::unregister_timer(clap_id timer_id)
 void StateMemento::setData(const uint8_t* data, size_t size)
 {
   _mem.clear();
-  if ( size > 0)
-    _mem.insert(_mem.end(),&data[0], &data[size]);
+  if (size > 0) _mem.insert(_mem.end(), &data[0], &data[size]);
   _readoffset = 0;
 }
 
-int64_t CLAP_ABI StateMemento::_read(const struct clap_istream *stream, void *buffer, uint64_t size)
+int64_t CLAP_ABI StateMemento::_read(const struct clap_istream* stream, void* buffer, uint64_t size)
 {
   StateMemento* self = static_cast<StateMemento*>(stream->ctx);
   auto realsize = size;
   uint64_t endpos = self->_readoffset + realsize;
-  if (endpos > self->_mem.size() )
+  if (endpos >= self->_mem.size())
   {
     realsize = self->_mem.size() - self->_readoffset;
   }
-  if ( realsize > 0 )
+  if (realsize > 0)
   {
     memcpy(buffer, &self->_mem[self->_readoffset], realsize);
     self->_readoffset += realsize;
@@ -514,14 +513,14 @@ int64_t CLAP_ABI StateMemento::_read(const struct clap_istream *stream, void *bu
   return realsize;
 }
 
-int64_t CLAP_ABI StateMemento::_write(const struct clap_ostream *stream, const void *buffer, uint64_t size)
+int64_t CLAP_ABI StateMemento::_write(const struct clap_ostream* stream, const void* buffer,
+                                      uint64_t size)
 {
   StateMemento* self = static_cast<StateMemento*>(stream->ctx);
-  auto *ptr = static_cast<const uint8_t*>(buffer);
+  auto* ptr = static_cast<const uint8_t*>(buffer);
   self->_mem.insert(self->_mem.end(), &ptr[0], &ptr[size]);
-  return size;;
+  return size;
 }
-
 
 #if LIN
 bool Plugin::register_fd(int fd, clap_posix_fd_flags_t flags)

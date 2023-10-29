@@ -18,8 +18,10 @@
 #include "auv2_shared.h"
 #include <iostream>
 #include <memory>
+#include <map>
 
 #include "process.h"
+#include "parameter.h"
 
 enum class AUV2_Type : uint32_t
 {
@@ -125,13 +127,22 @@ class WrapAsAUV2 : public ausdk::AUBase, public Clap::IHost
     CFDictionarySetValue(dict, key, num);
     CFRelease(num);
   }
-  
-  OSStatus SaveState(CFPropertyListRef *ptPList) override;
+
+  OSStatus SaveState(CFPropertyListRef* ptPList) override;
   OSStatus RestoreState(CFPropertyListRef plist) override;
-  
+
   // render
   OSStatus Render(AudioUnitRenderActionFlags& inFlags, const AudioTimeStamp& inTimeStamp,
                   UInt32 inFrames) override;
+
+  OSStatus GetParameterList(AudioUnitScope inScope, AudioUnitParameterID* outParameterList,
+                            UInt32& outNumParameters) override;
+  // outParameterList may be a null pointer
+  OSStatus GetParameterInfo(AudioUnitScope inScope, AudioUnitParameterID inParameterID,
+                            AudioUnitParameterInfo& outParameterInfo) override;
+
+  OSStatus SetParameter(AudioUnitParameterID inID, AudioUnitScope inScope, AudioUnitElement inElement,
+                        AudioUnitParameterValue inValue, UInt32 /*inBufferOffsetInFrames*/) override;
 
   // ---------------- Clap::IHost
   void mark_dirty() override
@@ -152,9 +163,7 @@ class WrapAsAUV2 : public ausdk::AUBase, public Clap::IHost
   void setupMIDIBusses(const clap_plugin_t* plugin,
                        const clap_plugin_note_ports_t* noteports)
       override final;  // called from initialize() to allow the setup of MIDI ports
-  void setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params) override final
-  {
-  }
+  void setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params) override final;
 
   void param_rescan(clap_param_rescan_flags flags) override
   {
@@ -228,6 +237,7 @@ class WrapAsAUV2 : public ausdk::AUBase, public Clap::IHost
   uint32_t _midi_preferred_dialect = 0;
   bool _midi_wants_midi_input = false;  // takes any input
   bool _midi_understands_midi2 = false;
+  std::map<uint32_t, std::unique_ptr<Clap::AUv2::Parameter>> _parametertree;
 };
 
 }  // namespace free_audio::auv2_wrapper

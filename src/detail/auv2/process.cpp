@@ -534,4 +534,26 @@ void ProcessAdapter::addMIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData
       break;
   }
 }
+
+void ProcessAdapter::addParameterEvent(const clap_param_info_t& info, double value,
+                                       uint32_t inOffsetSampleFrame)
+{
+  clap_multi_event n;
+  n.header.size = sizeof(n.param);
+  n.header.type = CLAP_EVENT_PARAM_VALUE;
+  n.header.space_id = 0;
+  n.header.time = inOffsetSampleFrame;
+  n.header.flags = 0;
+
+  n.param.value = value;
+  n.param.param_id = info.id;
+  n.param.cookie = info.cookie;
+  n.param.port_index = -1;
+  n.param.key = -1;
+  n.param.channel = -1;
+  n.param.note_id = -1;
+
+  this->_eventindices.emplace_back(this->_events.size());
+  this->_events.emplace_back(n);
+}
 }  // namespace Clap::AUv2

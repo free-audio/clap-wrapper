@@ -311,6 +311,122 @@ void WrapAsAUV2::setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_
    */
 }
 
+void WrapAsAUV2::setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params)
+{
+  // creating parameters.
+
+  auto* p = _plugin->_ext._params;
+  if (p)
+  {
+    uint32_t numparams = p->count(_plugin->_plugin);
+    clap_param_info_t paraminfo;
+    for (uint32_t i = 0; i < numparams; ++i)
+    {
+      if (p->get_info(_plugin->_plugin, i, &paraminfo))
+      {
+        double result;
+        if (p->get_value(_plugin->_plugin, paraminfo.id, &result))
+        {
+          // creating the mapping object and insert it into the tree
+          // this will also create Clumps if necessary
+          _parametertree[paraminfo.id] = std::make_unique<Clap::AUv2::Parameter>(paraminfo);
+          Globals()->SetParameter(paraminfo.id, result);
+        }
+      }
+    }
+  }
+  // Globals()->SetParameter(100, 0.5);
+  // Globals()->SetParameter(101, 0.0);
+  // GlobalScope().GetElement(0)->SetParameter(100, 15);
+  // GlobalScope().GetElement(0)->SetParameter(101, 16);
+
+  // a->mAudioUnit = GetComponentInstance();
+}
+
+OSStatus WrapAsAUV2::GetParameterList(AudioUnitScope inScope, AudioUnitParameterID* outParameterList,
+                                      UInt32& outNumParameters)
+{
+  return AUBase::GetParameterList(inScope, outParameterList, outNumParameters);
+}
+// outParameterList may be a null pointer
+OSStatus WrapAsAUV2::GetParameterInfo(AudioUnitScope inScope, AudioUnitParameterID inParameterID,
+                                      AudioUnitParameterInfo& outParameterInfo)
+{
+  // const uint64_t stdflag = kAudioUnitParameterFlag_IsReadable | kAudioUnitParameterFlag_IsWritable;
+  if (inScope == kAudioUnitScope_Global)
+  {
+    AudioUnitParameterOptions flags = 0;
+    auto pi = _parametertree.find(inParameterID);
+    if (pi != _parametertree.end())
+    {
+      auto f = pi->second.get();
+      const auto info = f->info();
+
+      if (info.flags & CLAP_PARAM_IS_AUTOMATABLE) flags |= kAudioUnitParameterFlag_Global;
+      if ((info.flags & CLAP_PARAM_IS_HIDDEN) == 0)
+      {
+        if (info.flags & CLAP_PARAM_IS_READONLY)
+          flags |= kAudioUnitParameterFlag_IsReadable;
+        else
+          flags |= kAudioUnitParameterFlag_IsReadable | kAudioUnitParameterFlag_IsWritable;
+      }
+      if (info.flags & CLAP_PARAM_IS_STEPPED)
+      {
+        // flags |= kAudioUnitParameterFlag_
+      }
+      if (info.max_value - info.min_value > 100)
+      {
+        flags |= kAudioUnitParameterFlag_IsHighResolution;
+      }
+      // checking if the parameter supports the conversion of its value to text
+      double value;
+      if (_plugin->_ext._params->get_value(_plugin->_plugin, info.id, &value))
+      {
+        char buf[200];
+        if (_plugin->_ext._params->value_to_text(_plugin->_plugin, info.id, value, buf, sizeof(buf)))
+        {
+          flags |= kAudioUnitParameterFlag_HasName;
+        }
+      }
+
+      outParameterInfo.flags = flags;
+
+      // according to the documentation, the name field should be zeroed. In fact, AULab does display anything then.
+      strcpy(outParameterInfo.name, info.name);
+      // memset(outParameterInfo.name, 0, sizeof(outParameterInfo.name));
+
+      outParameterInfo.cfNameString = f->CFString();
+      outParameterInfo.minValue = info.min_value;
+      outParameterInfo.maxValue = info.max_value;
+      outParameterInfo.defaultValue = info.min_value;
+      if (info.min_value < 0.0)
+      {
+        outParameterInfo.defaultValue = 0.0;
+      }
+      return noErr;
+    }
+  }
+  return AUBase::GetParameterInfo(inScope, inParameterID, outParameterInfo);
+}
+
+OSStatus WrapAsAUV2::SetParameter(AudioUnitParameterID inID, AudioUnitScope inScope,
+                                  AudioUnitElement inElement, AudioUnitParameterValue inValue,
+                                  UInt32 inBufferOffsetInFrames)
+{
+  if (inScope == kAudioUnitScope_Global)
+  {
+    // a parameter has been set.
+    // _processAdapter->addParameterEvent(inID,inValue,inBufferOffsetInFrames);
+    auto p = _parametertree.find(inID);
+    if (p != _parametertree.end())
+    {
+      auto& param = p->second.get()->info();
+      _processAdapter->addParameterEvent(param, inValue, inBufferOffsetInFrames);
+    }
+  }
+  return AUBase::SetParameter(inID, inScope, inElement, inValue, inBufferOffsetInFrames);
+}
+
 OSStatus WrapAsAUV2::Start()
 {
   // _plugin->start_processing();
@@ -365,6 +481,14 @@ OSStatus WrapAsAUV2::GetPropertyInfo(AudioUnitPropertyID inID, AudioUnitScope in
   {
     switch (inID)
     {
+      case kAudioUnitProperty_ParameterStringFromValue:
+        if (inScope == kAudioUnitScope_Global)
+        {
+          outDataSize = sizeof(AudioUnitParameterStringFromValue);
+          outWritable = true;
+          return noErr;
+        }
+        break;
       case kMusicDeviceProperty_InstrumentCount:
         outDataSize = sizeof(UInt32);
         outWritable = false;
@@ -423,6 +547,20 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
   {
     switch (inID)
     {
+      case kAudioUnitProperty_ParameterStringFromValue:
+      {
+        //         _plugin->_ext._params->value_to_text(
+        char buf[200];
+        auto p = (AudioUnitParameterStringFromValue*)(outData);
+        double value = *p->inValue;
+        if (_plugin->_ext._params->value_to_text(_plugin->_plugin, p->inParamID, value, buf, 200))
+        {
+          p->outString = CFStringCreateWithCString(NULL, buf, kCFStringEncodingUTF8);
+          return noErr;
+        }
+        return kAudioUnitErr_InvalidProperty;
+      }
+      break;
       case kMusicDeviceProperty_InstrumentCount:
         if (inScope != kAudioUnitScope_Global)
         {
@@ -656,75 +794,71 @@ OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags& inFlags, const AudioTime
   return noErr;
 }
 
-OSStatus WrapAsAUV2::SaveState(CFPropertyListRef *ptPList) 
+OSStatus WrapAsAUV2::SaveState(CFPropertyListRef* ptPList)
 {
-  if (!ptPList)  return kAudioUnitErr_InvalidParameter;
-  
-  if (!IsInitialized())
-    return kAudioUnitErr_Uninitialized;
-  
+  if (!ptPList) return kAudioUnitErr_InvalidParameter;
+
+  if (!IsInitialized()) return kAudioUnitErr_Uninitialized;
+
   auto keepit = _plugin->AlwaysMainThread();
-  
-  if ( ! _plugin->_ext._state )
+
+  if (!_plugin->_ext._state)
   {
     return AUBase::SaveState(ptPList);
   }
   else
   {
     Clap::StateMemento chunk;
-    _plugin->_ext._state->save(_plugin->_plugin,chunk);
-    
-    CFDataRef tData = CFDataCreate(0, (UInt8 *)chunk.data(), chunk.size());
+    _plugin->_ext._state->save(_plugin->_plugin, chunk);
+
+    CFDataRef tData = CFDataCreate(0, (UInt8*)chunk.data(), chunk.size());
     const AudioComponentDescription desc = GetComponentDescription();
-    
+
     auto dict = ausdk::Owned<CFMutableDictionaryRef>::from_create(CFDictionaryCreateMutable(
-                                                                                            nullptr, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
-    
+        nullptr, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
+
     // first step -> save the version to the data ref
-    SInt32 value = 0; // kCurrentSavedStateVersion;
-    
-    AddNumToDictionary(*dict,CFSTR(kAUPresetVersionKey), value);
-    
+    SInt32 value = 0;  // kCurrentSavedStateVersion;
+
+    AddNumToDictionary(*dict, CFSTR(kAUPresetVersionKey), value);
+
     // second step -> save the component type, subtype, manu to the data ref
     value = static_cast<SInt32>(desc.componentType);
     AddNumToDictionary(*dict, CFSTR(kAUPresetTypeKey), value);
-    
+
     value = static_cast<SInt32>(desc.componentSubType);
     AddNumToDictionary(*dict, CFSTR(kAUPresetSubtypeKey), value);
-    
+
     value = static_cast<SInt32>(desc.componentManufacturer);
     AddNumToDictionary(*dict, CFSTR(kAUPresetManufacturerKey), value);
-    
-    
+
     CFDictionarySetValue(*dict, CFSTR(kAUPresetDataKey), tData);
     CFRelease(tData);
     chunk.clear();
-    
+
     // const char  *name = "blarb";
     // mPlugin->getProgramName(name);
     // CFDictionarySetValue(*dict, CFSTR(kAUPresetNameKey), CFStringCreateWithCString(NULL, name, kCFStringEncodingUTF8));
-    
-    *ptPList = static_cast<CFPropertyListRef>(dict.release()); // transfer ownership
+
+    *ptPList = static_cast<CFPropertyListRef>(dict.release());  // transfer ownership
   }
-  
+
   return noErr;
 }
 OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
 {
   if (!plist) return kAudioUnitErr_InvalidParameter;
 
-  if (!IsInitialized())
-    return kAudioUnitErr_Uninitialized;
-  
+  if (!IsInitialized()) return kAudioUnitErr_Uninitialized;
+
   CFDictionaryRef tDict = CFDictionaryRef(plist);
 
   // Find 'data' key
   const void* pData = CFDictionaryGetValue(tDict, CFSTR(kAUPresetDataKey));
-  if (CFGetTypeID(CFTypeRef(pData)) != CFDataGetTypeID())
-    return -1;
+  if (CFGetTypeID(CFTypeRef(pData)) != CFDataGetTypeID()) return -1;
 
   CFDataRef tData = CFDataRef(pData);
-  
+
   if (tData)
   {
     // Get length and ptr
@@ -734,11 +868,9 @@ OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
     {
       Clap::StateMemento chunk;
       chunk.setData(pData, lLen);
-      _plugin->_ext._state->load(_plugin->_plugin,chunk);
-      
+      _plugin->_ext._state->load(_plugin->_plugin, chunk);
     }
   }
   return noErr;
-  
 }
 }  // namespace free_audio::auv2_wrapper
