@@ -43,6 +43,5 @@ cmake-build-*
 ignore/
 #df habit
 build/
-build_Apricot/
 out/
 .DS_Store
