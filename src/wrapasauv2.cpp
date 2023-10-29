@@ -362,7 +362,9 @@ OSStatus WrapAsAUV2::GetParameterInfo(AudioUnitScope inScope, AudioUnitParameter
       auto f = pi->second.get();
       const auto info = f->info();
 
-      if (info.flags & CLAP_PARAM_IS_AUTOMATABLE) flags |= kAudioUnitParameterFlag_Global;
+      flags |= kAudioUnitParameterFlag_Global;
+
+      if (info.flags & CLAP_PARAM_IS_AUTOMATABLE) flags |= kAudioUnitParameterFlag_NonRealTime;
       if ((info.flags & CLAP_PARAM_IS_HIDDEN) == 0)
       {
         if (info.flags & CLAP_PARAM_IS_READONLY)
@@ -372,12 +374,17 @@ OSStatus WrapAsAUV2::GetParameterInfo(AudioUnitScope inScope, AudioUnitParameter
       }
       if (info.flags & CLAP_PARAM_IS_STEPPED)
       {
-        // flags |= kAudioUnitParameterFlag_
+        if (info.max_value - info.min_value == 1)
+        {
+          flags |= kAudioUnitParameterUnit_Boolean;
+        }
+        // flags |= kAudioUnitParameterUnit_Indexed;  // probably need to add the lists then
       }
       if (info.max_value - info.min_value > 100)
       {
         flags |= kAudioUnitParameterFlag_IsHighResolution;
       }
+
       // checking if the parameter supports the conversion of its value to text
       double value;
       if (_plugin->_ext._params->get_value(_plugin->_plugin, info.id, &value))
@@ -389,11 +396,13 @@ OSStatus WrapAsAUV2::GetParameterInfo(AudioUnitScope inScope, AudioUnitParameter
         }
       }
 
+      flags |= kAudioUnitParameterFlag_HasCFNameString;
+
       outParameterInfo.flags = flags;
 
       // according to the documentation, the name field should be zeroed. In fact, AULab does display anything then.
-      strcpy(outParameterInfo.name, info.name);
-      // memset(outParameterInfo.name, 0, sizeof(outParameterInfo.name));
+      // strcpy(outParameterInfo.name, info.name);
+      memset(outParameterInfo.name, 0, sizeof(outParameterInfo.name));
 
       outParameterInfo.cfNameString = f->CFString();
       outParameterInfo.minValue = info.min_value;
