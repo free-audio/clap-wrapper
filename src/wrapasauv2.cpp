@@ -2,7 +2,7 @@
 #include "detail/auv2/process.h"
 #include "detail/os/osutil.h"
 
-extern bool fillAudioUnitCocoaView(AudioUnitCocoaViewInfo* viewInfo);
+extern bool fillAudioUnitCocoaView(AudioUnitCocoaViewInfo* viewInfo, std::shared_ptr<Clap::Plugin>);
 
 namespace free_audio::auv2_wrapper
 {
@@ -403,7 +403,7 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
             (_plugin->_ext._gui->is_api_supported(_plugin->_plugin, CLAP_WINDOW_API_COCOA, false)))
         {
           LOGINFO("now getting cocoa ui");
-          fillAudioUnitCocoaView(((AudioUnitCocoaViewInfo*)outData));
+          fillAudioUnitCocoaView(((AudioUnitCocoaViewInfo*)outData), _plugin);
           // *((AudioUnitCocoaViewInfo *)outData) = cocoaInfo;
           LOGINFO("query Property: kAudioUnitProperty_CocoaUI complete");
           return noErr;  // sizeof(AudioUnitCocoaViewInfo);
@@ -411,7 +411,7 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         else
         {
           LOGINFO("query Property: kAudioUnitProperty_CocoaUI although now plugin ext");
-          fillAudioUnitCocoaView(((AudioUnitCocoaViewInfo*)outData));
+          fillAudioUnitCocoaView(((AudioUnitCocoaViewInfo*)outData), _plugin);
           return noErr;
         }
         return kAudioUnitErr_InvalidProperty;
