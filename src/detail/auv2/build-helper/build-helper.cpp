@@ -2,6 +2,7 @@
 #include <fstream>
 #include <vector>
 #include <functional>
+#include <sstream>
 
 #include "detail/clap/fsutil.h"
 
@@ -259,82 +260,139 @@ int main(int argc, char **argv)
   of.close();
   std::cout << "  - auv2_Info.plist generated" << std::endl;
 
-  std::cout << "  - generating generated_entrypoints.hxx" << std::endl;
-  std::ofstream cppf("generated_entrypoints.hxx");
-  if (!cppf.is_open())
   {
-    std::cout << "[ERROR] Unable to open generated_endpoints.hxx" << std::endl;
-    return 1;
-  }
+    std::cout << "  - generating generated_entrypoints.hxx" << std::endl;
+    std::ofstream cppf("generated_entrypoints.hxx");
+    if (!cppf.is_open())
+    {
+      std::cout << "[ERROR] Unable to open generated_endpoints.hxx" << std::endl;
+      return 1;
+    }
 
-  cppf << "#pragma once\n";
-  cppf << "#include \"detail/auv2/auv2_base_classes.h\"\n\n";
+    cppf << "#pragma once\n";
+    cppf << "#include \"detail/auv2/auv2_base_classes.h\"\n\n";
 
-  idx = 0;
-  for (const auto &u : units)
-  {
-    auto on = u.factoryBase + std::to_string(idx);
+    idx = 0;
+    for (const auto &u : units)
+    {
+      auto on = u.factoryBase + std::to_string(idx);
 
-    auto args = std::string("\"") + u.clapname + "\", \"" + u.clapid + "\", " + std::to_string(idx);
+      auto args = std::string("\"") + u.clapname + "\", \"" + u.clapid + "\", " + std::to_string(idx);
 
 #if 1
-    {
-      std::cout << "    + " << u.name << " entry " << on << " from WrapAsAUV2" << std::endl;
-      cppf << "struct " << on << " : free_audio::auv2_wrapper::WrapAsAUV2 {\n"
-           << "   " << on << "(AudioComponentInstance ci) :\n"
-           << "         free_audio::auv2_wrapper::WrapAsAUV2(";
+      {
+        std::cout << "    + " << u.name << " entry " << on << " from WrapAsAUV2" << std::endl;
+        cppf << "struct " << on << " : free_audio::auv2_wrapper::WrapAsAUV2 {\n"
+             << "   " << on << "(AudioComponentInstance ci) :\n"
+             << "         free_audio::auv2_wrapper::WrapAsAUV2(";
+        if (u.type == "aumu")
+        {
+          cppf << "AUV2_Type::aumu_musicdevice";
+        }
+        if (u.type == "aumi")
+        {
+          cppf << "AUV2_Type::aumi_noteeffect";
+        }
+        if (u.type == "aufx")
+        {
+          cppf << "AUV2_Type::aufx_effect";
+        }
+        cppf << "," << args << ", ci) {}"
+             << "};\n"
+             << "AUSDK_COMPONENT_ENTRY(ausdk::AUMusicDeviceFactory, " << on << ");\n";
+      }
+#else
+      // TODO: this will be remove
       if (u.type == "aumu")
       {
-        cppf << "AUV2_Type::aumu_musicdevice";
+        std::cout << "    + " << u.name << " entry " << on << " from WrapAsAUV2" << std::endl;
+        cppf << "struct " << on << " : free_audio::auv2_wrapper::WrapAsAUV2 {\n"
+             << "   " << on << "(AudioComponentInstance ci) :\n"
+             << "         free_audio::auv2_wrapper::WrapAsAUV2(AUV2_Type::aumu_musicdevice," << args
+             << ", ci) {}"
+             << "};\n"
+             << "AUSDK_COMPONENT_ENTRY(ausdk::AUMusicDeviceFactory, " << on << ");\n";
       }
-      if (u.type == "aumi")
+      else if (u.type == "aumi")
       {
-        cppf << "AUV2_Type::aumi_noteeffect";
+        std::cout << "    + " << u.name << " entry " << on << " from ClapWrapper_AUV2_NoteEffect"
+                  << std::endl;
+        cppf << "struct " << on << " : free_audio::auv2_wrapper::ClapWrapper_AUV2_NoteEffect {\n"
+             << "   " << on << "(AudioComponentInstance ci) :\n"
+             << "         free_audio::auv2_wrapper::ClapWrapper_AUV2_NoteEffect(" << args << ", ci) {}"
+             << "};\n"
+             << "AUSDK_COMPONENT_ENTRY(ausdk::AUBaseFactory , " << on << ");\n";
       }
-      if (u.type == "aufx")
+      else if (u.type == "aufx")
       {
-        cppf << "AUV2_Type::aufx_effect";
+        std::cout << "    + " << u.name << " entry " << on << " from ClapWrapper_AUV2_Effect"
+                  << std::endl;
+        cppf << "struct " << on << " : free_audio::auv2_wrapper::ClapWrapper_AUV2_Effect {\n"
+             << "   " << on << "(AudioComponentInstance ci) :\n"
+             << "         free_audio::auv2_wrapper::ClapWrapper_AUV2_Effect(" << args << ", ci) {}"
+             << "};\n"
+             << "AUSDK_COMPONENT_ENTRY(ausdk::AUBaseFactory, " << on << ");\n";
       }
-      cppf << "," << args << ", ci) {}"
-           << "};\n"
-           << "AUSDK_COMPONENT_ENTRY(ausdk::AUMusicDeviceFactory, " << on << ");\n";
-    }
-#else
-    // TODO: this will be remove
-    if (u.type == "aumu")
-    {
-      std::cout << "    + " << u.name << " entry " << on << " from WrapAsAUV2" << std::endl;
-      cppf << "struct " << on << " : free_audio::auv2_wrapper::WrapAsAUV2 {\n"
-           << "   " << on << "(AudioComponentInstance ci) :\n"
-           << "         free_audio::auv2_wrapper::WrapAsAUV2(AUV2_Type::aumu_musicdevice," << args
-           << ", ci) {}"
-           << "};\n"
-           << "AUSDK_COMPONENT_ENTRY(ausdk::AUMusicDeviceFactory, " << on << ");\n";
-    }
-    else if (u.type == "aumi")
-    {
-      std::cout << "    + " << u.name << " entry " << on << " from ClapWrapper_AUV2_NoteEffect"
-                << std::endl;
-      cppf << "struct " << on << " : free_audio::auv2_wrapper::ClapWrapper_AUV2_NoteEffect {\n"
-           << "   " << on << "(AudioComponentInstance ci) :\n"
-           << "         free_audio::auv2_wrapper::ClapWrapper_AUV2_NoteEffect(" << args << ", ci) {}"
-           << "};\n"
-           << "AUSDK_COMPONENT_ENTRY(ausdk::AUBaseFactory , " << on << ");\n";
-    }
-    else if (u.type == "aufx")
-    {
-      std::cout << "    + " << u.name << " entry " << on << " from ClapWrapper_AUV2_Effect" << std::endl;
-      cppf << "struct " << on << " : free_audio::auv2_wrapper::ClapWrapper_AUV2_Effect {\n"
-           << "   " << on << "(AudioComponentInstance ci) :\n"
-           << "         free_audio::auv2_wrapper::ClapWrapper_AUV2_Effect(" << args << ", ci) {}"
-           << "};\n"
-           << "AUSDK_COMPONENT_ENTRY(ausdk::AUBaseFactory, " << on << ");\n";
-    }
 #endif
-    idx++;
+      idx++;
+    }
+    cppf.close();
+    std::cout << "  - generated_entrypoints.hxx generated" << std::endl;
   }
-  cppf.close();
-  std::cout << "  - generated_entrypoints.hxx generated" << std::endl;
+  {
+    std::cout << "  - generating generated_cocoaclasses.hxx" << std::endl;
+    std::ofstream cppf("generated_cocoaclasses.hxx");
+    if (!cppf.is_open())
+    {
+      std::cout << "[ERROR] Unable to open generated_cocoaclasses.hxx" << std::endl;
+      return 1;
+    }
 
+    cppf << "#pragma once\n";
+
+    std::ostringstream fillOSS;
+    fillOSS << "bool fillAudioUnitCocoaView(AudioUnitCocoaViewInfo* viewInfo, "
+               "std::shared_ptr<Clap::Plugin> _plugin) {\n";
+
+    idx = 0;
+    for (const auto &u : units)
+    {
+      auto strcid = u.clapid;
+      for (auto &c : strcid)
+      {
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'A') || (c >= '0' && c <= '9'))
+        {
+        }
+        else
+        {
+          c = '_';
+        }
+      }
+      auto on = u.factoryBase + "_cocoaUI_" + strcid;
+
+      {
+        std::cout << "    + " << on << " class " << u.clapid << std::endl;
+        cppf << "#define CLAP_WRAPPER_COCOA_CLASS_NSVIEW " << on << "_nsview" << std::endl;
+        cppf << "#define CLAP_WRAPPER_COCOA_CLASS " << on << std::endl;
+        cppf << "#define CLAP_WRAPPER_TIMER_CALLBACK timerCallback_" << on << std::endl;
+        cppf << "#define CLAP_WRAPPER_FILL_AUCV fillAUCV_" << on << std::endl;
+        cppf << "#include \"detail/auv2/wrappedview.asinclude.mm\"" << std::endl;
+        cppf << "#undef CLAP_WRAPPER_COCOA_CLASS_NSVIEW" << std::endl;
+        cppf << "#undef CLAP_WRAPPER_COCOA_CLASS" << std::endl;
+        cppf << "#undef CLAP_WRAPPER_TIMER_CALLBACK" << std::endl;
+        cppf << "#undef CLAP_WRAPPER_FILL_AUCV" << std::endl;
+
+        fillOSS << "\n  if (strcmp(_plugin->_plugin->desc->id,\"" << u.clapid << "\") == 0) {\n";
+        fillOSS << "    return fillAUCV_" << on << "(viewInfo);\n";
+        fillOSS << "  }\n";
+      }
+      idx++;
+    }
+
+    fillOSS << "\n  return false;\n}\n\n";
+    cppf << fillOSS.str();
+    cppf.close();
+    std::cout << "  - generated_cocoaclasses.hxx generated" << std::endl;
+  }
   return 0;
 }
