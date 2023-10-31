@@ -119,9 +119,23 @@ std::vector<fs::path> getValidCLAPSearchPaths()
   auto paths{res};
   for (const auto &path : paths)
   {
-    for (auto subdirectory : fs::recursive_directory_iterator(path))
+    try
     {
-      if (subdirectory.is_directory()) res.emplace_back(subdirectory.path());
+      for (auto subdirectory :
+           fs::recursive_directory_iterator(path, fs::directory_options::follow_directory_symlink |
+                                                      fs::directory_options::skip_permission_denied))
+      {
+        try
+        {
+          if (subdirectory.is_directory()) res.emplace_back(subdirectory.path());
+        }
+        catch (const fs::filesystem_error &e)
+        {
+        }
+      }
+    }
+    catch (const fs::filesystem_error &e)
+    {
     }
   }
 
