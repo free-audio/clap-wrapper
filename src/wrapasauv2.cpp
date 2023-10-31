@@ -263,7 +263,177 @@ void WrapAsAUV2::setupAudioBusses(const clap_plugin_t* plugin,
 
 void WrapAsAUV2::setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_note_ports_t* noteports)
 {
-  // TODO: figure out if MIDI is is prefered as CLAP or Notes
+  // TODO: figure out if MIDI is is preferred as CLAP or Notes
+  if (!noteports) return;
+  auto numMIDIInPorts = noteports->count(plugin, true);
+  auto numMIDIOutPorts = noteports->count(plugin, false);
+  (void)numMIDIOutPorts;  // TODO: remove this when MIDI out is implemented
+
+  // fprintf(stderr, "\tMIDI in: %d, out: %d\n", (int)numMIDIInPorts, (int)numMIDIOutPorts);
+  /*
+  std::vector<clap_note_port_info_t> inputs;
+  std::vector<clap_note_port_info_t> outputs;
+
+  inputs.resize(numMIDIInPorts);
+  outputs.resize(numMIDIOutPorts);
+*/
+  _midi_wants_midi_input = (numMIDIInPorts > 0);
+  // in AU we don't have different MIDI INs, therefore we just use one
+  if (numMIDIInPorts > 0)
+  {
+    clap_note_port_info_t info;
+    if (noteports->get(plugin, 0, true, &info))
+    {
+      _midi_preferred_dialect = info.preferred_dialect;
+      _midi_understands_midi2 = (info.supported_dialects & CLAP_NOTE_DIALECT_MIDI2);
+    }
+  }
+  /*
+  for (decltype(numMIDIInPorts) i = 0; i < numMIDIInPorts; ++i)
+  {
+    clap_note_port_info_t info;
+    if (noteports->get(plugin, i, true, &info))
+    {
+      addMIDIBusFrom(&info, i, true);
+    }
+  }
+   */
+  // TODO: Outputs need the host MIDI list output thing
+  /*
+  for (decltype(numMIDIOutPorts) i = 0; i < numMIDIOutPorts; ++i)
+  {
+    clap_note_port_info_t info;
+    if (noteports->get(plugin, i, false, &info))
+    {
+      addMIDIBusFrom(&info, i, false);
+    }
+  }
+   */
+}
+
+void WrapAsAUV2::setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params)
+{
+  // creating parameters.
+
+  auto* p = _plugin->_ext._params;
+  if (p)
+  {
+    uint32_t numparams = p->count(_plugin->_plugin);
+    clap_param_info_t paraminfo;
+    for (uint32_t i = 0; i < numparams; ++i)
+    {
+      if (p->get_info(_plugin->_plugin, i, &paraminfo))
+      {
+        double result;
+        if (p->get_value(_plugin->_plugin, paraminfo.id, &result))
+        {
+          // creating the mapping object and insert it into the tree
+          // this will also create Clumps if necessary
+          _parametertree[paraminfo.id] = std::make_unique<Clap::AUv2::Parameter>(paraminfo);
+          Globals()->SetParameter(paraminfo.id, result);
+        }
+      }
+    }
+  }
+  // Globals()->SetParameter(100, 0.5);
+  // Globals()->SetParameter(101, 0.0);
+  // GlobalScope().GetElement(0)->SetParameter(100, 15);
+  // GlobalScope().GetElement(0)->SetParameter(101, 16);
+
+  // a->mAudioUnit = GetComponentInstance();
+}
+
+OSStatus WrapAsAUV2::GetParameterList(AudioUnitScope inScope, AudioUnitParameterID* outParameterList,
+                                      UInt32& outNumParameters)
+{
+  return AUBase::GetParameterList(inScope, outParameterList, outNumParameters);
+}
+// outParameterList may be a null pointer
+OSStatus WrapAsAUV2::GetParameterInfo(AudioUnitScope inScope, AudioUnitParameterID inParameterID,
+                                      AudioUnitParameterInfo& outParameterInfo)
+{
+  // const uint64_t stdflag = kAudioUnitParameterFlag_IsReadable | kAudioUnitParameterFlag_IsWritable;
+  if (inScope == kAudioUnitScope_Global)
+  {
+    AudioUnitParameterOptions flags = 0;
+    auto pi = _parametertree.find(inParameterID);
+    if (pi != _parametertree.end())
+    {
+      auto f = pi->second.get();
+      const auto info = f->info();
+
+      flags |= kAudioUnitParameterFlag_Global;
+
+      if (info.flags & CLAP_PARAM_IS_AUTOMATABLE) flags |= kAudioUnitParameterFlag_NonRealTime;
+      if ((info.flags & CLAP_PARAM_IS_HIDDEN) == 0)
+      {
+        if (info.flags & CLAP_PARAM_IS_READONLY)
+          flags |= kAudioUnitParameterFlag_IsReadable;
+        else
+          flags |= kAudioUnitParameterFlag_IsReadable | kAudioUnitParameterFlag_IsWritable;
+      }
+      if (info.flags & CLAP_PARAM_IS_STEPPED)
+      {
+        if (info.max_value - info.min_value == 1)
+        {
+          flags |= kAudioUnitParameterUnit_Boolean;
+        }
+        // flags |= kAudioUnitParameterUnit_Indexed;  // probably need to add the lists then
+      }
+      if (info.max_value - info.min_value > 100)
+      {
+        flags |= kAudioUnitParameterFlag_IsHighResolution;
+      }
+
+      // checking if the parameter supports the conversion of its value to text
+      double value;
+      if (_plugin->_ext._params->get_value(_plugin->_plugin, info.id, &value))
+      {
+        char buf[200];
+        if (_plugin->_ext._params->value_to_text(_plugin->_plugin, info.id, value, buf, sizeof(buf)))
+        {
+          flags |= kAudioUnitParameterFlag_HasName;
+        }
+      }
+
+      flags |= kAudioUnitParameterFlag_HasCFNameString;
+
+      outParameterInfo.flags = flags;
+
+      // according to the documentation, the name field should be zeroed. In fact, AULab does display anything then.
+      // strcpy(outParameterInfo.name, info.name);
+      memset(outParameterInfo.name, 0, sizeof(outParameterInfo.name));
+
+      outParameterInfo.cfNameString = f->CFString();
+      outParameterInfo.minValue = info.min_value;
+      outParameterInfo.maxValue = info.max_value;
+      outParameterInfo.defaultValue = info.min_value;
+      if (info.min_value < 0.0)
+      {
+        outParameterInfo.defaultValue = 0.0;
+      }
+      return noErr;
+    }
+  }
+  return AUBase::GetParameterInfo(inScope, inParameterID, outParameterInfo);
+}
+
+OSStatus WrapAsAUV2::SetParameter(AudioUnitParameterID inID, AudioUnitScope inScope,
+                                  AudioUnitElement inElement, AudioUnitParameterValue inValue,
+                                  UInt32 inBufferOffsetInFrames)
+{
+  if (inScope == kAudioUnitScope_Global)
+  {
+    // a parameter has been set.
+    // _processAdapter->addParameterEvent(inID,inValue,inBufferOffsetInFrames);
+    auto p = _parametertree.find(inID);
+    if (p != _parametertree.end())
+    {
+      auto& param = p->second.get()->info();
+      _processAdapter->addParameterEvent(param, inValue, inBufferOffsetInFrames);
+    }
+  }
+  return AUBase::SetParameter(inID, inScope, inElement, inValue, inBufferOffsetInFrames);
 }
 
 OSStatus WrapAsAUV2::Start()
@@ -320,6 +490,14 @@ OSStatus WrapAsAUV2::GetPropertyInfo(AudioUnitPropertyID inID, AudioUnitScope in
   {
     switch (inID)
     {
+      case kAudioUnitProperty_ParameterStringFromValue:
+        if (inScope == kAudioUnitScope_Global)
+        {
+          outDataSize = sizeof(AudioUnitParameterStringFromValue);
+          outWritable = true;
+          return noErr;
+        }
+        break;
       case kMusicDeviceProperty_InstrumentCount:
         outDataSize = sizeof(UInt32);
         outWritable = false;
@@ -378,13 +556,30 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
   {
     switch (inID)
     {
+      case kAudioUnitProperty_ParameterStringFromValue:
+      {
+        //         _plugin->_ext._params->value_to_text(
+        char buf[200];
+        auto p = (AudioUnitParameterStringFromValue*)(outData);
+        double value = *p->inValue;
+        if (_plugin->_ext._params->value_to_text(_plugin->_plugin, p->inParamID, value, buf, 200))
+        {
+          p->outString = CFStringCreateWithCString(NULL, buf, kCFStringEncodingUTF8);
+          return noErr;
+        }
+        return kAudioUnitErr_InvalidProperty;
+      }
+      break;
       case kMusicDeviceProperty_InstrumentCount:
         if (inScope != kAudioUnitScope_Global)
         {
           return kAudioUnitErr_InvalidScope;
         }
+        // For a MusicDevice that doesn't support separate instruments (ie. is mono-timbral)
+        // then this call should return an instrument count of zero and noErr
         *static_cast<UInt32*>(outData) = 0;
-        return noErr;
+        if (_autype == AUV2_Type::aumu_musicdevice) return noErr;
+        return kAudioUnitErr_InvalidProperty;
         // return  GetInstrumentCount(*static_cast<UInt32*>(outData));
       case kAudioUnitProperty_BypassEffect:
         *static_cast<UInt32*>(outData) = (IsBypassEffect() ? 1 : 0);  // NOLINT
@@ -560,7 +755,7 @@ void WrapAsAUV2::activateCLAP()
     _plugin->setSampleRate(Output(0).GetStreamFormat().mSampleRate);
 
     _processAdapter->setupProcessing(Inputs(), Outputs(), _plugin->_plugin, _plugin->_ext._params,
-                                     maxSampleFrames);
+                                     maxSampleFrames, _midi_preferred_dialect);
 
     _plugin->activate();
     _plugin->start_processing();
@@ -589,6 +784,8 @@ OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags& inFlags, const AudioTime
     Clap::AUv2::ProcessData data{inFlags, inTimeStamp, inFrames, this};
 
     // retrieve musical information for this render block
+
+    // mHostCallbackInfo.transportStateProc2
 #if 0
     data._AUtransportValid = (noErr == CallHostTransportState(&data._isPlaying, &data._transportChanged, &data._currentSongPos, &data._isLooping, &data._cycleStart, &data._cycleEnd) );
     data._AUbeatAndTempoValid = (noErr ==
@@ -606,4 +803,83 @@ OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags& inFlags, const AudioTime
   return noErr;
 }
 
+OSStatus WrapAsAUV2::SaveState(CFPropertyListRef* ptPList)
+{
+  if (!ptPList) return kAudioUnitErr_InvalidParameter;
+
+  if (!IsInitialized()) return kAudioUnitErr_Uninitialized;
+
+  auto keepit = _plugin->AlwaysMainThread();
+
+  if (!_plugin->_ext._state)
+  {
+    return AUBase::SaveState(ptPList);
+  }
+  else
+  {
+    Clap::StateMemento chunk;
+    _plugin->_ext._state->save(_plugin->_plugin, chunk);
+
+    CFDataRef tData = CFDataCreate(0, (UInt8*)chunk.data(), chunk.size());
+    const AudioComponentDescription desc = GetComponentDescription();
+
+    auto dict = ausdk::Owned<CFMutableDictionaryRef>::from_create(CFDictionaryCreateMutable(
+        nullptr, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
+
+    // first step -> save the version to the data ref
+    SInt32 value = 0;  // kCurrentSavedStateVersion;
+
+    AddNumToDictionary(*dict, CFSTR(kAUPresetVersionKey), value);
+
+    // second step -> save the component type, subtype, manu to the data ref
+    value = static_cast<SInt32>(desc.componentType);
+    AddNumToDictionary(*dict, CFSTR(kAUPresetTypeKey), value);
+
+    value = static_cast<SInt32>(desc.componentSubType);
+    AddNumToDictionary(*dict, CFSTR(kAUPresetSubtypeKey), value);
+
+    value = static_cast<SInt32>(desc.componentManufacturer);
+    AddNumToDictionary(*dict, CFSTR(kAUPresetManufacturerKey), value);
+
+    CFDictionarySetValue(*dict, CFSTR(kAUPresetDataKey), tData);
+    CFRelease(tData);
+    chunk.clear();
+
+    // const char  *name = "blarb";
+    // mPlugin->getProgramName(name);
+    // CFDictionarySetValue(*dict, CFSTR(kAUPresetNameKey), CFStringCreateWithCString(NULL, name, kCFStringEncodingUTF8));
+
+    *ptPList = static_cast<CFPropertyListRef>(dict.release());  // transfer ownership
+  }
+
+  return noErr;
+}
+OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
+{
+  if (!plist) return kAudioUnitErr_InvalidParameter;
+
+  if (!IsInitialized()) return kAudioUnitErr_Uninitialized;
+
+  CFDictionaryRef tDict = CFDictionaryRef(plist);
+
+  // Find 'data' key
+  const void* pData = CFDictionaryGetValue(tDict, CFSTR(kAUPresetDataKey));
+  if (CFGetTypeID(CFTypeRef(pData)) != CFDataGetTypeID()) return -1;
+
+  CFDataRef tData = CFDataRef(pData);
+
+  if (tData)
+  {
+    // Get length and ptr
+    const long lLen = CFDataGetLength(tData);
+    UInt8* pData = (UInt8*)(CFDataGetBytePtr(tData));
+    if (lLen > 0 && pData)
+    {
+      Clap::StateMemento chunk;
+      chunk.setData(pData, lLen);
+      _plugin->_ext._state->load(_plugin->_plugin, chunk);
+    }
+  }
+  return noErr;
+}
 }  // namespace free_audio::auv2_wrapper

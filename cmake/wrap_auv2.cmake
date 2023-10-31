@@ -145,6 +145,8 @@ function(target_add_auv2_wrapper)
             ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv2/process.cpp
             ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv2/wrappedview.h
             ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv2/wrappedview.mm
+            ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv2/parameter.h
+            ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv2/parameter.cpp
             
 	    ${bhtgoutdir}/generated_entrypoints.hxx)
     target_compile_options(${AUV2_TARGET} PRIVATE -fno-char8_t)

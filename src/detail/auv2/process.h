@@ -79,7 +79,7 @@ class ProcessAdapter
 
   void setupProcessing(ausdk::AUScope& audioInputs, ausdk::AUScope& audioOutputs,
                        const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params,
-                       uint32_t numMaxSamples);
+                       uint32_t numMaxSamples, uint32_t preferredMIDIDialect);
 
   void process(ProcessData& data);  // AU Data
   void flush();
@@ -94,6 +94,7 @@ class ProcessAdapter
 
   // interface for AUv2 wrapper:
   void addMIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData2, UInt32 inOffsetSampleFrame);
+  void addParameterEvent(const clap_param_info_t& info, double value, uint32_t inOffsetSampleFrame);
   // void startNote()
   ~ProcessAdapter();
 
@@ -138,6 +139,8 @@ class ProcessAdapter
 
   std::vector<clap_multi_event_t> _events;
   std::vector<size_t> _eventindices;
+
+  uint32_t _preferred_midi_dialect = CLAP_NOTE_DIALECT_CLAP;
 
   // AU Process Data?
   ausdk::AUScope* _audioInputScope = nullptr;

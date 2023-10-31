@@ -233,4 +233,42 @@ class Plugin
 
   AudioSetup _audioSetup;
 };
+
+class StateMemento
+{
+ public:
+  void clear()
+  {
+    _mem.clear();
+  }
+  void rewind()
+  {
+    _readoffset = 0;
+  }
+  const uint8_t* data()
+  {
+    return _mem.data();
+  }
+  size_t size()
+  {
+    return _mem.size();
+  }
+  void setData(const uint8_t* data, size_t size);
+  operator const clap_ostream_t*()
+  {
+    return &_outstream;
+  }
+  operator const clap_istream_t*()
+  {
+    return &_instream;
+  }
+
+ private:
+  uint64_t _readoffset = 0;
+  static int64_t CLAP_ABI _read(const struct clap_istream* stream, void* buffer, uint64_t size);
+  static int64_t CLAP_ABI _write(const struct clap_ostream* stream, const void* buffer, uint64_t size);
+  clap_ostream_t _outstream = {this, _write};
+  clap_istream_t _instream = {this, _read};
+  std::vector<uint8_t> _mem;
+};
 }  // namespace Clap
