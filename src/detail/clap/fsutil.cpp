@@ -12,6 +12,8 @@
 #include <cassert>
 #if WIN
 #include <windows.h>
+#include <ShlObj.h>
+#include <sstream>
 #endif
 
 #if MAC
@@ -27,16 +29,32 @@
 namespace Clap
 {
 #if WIN
-std::string getEnvVariable(const char *varname)
+fs::path windows_path(const KNOWNFOLDERID &id)
 {
-  char *val;
-  size_t len;
-  auto err = _dupenv_s(&val, &len, varname);
-  if (err) return std::string();
-  if (val == nullptr) return std::string();
-  std::string result(val);
-  free(val);
-  return result;
+  std::wstring path;
+  wchar_t *buffer;
+
+  if (SUCCEEDED(SHGetKnownFolderPath(id, 0, nullptr, &buffer)))
+  {
+    fs::path data = std::wstring(buffer);
+    CoTaskMemFree(buffer);
+
+    return data;
+  }
+
+  else
+    return fs::path{};
+}
+
+std::vector<std::wstring> split_clap_path(const std::wstring &in, const std::wstring &sep)
+{
+  std::vector<std::wstring> res;
+  std::wstringstream ss(in);
+  std::wstring item;
+
+  while (std::getline(ss, item, L';')) res.push_back(item);
+
+  return res;
 }
 #endif
 
@@ -56,21 +74,26 @@ std::vector<fs::path> getValidCLAPSearchPaths()
 #endif
 
 #if WIN
+  auto p{windows_path(FOLDERID_ProgramFilesCommon)};
+  if (fs::exists(p)) res.emplace_back(p / "CLAP");
+
+  auto q{windows_path(FOLDERID_LocalAppData)};
+  if (fs::exists(q)) res.emplace_back(q / "Programs" / "Common" / "CLAP");
+
+  std::wstring cp;
+  auto len{::GetEnvironmentVariableW(L"CLAP_PATH", NULL, 0)};
+
+  if (len > 0)
   {
-    // I think this should use SHGetKnownFilderLocation but I don't know windows well enough
-    auto p = getEnvVariable("COMMONPROGRAMFILES");
-    if (!p.empty())
+    cp.resize(len);
+    cp.resize(::GetEnvironmentVariableW(L"CLAP_PATH", &cp[0], len));
+    auto paths{split_clap_path(cp, L";")};
+
+    for (const auto &path : paths)
     {
-      res.emplace_back(fs::path{p} / "CLAP");
-    }
-    auto q = getEnvVariable("LOCALAPPDATA");
-    if (!q.empty())
-    {
-      res.emplace_back(fs::path{q} / "Programs" / "Common" / "CLAP");
+      if (fs::exists(path)) res.emplace_back(path);
     }
   }
-  auto cp = getEnvVariable("CLAP_PATH");
-  auto sep = ';';
 #else
   std::string cp;
   auto p = getenv("CLAP_PATH");
@@ -79,7 +102,6 @@ std::vector<fs::path> getValidCLAPSearchPaths()
     cp = std::string(p);
   }
   auto sep = ':';
-#endif
 
   if (cp.empty())
   {
@@ -91,6 +113,16 @@ std::vector<fs::path> getValidCLAPSearchPaths()
       res.emplace_back(item);
     }
     if (!cp.empty()) res.emplace_back(cp);
+  }
+#endif
+
+  auto paths{res};
+  for (const auto &path : paths)
+  {
+    for (auto subdirectory : fs::recursive_directory_iterator(path))
+    {
+      if (subdirectory.is_directory()) res.emplace_back(subdirectory.path());
+    }
   }
 
   return res;

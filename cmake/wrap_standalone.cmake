@@ -68,6 +68,7 @@ function(target_add_standalone_wrapper)
         target_sources(${SA_TARGET} PRIVATE
                 "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/wrapasstandalone.mm"
                 ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/macos/AppDelegate.mm
+                ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/macos/StandaloneFunctions.mm
                 ${GEN_XIB}
                 )
 
@@ -97,12 +98,13 @@ function(target_add_standalone_wrapper)
     elseif(WIN32 AND (CMAKE_CXX_COMPILER_ID MATCHES "MSVC" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
         target_sources(${SA_TARGET} PRIVATE
             ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/wrapasstandalone.cpp
-            ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/windows/winutils.cpp)
+            ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/windows/winutils.cpp
+            )
 
         target_compile_definitions(${SA_TARGET} PRIVATE
             CLAP_WRAPPER_HAS_WIN32
             WIN32_TITLE="${SA_OUTPUT_NAME}"
-        )
+            )
 
     elseif(UNIX)
         target_sources(${SA_TARGET} PRIVATE

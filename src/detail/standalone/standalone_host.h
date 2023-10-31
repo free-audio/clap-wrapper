@@ -5,8 +5,11 @@
 #include <unordered_set>
 #include <thread>
 #include <mutex>
+#include <optional>
 
 #include "standalone_details.h"
+
+#include "detail/clap/fsutil.h"
 
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -42,6 +45,8 @@ struct Win32Gui;
 }
 #endif
 #endif
+
+std::optional<fs::path> getStandaloneSettingsPath();
 
 struct StandaloneHost : Clap::IHost
 {
@@ -128,6 +133,9 @@ struct StandaloneHost : Clap::IHost
   {
     TRACE;
   }
+
+  bool saveStandaloneAndPluginSettings(const fs::path &intoDir, const fs::path &withName);
+  bool tryLoadStandaloneAndPluginSettings(const fs::path &fromDir, const fs::path &withName);
 
   uint32_t numAudioInputs{0}, numAudioOutputs{0};
   std::vector<uint32_t> inputChannelByBus;
@@ -236,11 +244,11 @@ struct StandaloneHost : Clap::IHost
   std::atomic<bool> running{true}, finishedRunning{false};
 
   // We need to have play buffers for the clap. For now lets assume
-  // (1) the standalone is never more than 16 total ins and outs and
+  // (1) the standalone is never more than 64 total ins and outs and
   // (2) the block size is less that 4096 * 16 and
   // (3) memory in the standalone is pretty cheap
   static constexpr int utilityBufferSize{4096 * 16};
-  static constexpr int utilityBufferMaxChannels{16};
+  static constexpr int utilityBufferMaxChannels{64};
   float utilityBuffer[utilityBufferMaxChannels][utilityBufferSize]{};
 };
 }  // namespace freeaudio::clap_wrapper::standalone
