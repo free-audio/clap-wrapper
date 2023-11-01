@@ -136,6 +136,10 @@ WrapAsAUV2::~WrapAsAUV2()
     _plugin->terminate();
     _plugin.reset();
   }
+  if (_current_program_name)
+  {
+    CFRelease(_current_program_name);
+  }
 }
 
 // the very very reduced state machine
@@ -314,7 +318,6 @@ void WrapAsAUV2::setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_
 void WrapAsAUV2::setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params)
 {
   // creating parameters.
-
   auto* p = _plugin->_ext._params;
   if (p)
   {
@@ -424,13 +427,16 @@ OSStatus WrapAsAUV2::SetParameter(AudioUnitParameterID inID, AudioUnitScope inSc
 {
   if (inScope == kAudioUnitScope_Global)
   {
-    // a parameter has been set.
-    // _processAdapter->addParameterEvent(inID,inValue,inBufferOffsetInFrames);
-    auto p = _parametertree.find(inID);
-    if (p != _parametertree.end())
+    if (_processAdapter)
     {
-      auto& param = p->second.get()->info();
-      _processAdapter->addParameterEvent(param, inValue, inBufferOffsetInFrames);
+      // a parameter has been set.
+      // _processAdapter->addParameterEvent(inID,inValue,inBufferOffsetInFrames);
+      auto p = _parametertree.find(inID);
+      if (p != _parametertree.end())
+      {
+        auto& param = p->second.get()->info();
+        _processAdapter->addParameterEvent(param, inValue, inBufferOffsetInFrames);
+      }
     }
   }
   return AUBase::SetParameter(inID, inScope, inElement, inValue, inBufferOffsetInFrames);
@@ -798,7 +804,13 @@ OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags& inFlags, const AudioTime
     // with an arbitrary number of output channels is mapped onto a
     // continuous array of float buffers for the VST process function
 
+    auto it_is = _plugin->AlwaysAudioThread();
+
     _processAdapter->process(data);
+    //    _processAdapter->foreachOutputEvent([this]
+    //                                        ()
+    //                                        {}
+    //                                        );
   }
   return noErr;
 }
@@ -845,9 +857,13 @@ OSStatus WrapAsAUV2::SaveState(CFPropertyListRef* ptPList)
     CFRelease(tData);
     chunk.clear();
 
+    if (_current_program_name == nullptr)
+    {
+      _current_program_name = CFStringCreateWithCString(NULL, "Program", kCFStringEncodingUTF8);
+    }
     // const char  *name = "blarb";
     // mPlugin->getProgramName(name);
-    // CFDictionarySetValue(*dict, CFSTR(kAUPresetNameKey), CFStringCreateWithCString(NULL, name, kCFStringEncodingUTF8));
+    CFDictionarySetValue(*dict, CFSTR(kAUPresetNameKey), _current_program_name);
 
     *ptPList = static_cast<CFPropertyListRef>(dict.release());  // transfer ownership
   }
@@ -865,6 +881,13 @@ OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
   // Find 'data' key
   const void* pData = CFDictionaryGetValue(tDict, CFSTR(kAUPresetDataKey));
   if (CFGetTypeID(CFTypeRef(pData)) != CFDataGetTypeID()) return -1;
+
+  pffffrzz();
+  const void* pName = CFDictionaryGetValue(tDict, CFSTR(kAUPresetNameKey));
+  if (pName)
+  {
+    _current_program_name = CFStringCreateCopy(NULL, (CFStringRef)pName);
+  }
 
   CFDataRef tData = CFDataRef(pData);
 

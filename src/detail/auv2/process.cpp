@@ -260,6 +260,10 @@ bool ProcessAdapter::output_events_try_push(const struct clap_output_events* lis
 
 bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
 {
+  clap_multi_event e;
+  memcpy(&e, event, event->size);
+  _outevents.emplace_back(e);
+
   switch (event->type)
   {
     case CLAP_EVENT_NOTE_ON:
@@ -484,6 +488,7 @@ void ProcessAdapter::addMIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData
       }
       this->_eventindices.emplace_back((this->_events.size()));
       this->_events.emplace_back(n);
+      removeFromActiveNotes(&n.note);
 
       break;
     case 9:  // note on
@@ -512,7 +517,7 @@ void ProcessAdapter::addMIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData
 
       this->_eventindices.emplace_back((this->_events.size()));
       this->_events.emplace_back(n);
-
+      addToActiveNotes(&n.note);
       break;
     case 0xA:  // any other MIDI message with 1 or 2 data bytes
     case 0xB:

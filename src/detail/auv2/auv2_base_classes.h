@@ -22,6 +22,7 @@
 
 #include "process.h"
 #include "parameter.h"
+#include "detail/shared/fixedqueue.h"
 
 enum class AUV2_Type : uint32_t
 {
@@ -32,6 +33,53 @@ enum class AUV2_Type : uint32_t
 };
 namespace free_audio::auv2_wrapper
 {
+
+class queueEvent
+{
+ public:
+  typedef enum class type
+  {
+    editstart,
+    editvalue,
+    editend,
+  } type_t;
+  type_t _type;
+  union
+  {
+    clap_id _id;
+    clap_event_param_value_t _value;
+  } _data;
+};
+
+class beginEvent : public queueEvent
+{
+ public:
+  beginEvent(clap_id id) : queueEvent()
+  {
+    this->_type = type::editstart;
+    _data._id = id;
+  }
+};
+
+class endEvent : public queueEvent
+{
+ public:
+  endEvent(clap_id id) : queueEvent()
+  {
+    this->_type = type::editend;
+    _data._id = id;
+  }
+};
+
+class valueEvent : public queueEvent
+{
+ public:
+  valueEvent(const clap_event_param_value_t* value) : queueEvent()
+  {
+    _type = type::editvalue;
+    _data._value = *value;
+  }
+};
 
 class WrapAsAUV2 : public ausdk::AUBase, public Clap::IHost
 {
@@ -238,6 +286,11 @@ class WrapAsAUV2 : public ausdk::AUBase, public Clap::IHost
   bool _midi_wants_midi_input = false;  // takes any input
   bool _midi_understands_midi2 = false;
   std::map<uint32_t, std::unique_ptr<Clap::AUv2::Parameter>> _parametertree;
+
+  CFStringRef _current_program_name = 0;
+
+  // the queue from audiothread to UI thread
+  ClapWrapper::detail::shared::fixedqueue<queueEvent, 8192> _queueToUI;
 };
 
 }  // namespace free_audio::auv2_wrapper

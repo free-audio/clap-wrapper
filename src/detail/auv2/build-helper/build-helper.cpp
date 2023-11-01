@@ -171,6 +171,7 @@ int main(int argc, char **argv)
     auInfo u;
     u.name = std::string(argv[idx++]);
     u.clapname = u.name;
+    u.clapid = "org.surge-synth-team.clap-saw-demo";
     u.vers = std::string(argv[idx++]);
     u.type = std::string(argv[idx++]);
     u.subt = std::string(argv[idx++]);
@@ -275,6 +276,7 @@ int main(int argc, char **argv)
     idx = 0;
     for (const auto &u : units)
     {
+      std::cout << "preparing unit '" << u.clapid << "'" << std::endl;
       auto on = u.factoryBase + std::to_string(idx);
 
       auto args = std::string("\"") + u.clapname + "\", \"" + u.clapid + "\", " + std::to_string(idx);

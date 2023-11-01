@@ -84,6 +84,13 @@ class ProcessAdapter
   void process(ProcessData& data);  // AU Data
   void flush();
 
+  // interface for AUv2 wrapper:
+  void addMIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData2, UInt32 inOffsetSampleFrame);
+  void addParameterEvent(const clap_param_info_t& info, double value, uint32_t inOffsetSampleFrame);
+  // void startNote()
+  ~ProcessAdapter();
+
+ private:
   // necessary C callbacks:
   static uint32_t input_events_size(const struct clap_input_events* list);
   static const clap_event_header_t* input_events_get(const struct clap_input_events* list,
@@ -92,13 +99,6 @@ class ProcessAdapter
   static bool output_events_try_push(const struct clap_output_events* list,
                                      const clap_event_header_t* event);
 
-  // interface for AUv2 wrapper:
-  void addMIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData2, UInt32 inOffsetSampleFrame);
-  void addParameterEvent(const clap_param_info_t& info, double value, uint32_t inOffsetSampleFrame);
-  // void startNote()
-  ~ProcessAdapter();
-
- private:
   void sortEventIndices();
 
   bool enqueueOutputEvent(const clap_event_header_t* event);
@@ -139,6 +139,8 @@ class ProcessAdapter
 
   std::vector<clap_multi_event_t> _events;
   std::vector<size_t> _eventindices;
+
+  std::vector<clap_multi_event_t> _outevents;
 
   uint32_t _preferred_midi_dialect = CLAP_NOTE_DIALECT_CLAP;
 
