@@ -161,12 +161,14 @@ OSStatus WrapAsAUV2::Initialize()
   // all elements needed
   auto res = Base::Initialize();
   if (res != noErr) return res;
-
+  
+  
   // activating the plugin in AU can happen in the Audio Thread (Logic Pro)
   // CLAP does not want it, therefore the wrapper insists on being in the
   // main thread
   auto guarantee_mainthread = _plugin->AlwaysMainThread();
   activateCLAP();
+
 #if 0
   // get our current numChannels for input and output
   const auto auNumInputs = static_cast<SInt16>(Input(0).GetStreamFormat().mChannelsPerFrame);
@@ -776,6 +778,8 @@ void WrapAsAUV2::activateCLAP()
     _plugin->activate();
     _plugin->start_processing();
     _initialized = true;
+    _os_attached.on();
+
   }
 }
 
@@ -783,6 +787,8 @@ void WrapAsAUV2::deactivateCLAP()
 {
   if (_plugin)
   {
+    _os_attached.off();
+
     _initialized = false;
     _processAdapter.reset();
     _plugin->stop_processing();
@@ -827,39 +833,17 @@ OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags& inFlags, const AudioTime
 
 void WrapAsAUV2::onBeginEdit(clap_id id)
 {
-  AudioUnitEvent myEvent;
-  myEvent.mEventType = kAudioUnitEvent_BeginParameterChangeGesture;
-  myEvent.mArgument.mParameter.mAudioUnit = GetComponentInstance();
-  myEvent.mArgument.mParameter.mParameterID = (AudioUnitParameterID)id;
-  myEvent.mArgument.mParameter.mScope = kAudioUnitScope_Global;
-  myEvent.mArgument.mParameter.mElement = 0;
-  AUEventListenerNotify(NULL, NULL, &myEvent);
+  _queueToUI.push(BeginEvent(id));
 }
 
 void WrapAsAUV2::onPerformEdit(const clap_event_param_value_t* value)
 {
-  // auto guarantee_mainthread = _plugin->AlwaysMainThread();
-  Globals()->SetParameter(value->param_id, value->value);
-
-  AudioUnitEvent myEvent;
-  myEvent.mEventType = kAudioUnitEvent_ParameterValueChange;
-  myEvent.mArgument.mParameter.mAudioUnit = GetComponentInstance();
-  myEvent.mArgument.mParameter.mParameterID = (AudioUnitParameterID)value->param_id;
-  myEvent.mArgument.mParameter.mScope = kAudioUnitScope_Global;
-  myEvent.mArgument.mParameter.mElement = 0;
-  AUEventListenerNotify(NULL, NULL, &myEvent);
+  _queueToUI.push(ValueEvent(value));
 }
 
 void WrapAsAUV2::onEndEdit(clap_id id)
 {
-  return;
-  AudioUnitEvent myEvent;
-  myEvent.mEventType = kAudioUnitEvent_EndParameterChangeGesture;
-  myEvent.mArgument.mParameter.mAudioUnit = GetComponentInstance();
-  myEvent.mArgument.mParameter.mParameterID = (AudioUnitParameterID)id;
-  myEvent.mArgument.mParameter.mScope = kAudioUnitScope_Global;
-  myEvent.mArgument.mParameter.mElement = 0;
-  AUEventListenerNotify(NULL, NULL, &myEvent);
+  _queueToUI.push(EndEvent(id));
 }
 
 void WrapAsAUV2::onIdle()
@@ -871,10 +855,39 @@ void WrapAsAUV2::onIdle()
     switch (e._type)
     {
       case queueEvent::type::editstart:
+        {
+          AudioUnitEvent myEvent;
+          myEvent.mEventType = kAudioUnitEvent_BeginParameterChangeGesture;
+          myEvent.mArgument.mParameter.mAudioUnit = GetComponentInstance();
+          myEvent.mArgument.mParameter.mParameterID = (AudioUnitParameterID)e._data._id;
+          myEvent.mArgument.mParameter.mScope = kAudioUnitScope_Global;
+          myEvent.mArgument.mParameter.mElement = 0;
+          AUEventListenerNotify(NULL, NULL, &myEvent);
+        }
         break;
       case queueEvent::type::editend:
+        {
+          AudioUnitEvent myEvent;
+          myEvent.mEventType = kAudioUnitEvent_EndParameterChangeGesture;
+          myEvent.mArgument.mParameter.mAudioUnit = GetComponentInstance();
+          myEvent.mArgument.mParameter.mParameterID = (AudioUnitParameterID)e._data._id;
+          myEvent.mArgument.mParameter.mScope = kAudioUnitScope_Global;
+          myEvent.mArgument.mParameter.mElement = 0;
+          AUEventListenerNotify(NULL, NULL, &myEvent);
+        }
         break;
       case queueEvent::type::editvalue:
+        {
+          // auto guarantee_mainthread = _plugin->AlwaysMainThread();
+          Globals()->SetParameter(e._data._id, e._data._value.value);
+          AudioUnitEvent myEvent;
+          myEvent.mEventType = kAudioUnitEvent_ParameterValueChange;
+          myEvent.mArgument.mParameter.mAudioUnit = GetComponentInstance();
+          myEvent.mArgument.mParameter.mParameterID = (AudioUnitParameterID)e._data._id;
+          myEvent.mArgument.mParameter.mScope = kAudioUnitScope_Global;
+          myEvent.mArgument.mParameter.mElement = 0;
+          AUEventListenerNotify(NULL, NULL, &myEvent);
+        }
         break;
       case queueEvent::type::triggerUICall:
       {
