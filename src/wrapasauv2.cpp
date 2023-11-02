@@ -1,6 +1,5 @@
 #include "generated_entrypoints.hxx"
 #include "detail/auv2/process.h"
-#include "detail/os/osutil.h"
 
 extern bool fillAudioUnitCocoaView(AudioUnitCocoaViewInfo* viewInfo, std::shared_ptr<Clap::Plugin>);
 
@@ -110,7 +109,15 @@ bool WrapAsAUV2::initializeClapDesc()
 
 WrapAsAUV2::WrapAsAUV2(AUV2_Type type, const std::string& clapname, const std::string& clapid, int idx,
                        AudioComponentInstance ci)
-  : Base{ci, 0, 1}, Clap::IHost(), _autype(type), _clapname{clapname}, _clapid{clapid}, _idx{idx}
+  : Base{ci, 0, 1}
+  , Clap::IHost()
+  , Clap::IAutomation()
+  , os::IPlugObject()
+  , _autype(type)
+  , _clapname{clapname}
+  , _clapid{clapid}
+  , _idx{idx}
+  , _os_attached([this] { os::attach(this); }, [this] { os::detach(this); })
 {
   (void)_autype;  // TODO: will be used for dynamic property adaption
   if (!_desc)
@@ -122,8 +129,10 @@ WrapAsAUV2::WrapAsAUV2(AUV2_Type type, const std::string& clapname, const std::s
       /*
        * ToDo: Stand up the host, create the plugin instance here
        */
-      _plugin = Clap::Plugin::createInstance(_library._pluginFactory, _desc->id, this);
+
       // pffffrzz();
+      _plugin = Clap::Plugin::createInstance(_library._pluginFactory, _desc->id, this);
+
       _plugin->initialize();
     }
   }
@@ -156,7 +165,7 @@ OSStatus WrapAsAUV2::Initialize()
   // activating the plugin in AU can happen in the Audio Thread (Logic Pro)
   // CLAP does not want it, therefore the wrapper insists on being in the
   // main thread
-  auto keeper = _plugin->AlwaysMainThread();
+  auto guarantee_mainthread = _plugin->AlwaysMainThread();
   activateCLAP();
 #if 0
   // get our current numChannels for input and output
@@ -317,6 +326,7 @@ void WrapAsAUV2::setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_
 
 void WrapAsAUV2::setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params)
 {
+  auto guarantee_mainthread = _plugin->AlwaysMainThread();
   // creating parameters.
   auto* p = _plugin->_ext._params;
   if (p)
@@ -338,12 +348,6 @@ void WrapAsAUV2::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
       }
     }
   }
-  // Globals()->SetParameter(100, 0.5);
-  // Globals()->SetParameter(101, 0.0);
-  // GlobalScope().GetElement(0)->SetParameter(100, 15);
-  // GlobalScope().GetElement(0)->SetParameter(101, 16);
-
-  // a->mAudioUnit = GetComponentInstance();
 }
 
 OSStatus WrapAsAUV2::GetParameterList(AudioUnitScope inScope, AudioUnitParameterID* outParameterList,
@@ -351,6 +355,7 @@ OSStatus WrapAsAUV2::GetParameterList(AudioUnitScope inScope, AudioUnitParameter
 {
   return AUBase::GetParameterList(inScope, outParameterList, outNumParameters);
 }
+
 // outParameterList may be a null pointer
 OSStatus WrapAsAUV2::GetParameterInfo(AudioUnitScope inScope, AudioUnitParameterID inParameterID,
                                       AudioUnitParameterInfo& outParameterInfo)
@@ -367,8 +372,8 @@ OSStatus WrapAsAUV2::GetParameterInfo(AudioUnitScope inScope, AudioUnitParameter
 
       flags |= kAudioUnitParameterFlag_Global;
 
-      if (info.flags & CLAP_PARAM_IS_AUTOMATABLE) flags |= kAudioUnitParameterFlag_NonRealTime;
-      if ((info.flags & CLAP_PARAM_IS_HIDDEN) == 0)
+      if (!(info.flags & CLAP_PARAM_IS_AUTOMATABLE)) flags |= kAudioUnitParameterFlag_NonRealTime;
+      if (!(info.flags & CLAP_PARAM_IS_HIDDEN))
       {
         if (info.flags & CLAP_PARAM_IS_READONLY)
           flags |= kAudioUnitParameterFlag_IsReadable;
@@ -389,6 +394,9 @@ OSStatus WrapAsAUV2::GetParameterInfo(AudioUnitScope inScope, AudioUnitParameter
       }
 
       // checking if the parameter supports the conversion of its value to text
+
+      // we can't get the value since we are not in the audio thread
+      auto guarantee_mainthread = _plugin->AlwaysMainThread();
       double value;
       if (_plugin->_ext._params->get_value(_plugin->_plugin, info.id, &value))
       {
@@ -458,7 +466,7 @@ OSStatus WrapAsAUV2::Stop()
 void WrapAsAUV2::Cleanup()
 {
   LOGINFO("Cleaning up Plugin");
-  auto keeper = _plugin->AlwaysMainThread();
+  auto guarantee_mainthread = _plugin->AlwaysMainThread();
   deactivateCLAP();
   Base::Cleanup();
 }
@@ -565,6 +573,8 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
       case kAudioUnitProperty_ParameterStringFromValue:
       {
         //         _plugin->_ext._params->value_to_text(
+        auto guarantee_mainthread = _plugin->AlwaysMainThread();
+
         char buf[200];
         auto p = (AudioUnitParameterStringFromValue*)(outData);
         double value = *p->inValue;
@@ -760,8 +770,8 @@ void WrapAsAUV2::activateCLAP()
     _plugin->setBlockSizes(minSampleFrames, maxSampleFrames);
     _plugin->setSampleRate(Output(0).GetStreamFormat().mSampleRate);
 
-    _processAdapter->setupProcessing(Inputs(), Outputs(), _plugin->_plugin, _plugin->_ext._params,
-                                     maxSampleFrames, _midi_preferred_dialect);
+    _processAdapter->setupProcessing(Inputs(), Outputs(), _plugin->_plugin, _plugin->_ext._params, this,
+                                     &_parametertree, maxSampleFrames, _midi_preferred_dialect);
 
     _plugin->activate();
     _plugin->start_processing();
@@ -815,13 +825,81 @@ OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags& inFlags, const AudioTime
   return noErr;
 }
 
+void WrapAsAUV2::onBeginEdit(clap_id id)
+{
+  AudioUnitEvent myEvent;
+  myEvent.mEventType = kAudioUnitEvent_BeginParameterChangeGesture;
+  myEvent.mArgument.mParameter.mAudioUnit = GetComponentInstance();
+  myEvent.mArgument.mParameter.mParameterID = (AudioUnitParameterID)id;
+  myEvent.mArgument.mParameter.mScope = kAudioUnitScope_Global;
+  myEvent.mArgument.mParameter.mElement = 0;
+  AUEventListenerNotify(NULL, NULL, &myEvent);
+}
+
+void WrapAsAUV2::onPerformEdit(const clap_event_param_value_t* value)
+{
+  // auto guarantee_mainthread = _plugin->AlwaysMainThread();
+  Globals()->SetParameter(value->param_id, value->value);
+
+  AudioUnitEvent myEvent;
+  myEvent.mEventType = kAudioUnitEvent_ParameterValueChange;
+  myEvent.mArgument.mParameter.mAudioUnit = GetComponentInstance();
+  myEvent.mArgument.mParameter.mParameterID = (AudioUnitParameterID)value->param_id;
+  myEvent.mArgument.mParameter.mScope = kAudioUnitScope_Global;
+  myEvent.mArgument.mParameter.mElement = 0;
+  AUEventListenerNotify(NULL, NULL, &myEvent);
+}
+
+void WrapAsAUV2::onEndEdit(clap_id id)
+{
+  return;
+  AudioUnitEvent myEvent;
+  myEvent.mEventType = kAudioUnitEvent_EndParameterChangeGesture;
+  myEvent.mArgument.mParameter.mAudioUnit = GetComponentInstance();
+  myEvent.mArgument.mParameter.mParameterID = (AudioUnitParameterID)id;
+  myEvent.mArgument.mParameter.mScope = kAudioUnitScope_Global;
+  myEvent.mArgument.mParameter.mElement = 0;
+  AUEventListenerNotify(NULL, NULL, &myEvent);
+}
+
+void WrapAsAUV2::onIdle()
+{
+  // run queue stuff
+  queueEvent e;
+  while (this->_queueToUI.pop(e))
+  {
+    switch (e._type)
+    {
+      case queueEvent::type::editstart:
+        break;
+      case queueEvent::type::editend:
+        break;
+      case queueEvent::type::editvalue:
+        break;
+      case queueEvent::type::triggerUICall:
+      {
+        // if there is still a plugin
+        if (_plugin)
+        {
+          // also make sure the plugin knows this is the main thread
+          auto guarantee_mainthread = _plugin->AlwaysMainThread();
+
+          // and give the plugin some UI time...
+          _plugin->_plugin->on_main_thread(_plugin->_plugin);
+        }
+      }
+      break;
+    }
+  }
+}
+
 OSStatus WrapAsAUV2::SaveState(CFPropertyListRef* ptPList)
 {
   if (!ptPList) return kAudioUnitErr_InvalidParameter;
 
   if (!IsInitialized()) return kAudioUnitErr_Uninitialized;
 
-  auto keepit = _plugin->AlwaysMainThread();
+  auto guarantee_mainthread = _plugin->AlwaysMainThread();
 
   if (!_plugin->_ext._state)
   {
@@ -882,7 +960,6 @@ OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
   const void* pData = CFDictionaryGetValue(tDict, CFSTR(kAUPresetDataKey));
   if (CFGetTypeID(CFTypeRef(pData)) != CFDataGetTypeID()) return -1;
 
-  pffffrzz();
   const void* pName = CFDictionaryGetValue(tDict, CFSTR(kAUPresetNameKey));
   if (pName)
   {

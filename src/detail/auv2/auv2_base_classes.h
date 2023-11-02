@@ -23,6 +23,8 @@
 #include "process.h"
 #include "parameter.h"
 #include "detail/shared/fixedqueue.h"
+#include "detail/os/osutil.h"
+#include "detail/clap/automation.h"
 
 enum class AUV2_Type : uint32_t
 {
@@ -42,6 +44,7 @@ class queueEvent
     editstart,
     editvalue,
     editend,
+    triggerUICall,
   } type_t;
   type_t _type;
   union
@@ -51,37 +54,49 @@ class queueEvent
   } _data;
 };
 
-class beginEvent : public queueEvent
+class TriggerUICallback : public queueEvent
 {
  public:
-  beginEvent(clap_id id) : queueEvent()
+  TriggerUICallback() : queueEvent()
+  {
+    this->_type = type::triggerUICall;
+  }
+};
+
+class BeginEvent : public queueEvent
+{
+ public:
+  BeginEvent(clap_id id) : queueEvent()
   {
     this->_type = type::editstart;
     _data._id = id;
   }
 };
 
-class endEvent : public queueEvent
+class EndEvent : public queueEvent
 {
  public:
-  endEvent(clap_id id) : queueEvent()
+  EndEvent(clap_id id) : queueEvent()
   {
     this->_type = type::editend;
     _data._id = id;
   }
 };
 
-class valueEvent : public queueEvent
+class ValueEvent : public queueEvent
 {
  public:
-  valueEvent(const clap_event_param_value_t* value) : queueEvent()
+  ValueEvent(const clap_event_param_value_t* value) : queueEvent()
   {
     _type = type::editvalue;
     _data._value = *value;
   }
 };
 
-class WrapAsAUV2 : public ausdk::AUBase, public Clap::IHost
+class WrapAsAUV2 : public ausdk::AUBase,
+                   public Clap::IHost,
+                   public Clap::IAutomation,
+                   public os::IPlugObject
 {
   using Base = ausdk::AUBase;
 
@@ -201,6 +216,7 @@ class WrapAsAUV2 : public ausdk::AUBase, public Clap::IHost
   }
   void request_callback() override
   {
+    _queueToUI.push(TriggerUICallback());
   }
 
   void setupWrapperSpecifics(const clap_plugin_t* plugin)
@@ -253,6 +269,14 @@ class WrapAsAUV2 : public ausdk::AUBase, public Clap::IHost
     return false;
   }
 
+  // --------------- IAutomation
+  void onBeginEdit(clap_id id) override;
+  void onPerformEdit(const clap_event_param_value_t* value) override;
+  void onEndEdit(clap_id id) override;
+
+  // --------------- IPlugObject
+  void onIdle() override;
+
  protected:
   void addAudioBusFrom(int bus, const clap_audio_port_info_t* info, bool is_input);
 
@@ -275,6 +299,8 @@ class WrapAsAUV2 : public ausdk::AUBase, public Clap::IHost
   std::string _clapname;
   std::string _clapid;
   int _idx;
+  os::State _os_attached;
+
   const clap_plugin_descriptor_t* _desc{nullptr};
   std::shared_ptr<Clap::Plugin> _plugin = nullptr;
 

@@ -27,9 +27,13 @@
 #include <AudioToolbox/AudioToolbox.h>
 #include <AudioUnit/AudioUnitParameters.h>
 #include <AudioUnit/AUComponent.h>
+#include "../clap/automation.h"
+#include "parameter.h"
+#include <map>
 
 namespace Clap::AUv2
 {
+using ParameterTree = std::map<uint32_t, std::unique_ptr<Clap::AUv2::Parameter>>;
 
 struct ProcessData
 {
@@ -79,6 +83,8 @@ class ProcessAdapter
 
   void setupProcessing(ausdk::AUScope& audioInputs, ausdk::AUScope& audioOutputs,
                        const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params,
+                       Clap::IAutomation* automationInterface, ParameterTree* parameters,
+
                        uint32_t numMaxSamples, uint32_t preferredMIDIDialect);
 
   void process(ProcessData& data);  // AU Data
@@ -102,6 +108,9 @@ class ProcessAdapter
   void sortEventIndices();
 
   bool enqueueOutputEvent(const clap_event_header_t* event);
+
+  void processOutputEvents();
+
   void addToActiveNotes(const clap_event_note* note);
   void removeFromActiveNotes(const clap_event_note* note);
 
@@ -143,6 +152,9 @@ class ProcessAdapter
   std::vector<clap_multi_event_t> _outevents;
 
   uint32_t _preferred_midi_dialect = CLAP_NOTE_DIALECT_CLAP;
+
+  Clap::IAutomation* _automation = nullptr;
+  ParameterTree* _parameters = nullptr;
 
   // AU Process Data?
   ausdk::AUScope* _audioInputScope = nullptr;

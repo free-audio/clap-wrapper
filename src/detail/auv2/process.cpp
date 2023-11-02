@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cassert>
-#include "../clap/automation.h"
 
 namespace Clap::AUv2
 {
@@ -32,10 +31,13 @@ ProcessAdapter::~ProcessAdapter()
 
 void ProcessAdapter::setupProcessing(ausdk::AUScope& audioInputs, ausdk::AUScope& audioOutputs,
                                      const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params,
+                                     Clap::IAutomation* automationInterface, ParameterTree* parameters,
                                      uint32_t numMaxSamples, uint32_t preferredMIDIDialect)
 {
   _plugin = plugin;
   _ext_params = ext_params;
+  _automation = automationInterface;
+  _parameters = parameters;
 
   _preferred_midi_dialect = preferredMIDIDialect;
 
@@ -156,16 +158,16 @@ void ProcessAdapter::process(ProcessData& data)
   sortEventIndices();
   _processData.frames_count = data.numSamples;
   _transport.flags = 0;
-
+#if 0
   if (data._AUtransportValid)
   {
     _transport.flags += data._isPlaying ? CLAP_TRANSPORT_IS_PLAYING : 0;
     _transport.flags += data._isLooping ? CLAP_TRANSPORT_IS_LOOP_ACTIVE : 0;
     // CLAP_TRANSPORT_IS_RECORDING can not be retrieved from the AudioUnit API
-    _transport.loop_start_beats = data._cycleStart;
+    _transport.loop_startq_beats = data._cycleStart;
     _transport.loop_end_beats = data._cycleEnd;
   }
-
+#endif
   if (_numInputs)
   {
     for (uint32_t i = 0; i < _numInputs; ++i)
@@ -186,6 +188,7 @@ void ProcessAdapter::process(ProcessData& data)
     }
   }
 #if 0
+  // older code template: remove
   // input handlling
   if ( _input_ports->channel_count() > 0)
 
@@ -202,8 +205,6 @@ void ProcessAdapter::process(ProcessData& data)
 #endif
 #if 1
   // output handling
-  // long myOutBus = 0;
-  // long myChannel = 0;
   for (uint32_t i = 0; i < _numOutputs; i++)
   {
     auto& m = static_cast<ausdk::AUOutputElement&>(*_audioOutputScope->SafeGetElement(0));
@@ -219,6 +220,8 @@ void ProcessAdapter::process(ProcessData& data)
 #endif
 
   _plugin->process(_plugin, &_processData);
+
+  processOutputEvents();
 
   // clean up and prepare the events for the next cycle
   _events.clear();
@@ -260,9 +263,11 @@ bool ProcessAdapter::output_events_try_push(const struct clap_output_events* lis
 
 bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
 {
+#if 0
   clap_multi_event e;
   memcpy(&e, event, event->size);
   _outevents.emplace_back(e);
+#endif
 
   switch (event->type)
   {
@@ -317,6 +322,9 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
     case CLAP_EVENT_PARAM_VALUE:
     {
       auto ev = (clap_event_param_value*)event;
+      _automation->onPerformEdit(ev);
+
+      // auto param = this->_gesturedParameters
 #if 0
       auto param = (Vst3Parameter*)this->parameters->getParameter(ev->param_id & 0x7FFFFFFF);
       if (param)
@@ -353,7 +361,6 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
         }
       }
 #endif
-      (void)ev;
     }
 
       return true;
@@ -364,31 +371,25 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
     case CLAP_EVENT_PARAM_GESTURE_BEGIN:
     {
       auto ev = (clap_event_param_gesture*)event;
-#if 0
-      auto param = (Vst3Parameter*)this->parameters->getParameter(ev->param_id & 0x7FFFFFFF);
-      _gesturedParameters.push_back(param->getInfo().id);
-      _automation->onBeginEdit(param->getInfo().id);
-#endif
-      (void)ev;
+      auto param = _parameters->find(ev->param_id);
+      if (param != _parameters->end())
+      {
+        _gesturedParameters.push_back(ev->param_id);
+        _automation->onBeginEdit(ev->param_id);
+      }
     }
-
       return true;
 
       break;
     case CLAP_EVENT_PARAM_GESTURE_END:
     {
       auto ev = (clap_event_param_gesture*)event;
-      (void)ev;
-#if 0
-      auto param = (Vst3Parameter*)this->parameters->getParameter(ev->param_id & 0x7FFFFFFF);
-
-      auto n = std::remove(_gesturedParameters.begin(), _gesturedParameters.end(), param->getInfo().id);
+      auto n = std::remove(_gesturedParameters.begin(), _gesturedParameters.end(), ev->param_id);
       if (n != _gesturedParameters.end())
       {
         _gesturedParameters.erase(n, _gesturedParameters.end());
-        _automation->onEndEdit(param->getInfo().id);
+        _automation->onEndEdit(ev->param_id);
       }
-#endif
     }
       return true;
       break;
@@ -431,6 +432,10 @@ void ProcessAdapter::removeFromActiveNotes(const clap_event_note* note)
       i.used = false;
     }
   }
+}
+
+void ProcessAdapter::processOutputEvents()
+{
 }
 
 void ProcessAdapter::addMIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData2,
