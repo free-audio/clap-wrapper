@@ -26,6 +26,7 @@
 // TODO: check if additional AU headers are needed
 #include <AudioToolbox/AudioToolbox.h>
 #include <AudioUnit/AudioUnitParameters.h>
+#include <AudioToolbox/AudioUnitUtilities.h>
 #include <AudioUnit/AUComponent.h>
 #include "../clap/automation.h"
 #include "parameter.h"
