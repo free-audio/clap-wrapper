@@ -565,16 +565,19 @@ OSStatus WrapAsAUV2::GetPropertyInfo(AudioUnitPropertyID inID, AudioUnitScope in
         outWritable = true;
         outDataSize = sizeof(UInt32);
         return noErr;
+#ifdef DUAL_SCHEDULING_ENABLED
       case kMusicDeviceProperty_DualSchedulingMode:
         outWritable = true;
         outDataSize = sizeof(UInt32);
         return noErr;
         break;
+#endif
       case kMusicDeviceProperty_SupportsStartStopNote:
         outWritable = true;
         outDataSize = sizeof(UInt32);
         return noErr;
         break;
+
       case kAudioUnitProperty_CocoaUI:
         outWritable = false;
         outDataSize = sizeof(struct AudioUnitCocoaViewInfo);
@@ -640,6 +643,7 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         if (_autype == AUV2_Type::aumu_musicdevice) return noErr;
         return kAudioUnitErr_InvalidProperty;
         // return  GetInstrumentCount(*static_cast<UInt32*>(outData));
+
       case kAudioUnitProperty_BypassEffect:
         *static_cast<UInt32*>(outData) = (IsBypassEffect() ? 1 : 0);  // NOLINT
         return noErr;
@@ -651,6 +655,7 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         _uiconn._window = nullptr;
         *static_cast<ui_connection*>(outData) = _uiconn;
         return noErr;
+
       case kAudioUnitProperty_CocoaUI:
         LOGINFO("query Property: kAudioUnitProperty_CocoaUI {}", (_plugin) ? "plugin" : "no plugin");
         if (_plugin &&
@@ -670,15 +675,16 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         }
         return kAudioUnitErr_InvalidProperty;
         break;
+#ifdef DUAL_SCHEDULING_ENABLED
       case kMusicDeviceProperty_DualSchedulingMode:
         // yes we do
-        *static_cast<UInt32*>(outData) = 1;
+        // *static_cast<UInt32*>(outData) = 1;
         return noErr;
         break;
+#endif
       case kMusicDeviceProperty_SupportsStartStopNote:
         // TODO: change this when figured out how the NoteParamsControlValue actually do work.
-
-        *static_cast<UInt32*>(outData) = 0;
+        *static_cast<UInt32*>(outData) = 1;
         return noErr;
         break;
       default:
@@ -717,18 +723,21 @@ OSStatus WrapAsAUV2::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
       //      mProcessesInPlace = *static_cast<const UInt32*>(inData) != 0;
       //      return noErr;
       break;
-      case kMusicDeviceProperty_SupportsStartStopNote:
-      {
-        // TODO: we probably want to use start/stop note
-        auto x = *static_cast<const UInt32*>(inData);
-        (void)x;
-        return noErr;
-      }
-      break;
+#ifdef DUAL_SCHEDULING_ENABLED
+
       case kMusicDeviceProperty_DualSchedulingMode:
       {
         auto x = *static_cast<const UInt32*>(inData);
         if (x > 0) LOGINFO("Host supports DualSchedulung Mode");
+        _midi_dualscheduling_mode = (x != 0);
+        return noErr;
+      }
+      break;
+#endif
+      case kMusicDeviceProperty_SupportsStartStopNote:
+      {
+        // TODO: we probably want to use start/stop note
+        auto x = *static_cast<const UInt32*>(inData);
         (void)x;
         return noErr;
       }

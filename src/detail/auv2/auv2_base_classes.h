@@ -26,6 +26,8 @@
 #include "detail/os/osutil.h"
 #include "detail/clap/automation.h"
 
+#define NDUAL_SCHEDULING_ENABLED 1
+
 enum class AUV2_Type : uint32_t
 {
   aufx_effect = 1,
@@ -169,18 +171,19 @@ class WrapAsAUV2 : public ausdk::AUBase,
 
   // Notes
   OSStatus StartNote(MusicDeviceInstrumentID /*inInstrument*/, MusicDeviceGroupID /*inGroupID*/,
-                     NoteInstanceID* /*outNoteInstanceID*/, UInt32 /*inOffsetSampleFrame*/,
-                     const MusicDeviceNoteParams& /*inParams*/) override
+                     NoteInstanceID* outNoteInstanceID, UInt32 inOffsetSampleFrame,
+                     const MusicDeviceNoteParams& inParams) override
   {
     // _processAdapter
-    // _processAdapter->addMIDIEvent(, <#UInt32 inData1#>, <#UInt32 inData2#>, <#UInt32 inOffsetSampleFrame#>)
-    return kAudio_UnimplementedError;
+    // _processAdapter->addMIDIEvent(, <#UInt32 inData1#>, <#UInt32 inData2#>, <#UInt32 inOffsetSampleFrame#>);
+    *outNoteInstanceID = inParams.mPitch;
+    return MIDIEvent(0x90, inParams.mPitch, inParams.mVelocity, inOffsetSampleFrame);
   }
 
-  OSStatus StopNote(MusicDeviceGroupID /*inGroupID*/, NoteInstanceID /*inNoteInstanceID*/,
-                    UInt32 /*inOffsetSampleFrame*/) override
+  OSStatus StopNote(MusicDeviceGroupID /*inGroupID*/, NoteInstanceID inNoteInstanceID,
+                    UInt32 inOffsetSampleFrame) override
   {
-    return kAudio_UnimplementedError;
+    return MIDIEvent(0x80, inNoteInstanceID, 0, inOffsetSampleFrame);
   }
 
   // unfortunately hidden in the base c++ file
@@ -311,6 +314,9 @@ class WrapAsAUV2 : public ausdk::AUBase,
   uint32_t _midi_preferred_dialect = 0;
   bool _midi_wants_midi_input = false;  // takes any input
   bool _midi_understands_midi2 = false;
+#ifdef DUAL_SCHEDULING_ENABLED
+  bool _midi_dualscheduling_mode = false;
+#endif
   std::map<uint32_t, std::unique_ptr<Clap::AUv2::Parameter>> _parametertree;
 
   CFStringRef _current_program_name = 0;
