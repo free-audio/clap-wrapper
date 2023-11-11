@@ -643,7 +643,7 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         if (_autype == AUV2_Type::aumu_musicdevice) return noErr;
         return kAudioUnitErr_InvalidProperty;
         // return  GetInstrumentCount(*static_cast<UInt32*>(outData));
-        
+
       case kAudioUnitProperty_BypassEffect:
         *static_cast<UInt32*>(outData) = (IsBypassEffect() ? 1 : 0);  // NOLINT
         return noErr;
@@ -655,7 +655,7 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         _uiconn._window = nullptr;
         *static_cast<ui_connection*>(outData) = _uiconn;
         return noErr;
-        
+
       case kAudioUnitProperty_CocoaUI:
         LOGINFO("query Property: kAudioUnitProperty_CocoaUI {}", (_plugin) ? "plugin" : "no plugin");
         if (_plugin &&
@@ -741,7 +741,7 @@ OSStatus WrapAsAUV2::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         (void)x;
         return noErr;
       }
-        break;
+      break;
 
       default:
         break;

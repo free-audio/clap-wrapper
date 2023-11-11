@@ -177,13 +177,13 @@ class WrapAsAUV2 : public ausdk::AUBase,
     // _processAdapter
     // _processAdapter->addMIDIEvent(, <#UInt32 inData1#>, <#UInt32 inData2#>, <#UInt32 inOffsetSampleFrame#>);
     *outNoteInstanceID = inParams.mPitch;
-    return MIDIEvent(0x90,inParams.mPitch,inParams.mVelocity,inOffsetSampleFrame);
+    return MIDIEvent(0x90, inParams.mPitch, inParams.mVelocity, inOffsetSampleFrame);
   }
 
   OSStatus StopNote(MusicDeviceGroupID /*inGroupID*/, NoteInstanceID inNoteInstanceID,
                     UInt32 inOffsetSampleFrame) override
   {
-    return MIDIEvent(0x80,inNoteInstanceID  ,0,inOffsetSampleFrame);
+    return MIDIEvent(0x80, inNoteInstanceID, 0, inOffsetSampleFrame);
   }
 
   // unfortunately hidden in the base c++ file
