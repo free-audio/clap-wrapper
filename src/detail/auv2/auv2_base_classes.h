@@ -22,6 +22,9 @@
 
 #include "process.h"
 #include "parameter.h"
+#include "detail/shared/fixedqueue.h"
+#include "detail/os/osutil.h"
+#include "detail/clap/automation.h"
 
 enum class AUV2_Type : uint32_t
 {
@@ -33,7 +36,67 @@ enum class AUV2_Type : uint32_t
 namespace free_audio::auv2_wrapper
 {
 
-class WrapAsAUV2 : public ausdk::AUBase, public Clap::IHost
+class queueEvent
+{
+ public:
+  typedef enum class type
+  {
+    editstart,
+    editvalue,
+    editend,
+    triggerUICall,
+  } type_t;
+  type_t _type;
+  union
+  {
+    clap_id _id;
+    clap_event_param_value_t _value;
+  } _data;
+};
+
+class TriggerUICallback : public queueEvent
+{
+ public:
+  TriggerUICallback() : queueEvent()
+  {
+    this->_type = type::triggerUICall;
+  }
+};
+
+class BeginEvent : public queueEvent
+{
+ public:
+  BeginEvent(clap_id id) : queueEvent()
+  {
+    this->_type = type::editstart;
+    _data._id = id;
+  }
+};
+
+class EndEvent : public queueEvent
+{
+ public:
+  EndEvent(clap_id id) : queueEvent()
+  {
+    this->_type = type::editend;
+    _data._id = id;
+  }
+};
+
+class ValueEvent : public queueEvent
+{
+ public:
+  ValueEvent(const clap_event_param_value_t* value) : queueEvent()
+  {
+    _type = type::editvalue;
+    _data._value = *value;
+  }
+};
+
+class WrapAsAUV2 : public ausdk::AUBase,
+                   public Clap::IHost,
+                   public Clap::IAutomation,
+                   public os::IPlugObject
 {
   using Base = ausdk::AUBase;
 
@@ -153,6 +216,7 @@ class WrapAsAUV2 : public ausdk::AUBase, public Clap::IHost
   }
   void request_callback() override
   {
+    _queueToUI.push(TriggerUICallback());
   }
 
   void setupWrapperSpecifics(const clap_plugin_t* plugin)
@@ -165,9 +229,9 @@ class WrapAsAUV2 : public ausdk::AUBase, public Clap::IHost
       override final;  // called from initialize() to allow the setup of MIDI ports
   void setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params) override final;
 
-  void param_rescan(clap_param_rescan_flags flags) override
-  {
-  }  // ext_host_params
+  void param_rescan(clap_param_rescan_flags flags) override;
+
+  // ext_host_params
   void param_clear(clap_id param, clap_param_clear_flags flags) override
   {
   }
@@ -205,6 +269,14 @@ class WrapAsAUV2 : public ausdk::AUBase, public Clap::IHost
     return false;
   }
 
+  // --------------- IAutomation
+  void onBeginEdit(clap_id id) override;
+  void onPerformEdit(const clap_event_param_value_t* value) override;
+  void onEndEdit(clap_id id) override;
+
+  // --------------- IPlugObject
+  void onIdle() override;
+
  protected:
   void addAudioBusFrom(int bus, const clap_audio_port_info_t* info, bool is_input);
 
@@ -227,6 +299,8 @@ class WrapAsAUV2 : public ausdk::AUBase, public Clap::IHost
   std::string _clapname;
   std::string _clapid;
   int _idx;
+  os::State _os_attached;
+
   const clap_plugin_descriptor_t* _desc{nullptr};
   std::shared_ptr<Clap::Plugin> _plugin = nullptr;
 
@@ -238,6 +312,11 @@ class WrapAsAUV2 : public ausdk::AUBase, public Clap::IHost
   bool _midi_wants_midi_input = false;  // takes any input
   bool _midi_understands_midi2 = false;
   std::map<uint32_t, std::unique_ptr<Clap::AUv2::Parameter>> _parametertree;
+
+  CFStringRef _current_program_name = 0;
+
+  // the queue from audiothread to UI thread
+  ClapWrapper::detail::shared::fixedqueue<queueEvent, 8192> _queueToUI;
 };
 
 }  // namespace free_audio::auv2_wrapper
