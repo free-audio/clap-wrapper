@@ -359,6 +359,48 @@ OSStatus WrapAsAUV2::GetParameterList(AudioUnitScope inScope, AudioUnitParameter
   return AUBase::GetParameterList(inScope, outParameterList, outNumParameters);
 }
 
+void WrapAsAUV2::param_rescan(clap_param_rescan_flags flags)
+{
+  // if ( flags & CLAP_PARAM_RESCAN_ALL) // TODO: check out how differentiated we can do this
+  {
+    PropertyChanged(kAudioUnitProperty_ParameterInfo, kAudioUnitScope_Global, 0);
+    PropertyChanged(kAudioUnitProperty_ParameterList, kAudioUnitScope_Global, 0);
+    return;
+  }
+  
+#if 0
+  AudioUnitEvent myEvent;
+  myEvent.mArgument.mProperty.mAudioUnit = GetComponentInstance();
+  myEvent.mArgument.mProperty.mScope = kAudioUnitScope_Global;
+  myEvent.mArgument.mProperty.mElement = 0;
+  myEvent.mEventType = kAudioUnitEvent_PropertyChange;
+  
+  {
+    for ( auto& i : _parametertree)
+    {
+      if ( i.second->info().flags & CLAP_PARAM_IS_AUTOMATABLE)
+      {
+        myEvent.mArgument.mProperty.mElement = i.second->info().id;
+  
+        if ( flags & CLAP_PARAM_RESCAN_INFO)
+        {
+          myEvent.mArgument.mProperty.mPropertyID = kAudioUnitProperty_ParameterInfo;
+          AUEventListenerNotify(NULL, NULL, &myEvent);
+        }
+
+        if ( flags & CLAP_PARAM_RESCAN_TEXT )
+        {
+          myEvent.mArgument.mProperty.mPropertyID = kAudioUnitProperty_ParameterValueStrings;
+          AUEventListenerNotify(NULL, NULL, &myEvent);
+        }
+      }
+    }
+  }
+#endif
+  
+
+}
+
 // outParameterList may be a null pointer
 OSStatus WrapAsAUV2::GetParameterInfo(AudioUnitScope inScope, AudioUnitParameterID inParameterID,
                                       AudioUnitParameterInfo& outParameterInfo)

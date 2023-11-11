@@ -229,9 +229,9 @@ class WrapAsAUV2 : public ausdk::AUBase,
       override final;  // called from initialize() to allow the setup of MIDI ports
   void setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params) override final;
 
-  void param_rescan(clap_param_rescan_flags flags) override
-  {
-  }  // ext_host_params
+  void param_rescan(clap_param_rescan_flags flags) override;
+
+  // ext_host_params
   void param_clear(clap_id param, clap_param_clear_flags flags) override
   {
   }
