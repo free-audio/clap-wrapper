@@ -17,6 +17,7 @@ namespace fs = ghc::filesystem;
 struct auInfo
 {
   std::string name, vers, type, subt, manu, manunm, clapid, desc, clapname;
+  bool explicitMode{false};
 
   const std::string factoryBase{"wrapAsAUV2_inst"};
 
@@ -169,6 +170,7 @@ int main(int argc, char **argv)
     }
     int idx = 2;
     auInfo u;
+    u.explicitMode = true;
     u.name = std::string(argv[idx++]);
     u.clapname = u.name;
     u.clapid = "org.surge-synth-team.clap-saw-demo";
@@ -359,7 +361,17 @@ int main(int argc, char **argv)
     idx = 0;
     for (const auto &u : units)
     {
-      auto strcid = u.clapid;
+      std::string strcid;
+
+      if (u.explicitMode)
+      {
+        strcid = u.name + " " + u.type + " " + u.subt + " " + u.manunm + " " + u.manu;
+      }
+      else
+      {
+        strcid = u.clapid;
+      }
+
       for (auto &c : strcid)
       {
         if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'A') || (c >= '0' && c <= '9'))
@@ -384,9 +396,16 @@ int main(int argc, char **argv)
         cppf << "#undef CLAP_WRAPPER_TIMER_CALLBACK" << std::endl;
         cppf << "#undef CLAP_WRAPPER_FILL_AUCV" << std::endl;
 
-        fillOSS << "\n  if (strcmp(_plugin->_plugin->desc->id,\"" << u.clapid << "\") == 0) {\n";
-        fillOSS << "    return fillAUCV_" << on << "(viewInfo);\n";
-        fillOSS << "  }\n";
+        if (u.explicitMode)
+        {
+          fillOSS << "    return fillAUCV_" << on << "(viewInfo);\n";
+        }
+        else
+        {
+          fillOSS << "\n  if (strcmp(_plugin->_plugin->desc->id,\"" << u.clapid << "\") == 0) {\n";
+          fillOSS << "    return fillAUCV_" << on << "(viewInfo);\n";
+          fillOSS << "  }\n";
+        }
       }
       idx++;
     }
