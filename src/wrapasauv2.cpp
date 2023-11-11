@@ -724,6 +724,7 @@ OSStatus WrapAsAUV2::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
       //      return noErr;
       break;
 #ifdef DUAL_SCHEDULING_ENABLED
+
       case kMusicDeviceProperty_DualSchedulingMode:
       {
         auto x = *static_cast<const UInt32*>(inData);

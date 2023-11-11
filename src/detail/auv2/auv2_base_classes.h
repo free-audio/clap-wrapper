@@ -320,7 +320,7 @@ class WrapAsAUV2 : public ausdk::AUBase,
   std::map<uint32_t, std::unique_ptr<Clap::AUv2::Parameter>> _parametertree;
 
   CFStringRef _current_program_name = 0;
-  
+
   // the queue from audiothread to UI thread
   ClapWrapper::detail::shared::fixedqueue<queueEvent, 8192> _queueToUI;
 };
