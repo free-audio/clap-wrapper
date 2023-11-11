@@ -367,7 +367,7 @@ void WrapAsAUV2::param_rescan(clap_param_rescan_flags flags)
     PropertyChanged(kAudioUnitProperty_ParameterList, kAudioUnitScope_Global, 0);
     return;
   }
-  
+
 #if 0
   AudioUnitEvent myEvent;
   myEvent.mArgument.mProperty.mAudioUnit = GetComponentInstance();
@@ -397,8 +397,6 @@ void WrapAsAUV2::param_rescan(clap_param_rescan_flags flags)
     }
   }
 #endif
-  
-
 }
 
 // outParameterList may be a null pointer
@@ -721,6 +719,7 @@ OSStatus WrapAsAUV2::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
       break;
       case kMusicDeviceProperty_SupportsStartStopNote:
       {
+        // TODO: we probably want to use start/stop note
         auto x = *static_cast<const UInt32*>(inData);
         (void)x;
         return noErr;
@@ -846,6 +845,7 @@ OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags& inFlags, const AudioTime
 
     // retrieve musical information for this render block
 
+    // TODO: clarify how we can get transportStateProc2
     // mHostCallbackInfo.transportStateProc2
 #if 0
     data._AUtransportValid = (noErr == CallHostTransportState(&data._isPlaying, &data._transportChanged, &data._currentSongPos, &data._isLooping, &data._cycleStart, &data._cycleEnd) );
@@ -862,6 +862,8 @@ OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags& inFlags, const AudioTime
     auto it_is = _plugin->AlwaysAudioThread();
 
     _processAdapter->process(data);
+
+    // currently, the output events are processed directly
     //    _processAdapter->foreachOutputEvent([this]
     //                                        ()
     //                                        {}
@@ -871,6 +873,13 @@ OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags& inFlags, const AudioTime
 }
 
 #define NOTIFYDIRECT
+
+/*
+ NOTIFYDIRECT defined means that we send the events within the AUDIO thread.
+ This works now fine in all hosts. The actualy strategy to pass it to the UI thread
+ and automate it from there does not work. Investigation is needed.
+ */
+
 void WrapAsAUV2::onBeginEdit(clap_id id)
 {
 #ifdef NOTIFYDIRECT
@@ -952,19 +961,6 @@ void WrapAsAUV2::onIdle()
       break;
       case queueEvent::type::editvalue:
       {
-        // Globals()->SetParameter(e._data._id, e._data._value.value);
-#if 0
-          Globals()->SetParameter(e._data._id, e._data._value.value);
-          AudioUnitParameter m;
-          m.mAudioUnit = GetComponentInstance();
-          m.mParameterID = e._data._id;
-          m.mScope = kAudioUnitScope_Global;
-          m.mElement = 0;
-          AUParameterSet(NULL, NULL, &m, e._data._value.value, 0);
-          // auto guarantee_mainthread = _plugin->AlwaysMainThread();
-
-#endif
-#if 1
         Globals()->SetParameter(e._data._id, e._data._value.value);
         AudioUnitEvent myEvent;
         myEvent.mEventType = kAudioUnitEvent_ParameterValueChange;
@@ -973,7 +969,6 @@ void WrapAsAUV2::onIdle()
         myEvent.mArgument.mParameter.mScope = kAudioUnitScope_Global;
         myEvent.mArgument.mParameter.mElement = 0;
         AUEventListenerNotify(NULL, NULL, &myEvent);
-#endif
       }
       break;
       case queueEvent::type::triggerUICall:
