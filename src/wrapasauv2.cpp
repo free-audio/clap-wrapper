@@ -856,12 +856,14 @@ OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags& inFlags, const AudioTime
 
     // TODO: clarify how we can get transportStateProc2
     // mHostCallbackInfo.transportStateProc2
-#if 0
-    data._AUtransportValid = (noErr == CallHostTransportState(&data._isPlaying, &data._transportChanged, &data._currentSongPos, &data._isLooping, &data._cycleStart, &data._cycleEnd) );
-    data._AUbeatAndTempoValid = (noErr ==
-                               CallHostBeatAndTempo(&data._beat, &data._tempo));
-    data._AUmusicalTimeValid = (noErr ==
-                              CallHostMusicalTimeLocation(&data._offsetToNextBeat, &data._musicalNumerator, &data._musicalDenominator, &data._currentDownBeat));
+#if 1
+    data._AUtransportValid = (noErr == CallHostTransportState(&data._isPlaying, &data._transportChanged,
+                                                              &data._currentSongPos, &data._isLooping,
+                                                              &data._cycleStart, &data._cycleEnd));
+    data._AUbeatAndTempoValid = (noErr == CallHostBeatAndTempo(&data._beat, &data._tempo));
+    data._AUmusicalTimeValid =
+        (noErr == CallHostMusicalTimeLocation(&data._offsetToNextBeat, &data._musicalNumerator,
+                                              &data._musicalDenominator, &data._currentDownBeat));
 #endif
     // Get output buffer list and extract the i/o buffer pointers.
     // The loop is done so that an arbitrary number of output busses
