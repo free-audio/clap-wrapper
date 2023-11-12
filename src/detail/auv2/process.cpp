@@ -7,6 +7,16 @@
 namespace Clap::AUv2
 {
 
+inline clap_beattime doubleToBeatTime(double t)
+{
+  return std::round(t * CLAP_BEATTIME_FACTOR);
+}
+
+inline clap_sectime doubleToSecTime(double t)
+{
+  return round(t * CLAP_SECTIME_FACTOR);
+}
+
 ProcessAdapter::~ProcessAdapter()
 {
   if (_input_ports)
@@ -158,16 +168,39 @@ void ProcessAdapter::process(ProcessData& data)
   sortEventIndices();
   _processData.frames_count = data.numSamples;
   _transport.flags = 0;
-#if 0
+
   if (data._AUtransportValid)
   {
-    _transport.flags += data._isPlaying ? CLAP_TRANSPORT_IS_PLAYING : 0;
-    _transport.flags += data._isLooping ? CLAP_TRANSPORT_IS_LOOP_ACTIVE : 0;
+    // TODO: transportchanged flag?
+    _transport.flags |= data._isPlaying ? CLAP_TRANSPORT_IS_PLAYING : 0;
+    // CLAP_TRANSPORT_IS_RECORDING can not be retrieved from this data block
+    _transport.flags |= data._isLooping ? CLAP_TRANSPORT_IS_LOOP_ACTIVE : 0;
     // CLAP_TRANSPORT_IS_RECORDING can not be retrieved from the AudioUnit API
-    _transport.loop_startq_beats = data._cycleStart;
-    _transport.loop_end_beats = data._cycleEnd;
+    _transport.loop_end_beats = doubleToBeatTime(data._cycleStart);
+    _transport.loop_end_beats = doubleToBeatTime(data._cycleEnd);
+    _transport.song_pos_seconds = doubleToSecTime(data._currentSongPos);
+    _transport.flags |= CLAP_TRANSPORT_HAS_SECONDS_TIMELINE;
   }
-#endif
+  if (data._AUbeatAndTempoValid)
+  {
+    if (data._tempo != 0.0)
+    {
+      _transport.tempo = doubleToBeatTime(data._tempo);
+      _transport.flags |= CLAP_TRANSPORT_HAS_TEMPO;
+    }
+    if (data._beat)
+    {
+      _transport.song_pos_beats = doubleToBeatTime(data._beat);
+      _transport.flags |= CLAP_TRANSPORT_HAS_BEATS_TIMELINE;
+    }
+  }
+  if (data._AUmusicalTimeValid)
+  {
+    _transport.flags |= CLAP_TRANSPORT_HAS_TIME_SIGNATURE;
+    _transport.tsig_denom = data._musicalDenominator;
+    _transport.tsig_num = data._musicalNumerator;
+  }
+
   if (_numInputs)
   {
     for (uint32_t i = 0; i < _numInputs; ++i)
@@ -452,7 +485,7 @@ void ProcessAdapter::addMIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData
   n.header.time = deltaFrames;
   // type is being set further down
   n.header.flags = 0 + (live ? CLAP_EVENT_IS_LIVE : 0);
-  // n.header.size = sizeof(clap_event_note_t);
+  // n.header.size is set further down
   n.header.space_id = 0;
 
   switch (strippedStatus)
