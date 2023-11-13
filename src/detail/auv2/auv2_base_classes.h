@@ -107,6 +107,9 @@ class WrapAsAUV2 : public ausdk::AUBase,
                       AudioComponentInstance ci);
   virtual ~WrapAsAUV2();
 
+ protected:
+  void PostConstructor() override;
+
  private:
   AUV2_Type _autype;
 
@@ -131,6 +134,14 @@ class WrapAsAUV2 : public ausdk::AUBase,
   {
     return true;
   }
+
+  AUChannelInfo cinfo[1];
+  UInt32 SupportedNumChannels(const AUChannelInfo** outInfo) override;
+  bool ValidFormat(AudioUnitScope inScope, AudioUnitElement inElement,
+                   const AudioStreamBasicDescription& inNewFormat) override;
+  OSStatus ChangeStreamFormat(AudioUnitScope inScope, AudioUnitElement inElement,
+                              const AudioStreamBasicDescription& inPrevFormat,
+                              const AudioStreamBasicDescription& inNewFormat) override;
 
   bool CanScheduleParameters() const override
   {

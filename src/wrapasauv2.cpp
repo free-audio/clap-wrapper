@@ -109,7 +109,7 @@ bool WrapAsAUV2::initializeClapDesc()
 
 WrapAsAUV2::WrapAsAUV2(AUV2_Type type, const std::string& clapname, const std::string& clapid, int idx,
                        AudioComponentInstance ci)
-  : Base{ci, 0, 1}
+  : Base{ci, 0, 0}  // these elements are set correctly in ::PostConstructor
   , Clap::IHost()
   , Clap::IAutomation()
   , os::IPlugObject()
@@ -221,7 +221,8 @@ OSStatus WrapAsAUV2::Initialize()
       return kAudioUnitErr_FormatNotSupported;
     }
   }
-// #if 0
+#endif
+#if 0
   MaintainKernels();
 
   mMainOutput = &Output(0);
@@ -248,7 +249,7 @@ void WrapAsAUV2::setupAudioBusses(const clap_plugin_t* plugin,
   auto numAudioInputs = audioports->count(plugin, true);
   auto numAudioOutputs = audioports->count(plugin, false);
 
-  fprintf(stderr, "\tAUDIO in: %d, out: %d\n", (int)numAudioInputs, (int)numAudioOutputs);
+  LOGINFO("AUDIO in: {}, out: {}\n", (int)numAudioInputs, (int)numAudioOutputs);
 
   ausdk::AUBase::GetScope(kAudioUnitScope_Input).Initialize(this, kAudioUnitScope_Input, numAudioInputs);
 
@@ -776,7 +777,7 @@ void WrapAsAUV2::tail_changed()
 void WrapAsAUV2::addAudioBusFrom(int bus, const clap_audio_port_info_t* info, bool is_input)
 {
   // add/set audio bus configuration from info to appropriate scope
-
+  LOGINFO("Add Bus {} {}", bus, is_input ? "IN" : "OUT");
   if (is_input)
   {
     addInputBus(bus, info);
@@ -1088,4 +1089,114 @@ OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
   }
   return noErr;
 }
+
+bool WrapAsAUV2::ValidFormat(AudioUnitScope inScope, AudioUnitElement inElement,
+                             const AudioStreamBasicDescription& inNewFormat)
+{
+  if (!_plugin->_ext._audioports)
+  {
+    return false;
+  }
+  auto ap = _plugin->_ext._audioports;
+  auto pl = _plugin->_plugin;
+
+  if (inScope == kAudioUnitScope_Input)
+  {
+    auto numAudioInputs = ap->count(pl, true);
+    if (inElement >= numAudioInputs)
+    {
+      return false;
+    }
+    clap_audio_port_info inf;
+    ap->get(pl, inElement, true, &inf);
+    if (inNewFormat.mChannelsPerFrame == inf.channel_count)
+    {
+      // LOGINFO("In True");
+      return true;
+    }
+  }
+  else if (inScope == kAudioUnitScope_Output)
+  {
+    auto numAudioOutputs = ap->count(pl, false);
+    if (inElement >= numAudioOutputs)
+    {
+      return false;
+    }
+
+    clap_audio_port_info inf;
+    ap->get(pl, inElement, false, &inf);
+    if (inNewFormat.mChannelsPerFrame == inf.channel_count)
+    {
+      // LOGINFO("Out True");
+      return true;
+    }
+  }
+  else if (inScope == kAudioUnitScope_Global)
+  {
+    return true;
+  }
+  //LOGINFO("False");
+  return false;
+}
+
+OSStatus WrapAsAUV2::ChangeStreamFormat(AudioUnitScope inScope, AudioUnitElement inElement,
+                                        const AudioStreamBasicDescription& inPrevFormat,
+                                        const AudioStreamBasicDescription& inNewFormat)
+{
+  // LOGINFO("ChangedStreamFormat called {} {}", inScope, inNewFormat.mChannelsPerFrame);
+  return noErr;
+}
+
+UInt32 WrapAsAUV2::SupportedNumChannels(const AUChannelInfo** outInfo)
+{
+  if (!outInfo) return 1;
+  cinfo[0].inChannels = 0;
+  cinfo[0].outChannels = 0;
+  if (_plugin->_ext._audioports)
+  {
+    auto ap = _plugin->_ext._audioports;
+    auto pl = _plugin->_plugin;
+    auto numAudioInputs = ap->count(pl, true);
+    auto numAudioOutputs = ap->count(pl, false);
+
+    // HERE
+    for (int i = 0; i < numAudioInputs; ++i)
+    {
+      clap_audio_port_info inf;
+      ap->get(pl, i, true, &inf);
+      cinfo[0].inChannels += inf.channel_count;
+    }
+
+    for (int i = 0; i < numAudioOutputs; ++i)
+    {
+      clap_audio_port_info inf;
+      ap->get(pl, i, false, &inf);
+      cinfo[0].outChannels += inf.channel_count;
+    }
+  }
+
+  *outInfo = cinfo;
+  return 1;
+}
+
+void WrapAsAUV2::PostConstructor()
+{
+  Base::PostConstructor();
+
+  if (_plugin->_ext._audioports)
+  {
+    auto ap = _plugin->_ext._audioports;
+    auto pl = _plugin->_plugin;
+
+    auto numAudioInputs = ap->count(pl, true);
+    auto numAudioOutputs = ap->count(pl, false);
+
+    Inputs().SetNumberOfElements(numAudioInputs);
+    Outputs().SetNumberOfElements(numAudioOutputs);
+    LOGINFO("PostConstructor: Ins={} Outs={}", numAudioInputs, numAudioOutputs);
+  }
+  // The else here would just set elements to 0,0 which is the default
+  // therefore leave it un-elsed
+}
+
 }  // namespace free_audio::auv2_wrapper
