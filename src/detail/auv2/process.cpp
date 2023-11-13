@@ -176,8 +176,10 @@ void ProcessAdapter::process(ProcessData& data)
     // CLAP_TRANSPORT_IS_RECORDING can not be retrieved from this data block
     _transport.flags |= data._isLooping ? CLAP_TRANSPORT_IS_LOOP_ACTIVE : 0;
     // CLAP_TRANSPORT_IS_RECORDING can not be retrieved from the AudioUnit API
-    _transport.loop_end_beats = doubleToBeatTime(data._cycleStart);
-    _transport.loop_end_beats = doubleToBeatTime(data._cycleEnd);
+    _transport.loop_end_beats = data._cycleStart;
+    _transport.loop_end_beats = data._cycleEnd;
+
+    // I think this is wrong - current song pos is samples
     _transport.song_pos_seconds = doubleToSecTime(data._currentSongPos);
     _transport.flags |= CLAP_TRANSPORT_HAS_SECONDS_TIMELINE;
   }
@@ -185,7 +187,7 @@ void ProcessAdapter::process(ProcessData& data)
   {
     if (data._tempo != 0.0)
     {
-      _transport.tempo = doubleToBeatTime(data._tempo);
+      _transport.tempo = data._tempo;
       _transport.flags |= CLAP_TRANSPORT_HAS_TEMPO;
     }
     if (data._beat)
@@ -205,8 +207,8 @@ void ProcessAdapter::process(ProcessData& data)
   {
     for (uint32_t i = 0; i < _numInputs; ++i)
     {
-      auto& m = static_cast<ausdk::AUInputElement&>(*_audioInputScope->SafeGetElement(0));
-      if (m.PullInput(data.flags, data.timestamp, 0, data.numSamples))
+      auto& m = static_cast<ausdk::AUInputElement&>(*_audioInputScope->SafeGetElement(i));
+      if (m.PullInput(data.flags, data.timestamp, i, data.numSamples) == noErr)
       {
         AudioBufferList& myInBuffers = m.GetBufferList();
         auto num = myInBuffers.mNumberBuffers;
