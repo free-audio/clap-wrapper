@@ -12,7 +12,7 @@ Currently the `clap-wrapper` supports projecting a CLAP into
 
 - VST3
 - A Simple Standalone
-- A scanning-but-non-functioning AUv2
+- A mostly working - but incomplete - AUv2
 
 The `clap-wrapper` also provides a variety of deployment,
 linkage and build time options to CLAP developers.
