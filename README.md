@@ -1,3 +1,5 @@
+*"Wrappers to run your CLAP in other plugin formats instantly."*
+
 # The clap-wrapper Project
 
 The `clap-wrapper` project allows you to wrap your CLAP plugin
