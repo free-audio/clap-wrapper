@@ -220,6 +220,13 @@ void ProcessAdapter::process(ProcessData& data)
         }
         // _input_ports[0].data32 = myInBuffers[0].mData;
       }
+      else
+      {
+        for (uint32_t j = 0; j < this->_input_ports[i].channel_count; ++j)
+        {
+          this->_input_ports[i].data32[j] = _silent_input;
+        }
+      }
     }
   }
 #if 0

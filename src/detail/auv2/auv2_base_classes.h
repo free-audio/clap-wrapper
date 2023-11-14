@@ -135,7 +135,8 @@ class WrapAsAUV2 : public ausdk::AUBase,
     return true;
   }
 
-  AUChannelInfo cinfo[1];
+  std::vector<AUChannelInfo> cinfo;
+
   UInt32 SupportedNumChannels(const AUChannelInfo** outInfo) override;
   bool ValidFormat(AudioUnitScope inScope, AudioUnitElement inElement,
                    const AudioStreamBasicDescription& inNewFormat) override;
@@ -143,6 +144,11 @@ class WrapAsAUV2 : public ausdk::AUBase,
                               const AudioStreamBasicDescription& inPrevFormat,
                               const AudioStreamBasicDescription& inNewFormat) override;
 
+ protected:
+  UInt32 GetAudioChannelLayout(AudioUnitScope scope, AudioUnitElement element,
+                               AudioChannelLayout* outLayoutPtr, bool& outWritable) override;
+
+ public:
   bool CanScheduleParameters() const override
   {
     return true;
