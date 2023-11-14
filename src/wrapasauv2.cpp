@@ -1,5 +1,6 @@
 #include "generated_entrypoints.hxx"
 #include "detail/auv2/process.h"
+#include <set>
 
 extern bool fillAudioUnitCocoaView(AudioUnitCocoaViewInfo* viewInfo, std::shared_ptr<Clap::Plugin>);
 
@@ -1149,34 +1150,52 @@ OSStatus WrapAsAUV2::ChangeStreamFormat(AudioUnitScope inScope, AudioUnitElement
 
 UInt32 WrapAsAUV2::SupportedNumChannels(const AUChannelInfo** outInfo)
 {
-  if (!outInfo) return 1;
-  cinfo[0].inChannels = 0;
-  cinfo[0].outChannels = 0;
-  if (_plugin->_ext._audioports)
+  if (cinfo.empty() && _plugin->_ext._audioports)
   {
     auto ap = _plugin->_ext._audioports;
     auto pl = _plugin->_plugin;
     auto numAudioInputs = ap->count(pl, true);
     auto numAudioOutputs = ap->count(pl, false);
 
-    // HERE
+    std::set<int> inSets, outSets;
+
+    bool hasInMain{false};
     for (int i = 0; i < numAudioInputs; ++i)
     {
       clap_audio_port_info inf;
       ap->get(pl, i, true, &inf);
-      cinfo[0].inChannels += inf.channel_count;
+      inSets.insert(inf.channel_count);
+      hasInMain |= (inf.flags & CLAP_AUDIO_PORT_IS_MAIN);
     }
+    if (!hasInMain) inSets.insert(0);
 
+    bool hasOutMain{false};
     for (int i = 0; i < numAudioOutputs; ++i)
     {
       clap_audio_port_info inf;
       ap->get(pl, i, false, &inf);
-      cinfo[0].outChannels += inf.channel_count;
+      outSets.insert(inf.channel_count);
+      hasOutMain |= (inf.flags & CLAP_AUDIO_PORT_IS_MAIN);
+    }
+    if (!hasOutMain) outSets.insert(0);
+
+    cinfo.clear();
+
+    for (auto& iv : inSets)
+    {
+      for (auto& ov : outSets)
+      {
+        cinfo.emplace_back();
+        cinfo.back().inChannels = iv;
+        cinfo.back().outChannels = ov;
+      }
     }
   }
 
-  *outInfo = cinfo;
-  return 1;
+  if (!outInfo) return cinfo.size();
+
+  *outInfo = cinfo.data();
+  return cinfo.size();
 }
 
 void WrapAsAUV2::PostConstructor()
@@ -1191,12 +1210,53 @@ void WrapAsAUV2::PostConstructor()
     auto numAudioInputs = ap->count(pl, true);
     auto numAudioOutputs = ap->count(pl, false);
 
+    SetNumberOfElements(kAudioUnitScope_Input, numAudioInputs);
     Inputs().SetNumberOfElements(numAudioInputs);
+    for (int i = 0; i < numAudioInputs; ++i)
+    {
+      clap_audio_port_info inf;
+      ap->get(pl, i, true, &inf);
+      auto b = CFStringCreateWithCString(nullptr, inf.name, kCFStringEncodingUTF8);
+      Inputs().GetElement(i)->SetName(b);
+
+      /*
+      AudioChannelLayout layout;
+      layout.mNumberChannelDescriptions = 1;
+      layout.mChannelLayoutTag = kAudioChannelLayoutTag_Stereo;
+      memset(&layout, 0, sizeof(layout));
+      Inputs().GetIOElement(i)->SetAudioChannelLayout(layout);
+      */
+    }
+
+    SetNumberOfElements(kAudioUnitScope_Output, numAudioOutputs);
     Outputs().SetNumberOfElements(numAudioOutputs);
+    for (int i = 0; i < numAudioOutputs; ++i)
+    {
+      clap_audio_port_info inf;
+      ap->get(pl, i, false, &inf);
+      auto b = CFStringCreateWithCString(nullptr, inf.name, kCFStringEncodingUTF8);
+      Outputs().GetElement(i)->SetName(b);
+
+      /*
+      AudioChannelLayout layout;
+      memset(&layout, 0, sizeof(layout));
+      layout.mNumberChannelDescriptions = 1;
+      layout.mChannelLayoutTag = kAudioChannelLayoutTag_Stereo;
+      Outputs().GetIOElement(i)->SetAudioChannelLayout(layout);
+      */
+    }
     LOGINFO("PostConstructor: Ins={} Outs={}", numAudioInputs, numAudioOutputs);
   }
   // The else here would just set elements to 0,0 which is the default
   // therefore leave it un-elsed
+}
+
+UInt32 WrapAsAUV2::GetAudioChannelLayout(AudioUnitScope scope, AudioUnitElement element,
+                                         AudioChannelLayout* outLayoutPtr, bool& outWritable)
+{
+  // TODO: This is never called so the layout is never found
+  LOGINFO("GetAudioChannelLayout");
+  return Base::GetAudioChannelLayout(scope, element, outLayoutPtr, outWritable);
 }
 
 }  // namespace free_audio::auv2_wrapper
