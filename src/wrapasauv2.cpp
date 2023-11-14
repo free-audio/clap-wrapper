@@ -1192,10 +1192,10 @@ UInt32 WrapAsAUV2::SupportedNumChannels(const AUChannelInfo** outInfo)
     }
   }
 
-  if (!outInfo) return cinfo.size();
+  if (!outInfo) return (UInt32)cinfo.size();
 
   *outInfo = cinfo.data();
-  return cinfo.size();
+  return (UInt32)cinfo.size();
 }
 
 void WrapAsAUV2::PostConstructor()
