@@ -20,11 +20,10 @@
 namespace freeaudio::clap_wrapper::standalone
 {
 
-#if CLAP_WRAPPER_HAS_WIN32
+#if WIN && CLAP_WRAPPER_HAS_WIN32
 std::optional<fs::path> getStandaloneSettingsPath()
 {
-  std::wstring path;
-  wchar_t *buffer;
+  wchar_t *buffer{nullptr};
 
   if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &buffer)))
   {
