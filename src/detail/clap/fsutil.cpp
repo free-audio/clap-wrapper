@@ -29,30 +29,29 @@
 namespace Clap
 {
 #if WIN
-fs::path windows_path(const KNOWNFOLDERID &id)
+fs::path get_known_folder(const KNOWNFOLDERID &id)
 {
-  std::wstring path;
-  wchar_t *buffer;
+  wchar_t *buffer{nullptr};
 
   if (SUCCEEDED(SHGetKnownFolderPath(id, 0, nullptr, &buffer)))
   {
-    fs::path data = std::wstring(buffer);
+    fs::path data{std::wstring(buffer)};
     CoTaskMemFree(buffer);
 
     return data;
   }
 
   else
-    return fs::path{};
+    return {};
 }
 
-std::vector<std::wstring> split_clap_path(const std::wstring &in, const std::wstring &sep)
+std::vector<std::string> split_clap_path(const std::string &in)
 {
-  std::vector<std::wstring> res;
-  std::wstringstream ss(in);
-  std::wstring item;
+  std::vector<std::string> res;
+  std::stringstream ss(in);
+  std::string item;
 
-  while (std::getline(ss, item, L';')) res.push_back(item);
+  while (std::getline(ss, item, ';')) res.push_back(item);
 
   return res;
 }
@@ -74,20 +73,20 @@ std::vector<fs::path> getValidCLAPSearchPaths()
 #endif
 
 #if WIN
-  auto p{windows_path(FOLDERID_ProgramFilesCommon)};
+  auto p{get_known_folder(FOLDERID_ProgramFilesCommon)};
   if (fs::exists(p)) res.emplace_back(p / "CLAP");
 
-  auto q{windows_path(FOLDERID_LocalAppData)};
+  auto q{get_known_folder(FOLDERID_LocalAppData)};
   if (fs::exists(q)) res.emplace_back(q / "Programs" / "Common" / "CLAP");
 
-  std::wstring cp;
-  auto len{::GetEnvironmentVariableW(L"CLAP_PATH", NULL, 0)};
+  std::string cp;
+  auto len{::GetEnvironmentVariable("CLAP_PATH", nullptr, 0)};
 
   if (len > 0)
   {
     cp.resize(len);
-    cp.resize(::GetEnvironmentVariableW(L"CLAP_PATH", &cp[0], len));
-    auto paths{split_clap_path(cp, L";")};
+    cp.resize(::GetEnvironmentVariable("CLAP_PATH", &cp[0], len));
+    auto paths{split_clap_path(cp)};
 
     for (const auto &path : paths)
     {
