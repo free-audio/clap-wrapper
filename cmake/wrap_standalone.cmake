@@ -141,7 +141,6 @@ function(target_add_standalone_wrapper)
 
     target_link_libraries(${SA_TARGET} PRIVATE
             clap-wrapper-compile-options
-            clap-wrapper-shared-detail
             ${salib}
             )
 endfunction(target_add_standalone_wrapper)
