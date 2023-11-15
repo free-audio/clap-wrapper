@@ -38,7 +38,7 @@ Our [wiki](https://github.com/free-audio/clap-wrapper/wiki) is the root of our d
 Since building a `clap-wrapper` involves several choices we
 strongly suggest you consult it first.
 
-The simplest form of a clap wraper, though, is a VST3
+The simplest form of a clap wrapper, though, is a VST3
 which dynamically loads a CLAP of the same name using your
 copy of the VST3 and CLAP SDK. To build this, you can use the
 simple CMake command
