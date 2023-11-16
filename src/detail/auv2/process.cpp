@@ -249,7 +249,7 @@ void ProcessAdapter::process(ProcessData& data)
   // output handling
   for (uint32_t i = 0; i < _numOutputs; i++)
   {
-    auto& m = static_cast<ausdk::AUOutputElement&>(*_audioOutputScope->SafeGetElement(0));
+    auto& m = static_cast<ausdk::AUOutputElement&>(*_audioOutputScope->SafeGetElement(i));
     AudioBufferList& myOutBuffers = m.PrepareBuffer(data.numSamples);
     auto num = myOutBuffers.mNumberBuffers;
     this->_output_ports[i].channel_count = num;
