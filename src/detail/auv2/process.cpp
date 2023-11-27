@@ -125,6 +125,10 @@ void ProcessAdapter::setupProcessing(ausdk::AUScope& audioInputs, ausdk::AUScope
   _processData.in_events = &_in_events;
   _processData.out_events = &_out_events;
 
+  _transport.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+  _transport.header.type = CLAP_EVENT_TRANSPORT;
+  _transport.header.time = 0;
+  _transport.header.size = sizeof(clap_event_transport_t);
   _processData.transport = &_transport;
 
   _in_events.ctx = this;
