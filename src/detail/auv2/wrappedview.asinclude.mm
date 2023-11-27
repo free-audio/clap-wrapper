@@ -83,7 +83,7 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
 
 - (id)initWithAUv2:(free_audio::auv2_wrapper::ui_connection *)cont preferredSize:(NSSize)size
 {
-  LOGINFO("[clap-wrapper] create NS View begin");
+  LOGINFO("[clap-wrapper] creating NSView");
 
   ui = *cont;
   ui._plugin->_ext._gui->create(ui._plugin->_plugin, CLAP_WINDOW_API_COCOA, false);
@@ -110,7 +110,8 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
 
   gui->set_parent(ui._plugin->_plugin, &m);
   gui->set_scale(ui._plugin->_plugin, 1.0);
-  gui->set_size(ui._plugin->_plugin, size.width, size.height);
+
+  if (gui->can_resize(ui._plugin->_plugin)) gui->set_size(ui._plugin->_plugin, size.width, size.height);
 
   idleTimer = nil;
   CFTimeInterval TIMER_INTERVAL = .05;  // In SurgeGUISynthesizer.h it uses 50 ms
@@ -120,7 +121,6 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
                                    CLAP_WRAPPER_TIMER_CALLBACK, &TimerContext);
   if (idleTimer) CFRunLoopAddTimer(CFRunLoopGetMain(), idleTimer, kCFRunLoopCommonModes);
 
-  LOGINFO("[clap-wrapper] create NS View end");
   return self;
 }
 
@@ -159,7 +159,6 @@ bool CLAP_WRAPPER_FILL_AUCV(AudioUnitCocoaViewInfo *viewInfo)
   // now we are in m&m land..
   auto bundle = [NSBundle bundleForClass:[CLAP_WRAPPER_COCOA_CLASS class]];
 
-  LOGINFO("[clap-wrapper] fill AudioUnitCocoaViewInfo {}", __func__);
   if (bundle)
   {
     // Get the URL for the main bundle
@@ -174,10 +173,10 @@ bool CLAP_WRAPPER_FILL_AUCV(AudioUnitCocoaViewInfo *viewInfo)
 #undef ascf
 
     *viewInfo = {cfUrl, {className}};
-    LOGINFO("[clap-wrapper] fill AudioUnitCocoaViewInfo: - class is \"{}\"",
+    LOGINFO("[clap-wrapper] created AudioUnitCocoaView: - class is \"{}\"",
             CFStringGetCStringPtr(className, kCFStringEncodingUTF8));
     return true;
   }
-  LOGINFO("[clap-wrapper] fill AudioUnitCocoaViewInfo: FAILED");
+  LOGINFO("[clap-wrapper] create AudioUnitCocoaView failed: {}", __func__);
   return false;
 }
