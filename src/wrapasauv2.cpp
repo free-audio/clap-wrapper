@@ -859,9 +859,11 @@ OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags& inFlags, const AudioTime
     // TODO: clarify how we can get transportStateProc2
     // mHostCallbackInfo.transportStateProc2
 #if 1
-    data._AUtransportValid = (noErr == CallHostTransportState(&data._isPlaying, &data._transportChanged,
-                                                              &data._currentSongPos, &data._isLooping,
-                                                              &data._cycleStart, &data._cycleEnd));
+    data._AUtransportValid =
+        (noErr == CallHostTransportState(&data._isPlaying, &data._transportChanged,
+                                         &data._currentSongPosInSeconds, &data._isLooping,
+                                         &data._cycleStart, &data._cycleEnd));
+    data._currentSongPosInSeconds /= std::max(_plugin->getSampleRate(), 1.0);  // just in case
     data._AUbeatAndTempoValid = (noErr == CallHostBeatAndTempo(&data._beat, &data._tempo));
     data._AUmusicalTimeValid =
         (noErr == CallHostMusicalTimeLocation(&data._offsetToNextBeat, &data._musicalNumerator,

@@ -183,8 +183,7 @@ void ProcessAdapter::process(ProcessData& data)
     _transport.loop_end_beats = data._cycleStart;
     _transport.loop_end_beats = data._cycleEnd;
 
-    // I think this is wrong - current song pos is samples
-    _transport.song_pos_seconds = doubleToSecTime(data._currentSongPos);
+    _transport.song_pos_seconds = doubleToSecTime(data._currentSongPosInSeconds);
     _transport.flags |= CLAP_TRANSPORT_HAS_SECONDS_TIMELINE;
   }
   if (data._AUbeatAndTempoValid)
@@ -205,6 +204,7 @@ void ProcessAdapter::process(ProcessData& data)
     _transport.flags |= CLAP_TRANSPORT_HAS_TIME_SIGNATURE;
     _transport.tsig_denom = data._musicalDenominator;
     _transport.tsig_num = data._musicalNumerator;
+    _transport.bar_start = data._currentDownBeat * CLAP_BEATTIME_FACTOR;
   }
 
   if (_numInputs)
