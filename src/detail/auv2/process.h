@@ -48,7 +48,7 @@ struct ProcessData
   // information from the AU Host
   Float64 _cycleStart;
   Float64 _cycleEnd;
-  Float64 _currentSongPos;  // outCurrentSampleInTimeLine
+  Float64 _currentSongPosInSeconds;  // outCurrentSampleInTimeLine
 
   Boolean _isPlaying;
   Boolean _transportChanged;

@@ -148,6 +148,10 @@ class Plugin
   bool initialize();
   void terminate();
   void setSampleRate(double sampleRate);
+  double getSampleRate() const
+  {
+    return _audioSetup.sampleRate;
+  }
   void setBlockSizes(uint32_t minFrames, uint32_t maxFrames);
 
   bool load(const clap_istream_t* stream) const;
