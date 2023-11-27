@@ -18,7 +18,9 @@ typedef struct clap_plugin_factory_as_auv2
   const char *manufacturer_code;  // your 'manu' field
   const char *manufacturer_name;  // your manufacturer display name
 
-  // populate information about this particular auv2. Return false if we cannot.
+  // populate information about this particular auv2. If this method returns
+  // false, the CLAP Plugin at the given index will not be exported into the
+  // resulting AUv2
   bool(CLAP_ABI *get_auv2_info)(const clap_plugin_factory_as_auv2 *factory, uint32_t index,
                                 clap_plugin_info_as_auv2_t *info);
 } clap_plugin_factory_as_auv2_t;

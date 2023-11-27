@@ -82,13 +82,15 @@ bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname
   {
     manu = loader._pluginFactoryAUv2Info->manufacturer_code;
     manuName = loader._pluginFactoryAUv2Info->manufacturer_name;
-    std::cout << "  - using factor manufacturer '" << manuName << "' (" << manu << ")" << std::endl;
+    std::cout << "  - using factory manufacturer '" << manuName << "' (" << manu << ")" << std::endl;
   }
 
   static const char *encoder = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-";
   for (const auto *clapPlug : loader.plugins)
   {
     auto u = auInfo();
+    bool doExport = true;
+
     u.name = clapPlug->name;
     u.clapname = clapname;
     u.clapid = clapPlug->id;
@@ -145,9 +147,17 @@ bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname
           u.subt = v2inf.au_subt;
         }
       }
+      else
+      {
+        doExport = false;
+        std::cout << "  - Skipping Audio Unit Export for index " << idx << "/" << u.clapid << std::endl;
+      }
     }
 
-    units.push_back(u);
+    if (doExport)
+    {
+      units.push_back(u);
+    }
     idx++;
   }
   return true;

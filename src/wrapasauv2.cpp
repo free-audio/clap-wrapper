@@ -51,7 +51,7 @@ void pffffrzz()
 
 bool WrapAsAUV2::initializeClapDesc()
 {
-  LOGINFO("[clap-wrapper auv2: id={} index: {}\n", _clapid, _idx);
+  LOGINFO("[clap-wrapper] auv2: id={} index: {}", _clapid, _idx);
 
   if (!_library.hasEntryPoint())
   {
@@ -250,7 +250,8 @@ void WrapAsAUV2::setupAudioBusses(const clap_plugin_t* plugin,
   auto numAudioInputs = audioports->count(plugin, true);
   auto numAudioOutputs = audioports->count(plugin, false);
 
-  LOGINFO("AUDIO in: {}, out: {}\n", (int)numAudioInputs, (int)numAudioOutputs);
+  LOGINFO("[clap-wrapper] Setup Busses: audio in: {}, out: {}", (int)numAudioInputs,
+          (int)numAudioOutputs);
 
   ausdk::AUBase::GetScope(kAudioUnitScope_Input).Initialize(this, kAudioUnitScope_Input, numAudioInputs);
 
@@ -510,7 +511,7 @@ OSStatus WrapAsAUV2::Stop()
 }
 void WrapAsAUV2::Cleanup()
 {
-  LOGINFO("Cleaning up Plugin");
+  LOGINFO("[clap-wrapper] Cleaning up Plugin");
   auto guarantee_mainthread = _plugin->AlwaysMainThread();
   deactivateCLAP();
   Base::Cleanup();
@@ -583,7 +584,6 @@ OSStatus WrapAsAUV2::GetPropertyInfo(AudioUnitPropertyID inID, AudioUnitScope in
       case kAudioUnitProperty_CocoaUI:
         outWritable = false;
         outDataSize = sizeof(struct AudioUnitCocoaViewInfo);
-        LOGINFO("query Property Info: kAudioUnitProperty_CocoaUI");
         return noErr;
         break;
 #if 0
@@ -659,19 +659,18 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         return noErr;
 
       case kAudioUnitProperty_CocoaUI:
-        LOGINFO("query Property: kAudioUnitProperty_CocoaUI {}", (_plugin) ? "plugin" : "no plugin");
+        LOGINFO("[clap-wrapper] Property: kAudioUnitProperty_CocoaUI {}",
+                (_plugin) ? "plugin" : "no plugin");
         if (_plugin &&
             (_plugin->_ext._gui->is_api_supported(_plugin->_plugin, CLAP_WINDOW_API_COCOA, false)))
         {
-          LOGINFO("now getting cocoa ui");
           fillAudioUnitCocoaView(((AudioUnitCocoaViewInfo*)outData), _plugin);
-          // *((AudioUnitCocoaViewInfo *)outData) = cocoaInfo;
-          LOGINFO("query Property: kAudioUnitProperty_CocoaUI complete");
+          LOGINFO("[clap-wrapper] kAudioUnitProperty_CocoaUI complete");
           return noErr;  // sizeof(AudioUnitCocoaViewInfo);
         }
         else
         {
-          LOGINFO("query Property: kAudioUnitProperty_CocoaUI although now plugin ext");
+          LOGINFO("[clap-wrapper] Mysterious: kAudioUnitProperty_CocoaUI although now plugin ext");
           fillAudioUnitCocoaView(((AudioUnitCocoaViewInfo*)outData), _plugin);
           return noErr;
         }
@@ -778,7 +777,7 @@ void WrapAsAUV2::tail_changed()
 void WrapAsAUV2::addAudioBusFrom(int bus, const clap_audio_port_info_t* info, bool is_input)
 {
   // add/set audio bus configuration from info to appropriate scope
-  LOGINFO("Add Bus {} {}", bus, is_input ? "IN" : "OUT");
+  LOGINFO("[clap-wrapper]     - add bus {} : {}", bus, is_input ? "In" : "Out");
   if (is_input)
   {
     addInputBus(bus, info);
@@ -1247,7 +1246,7 @@ void WrapAsAUV2::PostConstructor()
       Outputs().GetIOElement(i)->SetAudioChannelLayout(layout);
       */
     }
-    LOGINFO("PostConstructor: Ins={} Outs={}", numAudioInputs, numAudioOutputs);
+    LOGINFO("[clap-wrapper] PostConstructor: Ins={} Outs={}", numAudioInputs, numAudioOutputs);
   }
   // The else here would just set elements to 0,0 which is the default
   // therefore leave it un-elsed
@@ -1257,7 +1256,7 @@ UInt32 WrapAsAUV2::GetAudioChannelLayout(AudioUnitScope scope, AudioUnitElement 
                                          AudioChannelLayout* outLayoutPtr, bool& outWritable)
 {
   // TODO: This is never called so the layout is never found
-  LOGINFO("GetAudioChannelLayout");
+  LOGINFO("[clap-wrapper] GetAudioChannelLayout");
   return Base::GetAudioChannelLayout(scope, element, outLayoutPtr, outWritable);
 }
 
