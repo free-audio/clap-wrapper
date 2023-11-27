@@ -511,7 +511,7 @@ OSStatus WrapAsAUV2::Stop()
 }
 void WrapAsAUV2::Cleanup()
 {
-  LOGINFO("Cleaning up Plugin");
+  LOGINFO("[clap-wrapper] Cleaning up Plugin");
   auto guarantee_mainthread = _plugin->AlwaysMainThread();
   deactivateCLAP();
   Base::Cleanup();
@@ -1256,7 +1256,7 @@ UInt32 WrapAsAUV2::GetAudioChannelLayout(AudioUnitScope scope, AudioUnitElement 
                                          AudioChannelLayout* outLayoutPtr, bool& outWritable)
 {
   // TODO: This is never called so the layout is never found
-  LOGINFO("GetAudioChannelLayout");
+  LOGINFO("[clap-wrapper] GetAudioChannelLayout");
   return Base::GetAudioChannelLayout(scope, element, outLayoutPtr, outWritable);
 }
 
