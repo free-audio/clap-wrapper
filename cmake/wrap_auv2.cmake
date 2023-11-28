@@ -33,8 +33,8 @@ function(target_add_auv2_wrapper)
     endif ()
 
     if (NOT DEFINED AUV2_BUNDLE_VERSION)
-        message(WARNING "clap-wrapper: bundle version not defined. Chosing 1")
-        set(AUV2_BUNDLE_VERSION 1)
+        message(WARNING "clap-wrapper: bundle version not defined. Chosing ${PROJECT_VERSION}")
+        set(AUV2_BUNDLE_VERSION ${PROJECT_VERSION})
     endif ()
 
     # We need a build helper which ejects our config code for info-plist and entry points
@@ -75,7 +75,7 @@ function(target_add_auv2_wrapper)
                 COMMAND codesign -s - -f "$<TARGET_FILE:${bhtg}>"
                 COMMAND $<TARGET_FILE:${bhtg}> --fromclap
                 "${AUV2_OUTPUT_NAME}"
-                "$<TARGET_FILE:${clpt}>"
+                "$<TARGET_FILE:${clpt}>" "${AUV2_BUNDLE_VERSION}"
                 "${AUV2_MANUFACTURER_CODE}" "${AUV2_MANUFACTURER_NAME}"
         )
     else ()
