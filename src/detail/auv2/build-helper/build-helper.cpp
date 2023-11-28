@@ -16,10 +16,33 @@ namespace fs = ghc::filesystem;
 
 struct auInfo
 {
-  std::string name, vers, type, subt, manu, manunm, clapid, desc, clapname;
+  std::string name, vers, type, subt, manu, manunm, clapid, desc, clapname, bundlevers;
   bool explicitMode{false};
 
   const std::string factoryBase{"wrapAsAUV2_inst"};
+
+  uint32_t bundleversToVersion() const
+  {
+    uint16_t rev[3]{0, 0, 0};
+    auto sum = [&]()
+    {
+      auto res = std::max((rev[0] << 16) + (rev[1] << 8) + rev[2], 1);
+      return res;
+    };
+    auto uv = bundlevers;
+    for (int i = 0; i < 3; ++i)
+    {
+      auto p = uv.find('.');
+      if (p == std::string::npos)
+      {
+        return sum();
+      }
+      auto sub = uv.substr(0, p);
+      rev[i] = std::atoi(sub.c_str());
+      uv = uv.substr(p + 1);
+    }
+    return sum();
+  }
 
   void writePListFragment(std::ostream &of, int idx) const
   {
@@ -46,7 +69,7 @@ struct auInfo
        << "        <key>type</key>\n"
        << "        <string>" << type << "</string>\n"
        << "        <key>version</key>\n"
-       << "        <integer>1</integer>\n"
+       << "        <integer>" << bundleversToVersion() << "</integer>\n"
        << "        <key>sandboxSafe</key>\n"
        << "        <true/>\n"
        << "        <key>resourceUsage</key>\n"
@@ -184,6 +207,7 @@ int main(int argc, char **argv)
     u.name = std::string(argv[idx++]);
     u.clapname = u.name;
     u.vers = std::string(argv[idx++]);
+    u.bundlevers = u.vers;
     u.type = std::string(argv[idx++]);
     u.subt = std::string(argv[idx++]);
     u.manu = std::string(argv[idx++]);
@@ -205,6 +229,7 @@ int main(int argc, char **argv)
     int idx = 2;
     auto clapname = std::string(argv[idx++]);
     auto clapfile = std::string(argv[idx++]);
+    auto bundlev = std::string(argv[idx++]);
     auto mcode = (idx < argc) ? std::string(argv[idx++]) : std::string();
     auto mname = (idx < argc) ? std::string(argv[idx++]) : std::string();
 
@@ -234,6 +259,11 @@ int main(int argc, char **argv)
     {
       std::cout << "[ERROR] No units from clap file\n";
       return 5;
+    }
+
+    for (auto &u : units)
+    {
+      u.bundlevers = bundlev;
     }
 
     std::cout << "  - clap file produced " << units.size() << " units" << std::endl;
