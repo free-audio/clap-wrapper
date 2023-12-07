@@ -195,11 +195,14 @@ tresult PLUGIN_API WrappedView::setFrame(IPlugFrame* frame)
   _plugFrame = frame;
 
 #if LIN
-  if (_plugFrame->queryInterface(Steinberg::Linux::IRunLoop::iid, (void**)&_runLoop) ==
-          Steinberg::kResultOk &&
-      _onRunLoopAvailable)
+  if (_plugFrame)
   {
-    _onRunLoopAvailable();
+    if (_plugFrame->queryInterface(Steinberg::Linux::IRunLoop::iid, (void**)&_runLoop) ==
+            Steinberg::kResultOk &&
+        _onRunLoopAvailable)
+    {
+      _onRunLoopAvailable();
+    }
   }
 #endif
 
