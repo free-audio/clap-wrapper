@@ -4,6 +4,7 @@
 
 #include "detail/standalone/entry.h"
 #include "detail/standalone/standalone_details.h"
+#include "detail/standalone/standalone_host.h"
 
 #include "detail/clap/fsutil.h"
 
@@ -102,6 +103,15 @@
     ui->show(p);
   }
 
+  freeaudio::clap_wrapper::standalone::getStandaloneHost()->onRequestResize =
+      [self](uint32_t w, uint32_t h)
+  {
+    NSSize sz;
+    sz.width = w;
+    sz.height = h;
+    [[self window] setContentSize:sz];
+    return false;
+  };
   freeaudio::clap_wrapper::standalone::mainStartAudio();
 }
 

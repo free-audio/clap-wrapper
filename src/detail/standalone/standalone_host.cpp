@@ -61,7 +61,7 @@ void StandaloneHost::setupAudioBusses(const clap_plugin_t *plugin,
   for (auto i = 0U; i < numAudioInputs; ++i)
   {
     audioports->get(plugin, i, true, &info);
-    LOG << "  - input " << i << " " << info.name << std::endl;
+    // LOG << "  - input " << i << " " << info.name << std::endl;
     inputChannelByBus.push_back(info.channel_count);
     totalInputChannels += info.channel_count;
     if (info.flags & CLAP_AUDIO_PORT_IS_MAIN) mainInput = i;
@@ -69,7 +69,7 @@ void StandaloneHost::setupAudioBusses(const clap_plugin_t *plugin,
   for (auto i = 0U; i < numAudioOutputs; ++i)
   {
     audioports->get(plugin, i, false, &info);
-    LOG << "  - output " << i << " " << info.name << std::endl;
+    // LOG << "  - output " << i << " " << info.name << std::endl;
     outputChannelByBus.push_back(info.channel_count);
     totalOutputChannels += info.channel_count;
     if (info.flags & CLAP_AUDIO_PORT_IS_MAIN) mainOutput = i;
@@ -216,6 +216,26 @@ void StandaloneHost::clapProcess(void *pOutput, const void *pInput, uint32_t fra
     f[2 * i] = utilityBuffer[mainOutIdx][i];
     f[2 * i + 1] = utilityBuffer[mainOutIdx + 1][i];
   }
+}
+
+bool StandaloneHost::gui_can_resize()
+{
+  if (!clapPlugin) return false;
+
+  auto g = clapPlugin->_ext._gui;
+  if (!g) return false;
+
+  auto res = g->can_resize(clapPlugin->_plugin);
+  return res;
+}
+
+bool StandaloneHost::gui_request_resize(uint32_t width, uint32_t height)
+{
+  if (onRequestResize)
+  {
+    return onRequestResize(width, height);
+  }
+  return false;
 }
 
 #if LIN
