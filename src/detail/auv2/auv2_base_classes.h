@@ -95,6 +95,48 @@ class ValueEvent : public queueEvent
   }
 };
 
+class Clumps
+{
+ public:
+  void reset();
+  UInt32 addClump(const char* fullpath);
+  const char* getClump(UInt32 id);
+
+ private:
+  UInt32 _lastclump = 0;
+  std::map<std::string, UInt32> _clumps;
+};
+
+void Clumps::reset()
+{
+  _clumps.clear();
+  _lastclump = 0;
+}
+
+const char* Clumps::getClump(UInt32 id)
+{
+  for (const auto& c : _clumps)
+  {
+    if (c.second == id)
+    {
+      return c.first.c_str();
+    }
+  }
+  return nullptr;
+}
+
+UInt32 Clumps::addClump(const char* fullpath)
+{
+  auto r = _clumps.find(fullpath);
+  if (r == _clumps.end())
+  {
+    _clumps[fullpath] = ++_lastclump;
+    return _lastclump;
+  }
+
+  return r->second;
+}
+
 class WrapAsAUV2 : public ausdk::AUBase,
                    public Clap::IHost,
                    public Clap::IAutomation,
@@ -227,6 +269,9 @@ class WrapAsAUV2 : public ausdk::AUBase,
   OSStatus SetParameter(AudioUnitParameterID inID, AudioUnitScope inScope, AudioUnitElement inElement,
                         AudioUnitParameterValue inValue, UInt32 /*inBufferOffsetInFrames*/) override;
 
+  OSStatus CopyClumpName(AudioUnitScope inScope, UInt32 inClumpID, UInt32 inDesiredNameLength,
+                         CFStringRef* outClumpName) override;
+
   // ---------------- Clap::IHost
   void mark_dirty() override
   {
@@ -335,6 +380,7 @@ class WrapAsAUV2 : public ausdk::AUBase,
   bool _midi_dualscheduling_mode = false;
 #endif
   std::map<uint32_t, std::unique_ptr<Clap::AUv2::Parameter>> _parametertree;
+  Clumps _clumps;
 
   CFStringRef _current_program_name = 0;
 
