@@ -334,6 +334,8 @@ void WrapAsAUV2::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
 {
   auto guarantee_mainthread = _plugin->AlwaysMainThread();
   // creating parameters.
+
+  _clumps.reset();
   auto* p = _plugin->_ext._params;
   if (p)
   {
@@ -469,6 +471,13 @@ OSStatus WrapAsAUV2::GetParameterInfo(AudioUnitScope inScope, AudioUnitParameter
       {
         outParameterInfo.defaultValue = 0.0;
       }
+
+      // adding the clump information
+      if (info.module && (info.module[0] != 0))
+      {
+        outParameterInfo.flags |= kAudioUnitParameterFlag_HasClump;
+        outParameterInfo.clumpID = _clumps.addClump(info.module);
+      }
       return noErr;
     }
   }
@@ -494,6 +503,21 @@ OSStatus WrapAsAUV2::SetParameter(AudioUnitParameterID inID, AudioUnitScope inSc
     }
   }
   return AUBase::SetParameter(inID, inScope, inElement, inValue, inBufferOffsetInFrames);
+}
+
+OSStatus WrapAsAUV2::CopyClumpName(AudioUnitScope inScope, UInt32 inClumpID, UInt32 inDesiredNameLength,
+                                   CFStringRef* outClumpName)
+{
+  if (inScope == kAudioUnitScope_Global)
+  {
+    auto p = _clumps.getClump(inClumpID);
+    if (p)
+    {
+      *outClumpName = CFStringCreateWithCString(NULL, p, kCFStringEncodingUTF8);
+      return noErr;
+    }
+  }
+  return kAudioUnitErr_InvalidProperty;
 }
 
 OSStatus WrapAsAUV2::Start()
@@ -1099,6 +1123,10 @@ bool WrapAsAUV2::ValidFormat(AudioUnitScope inScope, AudioUnitElement inElement,
   {
     return false;
   }
+
+  // Logic Pro does not call this in the main thread - so we just pretend..
+  auto guarantee_mainthread = _plugin->AlwaysMainThread();
+
   auto ap = _plugin->_ext._audioports;
   auto pl = _plugin->_plugin;
 
