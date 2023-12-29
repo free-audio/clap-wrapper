@@ -473,7 +473,7 @@ OSStatus WrapAsAUV2::GetParameterInfo(AudioUnitScope inScope, AudioUnitParameter
       }
 
       // adding the clump information
-      if (info.module && (info.module[0] != 0))
+      if (info.module[0] != 0)
       {
         outParameterInfo.flags |= kAudioUnitParameterFlag_HasClump;
         outParameterInfo.clumpID = _clumps.addClump(info.module);
