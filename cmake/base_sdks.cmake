@@ -72,7 +72,7 @@ function(guarantee_clap)
         CPMAddPackage(
                 NAME "clap"
                 GITHUB_REPOSITORY "free-audio/clap"
-                GIT_TAG "1.1.8"
+                GIT_TAG "1.2.0"
                 EXCLUDE_FROM_ALL TRUE
                 DOWNLOAD_ONLY TRUE
                 SOURCE_DIR cpm/clap
