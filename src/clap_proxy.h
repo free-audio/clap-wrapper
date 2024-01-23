@@ -89,8 +89,7 @@ struct ClapPluginExtensions
   const clap_plugin_params_t* _params = nullptr;
   const clap_plugin_audio_ports_t* _audioports = nullptr;
   const clap_plugin_gui_t* _gui = nullptr;
-  const clap_plugin_note_ports_t* _noteports = nullptr;
-  const clap_plugin_midi_mappings_t* _midimap = nullptr;
+  const clap_plugin_note_ports_t* _noteports = nullptr;  
   const clap_plugin_latency_t* _latency = nullptr;
   const clap_plugin_render_t* _render = nullptr;
   const clap_plugin_tail_t* _tail = nullptr;
