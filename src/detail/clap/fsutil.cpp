@@ -12,7 +12,7 @@
 #include <cassert>
 #if WIN
 #include <windows.h>
-#include <ShlObj.h>
+#include <shlobj.h>
 #include <sstream>
 #endif
 
@@ -45,13 +45,13 @@ fs::path get_known_folder(const KNOWNFOLDERID &id)
     return {};
 }
 
-std::vector<std::string> split_clap_path(const std::string &in)
+std::vector<std::wstring> split_clap_path(const std::wstring &in)
 {
-  std::vector<std::string> res;
-  std::stringstream ss(in);
-  std::string item;
+  std::vector<std::wstring> res;
+  std::wstringstream ss(in);
+  std::wstring item;
 
-  while (std::getline(ss, item, ';')) res.push_back(item);
+  while (std::getline(ss, item, L';')) res.push_back(item);
 
   return res;
 }
@@ -79,13 +79,13 @@ std::vector<fs::path> getValidCLAPSearchPaths()
   auto q{get_known_folder(FOLDERID_LocalAppData)};
   if (fs::exists(q)) res.emplace_back(q / "Programs" / "Common" / "CLAP");
 
-  std::string cp;
-  auto len{::GetEnvironmentVariable("CLAP_PATH", nullptr, 0)};
+  auto len{::GetEnvironmentVariableW(L"CLAP_PATH", nullptr, 0)};
 
   if (len > 0)
   {
+    std::wstring cp;
     cp.resize(len);
-    cp.resize(::GetEnvironmentVariable("CLAP_PATH", &cp[0], len));
+    cp.resize(::GetEnvironmentVariableW(L"CLAP_PATH", &cp[0], len));
     auto paths{split_clap_path(cp)};
 
     for (const auto &path : paths)
@@ -141,12 +141,13 @@ std::vector<fs::path> getValidCLAPSearchPaths()
   return res;
 }
 
-bool Library::load(const char *name)
+bool Library::load(const fs::path &path)
 {
 #if MAC
   _pluginEntry = nullptr;
 
-  auto cs = CFStringCreateWithBytes(kCFAllocatorDefault, (uint8_t *)name, strlen(name),
+  auto u8path = path.u8string();
+  auto cs = CFStringCreateWithBytes(kCFAllocatorDefault, (uint8_t *)u8path.data(), u8path.size(),
                                     kCFStringEncodingUTF8, false);
   auto bundleURL = CFURLCreateWithFileSystemPath(kCFAllocatorDefault, cs, kCFURLPOSIXPathStyle, true);
 
@@ -163,7 +164,7 @@ bool Library::load(const char *name)
 
   _pluginEntry = (const clap_plugin_entry *)db;
 
-  setupPluginsFromPluginEntry(name);
+  setupPluginsFromPluginEntry(u8path.c_str());
   return _pluginEntry != nullptr;
 #endif
 
@@ -176,32 +177,33 @@ bool Library::load(const char *name)
     }
     FreeLibrary(_handle);
   }
-  _handle = 0;
+  _handle = nullptr;
   _pluginEntry = nullptr;
-  _handle = LoadLibraryA(name);
+  _handle = LoadLibraryW(path.native().c_str());
   if (_handle)
   {
-    if (!getEntryFunction(_handle, name))
+    if (!getEntryFunction(_handle, path.u8string().c_str()))
     {
       FreeLibrary(_handle);
-      _handle = NULL;
+      _handle = nullptr;
     }
   }
 
-  return _handle != 0;
+  return _handle != nullptr;
 #endif
 
 #if LIN
   int *iptr;
 
-  _handle = dlopen(name, RTLD_LOCAL | RTLD_LAZY);
+  auto u8path = path.u8string();
+  _handle = dlopen(u8path.c_str(), RTLD_LOCAL | RTLD_LAZY);
   if (!_handle) return false;
 
   iptr = (int *)dlsym(_handle, "clap_entry");
   if (!iptr) return false;
 
   _pluginEntry = (const clap_plugin_entry_t *)iptr;
-  setupPluginsFromPluginEntry(name);
+  setupPluginsFromPluginEntry(u8path.c_str());
   return true;
 #endif
 }
@@ -279,16 +281,19 @@ static void ffeomwe()
 Library::Library()
 {
 #if WIN
-  static TCHAR modulename[2048];
+  fs::path modulename;
   HMODULE selfmodule;
-  if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCTSTR)ffeomwe, &selfmodule))
+  if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCWSTR)ffeomwe, &selfmodule))
   {
-    auto size = GetModuleFileName(selfmodule, modulename, 2048);
-    (void)size;
+    std::wstring p;
+    auto size = GetModuleFileNameW(selfmodule, nullptr, 0);
+    p.resize(size);
+    size = GetModuleFileNameW(selfmodule, &p[0], size);
+    modulename = std::move(p);
   }
   if (selfmodule)
   {
-    if (this->getEntryFunction(selfmodule, (const char *)modulename))
+    if (this->getEntryFunction(selfmodule, modulename.u8string().c_str()))
     {
       _selfcontained = true;
     }

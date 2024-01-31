@@ -39,7 +39,7 @@
 
     if (fs::is_directory(clapPath) && !entry)
     {
-      lib.load(clapPath.u8string().c_str());
+      lib.load(clapPath);
       entry = lib._pluginEntry;
     }
   }
