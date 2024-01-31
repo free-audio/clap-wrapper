@@ -87,7 +87,7 @@ bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname
                         std::string &manuName, std::vector<auInfo> &units)
 {
   Clap::Library loader;
-  if (!loader.load(clapfile.c_str()))
+  if (!loader.load(clapfile))
   {
     std::cout << "[ERROR] library.load of clapfile failed" << std::endl;
     return false;

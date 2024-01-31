@@ -32,7 +32,7 @@ int main(int argc, char **argv)
 
     if (fs::exists(clapPath) && !entry)
     {
-      lib.load(clapPath.u8string().c_str());
+      lib.load(clapPath);
       entry = lib._pluginEntry;
     }
   }
