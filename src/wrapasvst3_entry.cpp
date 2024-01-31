@@ -84,7 +84,7 @@ bool findPlugin(Clap::Library& lib, const std::string& pluginfilename)
 
     if (fs::exists(k1))
     {
-      if (lib.load(k1.u8string().c_str()))
+      if (lib.load(k1))
       {
         return true;
       }
@@ -95,7 +95,7 @@ bool findPlugin(Clap::Library& lib, const std::string& pluginfilename)
     LOGDETAIL("scanning for binary: {}", k2.u8string().c_str());
     if (fs::exists(k2))
     {
-      if (lib.load(k2.u8string().c_str()))
+      if (lib.load(k2))
       {
         return true;
       }
@@ -108,7 +108,7 @@ bool findPlugin(Clap::Library& lib, const std::string& pluginfilename)
       LOGDETAIL("scanning for binary: {}", k3.u8string().c_str());
       if (fs::exists(k3))
       {
-        if (lib.load(k3.u8string().c_str()))
+        if (lib.load(k3))
         {
           return true;
         }

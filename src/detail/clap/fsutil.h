@@ -49,7 +49,7 @@ class Library
  public:
   Library();
   ~Library();
-  bool load(const char* name);
+  bool load(const fs::path&);
 
   const clap_plugin_entry_t* _pluginEntry = nullptr;
   const clap_plugin_factory_t* _pluginFactory = nullptr;

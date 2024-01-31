@@ -66,7 +66,7 @@ bool WrapAsAUV2::initializeClapDesc()
                            [this](const auto& cs)
                            {
                              auto fp = cs / (_clapname + ".clap");
-                             return fs::is_directory(fp) && _library.load(fp.u8string().c_str());
+                             return fs::is_directory(fp) && _library.load(fp);
                            });
 
     if (it != csp.end())
