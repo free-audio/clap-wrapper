@@ -3,6 +3,15 @@
 #include <pluginterfaces/vst/ivstmidicontrollers.h>
 #include <pluginterfaces/vst/ivstunits.h>
 
+#if CLAP_VERSION_LT(1, 2, 0)
+static_assert(false, "the CLAP-as-VST3 wrapper requires at least CLAP 1.2.0");
+/*
+*   CLAP_PARAM_IS_ENUM is available with CLAP 1.2.0
+*
+*   This is only a requirement to compile the wrapper properly, it will still wrap CLAPs compiled with earlier versions of CLAP.
+*/
+#endif
+
 using namespace Steinberg;
 
 Vst3Parameter::Vst3Parameter(const Steinberg::Vst::ParameterInfo& vst3info,
@@ -107,14 +116,16 @@ Vst3Parameter* Vst3Parameter::create(
             ((info->flags & CLAP_PARAM_IS_HIDDEN) ? Vst::ParameterInfo::kIsHidden : 0) |
             ((info->flags & CLAP_PARAM_IS_BYPASS) ? Vst::ParameterInfo::kIsBypass : 0) |
             ((info->flags & CLAP_PARAM_IS_AUTOMATABLE) ? Vst::ParameterInfo::kCanAutomate : 0) |
-            ((info->flags & CLAP_PARAM_IS_READONLY) ? Vst::ParameterInfo::kIsReadOnly : 0)
+            ((info->flags & CLAP_PARAM_IS_READONLY) ? Vst::ParameterInfo::kIsReadOnly : 0) |
+            ((info->flags & CLAP_PARAM_IS_ENUM) ? Vst::ParameterInfo::kIsList : 0)
+
       // | ((info->flags & CLAP_PARAM_IS_READONLY) ? Vst::ParameterInfo::kIsReadOnly : 0)
       ;
 
   auto param_range = (info->max_value - info->min_value);
 
   v.defaultNormalizedValue = (info->default_value - info->min_value) / param_range;
-  if (info->flags & CLAP_PARAM_IS_STEPPED)
+  if ((info->flags & CLAP_PARAM_IS_STEPPED) || (info->flags & CLAP_PARAM_IS_ENUM))
   {
     auto steps = param_range + 1;
     v.stepCount = steps;
