@@ -3,8 +3,8 @@
 #include <pluginterfaces/vst/ivstmidicontrollers.h>
 #include <pluginterfaces/vst/ivstunits.h>
 
-#if CLAP_VERSION_LT(1,2,0)
-static_assert(false, "the CLAP-as-VST3 wrapper requires at least CLAP 1.2.0");  
+#if CLAP_VERSION_LT(1, 2, 0)
+static_assert(false, "the CLAP-as-VST3 wrapper requires at least CLAP 1.2.0");
 /*
 *   CLAP_PARAM_IS_ENUM is available with CLAP 1.2.0
 *
