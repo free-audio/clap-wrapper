@@ -333,6 +333,11 @@ class WrapAsAUV2 : public ausdk::AUBase,
   {
     return false;
   }
+    
+  const char* ihost_get_name() override
+  {
+    return "Clap-As-AUV2-Wrapper";
+  }
 
   // --------------- IAutomation
   void onBeginEdit(clap_id id) override;

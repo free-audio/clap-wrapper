@@ -841,6 +841,11 @@ bool ClapAsVst3::unregister_timer(clap_id timer_id)
   return false;
 }
 
+const char* ClapAsVst3::ihost_get_name()
+{
+  return "Clap-As-VST3-Wrapper";
+}
+
 void ClapAsVst3::onIdle()
 {
   // handling queued events
