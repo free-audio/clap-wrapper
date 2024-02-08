@@ -107,7 +107,7 @@ function(guarantee_clap_helpers)
         CPMAddPackage(
                 NAME "clap-helpers"
                 GITHUB_REPOSITORY "free-audio/clap-helpers"
-                GIT_TAG "7b53a685e11465154b4ccba3065224dbcbf8a893"
+                GIT_TAG "55ce91fc87288ccec19ad445e6cc23a419e70d2a"
                 EXCLUDE_FROM_ALL TRUE
                 DOWNLOAD_ONLY TRUE
                 SOURCE_DIR cpm/clap-helpers
