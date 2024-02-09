@@ -19,7 +19,7 @@ using namespace Steinberg;
 class WrappedView : public Steinberg::IPlugView, public Steinberg::FObject
 {
  public:
-  WrappedView(const Clap::PluginProxy& pluginProxy, std::function<void()> onDestroy,
+  WrappedView(const Clap::PluginProxy& guiProxy, std::function<void()> onDestroy,
               std::function<void()> onRunLoopAvailable);
   ~WrappedView();
 
@@ -91,7 +91,7 @@ class WrappedView : public Steinberg::IPlugView, public Steinberg::FObject
  private:
   void ensure_ui();
   void drop_ui();
-  const Clap::PluginProxy& _pluginProxy;
+  const Clap::PluginProxy& _proxy;
   std::function<void()> _onDestroy = nullptr, _onRunLoopAvailable = nullptr;
   clap_window_t _window = {nullptr, {nullptr}};
   IPlugFrame* _plugFrame = nullptr;

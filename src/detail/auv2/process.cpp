@@ -262,7 +262,7 @@ void ProcessAdapter::process(ProcessData& data)
   }
 #endif
 
-  _pluginProxy.process(&_processData);
+  _proxy.process(&_processData);
 
   processOutputEvents();
 

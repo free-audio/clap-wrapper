@@ -65,7 +65,7 @@ class ProcessAdapter
 		}
 #endif
 
-  ProcessAdapter(const Clap::PluginProxy& pluginProxy) : _pluginProxy{pluginProxy}
+  ProcessAdapter(const Clap::PluginProxy& proxy) : _proxy{proxy}
   {
   }
 
@@ -97,7 +97,7 @@ class ProcessAdapter
   void removeFromActiveNotes(const clap_event_note* note);
 
   // the plugin
-  const Clap::PluginProxy& _pluginProxy;
+  const Clap::PluginProxy& _proxy;
 
   Steinberg::Vst::ParameterContainer* parameters = nullptr;
   Steinberg::Vst::IComponentHandler* _componentHandler = nullptr;

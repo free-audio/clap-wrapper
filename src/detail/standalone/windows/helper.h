@@ -226,10 +226,11 @@ int Window::OnDestroy(HWND h, UINT m, WPARAM w, LPARAM l)
 {
   auto plugin{freeaudio::clap_wrapper::standalone::getMainPlugin()};
 
-  if (plugin && plugin->getProxy()->canUseGui())
+  const auto proxy = plugin ? plugin->getProxy() : nullptr;
+  if (proxy && proxy->canUseGui())
   {
-    plugin->getProxy()->guiHide();
-    plugin->getProxy()->guiDestroy();
+    proxy->guiHide();
+    proxy->guiDestroy();
   }
 
   ::PostQuitMessage(0);
@@ -276,19 +277,19 @@ int Window::OnKeyDown(HWND h, UINT m, WPARAM w, LPARAM l)
 int Window::OnWindowPosChanged(HWND h, UINT m, WPARAM w, LPARAM l)
 {
   auto plugin{freeaudio::clap_wrapper::standalone::getMainPlugin()};
-  auto pluginProxy = plugin->getProxy();
+  const auto proxy = plugin->getProxy();
 
   auto dpi{::GetDpiForWindow(h)};
   auto scaleFactor{static_cast<float>(dpi) / static_cast<float>(USER_DEFAULT_SCREEN_DPI)};
 
-  if (pluginProxy->guiCanResize())
+  if (proxy->guiCanResize())
   {
     RECT r{0, 0, 0, 0};
     ::GetClientRect(h, &r);
     uint32_t w = (r.right - r.left);
     uint32_t h = (r.bottom - r.top);
-    pluginProxy->guiAdjustSize(&w, &h);
-    pluginProxy->guiSetSize(w, h);
+    proxy->guiAdjustSize(&w, &h);
+    proxy->guiSetSize(w, h);
   }
 
 #ifdef _DEBUG

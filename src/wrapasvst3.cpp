@@ -138,9 +138,10 @@ tresult PLUGIN_API ClapAsVst3::getState(IBStream* state)
 
 uint32 PLUGIN_API ClapAsVst3::getLatencySamples()
 {
-  if (_plugin->getProxy()->canUseLatency())
+  const auto proxy = _plugin->getProxy();
+  if (proxy->canUseLatency())
   {
-    return _plugin->getProxy()->latencyGet();
+    return proxy->latencyGet();
   }
   return 0;
 }
@@ -148,9 +149,10 @@ uint32 PLUGIN_API ClapAsVst3::getLatencySamples()
 uint32 PLUGIN_API ClapAsVst3::getTailSamples()
 {
   // options would be kNoTail, number of samples or kInfiniteTail
-  if (_plugin->getProxy()->canUseTail())
+  const auto proxy = _plugin->getProxy();
+  if (proxy->canUseTail())
   {
-    auto tailsize = _plugin->getProxy()->tailGet();
+    auto tailsize = proxy->tailGet();
 
     // Any value greater or equal to INT32_MAX implies infinite tail.
     if (tailsize >= INT32_MAX) return Vst::kInfiniteTail;
@@ -211,10 +213,11 @@ tresult PLUGIN_API ClapAsVst3::getBusArrangement(Vst::BusDirection dir, int32 in
 
 IPlugView* PLUGIN_API ClapAsVst3::createView(FIDString /*name*/)
 {
-  if (_plugin->getProxy()->canUseGui())
+  const auto& proxy = *_plugin->getProxy();
+  if (proxy.canUseGui())
   {
     _wrappedview = new WrappedView(
-        *_plugin->getProxy(),
+        proxy,
         [this]()
         {
 #if LIN
@@ -488,27 +491,27 @@ Vst::UnitID ClapAsVst3::getOrCreateUnitInfo(const char* modulename)
 
 // Clap::IHost
 
-void ClapAsVst3::setupWrapperSpecifics(const Clap::PluginProxy& pluginProxy)
+void ClapAsVst3::setupWrapperSpecifics(const Clap::PluginProxy& proxy)
 {
-  pluginProxy.getExtension(_vst3specifics, CLAP_PLUGIN_AS_VST3);
+  proxy.getExtension(_vst3specifics, CLAP_PLUGIN_AS_VST3);
   if (_vst3specifics)
   {
-    _numMidiChannels = _vst3specifics->getNumMIDIChannels(pluginProxy.clapPlugin(), 0);
-    _expressionmap = _vst3specifics->supportedNoteExpressions(pluginProxy.clapPlugin());
+    _numMidiChannels = _vst3specifics->getNumMIDIChannels(proxy.clapPlugin(), 0);
+    _expressionmap = _vst3specifics->supportedNoteExpressions(proxy.clapPlugin());
   }
 }
 
 bool ClapAsVst3::checkMIDIDialectSupport()
 {
-  const auto& pluginProxy = *_plugin->getProxy();
+  const auto& proxy = *_plugin->getProxy();
   // check if the plugin supports noteports and if one of the note ports supports MIDI dialect
-  if (pluginProxy.canUseNotePorts())
+  if (proxy.canUseNotePorts())
   {
-    auto numMIDIInputs = pluginProxy.notePortsCount(true);
+    auto numMIDIInputs = proxy.notePortsCount(true);
     for (uint32_t i = 0; i < numMIDIInputs; ++i)
     {
       clap_note_port_info_t info;
-      if (pluginProxy.notePortsGet(i, true, &info))
+      if (proxy.notePortsGet(i, true, &info))
       {
         if (info.supported_dialects & CLAP_NOTE_DIALECT_MIDI)
         {
@@ -521,18 +524,18 @@ bool ClapAsVst3::checkMIDIDialectSupport()
   return false;
 }
 
-void ClapAsVst3::setupAudioBusses(const Clap::PluginProxy& pluginProxy)
+void ClapAsVst3::setupAudioBusses(const Clap::PluginProxy& proxy)
 {
-  if (!pluginProxy.canUseAudioPorts()) return;
-  auto numAudioInputs = pluginProxy.audioPortsCount(true);
-  auto numAudioOutputs = pluginProxy.audioPortsCount(false);
+  if (!proxy.canUseAudioPorts()) return;
+  auto numAudioInputs = proxy.audioPortsCount(true);
+  auto numAudioOutputs = proxy.audioPortsCount(false);
 
   fprintf(stderr, "\tAUDIO in: %d, out: %d\n", (int)numAudioInputs, (int)numAudioOutputs);
 
   for (decltype(numAudioInputs) i = 0; i < numAudioInputs; ++i)
   {
     clap_audio_port_info_t info;
-    if (pluginProxy.audioPortsGet(i, true, &info))
+    if (proxy.audioPortsGet(i, true, &info))
     {
       addAudioBusFrom(&info, true);
     }
@@ -540,18 +543,18 @@ void ClapAsVst3::setupAudioBusses(const Clap::PluginProxy& pluginProxy)
   for (decltype(numAudioOutputs) i = 0; i < numAudioOutputs; ++i)
   {
     clap_audio_port_info_t info;
-    if (pluginProxy.audioPortsGet(i, false, &info))
+    if (proxy.audioPortsGet(i, false, &info))
     {
       addAudioBusFrom(&info, false);
     }
   }
 }
 
-void ClapAsVst3::setupMIDIBusses(const Clap::PluginProxy& pluginProxy)
+void ClapAsVst3::setupMIDIBusses(const Clap::PluginProxy& proxy)
 {
-  if (!pluginProxy.canUseNotePorts()) return;
-  auto numMIDIInPorts = pluginProxy.notePortsCount(true);
-  auto numMIDIOutPorts = pluginProxy.notePortsCount(false);
+  if (!proxy.canUseNotePorts()) return;
+  auto numMIDIInPorts = proxy.notePortsCount(true);
+  auto numMIDIOutPorts = proxy.notePortsCount(false);
 
   // fprintf(stderr, "\tMIDI in: %d, out: %d\n", (int)numMIDIInPorts, (int)numMIDIOutPorts);
 
@@ -564,7 +567,7 @@ void ClapAsVst3::setupMIDIBusses(const Clap::PluginProxy& pluginProxy)
   for (decltype(numMIDIInPorts) i = 0; i < numMIDIInPorts; ++i)
   {
     clap_note_port_info_t info;
-    if (pluginProxy.notePortsGet(i, true, &info))
+    if (proxy.notePortsGet(i, true, &info))
     {
       addMIDIBusFrom(&info, i, true);
     }
@@ -572,16 +575,16 @@ void ClapAsVst3::setupMIDIBusses(const Clap::PluginProxy& pluginProxy)
   for (decltype(numMIDIOutPorts) i = 0; i < numMIDIOutPorts; ++i)
   {
     clap_note_port_info_t info;
-    if (pluginProxy.notePortsGet(i, false, &info))
+    if (proxy.notePortsGet(i, false, &info))
     {
       addMIDIBusFrom(&info, i, false);
     }
   }
 }
 
-void ClapAsVst3::setupParameters(const Clap::PluginProxy& pluginProxy)
+void ClapAsVst3::setupParameters(const Clap::PluginProxy& proxy)
 {
-  if (!pluginProxy.canUseParams()) return;
+  if (!proxy.canUseParams()) return;
 
   // clear the units, they will be rebuild during the parameter conversion
   _moduleToUnit.clear();
@@ -598,13 +601,13 @@ void ClapAsVst3::setupParameters(const Clap::PluginProxy& pluginProxy)
     addUnit(rootUnit);
   }
 
-  auto numparams = pluginProxy.paramsCount();
+  auto numparams = proxy.paramsCount();
   parameters.removeAll();
   this->parameters.init(numparams);
   for (decltype(numparams) i = 0; i < numparams; ++i)
   {
     clap_param_info info;
-    if (pluginProxy.paramsGetInfo(i, &info))
+    if (proxy.paramsGetInfo(i, &info))
     {
       auto p = Vst3Parameter::create(
           &info, [&](const char* modstring) { return this->getOrCreateUnitInfo(modstring); });
@@ -671,12 +674,12 @@ void ClapAsVst3::setupParameters(const Clap::PluginProxy& pluginProxy)
 
 void ClapAsVst3::param_rescan(clap_param_rescan_flags flags)
 {
-  const auto& pluginProxy = *_plugin->getProxy();
+  const auto& proxy = *_plugin->getProxy();
 
   auto vstflags = 0u;
   if (flags & CLAP_PARAM_RESCAN_ALL)
   {
-    setupParameters(pluginProxy);
+    setupParameters(proxy);
     vstflags |= Vst::RestartFlags::kMidiCCAssignmentChanged;
   }
 
@@ -696,7 +699,7 @@ void ClapAsVst3::param_rescan(clap_param_rescan_flags flags)
     if (!p->isMidi)
     {
       double val;
-      if (pluginProxy.paramsGetValue(p->id, &val))
+      if (proxy.paramsGetValue(p->id, &val))
       {
         auto newval = p->asVst3Value(val);
         if (p->getNormalized() != newval)
@@ -869,6 +872,8 @@ void ClapAsVst3::onIdle()
     }
   }
 
+  const auto& proxy = *_plugin->getProxy();
+
   if (_requestedFlush)
   {
     std::lock_guard lock(_processingLock);
@@ -877,7 +882,7 @@ void ClapAsVst3::onIdle()
     if (!_processing)
     {
       // setup a ProcessAdapter just for flush with no audio
-      Clap::ProcessAdapter pa{*_plugin->getProxy()};
+      Clap::ProcessAdapter pa{proxy};
       pa.setupProcessing(audioInputs, audioOutputs, 0, 0, 0, this->parameters, componentHandler, nullptr,
                          false, false);
       pa.flush();
@@ -887,7 +892,7 @@ void ClapAsVst3::onIdle()
   if (_requestUICallback)
   {
     _requestUICallback = false;
-    _plugin->getProxy()->onMainThread();
+    proxy.onMainThread();
   }
 
 #if LIN
@@ -904,7 +909,7 @@ void ClapAsVst3::onIdle()
       if (to.period > 0 && to.nexttick < now)
       {
         to.nexttick = now + to.period;
-        _plugin->getProxy()->timerSupportOnTimer(to.timer_id);
+        proxy.timerSupportOnTimer(to.timer_id);
       }
     }
   }

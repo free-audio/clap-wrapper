@@ -74,7 +74,7 @@ struct ProcessData
 class ProcessAdapter
 {
  public:
-  ProcessAdapter(const Clap::PluginProxy& pluginProxy) : _pluginProxy{pluginProxy}
+  ProcessAdapter(const Clap::PluginProxy& proxy) : _proxy{proxy}
   {
   }
 
@@ -121,7 +121,7 @@ class ProcessAdapter
   void removeFromActiveNotes(const clap_event_note* note);
 
   // the plugin
-  const Clap::PluginProxy& _pluginProxy;
+  const Clap::PluginProxy& _proxy;
 
   // for automation gestures
   std::vector<clap_id> _gesturedParameters;

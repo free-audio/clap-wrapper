@@ -183,11 +183,11 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
 
   //---Clap::IHost------------------------------------------------------------------------
 
-  void setupWrapperSpecifics(const Clap::PluginProxy& pluginProxy) override;
+  void setupWrapperSpecifics(const Clap::PluginProxy& proxy) override;
 
-  void setupAudioBusses(const Clap::PluginProxy& pluginProxy) override;
-  void setupMIDIBusses(const Clap::PluginProxy& pluginProxy) override;
-  void setupParameters(const Clap::PluginProxy& pluginProxy) override;
+  void setupAudioBusses(const Clap::PluginProxy& proxy) override;
+  void setupMIDIBusses(const Clap::PluginProxy& proxy) override;
+  void setupParameters(const Clap::PluginProxy& proxy) override;
 
   void param_rescan(clap_param_rescan_flags flags) override;
   void param_clear(clap_id param, clap_param_clear_flags flags) override;

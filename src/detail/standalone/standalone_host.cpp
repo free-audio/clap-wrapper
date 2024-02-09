@@ -49,17 +49,17 @@ StandaloneHost::~StandaloneHost()
 {
 }
 
-void StandaloneHost::setupAudioBusses(const Clap::PluginProxy &plugin)
+void StandaloneHost::setupAudioBusses(const Clap::PluginProxy &proxy)
 {
-  if (!plugin.canUseAudioPorts()) return;
-  numAudioInputs = plugin.audioPortsCount(true);
-  numAudioOutputs = plugin.audioPortsCount(false);
+  if (!proxy.canUseAudioPorts()) return;
+  numAudioInputs = proxy.audioPortsCount(true);
+  numAudioOutputs = proxy.audioPortsCount(false);
   LOG << "inputs/outputs : " << numAudioInputs << "/" << numAudioOutputs << std::endl;
 
   clap_audio_port_info_t info;
   for (auto i = 0U; i < numAudioInputs; ++i)
   {
-    plugin.audioPortsGet(i, true, &info);
+    proxy.audioPortsGet(i, true, &info);
     // LOG << "  - input " << i << " " << info.name << std::endl;
     inputChannelByBus.push_back(info.channel_count);
     totalInputChannels += info.channel_count;
@@ -67,7 +67,7 @@ void StandaloneHost::setupAudioBusses(const Clap::PluginProxy &plugin)
   }
   for (auto i = 0U; i < numAudioOutputs; ++i)
   {
-    plugin.audioPortsGet(i, false, &info);
+    proxy.audioPortsGet(i, false, &info);
     // LOG << "  - output " << i << " " << info.name << std::endl;
     outputChannelByBus.push_back(info.channel_count);
     totalOutputChannels += info.channel_count;
@@ -80,13 +80,13 @@ void StandaloneHost::setupAudioBusses(const Clap::PluginProxy &plugin)
   if (numAudioOutputs > 0) LOG << "main audio output is " << mainOutput << std::endl;
 }
 
-void StandaloneHost::setupMIDIBusses(const Clap::PluginProxy &plugin)
+void StandaloneHost::setupMIDIBusses(const Clap::PluginProxy &proxy)
 {
-  auto numMIDIInPorts = plugin.notePortsCount(true);
+  auto numMIDIInPorts = proxy.notePortsCount(true);
   if (numMIDIInPorts > 0)
   {
     clap_note_port_info_t info;
-    plugin.notePortsGet(0, true, &info);
+    proxy.notePortsGet(0, true, &info);
     if (info.supported_dialects & CLAP_NOTE_DIALECT_MIDI)
     {
       hasMIDIInput = true;
@@ -97,7 +97,7 @@ void StandaloneHost::setupMIDIBusses(const Clap::PluginProxy &plugin)
     }
     LOG << "Set up input: midi=" << hasMIDIInput << " clapNote=" << hasClapNoteInput << std::endl;
   }
-  auto numMIDIOutPorts = plugin.notePortsCount(false);
+  auto numMIDIOutPorts = proxy.notePortsCount(false);
   if (numMIDIOutPorts > 0)
   {
     createsMidiOutput = true;
@@ -220,9 +220,10 @@ bool StandaloneHost::gui_can_resize()
 {
   if (!clapPlugin) return false;
 
-  if (!clapPlugin->getProxy()->canUseGui()) return false;
+  const auto proxy = clapPlugin->getProxy();
+  if (!proxy->canUseGui()) return false;
 
-  auto res = clapPlugin->getProxy()->guiCanResize();
+  auto res = proxy->guiCanResize();
   return res;
 }
 
@@ -319,14 +320,13 @@ bool StandaloneHost::saveStandaloneAndPluginSettings(const fs::path &intoDir, co
     LOG << "Unable to open for writing " << (intoDir / withName).u8string() << std::endl;
     return false;
   }
-  if (!clapPlugin || !clapPlugin->getProxy()->canUseState())
-  {
-    return false;
-  }
+  if (!clapPlugin) return false;
+  const auto proxy = clapPlugin->getProxy();
+  if (!proxy->canUseState()) return false;
   clap_ostream cos{};
   cos.ctx = &ofs;
   cos.write = clapwrite;
-  clapPlugin->getProxy()->stateSave(&cos);
+  proxy->stateSave(&cos);
   ofs.close();
 
   return true;
@@ -344,14 +344,13 @@ bool StandaloneHost::tryLoadStandaloneAndPluginSettings(const fs::path &fromDir,
     LOG << "Unable to open for reading " << fsp.u8string() << std::endl;
     return false;
   }
-  if (!clapPlugin || !clapPlugin->getProxy()->canUseState())
-  {
-    return false;
-  }
+  if (!clapPlugin) return false;
+  const auto proxy = clapPlugin->getProxy();
+  if (!proxy->canUseState()) return false;
   clap_istream cis{};
   cis.ctx = &ifs;
   cis.read = clapread;
-  clapPlugin->getProxy()->stateLoad(&cis);
+  proxy->stateLoad(&cis);
   ifs.close();
   return true;
 }

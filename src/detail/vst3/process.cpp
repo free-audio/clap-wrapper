@@ -157,13 +157,13 @@ inline clap_sectime doubleToSecTime(double t)
 void ProcessAdapter::flush()
 {
   // minimal processing if params are supported by the plugin
-  if (_pluginProxy.canUseParams())
+  if (_proxy.canUseParams())
   {
     _events.clear();
     _eventindices.clear();
 
     // sortEventIndices(); call only if there would be any input event
-    _pluginProxy.paramsFlush(_processData.in_events, _processData.out_events);
+    _proxy.paramsFlush(_processData.in_events, _processData.out_events);
   }
 }
 
@@ -392,20 +392,20 @@ void ProcessAdapter::process(Steinberg::Vst::ProcessData& data)
         doProcess = false;
     }
     if (doProcess)
-      _pluginProxy.process(&_processData);
+      _proxy.process(&_processData);
     else
     {
-      if (_pluginProxy.canUseParams())
+      if (_proxy.canUseParams())
       {
-        _pluginProxy.paramsFlush(_processData.in_events, _processData.out_events);
+        _proxy.paramsFlush(_processData.in_events, _processData.out_events);
       }
     }
   }
   else
   {
-    if (_pluginProxy.canUseParams())
+    if (_proxy.canUseParams())
     {
-      _pluginProxy.paramsFlush(_processData.in_events, _processData.out_events);
+      _proxy.paramsFlush(_processData.in_events, _processData.out_events);
     }
     else
     {

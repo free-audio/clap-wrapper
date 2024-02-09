@@ -14,7 +14,6 @@
 */
 
 #include <clap/clap.h>
-#include <clap/helpers/plugin-proxy.hh>
 #include <vector>
 #include <string>
 #include <memory>
@@ -27,6 +26,7 @@
 
 #include "detail/clap/fsutil.h"
 #include <clap/helpers/host.hh>
+#include <clap/helpers/plugin-proxy.hh>
 
 namespace Clap
 {
@@ -57,10 +57,10 @@ class IHost
       const PluginProxy& plugin) = 0;  // called when a wrapper could scan for wrapper specific plugins
 
   virtual void setupAudioBusses(
-      const PluginProxy& plugin) = 0;  // called from initialize() to allow the setup of audio ports
+      const PluginProxy& proxy) = 0;  // called from initialize() to allow the setup of audio ports
   virtual void setupMIDIBusses(
-      const PluginProxy& plugin) = 0;  // called from initialize() to allow the setup of MIDI ports
-  virtual void setupParameters(const PluginProxy& plugin) = 0;
+      const PluginProxy& proxy) = 0;  // called from initialize() to allow the setup of MIDI ports
+  virtual void setupParameters(const PluginProxy& proxy) = 0;
 
   virtual void param_rescan(clap_param_rescan_flags flags) = 0;  // ext_host_params
   virtual void param_clear(clap_id param, clap_param_clear_flags flags) = 0;
@@ -247,7 +247,7 @@ class Plugin : public Clap::PluginHostBase
 
  private:
   IHost* _parentHost = nullptr;
-  std::unique_ptr<PluginProxy> _pluginProxy;
+  std::unique_ptr<PluginProxy> _proxy;
   const std::thread::id _main_thread_id = std::this_thread::get_id();
   std::atomic<uint32_t> _audio_thread_override = 0;
   std::atomic<uint32_t> _main_thread_override = 0;

@@ -86,32 +86,32 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
   LOGINFO("[clap-wrapper] creating NSView");
 
   ui = *cont;
-  auto pluginProxy = ui._plugin->getProxy();
-  pluginProxy->guiCreate(CLAP_WINDOW_API_COCOA, false);
+  auto proxy = ui._plugin->getProxy();
+  proxy->guiCreate(CLAP_WINDOW_API_COCOA, false);
 
   // actually, the host should send an appropriate size,
   // yet, they actually just send utter garbage, so: don't care
   // if (size.width == 0 || size.height == 0)
   {
-    // pluginProxy->guiGetSize(,)
+    // proxy->guiGetSize(,)
     uint32_t w, h;
-    if (pluginProxy->guiGetSize(&w, &h))
+    if (proxy->guiGetSize(&w, &h))
     {
       size = {(double)w, (double)h};
     }
   }
   self = [super initWithFrame:NSMakeRect(0, 0, size.width, size.height)];
 
-  // pluginProxy->guiShow();
+  // proxy->guiShow();
 
   clap_window_t m;
   m.api = CLAP_WINDOW_API_COCOA;
   m.ptr = self;
 
-  pluginProxy->guiSetParent(&m);
-  pluginProxy->guiSetScale(1.0);
+  proxy->guiSetParent(&m);
+  proxy->guiSetScale(1.0);
 
-  if (pluginProxy->guiCanResize()) pluginProxy->guiSetSize(size.width, size.height);
+  if (proxy->guiCanResize()) proxy->guiSetSize(size.width, size.height);
 
   idleTimer = nil;
   CFTimeInterval TIMER_INTERVAL = .05;  // In SurgeGUISynthesizer.h it uses 50 ms
@@ -134,8 +134,8 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
   {
     CFRunLoopTimerInvalidate(idleTimer);
   }
-  auto pluginProxy = ui._plugin->getProxy();
-  pluginProxy->guiDestroy();
+  auto proxy = ui._plugin->getProxy();
+  proxy->guiDestroy();
 
   [super dealloc];
 }
@@ -144,11 +144,11 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
   LOGINFO("[clap-wrapper] new size");
 
   [super setFrame:newSize];
-  auto pluginProxy = ui._plugin->getProxy();
-  pluginProxy->guiSetScale(1.0);
-  pluginProxy->guiSetSize(newSize.size.width, newSize.size.height);
+  auto proxy = ui._plugin->getProxy();
+  proxy->guiSetScale(1.0);
+  proxy->guiSetSize(newSize.size.width, newSize.size.height);
 
-  // pluginProxy->guiShow();
+  // proxy->guiShow();
 }
 
 @end

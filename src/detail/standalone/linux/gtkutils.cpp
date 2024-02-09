@@ -23,16 +23,16 @@ void GtkGui::setupPlugin(_GtkApplication *app)
 {
   GtkWidget *window;
 
-  auto pluginProxy = plugin->getProxy();
-  if (pluginProxy->canUseGui())
+  const auto proxy = plugin->getProxy();
+  if (proxy->canUseGui())
   {
-    if (!pluginProxy->guiIsApiSupported(CLAP_WINDOW_API_X11, false)) LOG << "NO X11 " << std::endl;
+    if (!proxy->guiIsApiSupported(CLAP_WINDOW_API_X11, false)) LOG << "NO X11 " << std::endl;
 
-    pluginProxy->guiCreate(CLAP_WINDOW_API_X11, false);
-    pluginProxy->guiSetScale(1);
+    proxy->guiCreate(CLAP_WINDOW_API_X11, false);
+    proxy->guiSetScale(1);
 
     uint32_t w, h;
-    pluginProxy->guiGetSize(w, &h);
+    proxy->guiGetSize(w, &h);
 
     window = gtk_application_window_new(app);
     gtk_window_set_title(GTK_WINDOW(window), "Standalone Window");
@@ -43,8 +43,8 @@ void GtkGui::setupPlugin(_GtkApplication *app)
     win.api = CLAP_WINDOW_API_X11;
     auto gw = gtk_widget_get_window(GTK_WIDGET(window));
     win.x11 = GDK_WINDOW_XID(gw);
-    pluginProxy->guiSetParent(win);
-    pluginProxy->guiShow();
+    proxy->guiSetParent(win);
+    proxy->guiShow();
   }
 }
 
@@ -105,7 +105,8 @@ int GtkGui::runTimerFn(clap_id id)
   std::lock_guard<std::mutex> g{cbMutex};
   if (terminatedTimers.find(id) != terminatedTimers.end()) return false;
 
-  if (plugin->getProxy()->canUseTimer()) plugin->getProxy()->timerSupportOnTimer(id);
+  const auto proxy = plugin->getProxy();
+  if (proxy->canUseTimer()) proxy->timerSupportOnTimer(id);
   return true;
 }
 
@@ -154,9 +155,10 @@ bool GtkGui::unregister_fd(int fd)
 
 int GtkGui::runFD(int fd, clap_posix_fd_flags_t flags)
 {
-  if (plugin->getProxy()->canUsePosixFdSupport())
+  const auto proxy = plugin->getProxy();
+  if (proxy->canUsePosixFdSupport())
   {
-    plugin->getProxy()->posixFdSupportOnFd(fd, flags);
+    proxy->posixFdSupportOnFd(fd, flags);
   }
   return true;
 }
