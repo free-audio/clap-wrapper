@@ -334,7 +334,7 @@ class WrapAsAUV2 : public ausdk::AUBase,
     return false;
   }
 
-  const char* ihost_get_name() override
+  const char* host_get_name() override
   {
     return "Clap-As-AUV2-Wrapper";
   }

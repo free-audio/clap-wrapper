@@ -213,7 +213,7 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   bool register_timer(uint32_t period_ms, clap_id* timer_id) override;
   bool unregister_timer(clap_id timer_id) override;
 
-  const char* ihost_get_name() override;
+  const char* host_get_name() override;
 
 #if LIN
   bool register_fd(int fd, clap_posix_fd_flags_t flags) override;
