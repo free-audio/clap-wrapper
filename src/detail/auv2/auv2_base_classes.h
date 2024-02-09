@@ -203,7 +203,24 @@ bool MIDIOutput::addNoteOff(uint8_t channel, uint8_t note, uint8_t velocity)
 
 bool MIDIOutput::addMIDI3Byte(const uint8_t* threebytes)
 {
-  _current = MIDIPacketListAdd(_midiPacketList, sizeof(_buffer), _current, 0, 3, threebytes);
+  auto cmd = (threebytes[0] >> 4) & 0xFu;
+  switch (cmd)
+  {
+    case 0x08:
+    case 0x09:
+    case 0x0A:
+    case 0x0B:
+    case 0x0E:
+      _current = MIDIPacketListAdd(_midiPacketList, sizeof(_buffer), _current, 0, 3, threebytes);
+      break;
+    case 0x0C:
+    case 0x0D:
+      _current = MIDIPacketListAdd(_midiPacketList, sizeof(_buffer), _current, 0, 2, threebytes);
+      break;
+    default:
+      return false;
+  }
+
   ++_numEvents;
   return (_current != nullptr);
 }

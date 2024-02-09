@@ -321,47 +321,13 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
   switch (event->type)
   {
     case CLAP_EVENT_NOTE_ON:
-    {
-      auto nevt = reinterpret_cast<const clap_event_note*>(event);
-#if 0
-      Steinberg::Vst::Event oe{};
-      oe.type = Steinberg::Vst::Event::kNoteOnEvent;
-      oe.noteOn.channel = nevt->channel;
-      oe.noteOn.pitch = nevt->key;
-      oe.noteOn.velocity = nevt->velocity;
-      oe.noteOn.length = 0;
-      oe.noteOn.tuning = 0.0f;
-      oe.noteOn.noteId = nevt->note_id;
-      oe.busIndex = 0;  // FIXME - multi-out midi still needs work
-      oe.sampleOffset = nevt->header.time;
-
-      if (_vstdata && _vstdata->outputEvents) _vstdata->outputEvents->addEvent(oe);
-#endif
-      //  _midiouts->send(*reinterpret_cast<const clap_multi_event_t*>(event));
-      (void)nevt;
-    }
-      return true;
     case CLAP_EVENT_NOTE_OFF:
+    case CLAP_EVENT_MIDI:
     {
-      auto nevt = reinterpret_cast<const clap_event_note*>(event);
-#if 0
-      Steinberg::Vst::Event oe{};
-      oe.type = Steinberg::Vst::Event::kNoteOffEvent;
-      oe.noteOff.channel = nevt->channel;
-      oe.noteOff.pitch = nevt->key;
-      oe.noteOff.velocity = nevt->velocity;
-      oe.noteOn.length = 0;
-      oe.noteOff.tuning = 0.0f;
-      oe.noteOff.noteId = nevt->note_id;
-      oe.busIndex = 0;  // FIXME - multi-out midi still needs work
-      oe.sampleOffset = nevt->header.time;
-
-      if (_vstdata && _vstdata->outputEvents) _vstdata->outputEvents->addEvent(oe);
-#endif
-      // _midiouts->send(*reinterpret_cast<const clap_multi_event_t*>(event));
-      (void)nevt;
-    }
+      auto nevt = reinterpret_cast<const clap_multi_event_t*>(event);
+      _midiouts->send(*nevt);
       return true;
+    }
     case CLAP_EVENT_NOTE_END:
     case CLAP_EVENT_NOTE_CHOKE:
       removeFromActiveNotes((const clap_event_note*)(event));
@@ -445,7 +411,6 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
       return true;
       break;
 
-    case CLAP_EVENT_MIDI:
     case CLAP_EVENT_MIDI_SYSEX:
     case CLAP_EVENT_MIDI2:
       return true;
