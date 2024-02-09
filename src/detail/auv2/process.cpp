@@ -42,7 +42,8 @@ ProcessAdapter::~ProcessAdapter()
 void ProcessAdapter::setupProcessing(ausdk::AUScope& audioInputs, ausdk::AUScope& audioOutputs,
                                      const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params,
                                      Clap::IAutomation* automationInterface, ParameterTree* parameters,
-                                     IMIDIOutputs* midiouts, uint32_t numMaxSamples, uint32_t preferredMIDIDialect)
+                                     IMIDIOutputs* midiouts, uint32_t numMaxSamples,
+                                     uint32_t preferredMIDIDialect)
 {
   _plugin = plugin;
   _ext_params = ext_params;
@@ -50,7 +51,7 @@ void ProcessAdapter::setupProcessing(ausdk::AUScope& audioInputs, ausdk::AUScope
   _parameters = parameters;
 
   _preferred_midi_dialect = preferredMIDIDialect;
-  
+
   _midiouts = midiouts;
 
   // rewrite the buffer structures
@@ -574,10 +575,10 @@ void ProcessAdapter::addMIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData
       this->_eventindices.emplace_back((this->_events.size()));
       this->_events.emplace_back(n);
       addToActiveNotes(&n.note);
-      
+
       this->output_events_try_push(&this->_out_events, &n.header);
-      _midiouts->send(n); // *reinterpret_cast<const clap_multi_event_t*>(event));
-      
+      _midiouts->send(n);  // *reinterpret_cast<const clap_multi_event_t*>(event));
+
       break;
     case 0xA:  // any other MIDI message with 1 or 2 data bytes
     case 0xB:

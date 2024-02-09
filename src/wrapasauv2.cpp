@@ -307,52 +307,17 @@ void WrapAsAUV2::setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_
       _midi_understands_midi2 = (info.supported_dialects & CLAP_NOTE_DIALECT_MIDI2);
     }
   }
-  if ( numMIDIOutPorts > 0)
+  if (numMIDIOutPorts > 0)
   {
     for (decltype(numMIDIOutPorts) i = 0; i < numMIDIOutPorts; ++i)
     {
       clap_note_port_info_t info;
       if (noteports->get(plugin, i, false, &info))
       {
-        _midi_outports.emplace_back(std::make_unique<MIDIOutput>(_midi_outports.size(),info));
+        _midi_outports.emplace_back(std::make_unique<MIDIOutput>(_midi_outports.size(), info));
       }
     }
   }
-  else
-  {
-    clap_note_port_info_t info1 {
-      1, CLAP_NOTE_DIALECT_MIDI, CLAP_NOTE_DIALECT_CLAP, "Port 1"
-    };
-
-    _midi_outports.emplace_back(std::make_unique<MIDIOutput>(_midi_outports.size(),info1));
-#if 0
-    clap_note_port_info_t info2 {
-      2, CLAP_NOTE_DIALECT_MIDI, CLAP_NOTE_DIALECT_CLAP, "Port 2"
-    };
-    _midi_outports.emplace_back(std::make_unique<MIDIOutput>(_midi_outports.size(),info2));
-#endif
-  }
-  /*
-  for (decltype(numMIDIInPorts) i = 0; i < numMIDIInPorts; ++i)
-  {
-    clap_note_port_info_t info;
-    if (noteports->get(plugin, i, true, &info))
-    {
-      addMIDIBusFrom(&info, i, true);
-    }
-  }
-   */
-  // TODO: Outputs need the host MIDI list output thing
-  /*
-  for (decltype(numMIDIOutPorts) i = 0; i < numMIDIOutPorts; ++i)
-  {
-    clap_note_port_info_t info;
-    if (noteports->get(plugin, i, false, &info))
-    {
-      addMIDIBusFrom(&info, i, false);
-    }
-  }
-   */
 }
 
 void WrapAsAUV2::setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params)
@@ -637,7 +602,7 @@ OSStatus WrapAsAUV2::GetPropertyInfo(AudioUnitPropertyID inID, AudioUnitScope in
         break;
 
       case kAudioUnitProperty_MIDIOutputCallbackInfo:
-        outDataSize = sizeof (CFArrayRef);
+        outDataSize = sizeof(CFArrayRef);
         outWritable = false;
         return noErr;
         break;
@@ -729,20 +694,22 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
       case kAudioUnitProperty_MIDIOutputCallbackInfo:
         if (_midi_outports.size() > 0)
         {
-          CFMutableArrayRef callbackArray = CFArrayCreateMutable(NULL,_midi_outports.size(), &kCFTypeArrayCallBacks);
-          
-          for ( const auto &portinfo : _midi_outports)
+          CFMutableArrayRef callbackArray =
+              CFArrayCreateMutable(NULL, _midi_outports.size(), &kCFTypeArrayCallBacks);
+
+          for (const auto& portinfo : _midi_outports)
           {
-            CFStringRef str = CFStringCreateWithCString(NULL, portinfo->_info.name, kCFStringEncodingUTF8);
+            CFStringRef str =
+                CFStringCreateWithCString(NULL, portinfo->_info.name, kCFStringEncodingUTF8);
             CFArrayAppendValue(callbackArray, str);
           }
-          
+
           CFArrayRef array = CFArrayCreateCopy(NULL, callbackArray);
-          
+
           *(CFArrayRef*)outData = array;
-          
+
           CFRelease(callbackArray);
-        
+
           return noErr;
         }
         return kAudioUnitErr_InvalidProperty;
@@ -799,8 +766,12 @@ OSStatus WrapAsAUV2::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         // this is actually read only
         return noErr;
         break;
+      case kAudioUnitProperty_MIDIOutputEventListCallback:
+        break;
       case kAudioUnitProperty_MIDIOutputCallback:
-        if ( inData )
+        if (inDataSize < sizeof(AUMIDIOutputCallbackStruct)) return kAudioUnitErr_InvalidPropertyValue;
+
+        if (inData)
         {
           _midioutput_hostcallback = *static_cast<const AUMIDIOutputCallbackStruct*>(inData);
         }
@@ -837,7 +808,7 @@ OSStatus WrapAsAUV2::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
     }
   }
   auto xxx = Base::SetProperty(inID, inScope, inElement, inData, inDataSize);
-  if ( xxx == kAudioUnitErr_InvalidElement)
+  if (xxx == kAudioUnitErr_InvalidElement)
   {
     ;
   }
@@ -935,7 +906,7 @@ void WrapAsAUV2::deactivateCLAP()
     _plugin->stop_processing();
     _plugin->deactivate();
   }
-  _midioutput_hostcallback = {nullptr,nullptr};
+  _midioutput_hostcallback = {nullptr, nullptr};
 }
 
 OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags& inFlags, const AudioTimeStamp& inTimeStamp,
@@ -971,19 +942,24 @@ OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags& inFlags, const AudioTime
 
     _processAdapter->process(data);
 
-   
     {
-      for ( auto & i : _midi_outports)
+      for (auto& i : _midi_outports)
       {
-        if ( _midioutput_hostcallback.midiOutputCallback)
+        if (i->hasEvents())
         {
-          OSStatus result = (*_midioutput_hostcallback.midiOutputCallback)(_midioutput_hostcallback.userData,&inTimeStamp,i->_auport,i->getMIDIPacketList());
-          assert(result == noErr);
+          if (_midioutput_hostcallback.midiOutputCallback)
+          {
+            auto userd = _midioutput_hostcallback.userData;
+            auto pktlist = i->getMIDIPacketList();
+            auto fn = _midioutput_hostcallback.midiOutputCallback;
+            OSStatus result = (*fn)(userd, &inTimeStamp, i->_auport, pktlist);
+            assert(result == noErr);
+          }
         }
         i->clear();
       }
     }
-    // currently, the output events are processed directly
+    // currently, the output events a     re processed directly
     //    _processAdapter->foreachOutputEvent([this]
     //                                        ()
     //                                        {}
@@ -1372,58 +1348,54 @@ UInt32 WrapAsAUV2::GetAudioChannelLayout(AudioUnitScope scope, AudioUnitElement 
 
 void WrapAsAUV2::send(const Clap::AUv2::clap_multi_event_t& event)
 {
-  
   auto type = event.header.type;
   switch (type)
   {
     case CLAP_EVENT_NOTE_ON:
+    {
+      auto portid = 1;  // event.note.port_index;
+      for (auto& i : _midi_outports)
       {
-        auto portid = 1; // event.note.port_index;
-        for ( auto& i : _midi_outports )
+        if (i->_info.id == portid)
         {
-          if ( i->_info.id == portid)
-          {
-            i->addNoteOn(event.note.channel, event.note.key, event.note.velocity*127.f);
-            break;
-          }
+          i->addNoteOn(event.note.channel, event.note.key, event.note.velocity * 127.f);
+          break;
         }
       }
-      break;
+    }
+    break;
     case CLAP_EVENT_NOTE_OFF:
+    {
+      auto portid = 1;  // event.note.port_index;
+      for (auto& i : _midi_outports)
       {
-        auto portid = 1; // event.note.port_index;
-        for ( auto& i : _midi_outports )
+        if (i->_info.id == portid)
         {
-          if ( i->_info.id == portid)
-          {
-            i->addNoteOff(event.note.channel, event.note.key, event.note.velocity*127.f);
-            break;
-          }
+          i->addNoteOff(event.note.channel, event.note.key, event.note.velocity * 127.f);
+          break;
         }
       }
-      break;
+    }
+    break;
     case CLAP_EVENT_MIDI:
+    {
+      auto portid = event.midi.port_index;
+      for (auto& i : _midi_outports)
       {
-        auto portid = event.midi.port_index;
-        for ( auto& i : _midi_outports )
+        if (i->_info.id == portid)
         {
-          if ( i->_info.id == portid)
-          {
-            i->addMIDI3Byte(event.midi.data);
-            break;
-          }
+          i->addMIDI3Byte(event.midi.data);
+          break;
         }
       }
-      break;
+    }
+    break;
   }
 #if 0
   MIDIEventList list;
   MIDIEventListInit(list, MIDIProtocolID protocolkMIDIProtocol_1_0);
   MIDIEventListAdd(list, <#ByteCount listSize#>, <#MIDIEventPacket * _Nonnull curPacket#>, <#MIDITimeStamp time#>, <#ByteCount wordCount#>, <#const UInt32 * _Nonnull words#>)
 #endif
-  
-
-  
 }
 
 }  // namespace free_audio::auv2_wrapper

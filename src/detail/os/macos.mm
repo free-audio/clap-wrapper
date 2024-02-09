@@ -110,7 +110,7 @@ void MacOSHelper::detach(IPlugObject* plugobject)
 
 }  // namespace os
 
-#define AUNIQUESYMBOL  clapwrapper_dummy_object_to_trick_the_os
+#define AUNIQUESYMBOL clapwrapper_dummy_object_to_trick_the_os
 
 // the dummy class so we can use NSBundle bundleForClass
 @interface AUNIQUESYMBOL : NSObject
@@ -144,8 +144,7 @@ uint64_t getTickInMS()
 
 std::string getParentFolderName()
 {
-  NSString* identifier =
-      [[NSBundle bundleForClass:[AUNIQUESYMBOL class]] bundlePath];
+  NSString* identifier = [[NSBundle bundleForClass:[AUNIQUESYMBOL class]] bundlePath];
   fs::path n = [identifier UTF8String];
   if (n.has_parent_path())
   {
@@ -165,8 +164,7 @@ std::string getBinaryName()
   // NSString* identifier = [[NSBundle mainBundle] bundleIdentifier];
 
   // this is needed:
-  NSString* identifier =
-      [[NSBundle bundleForClass:[AUNIQUESYMBOL class]] bundlePath];
+  NSString* identifier = [[NSBundle bundleForClass:[AUNIQUESYMBOL class]] bundlePath];
   fs::path k = [identifier UTF8String];
   return k.stem();
 }

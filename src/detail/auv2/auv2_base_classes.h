@@ -140,38 +140,42 @@ UInt32 Clumps::addClump(const char* fullpath)
 
 class MIDIOutput
 {
-public:
+ public:
   MIDIOutput() = delete;
-  ~MIDIOutput() {
-    assert(_canary==1234);
+  ~MIDIOutput()
+  {
   }
   MIDIOutput(int auport, const clap_note_port_info& info);
   MIDIOutput(const MIDIOutput&) = delete;
   MIDIOutput(MIDIOutput&&) = delete;
-  MIDIPacketList* getMIDIPacketList() { return _midiPacketList; }
+  MIDIPacketList* getMIDIPacketList()
+  {
+    return _midiPacketList;
+  }
   bool addNoteOn(uint8_t channel, uint8_t note, uint8_t velocity);
   bool addNoteOff(uint8_t channel, uint8_t note, uint8_t velocity);
   bool addMIDI3Byte(const uint8_t* threebytes);
-  
+
   void clear();
   const clap_note_port_info _info;
   const int _auport;
-  bool hasEvents() const { return _numEvents != 0; }
-private:
-  MIDIPacketList* _midiPacketList;
-  MIDIPacket* _current;
-  uint8_t _buffer[16384];
-  uint32_t _canary = 1234;
+  bool hasEvents() const
+  {
+    return _numEvents != 0;
+  }
+
+ private:
+  MIDIPacket* _current = nullptr;
+  MIDIPacketList* _midiPacketList = nullptr;
+  uint8_t _buffer[2048];
   uint32_t _numEvents = 0;
 };
 
-MIDIOutput::MIDIOutput(int auport, const clap_note_port_info& info)
-: _info(info)
-, _auport(auport)
+MIDIOutput::MIDIOutput(int auport, const clap_note_port_info& info) : _info(info), _auport(auport)
 {
   _midiPacketList = (MIDIPacketList*)_buffer;
   _current = MIDIPacketListInit(_midiPacketList);
-  (void) _canary;
+  _numEvents = 0;
 }
 
 void MIDIOutput::clear()
@@ -180,21 +184,20 @@ void MIDIOutput::clear()
   _numEvents = 0;
 }
 
-
 bool MIDIOutput::addNoteOn(uint8_t channel, uint8_t note, uint8_t velocity)
 {
-  uint8_t ev[3] = {static_cast<uint8_t>((uint8_t)0x90u | (channel & 0xF)), static_cast<uint8_t>((note & 0x7F)), static_cast<uint8_t>((velocity & 0x7F))};
+  uint8_t ev[3] = {static_cast<uint8_t>((uint8_t)0x90u | (channel & 0xF)),
+                   static_cast<uint8_t>((note & 0x7F)), static_cast<uint8_t>((velocity & 0x7F))};
   _current = MIDIPacketListAdd(_midiPacketList, sizeof(_buffer), _current, 0, 3, (Byte*)ev);
   ++_numEvents;
-  assert(_canary == 1234);
   return (_current != nullptr);
 }
 bool MIDIOutput::addNoteOff(uint8_t channel, uint8_t note, uint8_t velocity)
 {
-  uint8_t ev[3] = {static_cast<uint8_t>((uint8_t)0x80u | (channel & 0xF)), static_cast<uint8_t>((note & 0x7F)), static_cast<uint8_t>((velocity & 0x7F))};
+  uint8_t ev[3] = {static_cast<uint8_t>((uint8_t)0x80u | (channel & 0xF)),
+                   static_cast<uint8_t>((note & 0x7F)), static_cast<uint8_t>((velocity & 0x7F))};
   _current = MIDIPacketListAdd(_midiPacketList, sizeof(_buffer), _current, 0, 3, (Byte*)ev);
   ++_numEvents;
-  assert(_canary == 1234);
   return (_current != nullptr);
 }
 
@@ -202,7 +205,6 @@ bool MIDIOutput::addMIDI3Byte(const uint8_t* threebytes)
 {
   _current = MIDIPacketListAdd(_midiPacketList, sizeof(_buffer), _current, 0, 3, threebytes);
   ++_numEvents;
-  assert(_canary == 1234);
   return (_current != nullptr);
 }
 
@@ -413,7 +415,8 @@ class WrapAsAUV2 : public ausdk::AUBase,
   void onIdle() override;
 
   // --------------- IMIDIOutputs
-  void send(const Clap::AUv2::clap_multi_event_t& event ) override;
+  void send(const Clap::AUv2::clap_multi_event_t& event) override;
+
  protected:
   void addAudioBusFrom(int bus, const clap_audio_port_info_t* info, bool is_input);
 
@@ -449,7 +452,7 @@ class WrapAsAUV2 : public ausdk::AUBase,
   bool _midi_wants_midi_input = false;  // takes any input
   bool _midi_understands_midi2 = false;
   // std::vector<clap_note_port_info_t> _midi_outports_info;
-  
+
 #ifdef DUAL_SCHEDULING_ENABLED
   bool _midi_dualscheduling_mode = false;
 #endif
@@ -459,11 +462,11 @@ class WrapAsAUV2 : public ausdk::AUBase,
   CFStringRef _current_program_name = 0;
 
   // ------------- for the MIDI output
-  AUMIDIOutputCallbackStruct _midioutput_hostcallback = {nullptr,nullptr};
-  
+  AUMIDIOutputCallbackStruct _midioutput_hostcallback = {nullptr, nullptr};
+
   // the queue from audiothread to UI thread
   ClapWrapper::detail::shared::fixedqueue<queueEvent, 8192> _queueToUI;
-  
+
   std::vector<std::unique_ptr<MIDIOutput>> _midi_outports;
 };
 

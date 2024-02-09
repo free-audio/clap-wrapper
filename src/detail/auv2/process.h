@@ -81,15 +81,14 @@ typedef union clap_multi_event
 
 class IMIDIOutputs
 {
-public:
-  virtual ~IMIDIOutputs() {};
+ public:
+  virtual ~IMIDIOutputs(){};
   virtual void send(const clap_multi_event_t& event) = 0;
 };
 
 class ProcessAdapter
 {
  public:
-
   void setupProcessing(ausdk::AUScope& audioInputs, ausdk::AUScope& audioOutputs,
                        const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params,
                        Clap::IAutomation* automationInterface, ParameterTree* parameters,
