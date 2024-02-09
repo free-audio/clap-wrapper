@@ -257,9 +257,9 @@ bool StandaloneHost::unregister_timer(clap_id timer_id)
 #endif
 }
 
-const char* StandaloneHost::ihost_get_name()
+const char *StandaloneHost::ihost_get_name()
 {
-    return "CLAP-Wrapper-As-Standalone";
+  return "CLAP-Wrapper-As-Standalone";
 }
 
 bool StandaloneHost::register_fd(int fd, clap_posix_fd_flags_t flags)
