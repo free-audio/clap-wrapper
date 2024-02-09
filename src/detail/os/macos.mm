@@ -24,6 +24,7 @@ namespace fs = std::filesystem;
 namespace fs = ghc::filesystem;
 #endif
 #include <iostream>
+#include <dlfcn.h>
 
 namespace os
 {
@@ -110,19 +111,6 @@ void MacOSHelper::detach(IPlugObject* plugobject)
 
 }  // namespace os
 
-#define AUNIQUESYMBOL clapwrapper_dummy_object_to_trick_the_os
-
-// the dummy class so we can use NSBundle bundleForClass
-@interface AUNIQUESYMBOL : NSObject
-- (void)fun;
-@end
-
-@implementation AUNIQUESYMBOL
-- (void)fun
-{
-}
-@end
-
 namespace os
 {
 // [UI Thread]
@@ -142,30 +130,26 @@ uint64_t getTickInMS()
   return (::clock() * 1000) / CLOCKS_PER_SEC;
 }
 
-std::string getParentFolderName()
+fs::path getBundlePath()
 {
-  NSString* identifier = [[NSBundle bundleForClass:[AUNIQUESYMBOL class]] bundlePath];
-  fs::path n = [identifier UTF8String];
-  if (n.has_parent_path())
+  Dl_info info;
+  if (dladdr((void*)getBundlePath, &info))
   {
-    auto p = n.parent_path();
-    if (p.has_filename())
-    {
-      return p.filename().u8string();
-    }
+    fs::path binaryPath = info.dli_fname;
+    return binaryPath.parent_path().parent_path().parent_path();
   }
 
-  return std::string();
+  return {};
+}
+
+std::string getParentFolderName()
+{
+  return getBundlePath().parent_path().stem();
 }
 
 std::string getBinaryName()
 {
-  // this is useless
-  // NSString* identifier = [[NSBundle mainBundle] bundleIdentifier];
-
-  // this is needed:
-  NSString* identifier = [[NSBundle bundleForClass:[AUNIQUESYMBOL class]] bundlePath];
-  fs::path k = [identifier UTF8String];
-  return k.stem();
+  return getBundlePath().stem();
 }
+
 }  // namespace os
