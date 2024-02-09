@@ -30,7 +30,7 @@
 namespace Clap
 {
 constexpr auto Plugin_MH = clap::helpers::MisbehaviourHandler::Ignore;
-constexpr auto Plugin_CL = clap::helpers::CheckingLevel::Maximal;
+constexpr auto Plugin_CL = clap::helpers::CheckingLevel::None;
 
 using PluginHostBase = clap::helpers::Host<Plugin_MH, Plugin_CL>;
 }  // namespace Clap
