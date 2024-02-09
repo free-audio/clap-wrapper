@@ -238,6 +238,11 @@ bool StandaloneHost::gui_request_resize(uint32_t width, uint32_t height)
   return false;
 }
 
+const char *StandaloneHost::ihost_get_name()
+{
+  return "CLAP-Wrapper-As-Standalone";
+}
+
 #if LIN
 
 bool StandaloneHost::register_timer(uint32_t period_ms, clap_id *timer_id)
@@ -255,11 +260,6 @@ bool StandaloneHost::unregister_timer(clap_id timer_id)
 #else
   return false;
 #endif
-}
-
-const char *StandaloneHost::ihost_get_name()
-{
-  return "CLAP-Wrapper-As-Standalone";
 }
 
 bool StandaloneHost::register_fd(int fd, clap_posix_fd_flags_t flags)
