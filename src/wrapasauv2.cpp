@@ -1348,6 +1348,7 @@ UInt32 WrapAsAUV2::GetAudioChannelLayout(AudioUnitScope scope, AudioUnitElement 
 
 void WrapAsAUV2::send(const Clap::AUv2::clap_multi_event_t& event)
 {
+  // port index maps back to MIDI out
   auto type = event.header.type;
   switch (type)
   {
