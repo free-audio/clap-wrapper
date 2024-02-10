@@ -155,7 +155,7 @@ std::shared_ptr<Plugin> Plugin::createInstance(Clap::Library& library, size_t in
 Plugin::Plugin(IHost* host)
   : _host{CLAP_VERSION,
           this,
-          "Clap-As-VST3-Wrapper",
+          host->host_get_name(),
           "defiant nerd",
           "https://www.defiantnerd.com",
           "0.0.1",
