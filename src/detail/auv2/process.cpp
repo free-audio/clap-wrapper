@@ -511,7 +511,6 @@ void ProcessAdapter::addMIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData
       this->_events.emplace_back(n);
       removeFromActiveNotes(&n.note);
       this->output_events_try_push(&this->_out_events, &n.header);
-      _midiouts->send(n);
       break;
     case 9:  // note on
 
@@ -542,7 +541,6 @@ void ProcessAdapter::addMIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData
       addToActiveNotes(&n.note);
 
       this->output_events_try_push(&this->_out_events, &n.header);
-      _midiouts->send(n);  // *reinterpret_cast<const clap_multi_event_t*>(event));
 
       break;
     case 0xA:  // any other MIDI message with 1 or 2 data bytes
