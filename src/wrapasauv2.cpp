@@ -1348,12 +1348,13 @@ UInt32 WrapAsAUV2::GetAudioChannelLayout(AudioUnitScope scope, AudioUnitElement 
 
 void WrapAsAUV2::send(const Clap::AUv2::clap_multi_event_t& event)
 {
+  // port index maps back to MIDI out
   auto type = event.header.type;
   switch (type)
   {
     case CLAP_EVENT_NOTE_ON:
     {
-      auto portid = 1;  // event.note.port_index;
+      auto portid = event.note.port_index;
       for (auto& i : _midi_outports)
       {
         if (i->_info.id == portid)
@@ -1366,7 +1367,7 @@ void WrapAsAUV2::send(const Clap::AUv2::clap_multi_event_t& event)
     break;
     case CLAP_EVENT_NOTE_OFF:
     {
-      auto portid = 1;  // event.note.port_index;
+      auto portid = event.note.port_index;
       for (auto& i : _midi_outports)
       {
         if (i->_info.id == portid)
