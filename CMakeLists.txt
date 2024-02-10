@@ -2,7 +2,7 @@
 #	clap-wrapper project
 #
 #   Copyright (c) 2022-2024 Timo Kaluza (defiantnerd)
-#					                  Paul Walker (baconpaul)
+#                           Paul Walker (baconpaul)
 #
 # There are a variety of advanced options to configure and build this wrapper, but
 # for the simple case of single plugin in a single clap, here are some relevant
