@@ -307,27 +307,17 @@ void WrapAsAUV2::setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_
       _midi_understands_midi2 = (info.supported_dialects & CLAP_NOTE_DIALECT_MIDI2);
     }
   }
-  /*
-  for (decltype(numMIDIInPorts) i = 0; i < numMIDIInPorts; ++i)
+  if (numMIDIOutPorts > 0)
   {
-    clap_note_port_info_t info;
-    if (noteports->get(plugin, i, true, &info))
+    for (decltype(numMIDIOutPorts) i = 0; i < numMIDIOutPorts; ++i)
     {
-      addMIDIBusFrom(&info, i, true);
+      clap_note_port_info_t info;
+      if (noteports->get(plugin, i, false, &info))
+      {
+        _midi_outports.emplace_back(std::make_unique<MIDIOutput>(_midi_outports.size(), info));
+      }
     }
   }
-   */
-  // TODO: Outputs need the host MIDI list output thing
-  /*
-  for (decltype(numMIDIOutPorts) i = 0; i < numMIDIOutPorts; ++i)
-  {
-    clap_note_port_info_t info;
-    if (noteports->get(plugin, i, false, &info))
-    {
-      addMIDIBusFrom(&info, i, false);
-    }
-  }
-   */
 }
 
 void WrapAsAUV2::setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params)
@@ -610,17 +600,18 @@ OSStatus WrapAsAUV2::GetPropertyInfo(AudioUnitPropertyID inID, AudioUnitScope in
         outDataSize = sizeof(struct AudioUnitCocoaViewInfo);
         return noErr;
         break;
-#if 0
-        // TODO: for CLAPs that have MIDI output, we need these two properties.
+
       case kAudioUnitProperty_MIDIOutputCallbackInfo:
+        outDataSize = sizeof(CFArrayRef);
+        outWritable = false;
         return noErr;
         break;
       case kAudioUnitProperty_MIDIOutputCallback:
         outWritable = true;
         outDataSize = sizeof(AUMIDIOutputCallbackStruct);
         break;
-#endif
-      // custom
+
+        // custom
       case kAudioUnitProperty_ClapWrapper_UIConnection_id:
         outWritable = false;
         outDataSize = sizeof(free_audio::auv2_wrapper::ui_connection);
@@ -700,6 +691,29 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         }
         return kAudioUnitErr_InvalidProperty;
         break;
+      case kAudioUnitProperty_MIDIOutputCallbackInfo:
+        if (_midi_outports.size() > 0)
+        {
+          CFMutableArrayRef callbackArray =
+              CFArrayCreateMutable(NULL, _midi_outports.size(), &kCFTypeArrayCallBacks);
+
+          for (const auto& portinfo : _midi_outports)
+          {
+            CFStringRef str =
+                CFStringCreateWithCString(NULL, portinfo->_info.name, kCFStringEncodingUTF8);
+            CFArrayAppendValue(callbackArray, str);
+          }
+
+          CFArrayRef array = CFArrayCreateCopy(NULL, callbackArray);
+
+          *(CFArrayRef*)outData = array;
+
+          CFRelease(callbackArray);
+
+          return noErr;
+        }
+        return kAudioUnitErr_InvalidProperty;
+        break;
 #ifdef DUAL_SCHEDULING_ENABLED
       case kMusicDeviceProperty_DualSchedulingMode:
         // yes we do
@@ -748,6 +762,27 @@ OSStatus WrapAsAUV2::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
       //      mProcessesInPlace = *static_cast<const UInt32*>(inData) != 0;
       //      return noErr;
       break;
+      case kAudioUnitProperty_MIDIOutputCallbackInfo:
+        // this is actually read only
+        return noErr;
+        break;
+      case kAudioUnitProperty_MIDIOutputEventListCallback:
+        break;
+      case kAudioUnitProperty_MIDIOutputCallback:
+        if (inDataSize < sizeof(AUMIDIOutputCallbackStruct)) return kAudioUnitErr_InvalidPropertyValue;
+
+        if (inData)
+        {
+          _midioutput_hostcallback = *static_cast<const AUMIDIOutputCallbackStruct*>(inData);
+        }
+        else
+        {
+          _midioutput_hostcallback.midiOutputCallback = nullptr;
+          _midioutput_hostcallback.userData = nullptr;
+        }
+        return noErr;
+        break;
+
 #ifdef DUAL_SCHEDULING_ENABLED
 
       case kMusicDeviceProperty_DualSchedulingMode:
@@ -772,7 +807,12 @@ OSStatus WrapAsAUV2::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         break;
     }
   }
-  return Base::SetProperty(inID, inScope, inElement, inData, inDataSize);
+  auto xxx = Base::SetProperty(inID, inScope, inElement, inData, inDataSize);
+  if (xxx == kAudioUnitErr_InvalidElement)
+  {
+    ;
+  }
+  return xxx;
 }
 
 OSStatus WrapAsAUV2::SetRenderNotification(AURenderCallback inProc, void* inRefCon)
@@ -849,7 +889,7 @@ void WrapAsAUV2::activateCLAP()
     _plugin->setSampleRate(Output(0).GetStreamFormat().mSampleRate);
 
     _processAdapter->setupProcessing(Inputs(), Outputs(), _plugin->_plugin, _plugin->_ext._params, this,
-                                     &_parametertree, maxSampleFrames, _midi_preferred_dialect);
+                                     &_parametertree, this, maxSampleFrames, _midi_preferred_dialect);
 
     _plugin->activate();
     _plugin->start_processing();
@@ -866,6 +906,7 @@ void WrapAsAUV2::deactivateCLAP()
     _plugin->stop_processing();
     _plugin->deactivate();
   }
+  _midioutput_hostcallback = {nullptr, nullptr};
 }
 
 OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags& inFlags, const AudioTimeStamp& inTimeStamp,
@@ -901,7 +942,24 @@ OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags& inFlags, const AudioTime
 
     _processAdapter->process(data);
 
-    // currently, the output events are processed directly
+    {
+      for (auto& i : _midi_outports)
+      {
+        if (i->hasEvents())
+        {
+          if (_midioutput_hostcallback.midiOutputCallback)
+          {
+            auto userd = _midioutput_hostcallback.userData;
+            auto pktlist = i->getMIDIPacketList();
+            auto fn = _midioutput_hostcallback.midiOutputCallback;
+            OSStatus result = (*fn)(userd, &inTimeStamp, i->_auport, pktlist);
+            assert(result == noErr);
+          }
+        }
+        i->clear();
+      }
+    }
+    // currently, the output events a     re processed directly
     //    _processAdapter->foreachOutputEvent([this]
     //                                        ()
     //                                        {}
@@ -1286,6 +1344,58 @@ UInt32 WrapAsAUV2::GetAudioChannelLayout(AudioUnitScope scope, AudioUnitElement 
   // TODO: This is never called so the layout is never found
   LOGINFO("[clap-wrapper] GetAudioChannelLayout");
   return Base::GetAudioChannelLayout(scope, element, outLayoutPtr, outWritable);
+}
+
+void WrapAsAUV2::send(const Clap::AUv2::clap_multi_event_t& event)
+{
+  auto type = event.header.type;
+  switch (type)
+  {
+    case CLAP_EVENT_NOTE_ON:
+    {
+      auto portid = 1;  // event.note.port_index;
+      for (auto& i : _midi_outports)
+      {
+        if (i->_info.id == portid)
+        {
+          i->addNoteOn(event.note.channel, event.note.key, event.note.velocity * 127.f);
+          break;
+        }
+      }
+    }
+    break;
+    case CLAP_EVENT_NOTE_OFF:
+    {
+      auto portid = 1;  // event.note.port_index;
+      for (auto& i : _midi_outports)
+      {
+        if (i->_info.id == portid)
+        {
+          i->addNoteOff(event.note.channel, event.note.key, event.note.velocity * 127.f);
+          break;
+        }
+      }
+    }
+    break;
+    case CLAP_EVENT_MIDI:
+    {
+      auto portid = event.midi.port_index;
+      for (auto& i : _midi_outports)
+      {
+        if (i->_info.id == portid)
+        {
+          i->addMIDI3Byte(event.midi.data);
+          break;
+        }
+      }
+    }
+    break;
+  }
+#if 0
+  MIDIEventList list;
+  MIDIEventListInit(list, MIDIProtocolID protocolkMIDIProtocol_1_0);
+  MIDIEventListAdd(list, <#ByteCount listSize#>, <#MIDIEventPacket * _Nonnull curPacket#>, <#MIDITimeStamp time#>, <#ByteCount wordCount#>, <#const UInt32 * _Nonnull words#>)
+#endif
 }
 
 }  // namespace free_audio::auv2_wrapper

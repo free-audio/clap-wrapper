@@ -42,7 +42,8 @@ ProcessAdapter::~ProcessAdapter()
 void ProcessAdapter::setupProcessing(ausdk::AUScope& audioInputs, ausdk::AUScope& audioOutputs,
                                      const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params,
                                      Clap::IAutomation* automationInterface, ParameterTree* parameters,
-                                     uint32_t numMaxSamples, uint32_t preferredMIDIDialect)
+                                     IMIDIOutputs* midiouts, uint32_t numMaxSamples,
+                                     uint32_t preferredMIDIDialect)
 {
   _plugin = plugin;
   _ext_params = ext_params;
@@ -50,6 +51,8 @@ void ProcessAdapter::setupProcessing(ausdk::AUScope& audioInputs, ausdk::AUScope
   _parameters = parameters;
 
   _preferred_midi_dialect = preferredMIDIDialect;
+
+  _midiouts = midiouts;
 
   // rewrite the buffer structures
   _audioInputScope = &audioInputs;
@@ -318,45 +321,13 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
   switch (event->type)
   {
     case CLAP_EVENT_NOTE_ON:
-    {
-      auto nevt = reinterpret_cast<const clap_event_note*>(event);
-#if 0
-      Steinberg::Vst::Event oe{};
-      oe.type = Steinberg::Vst::Event::kNoteOnEvent;
-      oe.noteOn.channel = nevt->channel;
-      oe.noteOn.pitch = nevt->key;
-      oe.noteOn.velocity = nevt->velocity;
-      oe.noteOn.length = 0;
-      oe.noteOn.tuning = 0.0f;
-      oe.noteOn.noteId = nevt->note_id;
-      oe.busIndex = 0;  // FIXME - multi-out midi still needs work
-      oe.sampleOffset = nevt->header.time;
-
-      if (_vstdata && _vstdata->outputEvents) _vstdata->outputEvents->addEvent(oe);
-#endif
-      (void)nevt;
-    }
-      return true;
     case CLAP_EVENT_NOTE_OFF:
+    case CLAP_EVENT_MIDI:
     {
-      auto nevt = reinterpret_cast<const clap_event_note*>(event);
-#if 0
-      Steinberg::Vst::Event oe{};
-      oe.type = Steinberg::Vst::Event::kNoteOffEvent;
-      oe.noteOff.channel = nevt->channel;
-      oe.noteOff.pitch = nevt->key;
-      oe.noteOff.velocity = nevt->velocity;
-      oe.noteOn.length = 0;
-      oe.noteOff.tuning = 0.0f;
-      oe.noteOff.noteId = nevt->note_id;
-      oe.busIndex = 0;  // FIXME - multi-out midi still needs work
-      oe.sampleOffset = nevt->header.time;
-
-      if (_vstdata && _vstdata->outputEvents) _vstdata->outputEvents->addEvent(oe);
-#endif
-      (void)nevt;
-    }
+      auto nevt = reinterpret_cast<const clap_multi_event_t*>(event);
+      _midiouts->send(*nevt);
       return true;
+    }
     case CLAP_EVENT_NOTE_END:
     case CLAP_EVENT_NOTE_CHOKE:
       removeFromActiveNotes((const clap_event_note*)(event));
@@ -440,7 +411,6 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
       return true;
       break;
 
-    case CLAP_EVENT_MIDI:
     case CLAP_EVENT_MIDI_SYSEX:
     case CLAP_EVENT_MIDI2:
       return true;
@@ -540,7 +510,7 @@ void ProcessAdapter::addMIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData
       this->_eventindices.emplace_back((this->_events.size()));
       this->_events.emplace_back(n);
       removeFromActiveNotes(&n.note);
-
+      this->output_events_try_push(&this->_out_events, &n.header);
       break;
     case 9:  // note on
 
@@ -569,6 +539,9 @@ void ProcessAdapter::addMIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData
       this->_eventindices.emplace_back((this->_events.size()));
       this->_events.emplace_back(n);
       addToActiveNotes(&n.note);
+
+      this->output_events_try_push(&this->_out_events, &n.header);
+
       break;
     case 0xA:  // any other MIDI message with 1 or 2 data bytes
     case 0xB:
