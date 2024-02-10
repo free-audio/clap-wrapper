@@ -67,6 +67,8 @@ class IHost
   virtual bool register_timer(uint32_t period_ms, clap_id* timer_id) = 0;
   virtual bool unregister_timer(clap_id timer_id) = 0;
 
+  virtual const char* host_get_name() = 0;
+
 #if LIN
   virtual bool register_fd(int fd, clap_posix_fd_flags_t flags) = 0;
   virtual bool modify_fd(int fd, clap_posix_fd_flags_t flags) = 0;

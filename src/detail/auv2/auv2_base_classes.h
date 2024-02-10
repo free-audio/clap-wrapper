@@ -423,6 +423,11 @@ class WrapAsAUV2 : public ausdk::AUBase,
     return false;
   }
 
+  const char* host_get_name() override
+  {
+    return "Clap-As-AUV2-Wrapper";
+  }
+
   // --------------- IAutomation
   void onBeginEdit(clap_id id) override;
   void onPerformEdit(const clap_event_param_value_t* value) override;
