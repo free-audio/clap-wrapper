@@ -69,24 +69,30 @@ struct ProcessData
   Float64 _currentDownBeat;
 };
 
+typedef union clap_multi_event
+{
+  clap_event_header_t header;
+  clap_event_note_t note;
+  clap_event_midi_t midi;
+  clap_event_midi_sysex_t sysex;
+  clap_event_param_value_t param;
+  clap_event_note_expression_t noteexpression;
+} clap_multi_event_t;
+
+class IMIDIOutputs
+{
+ public:
+  virtual ~IMIDIOutputs(){};
+  virtual void send(const clap_multi_event_t& event) = 0;
+};
+
 class ProcessAdapter
 {
  public:
-  typedef union clap_multi_event
-  {
-    clap_event_header_t header;
-    clap_event_note_t note;
-    clap_event_midi_t midi;
-    clap_event_midi_sysex_t sysex;
-    clap_event_param_value_t param;
-    clap_event_note_expression_t noteexpression;
-  } clap_multi_event_t;
-
   void setupProcessing(ausdk::AUScope& audioInputs, ausdk::AUScope& audioOutputs,
                        const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params,
                        Clap::IAutomation* automationInterface, ParameterTree* parameters,
-
-                       uint32_t numMaxSamples, uint32_t preferredMIDIDialect);
+                       IMIDIOutputs* midiouts, uint32_t numMaxSamples, uint32_t preferredMIDIDialect);
 
   void process(ProcessData& data);  // AU Data
   void flush();
@@ -156,6 +162,8 @@ class ProcessAdapter
 
   Clap::IAutomation* _automation = nullptr;
   ParameterTree* _parameters = nullptr;
+
+  IMIDIOutputs* _midiouts = nullptr;
 
   // AU Process Data?
   ausdk::AUScope* _audioInputScope = nullptr;

@@ -172,7 +172,8 @@ function(target_add_auv2_wrapper)
             "-framework Foundation"
             "-framework CoreFoundation"
             "-framework AppKit"
-            "-framework AudioToolbox")
+            "-framework AudioToolbox"
+            "-framework CoreMIDI")
 
     set_target_properties(${AUV2_TARGET} PROPERTIES
             BUNDLE True
