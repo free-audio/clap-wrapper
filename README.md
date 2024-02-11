@@ -13,8 +13,8 @@ Our [wiki](https://github.com/free-audio/clap-wrapper/wiki) is the root of our d
 Currently the `clap-wrapper` supports projecting a CLAP into
 
 - VST3
+- Audio Unit v2 (AUv2)
 - A Simple Standalone
-- A mostly working - but incomplete - AUv2
 
 The `clap-wrapper` also provides a variety of deployment,
 linkage and build time options to CLAP developers.
@@ -31,6 +31,8 @@ or OS, but uses that host to load your clap.
 
 And with that, voila, your CLAP can appear in a VST3 or AUv2
 host or can appear to be a self contained standalone executable.
+Available features in CLAP are transposed to equivalent features
+in the target format.
 
 ## Getting Started
 
