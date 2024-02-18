@@ -49,10 +49,6 @@ tresult PLUGIN_API ClapAsVst3::initialize(FUnknown* context)
       _plugin = Clap::Plugin::createInstance(*_library, _libraryIndex, this);
     }
     result = (_plugin->initialize()) ? kResultOk : kResultFalse;
-    if (result)
-    {
-      _useIMidiMapping = checkMIDIDialectSupport();
-    }
   }
 
   return result;
@@ -488,6 +484,8 @@ Vst::UnitID ClapAsVst3::getOrCreateUnitInfo(const char* modulename)
 
 void ClapAsVst3::setupWrapperSpecifics(const clap_plugin_t* plugin)
 {
+  _useIMidiMapping = checkMIDIDialectSupport();
+
   _vst3specifics = (clap_plugin_as_vst3_t*)plugin->get_extension(plugin, CLAP_PLUGIN_AS_VST3);
   if (_vst3specifics)
   {

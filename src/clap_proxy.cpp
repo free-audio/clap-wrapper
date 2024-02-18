@@ -235,6 +235,10 @@ void Plugin::schnick()
 
 bool Plugin::initialize()
 {
+  // first check for specifics, so they are present in the
+  // setup of busses
+  _parentHost->setupWrapperSpecifics(_plugin);
+
   if (_ext._audioports)
   {
     _parentHost->setupAudioBusses(_plugin, _ext._audioports);
@@ -248,7 +252,6 @@ bool Plugin::initialize()
     _parentHost->setupParameters(_plugin, _ext._params);
   }
 
-  _parentHost->setupWrapperSpecifics(_plugin);
   return true;
 }
 
