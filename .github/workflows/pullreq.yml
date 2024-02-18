@@ -133,6 +133,10 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Apt Update
+        if: ${{ matrix.run_aptget }}
+        run: sudo apt-get update
+
       - name: Get Deps
         if: ${{ matrix.run_aptget }}
         run: sudo apt-get install -y alsa alsa-tools libasound2-dev libjack-dev libgtk-3-dev

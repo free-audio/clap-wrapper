@@ -158,7 +158,7 @@ Plugin::Plugin(IHost* host)
           host->host_get_name(),
           "defiant nerd",
           "https://www.defiantnerd.com",
-          "0.0.1",
+          CLAP_WRAPPER_VERSION,
           Plugin::clapExtension,
           Plugin::clapRequestRestart,
           Plugin::clapRequestProcess,

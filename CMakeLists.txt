@@ -39,6 +39,7 @@ project(clap-wrapper
 	VERSION 0.7.1
 	DESCRIPTION "CLAP-as-X wrappers"
 )
+set(CLAP_WRAPPER_VERSION "${CMAKE_PROJECT_VERSION}" CACHE STRING "Version of the wrapper project")
 
 if (APPLE)
 	enable_language(OBJC)
