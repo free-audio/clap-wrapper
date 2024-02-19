@@ -952,7 +952,7 @@ OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags& inFlags, const AudioTime
             auto userd = _midioutput_hostcallback.userData;
             auto pktlist = i->getMIDIPacketList();
             auto fn = _midioutput_hostcallback.midiOutputCallback;
-            OSStatus result = (*fn)(userd, &inTimeStamp, i->_auport, pktlist);
+            [[maybe_unused]] OSStatus result = (*fn)(userd, &inTimeStamp, i->_auport, pktlist);
             assert(result == noErr);
           }
         }
