@@ -132,7 +132,7 @@ tresult PLUGIN_API ClapAsVst3::getState(IBStream* state)
 
 uint32 PLUGIN_API ClapAsVst3::getLatencySamples()
 {
-  if (_plugin->_ext._latency)
+  if (_plugin->_ext._latency && _active)
   {
     return _plugin->_ext._latency->get(_plugin->_plugin);
   }
