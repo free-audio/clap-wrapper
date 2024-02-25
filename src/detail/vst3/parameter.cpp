@@ -160,14 +160,16 @@ Vst3Parameter* Vst3Parameter::create(uint8_t bus, uint8_t channel, uint8_t cc, V
   str8ToStr16(v.title, fullname.c_str(), str16BufferSize(v.title));
   // TODO: string shrink algorithm shortening the string a bit
   str8ToStr16(v.shortTitle, name, str16BufferSize(v.shortTitle));
-  v.units[0] = 0;  // unfortunately, CLAP has no unit for parameter values
-  v.unitId = channel + 1;
+
+  v.units[0] = 0;  // nothing in the "unit" field
+  // the unit will not be set here, but outside
+  // v.unitId = channel + 1;
 
   v.defaultNormalizedValue = 0;
   v.flags = Vst::ParameterInfo::kNoFlags;
   if (cc == Vst::ControllerNumbers::kCtrlProgramChange)
   {
-    v.flags |= Vst::ParameterInfo::kIsProgramChange;
+    v.flags |= Vst::ParameterInfo::kIsProgramChange | Vst::ParameterInfo::kCanAutomate;
     v.stepCount = 128;
   }
 

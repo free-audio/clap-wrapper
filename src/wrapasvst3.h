@@ -164,10 +164,25 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
       int32 busIndex, int16 channel, Vst::NoteExpressionTypeID id, const Vst::TChar* string /*in*/,
       Vst::NoteExpressionValue& valueNormalized /*out*/) override;
 
+  //---IUnitInfo--------------------------------------------------------------------------
+
+  tresult PLUGIN_API getUnitByBus(Vst::MediaType /*type*/, Vst::BusDirection /*dir*/, int32 /*busIndex*/,
+                                  int32 /*channel*/, Vst::UnitID& /*unitId*/ /*out*/) SMTG_OVERRIDE;
+
+#if 0
+	// units selection --------------------
+	Vst::UnitID PLUGIN_API getSelectedUnit () SMTG_OVERRIDE { return selectedUnit; }
+	tresult PLUGIN_API selectUnit (Vst::UnitID unitId) SMTG_OVERRIDE
+	{
+		selectedUnit = unitId;
+		return kResultTrue;
+	}
+#endif
+
   //---Interface--------------------------------------------------------------------------
   OBJ_METHODS(ClapAsVst3, SingleComponentEffect)
   DEFINE_INTERFACES
-  // since the macro above opens a local function, this code is being executed during QueryInterface() :)
+  // dynamic interfaces
   if (::Steinberg::FUnknownPrivate::iidEqual(iid, IMidiMapping::iid))
   {
     // when queried for the IMididMapping interface, check if the CLAP supports MIDI dialect on the MIDI Input busses and only return IMidiMapping then
@@ -176,6 +191,12 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
       DEF_INTERFACE(IMidiMapping)
     }
   }
+  // add any other interfaces here:
+  //if (::Steinberg::FUnknownPrivate::iidEqual(iid, IExampleSomething::iid))
+  //{
+  //  DEF_INTERFACE(IExampleSomething)
+  //}
+
   DEF_INTERFACE(INoteExpressionController)
   // tresult PLUGIN_API queryInterface(const TUID iid, void** obj) override;
   END_DEFINE_INTERFACES(SingleComponentEffect)
@@ -323,4 +344,5 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
 #else
       clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_PRESSURE;
 #endif
+  std::vector<Vst::UnitID> _MIDIUnits;
 };

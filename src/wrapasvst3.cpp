@@ -239,6 +239,14 @@ tresult PLUGIN_API ClapAsVst3::getParamStringByValue(Vst::ParamID id, Vst::Param
   auto param = (Vst3Parameter*)this->getParameterObject(id);
   auto val = param->asClapValue(valueNormalized);
 
+  if (param->getInfo().flags & Vst::ParameterInfo::kIsProgramChange)
+  {
+    UString wrapper(&string[0], str16BufferSize(Steinberg::Vst::String128));
+
+    wrapper.assign("Program", 8);
+    return kResultOk;
+  }
+
   char outbuf[128];
   memset(outbuf, 0, sizeof(outbuf));
   if (this->_plugin->_ext._params->value_to_text(_plugin->_plugin, param->id, val, outbuf, 127))
@@ -282,8 +290,11 @@ tresult PLUGIN_API ClapAsVst3::getMidiControllerAssignment(int32 busIndex, int16
   // for my first Event bus and for MIDI channel 0 and for MIDI CC Volume only
   if (busIndex == 0)  // && channel == 0) // && midiControllerNumber == Vst::kCtrlVolume)
   {
-    id = _IMidiMappingIDs[channel][midiControllerNumber];
-    return kResultTrue;
+    if (midiControllerNumber < Vst::kCountCtrlNumber)  // with program change
+    {
+      id = _IMidiMappingIDs[channel][midiControllerNumber];
+      return kResultTrue;
+    }
   }
   return kResultFalse;
 }
@@ -331,12 +342,22 @@ tresult ClapAsVst3::getNoteExpressionValueByString(int32 /*busIndex*/, int16 /*c
 
 #endif
 
-////-----------------------------------------------------------------------------
-//tresult PLUGIN_API ClapAsVst3::queryInterface(const TUID iid, void** obj)
-//{
-//	  DEF_INTERFACE(IMidiMapping)
-//		return SingleComponentEffect::queryInterface(iid, obj);
-//}
+tresult ClapAsVst3::getUnitByBus(Vst::MediaType type, Vst::BusDirection dir, int32 busIndex,
+                                 int32 channel, Vst::UnitID& unitId /*out*/)
+{
+  if (type == Vst::MediaTypes::kEvent && dir == Vst::BusDirections::kInput)
+  {
+    if (busIndex == 0)
+    {
+      if ((channel >= 0) && (channel < (Steinberg::int32)_MIDIUnits.size()))
+      {
+        unitId = _MIDIUnits[channel];
+        return kResultTrue;
+      }
+    }
+  }
+  return kResultFalse;
+}
 
 static Vst::SpeakerArrangement speakerArrFromPortType(const char* port_type)
 {
@@ -614,9 +635,21 @@ void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
     // find free tags for IMidiMapping
     Vst::ParamID x = 0xb00000;
     _IMidiMappingEasy = true;
+    _MIDIUnits.clear();
 
     for (uint8_t channel = 0; channel < _numMidiChannels; channel++)
     {
+      // the unit for that channel
+      Vst::UnitInfo midiUnitInfo;
+
+      midiUnitInfo.id = (decltype(midiUnitInfo.id))units.size();
+      midiUnitInfo.parentUnitId = 0;  // parented in the root unit
+      midiUnitInfo.programListId = Vst::kNoProgramListId;
+
+      auto name = fmt::format("MIDI Channel {}", channel + 1);
+
+      VST3::StringConvert::convert(name, midiUnitInfo.name);
+
       for (int i = 0; i < Vst::ControllerNumbers::kCountCtrlNumber; ++i)
       {
         while (parameters.getParameter(x))
@@ -627,8 +660,45 @@ void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
           x++;
         }
         auto p = Vst3Parameter::create(0, channel, i, x);
+        p->setUnitID(midiUnitInfo.id);
         parameters.addParameter(p);
         _IMidiMappingIDs[channel][i] = x++;
+      }
+      // if (false)
+      {
+        // program change parameter
+        while (parameters.getParameter(x))
+        {
+          // if this happens there is a index clash between the parameter ids
+          // and the ones reserved for the IMidiMapping
+          _IMidiMappingEasy = false;
+          x++;
+        }
+        auto p = Vst3Parameter::create(0, channel, Vst::ControllerNumbers::kCtrlProgramChange, x);
+
+        p->setUnitID(midiUnitInfo.id);
+        _MIDIUnits.emplace_back(midiUnitInfo.id);
+
+        parameters.addParameter(p);
+
+        auto programlist = new Steinberg::Vst::ProgramList(STR16("Program Changes"), x, midiUnitInfo.id);
+        for (int pc = 0; pc < 128; ++pc)
+        {
+          auto programname = fmt::format("Program {}", pc + 1);
+
+          programlist->addProgram(VST3::StringConvert::convert(programname).c_str());
+        }
+        this->addProgramList(programlist);
+
+        auto newUnit = new Vst::Unit(midiUnitInfo);
+
+        addUnit(newUnit);
+
+        // the programlist ID is actually the parameter ID
+        newUnit->setProgramListID(x);
+
+        //_IMidiMappingIDs[channel][Vst::ControllerNumbers::kCtrlProgramChange] = x++;
+        x++;
       }
     }
   }
