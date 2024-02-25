@@ -349,7 +349,7 @@ tresult ClapAsVst3::getUnitByBus(Vst::MediaType type, Vst::BusDirection dir, int
   {
     if (busIndex == 0)
     {
-      if (channel >= 0 && channel < _MIDIUnits.size())
+      if ((channel >= 0) && (channel < (Steinberg::int32)_MIDIUnits.size()))
       {
         unitId = _MIDIUnits[channel];
         return kResultTrue;
