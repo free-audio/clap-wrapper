@@ -241,13 +241,12 @@ tresult PLUGIN_API ClapAsVst3::getParamStringByValue(Vst::ParamID id, Vst::Param
 
   if (param->getInfo().flags & Vst::ParameterInfo::kIsProgramChange)
   {
-        UString wrapper(&string[0], str16BufferSize(Steinberg::Vst::String128));
+    UString wrapper(&string[0], str16BufferSize(Steinberg::Vst::String128));
 
     wrapper.assign("Program", 8);
     return kResultOk;
-
   }
-  
+
   char outbuf[128];
   memset(outbuf, 0, sizeof(outbuf));
   if (this->_plugin->_ext._params->value_to_text(_plugin->_plugin, param->id, val, outbuf, 127))
@@ -644,7 +643,7 @@ void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
       Vst::UnitInfo midiUnitInfo;
 
       midiUnitInfo.id = (decltype(midiUnitInfo.id))units.size();
-      midiUnitInfo.parentUnitId = 0; // parented in the root unit
+      midiUnitInfo.parentUnitId = 0;  // parented in the root unit
       midiUnitInfo.programListId = Vst::kNoProgramListId;
 
       auto name = fmt::format("MIDI Channel {}", channel + 1);
@@ -685,17 +684,17 @@ void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
         auto programlist = new Steinberg::Vst::ProgramList(STR16("Program Changes"), x, midiUnitInfo.id);
         for (int pc = 0; pc < 128; ++pc)
         {
-          auto programname = fmt::format("Program {}", pc+1);
+          auto programname = fmt::format("Program {}", pc + 1);
 
           programlist->addProgram(VST3::StringConvert::convert(programname).c_str());
-        }        
+        }
         this->addProgramList(programlist);
 
         auto newUnit = new Vst::Unit(midiUnitInfo);
 
         addUnit(newUnit);
 
-        // the programlist ID is actually the parameter ID 
+        // the programlist ID is actually the parameter ID
         newUnit->setProgramListID(x);
 
         //_IMidiMappingIDs[channel][Vst::ControllerNumbers::kCtrlProgramChange] = x++;

@@ -166,7 +166,7 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
 
   //---IUnitInfo--------------------------------------------------------------------------
 
-	tresult PLUGIN_API getUnitByBus(Vst::MediaType /*type*/, Vst::BusDirection /*dir*/, int32 /*busIndex*/,
+  tresult PLUGIN_API getUnitByBus(Vst::MediaType /*type*/, Vst::BusDirection /*dir*/, int32 /*busIndex*/,
                                   int32 /*channel*/, Vst::UnitID& /*unitId*/ /*out*/) SMTG_OVERRIDE;
 
 #if 0
@@ -177,7 +177,7 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
 		selectedUnit = unitId;
 		return kResultTrue;
 	}
-  #endif
+#endif
 
   //---Interface--------------------------------------------------------------------------
   OBJ_METHODS(ClapAsVst3, SingleComponentEffect)
@@ -196,7 +196,7 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   //{
   //  DEF_INTERFACE(IExampleSomething)
   //}
-  
+
   DEF_INTERFACE(INoteExpressionController)
   // tresult PLUGIN_API queryInterface(const TUID iid, void** obj) override;
   END_DEFINE_INTERFACES(SingleComponentEffect)
@@ -344,5 +344,5 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
 #else
       clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_PRESSURE;
 #endif
-   std::vector<Vst::UnitID> _MIDIUnits;
+  std::vector<Vst::UnitID> _MIDIUnits;
 };
