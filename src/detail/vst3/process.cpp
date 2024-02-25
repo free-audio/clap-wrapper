@@ -320,13 +320,21 @@ void ProcessAdapter::process(Steinberg::Vst::ProcessData& data)
                 n.midi.data[2] = 0;
                 break;
               case Vst::ControllerNumbers::kPitchBend:
-              {
-                auto val = (uint16_t)param->asClapValue(value);
-                n.midi.data[0] = 0xE0 | param->channel;  // $Ec
-                n.midi.data[1] = (val & 0x7F);           // LSB
-                n.midi.data[2] = (val >> 7) & 0x7F;      // MSB
-              }
-              break;
+                {
+                  auto val = (uint16_t)param->asClapValue(value);
+                  n.midi.data[0] = 0xE0 | param->channel;  // $Ec
+                  n.midi.data[1] = (val & 0x7F);           // LSB
+                  n.midi.data[2] = (val >> 7) & 0x7F;      // MSB
+                }
+                break;
+                case Vst::ControllerNumbers::kCtrlProgramChange:
+                {
+                  auto val = (uint16_t)param->asClapValue(value);
+                  n.midi.data[0] = 0xC0 | param->channel;  // $Cc
+                  n.midi.data[1] = (val & 0x7F);           // only one byte
+                  n.midi.data[2] = 0;
+                }
+                break;
               default:
                 n.midi.data[0] = 0xB0 | param->channel;
                 n.midi.data[1] = param->controller;
