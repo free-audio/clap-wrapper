@@ -87,6 +87,11 @@ tresult PLUGIN_API ClapAsVst3::setActive(TBool state)
         _expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_TUNING);
     updateAudioBusses();
 
+    if (_missedLatencyRequest)
+    {
+      latency_changed();
+    }
+
     _os_attached.on();
   }
   if (!state)
@@ -132,11 +137,19 @@ tresult PLUGIN_API ClapAsVst3::getState(IBStream* state)
 
 uint32 PLUGIN_API ClapAsVst3::getLatencySamples()
 {
-  if (_plugin->_ext._latency && _active)
+  if (!_plugin->_ext._latency)
   {
-    return _plugin->_ext._latency->get(_plugin->_plugin);
+    return 0;
   }
-  return 0;
+
+  if (!_active)
+  {
+    _missedLatencyRequest = true;
+    return 0;
+  }
+
+  _missedLatencyRequest = false;
+  return _plugin->_ext._latency->get(_plugin->_plugin);
 }
 
 uint32 PLUGIN_API ClapAsVst3::getTailSamples()
