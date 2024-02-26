@@ -897,12 +897,13 @@ void ClapAsVst3::onIdle()
     std::lock_guard lock(_processingLock);
 
     _requestedFlush = false;
-    if (!_processing)
+    if (!_active)
     {
       // setup a ProcessAdapter just for flush with no audio
       Clap::ProcessAdapter pa;
       pa.setupProcessing(_plugin->_plugin, _plugin->_ext._params, audioInputs, audioOutputs, 0, 0, 0,
                          this->parameters, componentHandler, nullptr, false, false);
+      auto thisFn = _plugin->AlwaysMainThread();
       pa.flush();
     }
   }
