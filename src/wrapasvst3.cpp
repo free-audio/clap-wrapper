@@ -773,7 +773,9 @@ void ClapAsVst3::request_callback()
 
 void ClapAsVst3::restartPlugin()
 {
-  if (componentHandler) componentHandler->restartComponent(Vst::RestartFlags::kReloadComponent);
+  if (componentHandler)
+    componentHandler->restartComponent(Vst::RestartFlags::kIoChanged |
+                                       Vst::RestartFlags::kLatencyChanged);
 }
 
 void ClapAsVst3::onBeginEdit(clap_id id)
