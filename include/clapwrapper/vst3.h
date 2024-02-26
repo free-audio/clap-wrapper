@@ -16,11 +16,10 @@
 #endif
 
 // the factory extension
-static const CLAP_CONSTEXPR char CLAP_PLUGIN_FACTORY_INFO_VST3[] =
-    "clap.plugin-factory-info-as-vst3.draft0";
+static const CLAP_CONSTEXPR char CLAP_PLUGIN_FACTORY_INFO_VST3[] = "clap.plugin-factory-info-as-vst3/0";
 
 // the plugin extension
-static const CLAP_CONSTEXPR char CLAP_PLUGIN_AS_VST3[] = "clap.plugin-info-as-vst3.draft0";
+static const CLAP_CONSTEXPR char CLAP_PLUGIN_AS_VST3[] = "clap.plugin-info-as-vst3/0";
 
 typedef uint8_t array_of_16_bytes[16];
 
@@ -77,6 +76,8 @@ typedef uint8_t array_of_16_bytes[16];
 
   all members are optional when set to nullptr
   if not provided, the wrapper code will use/generate appropriate values
+
+  this struct is being returned by the plugin in clap_plugin_factory_as_vst3_t::get_vst3_info()
 */
 
 typedef struct clap_plugin_info_as_vst3
@@ -92,7 +93,7 @@ typedef struct clap_plugin_info_as_vst3
   all members are optional and can be set to nullptr
   if not provided, the wrapper code will use/generate appropriate values
 
-  retrieved when asking for factory CLAP_PLUGIN_FACTORY_INFO_VST3
+  retrieved when asking for factory CLAP_PLUGIN_FACTORY_INFO_VST3 by clap_entry::get_factory()
 */
 
 typedef struct clap_plugin_factory_as_vst3
@@ -125,6 +126,8 @@ enum clap_supported_note_expressions
 /*
   retrieve additional information for the plugin itself, if note expressions are being supported and if there
   is a limit in MIDI channels (to reduce the offered controllers etc. in the VST3 host)
+
+  This extension is optionally returned by the plugin when asked for extension CLAP_PLUGIN_AS_VST3
 */
 typedef struct clap_plugin_as_vst3
 {
