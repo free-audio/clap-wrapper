@@ -59,6 +59,10 @@ tresult PLUGIN_API ClapAsVst3::terminate()
   if (_plugin)
   {
     _os_attached.off();  // ensure we are detached
+    if (_active)
+    {
+      _plugin->deactivate();
+    }
     _plugin->terminate();
     _plugin.reset();
   }
@@ -111,6 +115,11 @@ tresult PLUGIN_API ClapAsVst3::setActive(TBool state)
 
 tresult PLUGIN_API ClapAsVst3::process(Vst::ProcessData& data)
 {
+  if (!_active || !_processing)
+  {
+    return kNotInitialized;
+  }
+
   auto thisFn = _plugin->AlwaysAudioThread();
   this->_processAdapter->process(data);
   return kResultOk;
