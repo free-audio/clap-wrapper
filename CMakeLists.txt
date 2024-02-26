@@ -36,7 +36,7 @@ option(CLAP_WRAPPER_WINDOWS_SINGLE_FILE "Build a single fine (rather than folder
 
 project(clap-wrapper
 	LANGUAGES C CXX
-	VERSION 0.7.1
+	VERSION 0.7.2
 	DESCRIPTION "CLAP-as-X wrappers"
 )
 set(CLAP_WRAPPER_VERSION "${CMAKE_PROJECT_VERSION}" CACHE STRING "Version of the wrapper project")
