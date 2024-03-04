@@ -59,6 +59,10 @@ tresult PLUGIN_API ClapAsVst3::terminate()
   if (_plugin)
   {
     _os_attached.off();  // ensure we are detached
+    if (_active)
+    {
+      _plugin->deactivate();
+    }
     _plugin->terminate();
     _plugin.reset();
   }
@@ -87,6 +91,11 @@ tresult PLUGIN_API ClapAsVst3::setActive(TBool state)
         _expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_TUNING);
     updateAudioBusses();
 
+    if (_missedLatencyRequest)
+    {
+      latency_changed();
+    }
+
     _os_attached.on();
   }
   if (!state)
@@ -106,6 +115,11 @@ tresult PLUGIN_API ClapAsVst3::setActive(TBool state)
 
 tresult PLUGIN_API ClapAsVst3::process(Vst::ProcessData& data)
 {
+  if (!_active || !_processing)
+  {
+    return kNotInitialized;
+  }
+
   auto thisFn = _plugin->AlwaysAudioThread();
   this->_processAdapter->process(data);
   return kResultOk;
@@ -132,11 +146,19 @@ tresult PLUGIN_API ClapAsVst3::getState(IBStream* state)
 
 uint32 PLUGIN_API ClapAsVst3::getLatencySamples()
 {
-  if (_plugin->_ext._latency)
+  if (!_plugin->_ext._latency)
   {
-    return _plugin->_ext._latency->get(_plugin->_plugin);
+    return 0;
   }
-  return 0;
+
+  if (!_active)
+  {
+    _missedLatencyRequest = true;
+    return 0;
+  }
+
+  _missedLatencyRequest = false;
+  return _plugin->_ext._latency->get(_plugin->_plugin);
 }
 
 uint32 PLUGIN_API ClapAsVst3::getTailSamples()
@@ -760,7 +782,9 @@ void ClapAsVst3::request_callback()
 
 void ClapAsVst3::restartPlugin()
 {
-  if (componentHandler) componentHandler->restartComponent(Vst::RestartFlags::kReloadComponent);
+  if (componentHandler)
+    componentHandler->restartComponent(Vst::RestartFlags::kIoChanged |
+                                       Vst::RestartFlags::kLatencyChanged);
 }
 
 void ClapAsVst3::onBeginEdit(clap_id id)
@@ -873,12 +897,13 @@ void ClapAsVst3::onIdle()
     std::lock_guard lock(_processingLock);
 
     _requestedFlush = false;
-    if (!_processing)
+    if (!_active)
     {
       // setup a ProcessAdapter just for flush with no audio
       Clap::ProcessAdapter pa;
       pa.setupProcessing(_plugin->_plugin, _plugin->_ext._params, audioInputs, audioOutputs, 0, 0, 0,
                          this->parameters, componentHandler, nullptr, false, false);
+      auto thisFn = _plugin->AlwaysMainThread();
       pa.flush();
     }
   }
