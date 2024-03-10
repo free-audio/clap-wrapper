@@ -280,6 +280,7 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   std::mutex _processingLock;
   std::atomic_bool _requestedFlush = false;
   std::atomic_bool _requestUICallback = false;
+  bool _missedLatencyRequest = false;
 
   // the queue from audiothread to UI thread
   ClapWrapper::detail::shared::fixedqueue<queueEvent, 8192> _queueToUI;
