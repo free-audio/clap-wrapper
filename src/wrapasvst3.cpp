@@ -59,6 +59,11 @@ tresult PLUGIN_API ClapAsVst3::terminate()
   if (_plugin)
   {
     _os_attached.off();  // ensure we are detached
+    if (_active)
+    {
+      // HOST has misbehaved
+      _plugin->deactivate();
+    }
     _plugin->terminate();
     _plugin.reset();
   }
@@ -86,6 +91,11 @@ tresult PLUGIN_API ClapAsVst3::setActive(TBool state)
         componentHandler, this, supportsnoteexpression,
         _expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_TUNING);
     updateAudioBusses();
+
+    if (_missedLatencyRequest)
+    {
+      latency_changed();
+    }
 
     _os_attached.on();
   }
@@ -137,11 +147,18 @@ tresult PLUGIN_API ClapAsVst3::getState(IBStream* state)
 
 uint32 PLUGIN_API ClapAsVst3::getLatencySamples()
 {
-  if (_plugin->_ext._latency && _active)
+  if (!_plugin->_ext._latency)
   {
-    return _plugin->_ext._latency->get(_plugin->_plugin);
+    return 0;
   }
-  return 0;
+  if (!_active)
+  {
+    _missedLatencyRequest = true;
+    return 0;
+  }
+
+  _missedLatencyRequest = false;
+  return _plugin->_ext._latency->get(_plugin->_plugin);
 }
 
 uint32 PLUGIN_API ClapAsVst3::getTailSamples()
@@ -950,7 +967,7 @@ void ClapAsVst3::onIdle()
     std::lock_guard lock(_processingLock);
 
     _requestedFlush = false;
-    if (!_processing)
+    if (!_active)
     {
       // setup a ProcessAdapter just for flush with no audio
       Clap::ProcessAdapter pa;
