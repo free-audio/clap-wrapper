@@ -798,6 +798,13 @@ void ClapAsVst3::param_rescan(clap_param_rescan_flags flags)
 
 void ClapAsVst3::param_clear(clap_id param, clap_param_clear_flags flags)
 {
+  auto vst3id = param & 0x7FFFFFFF;
+  // auto* p = (Vst3Parameter*)(parameters.getParameter(param & 0x7FFFFFFF));
+  if (flags & CLAP_PARAM_CLEAR_ALL)
+  {
+    this->parameters.removeParameter(vst3id);
+  }
+  // all other flags can not be really mapped to VST3 functions
 }
 
 // request_flush requests a defered call to flush if there is no processing
