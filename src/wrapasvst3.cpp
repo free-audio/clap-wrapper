@@ -61,7 +61,6 @@ tresult PLUGIN_API ClapAsVst3::terminate()
     _os_attached.off();  // ensure we are detached
     if (_active)
     {
-      // HOST has misbehaved
       _plugin->deactivate();
     }
     _plugin->terminate();
@@ -120,6 +119,7 @@ tresult PLUGIN_API ClapAsVst3::process(Vst::ProcessData& data)
   {
     return kNotInitialized;
   }
+
   auto thisFn = _plugin->AlwaysAudioThread();
 
   this->_processAdapter->process(data);
@@ -151,6 +151,7 @@ uint32 PLUGIN_API ClapAsVst3::getLatencySamples()
   {
     return 0;
   }
+
   if (!_active)
   {
     _missedLatencyRequest = true;
@@ -973,7 +974,6 @@ void ClapAsVst3::onIdle()
       Clap::ProcessAdapter pa;
       pa.setupProcessing(_plugin->_plugin, _plugin->_ext._params, audioInputs, audioOutputs, 0, 0, 0,
                          this->parameters, componentHandler, nullptr, false, false);
-
       auto thisFn = _plugin->AlwaysMainThread();  // just to pacify the clap-helper
 
       pa.flush();
