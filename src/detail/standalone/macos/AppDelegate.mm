@@ -10,7 +10,6 @@
 
 @interface AppDelegate ()
 
-@property(assign) IBOutlet NSWindow *window;
 @end
 
 @implementation AppDelegate
@@ -76,6 +75,7 @@
       freeaudio::clap_wrapper::standalone::mainCreatePlugin(entry, pid, pindex, 1, (char **)argv);
 
   [[self window] orderFrontRegardless];
+  [[self window] setDelegate:self];
 
   if (plugin->_ext._gui)
   {
@@ -88,6 +88,10 @@
 
     uint32_t w, h;
     ui->get_size(p, &w, &h);
+    if (ui->can_resize(p))
+    {
+      ui->adjust_size(p, &w, &h);
+    }
 
     NSView *view = [[self window] contentView];
 
@@ -128,6 +132,120 @@
 
   // Insert code here to tear down your application
   freeaudio::clap_wrapper::standalone::mainFinish();
+}
+
+- (IBAction)openAudioSettingsWindow:(id)sender
+{
+  NSLog(@"openAudioSettingsWindow: Unimplemented");
+}
+
+- (void)windowDidResize:(NSNotification *)notification
+{
+  auto plugin = freeaudio::clap_wrapper::standalone::getMainPlugin();
+
+  if (plugin && plugin->_ext._gui)
+  {
+    auto canRS = plugin->_ext._gui->can_resize(plugin->_plugin);
+    if (canRS)
+    {
+      auto w = [self window];
+      auto f = [w frame];
+      auto cr = [w contentRectForFrameRect:f];
+      plugin->_ext._gui->set_size(plugin->_plugin, cr.size.width, cr.size.height);
+    }
+  }
+}
+
+- (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)frameSize
+{
+  auto plugin = freeaudio::clap_wrapper::standalone::getMainPlugin();
+
+  if (plugin && plugin->_ext._gui)
+  {
+    auto w = [self window];
+    auto f = [w frame];
+    f.size = frameSize;
+    auto cr = [w contentRectForFrameRect:f];
+
+    auto canRS = plugin->_ext._gui->can_resize(plugin->_plugin);
+    if (!canRS)
+    {
+      uint32_t w, h;
+      plugin->_ext._gui->get_size(plugin->_plugin, &w, &h);
+      cr.size.width = w;
+      cr.size.height = h;
+    }
+    else
+    {
+      uint32_t w = frameSize.width, h = frameSize.height;
+      plugin->_ext._gui->adjust_size(plugin->_plugin, &w, &h);
+      cr.size.width = w;
+      cr.size.height = h;
+    }
+    auto fr = [w frameRectForContentRect:cr];
+    frameSize = fr.size;
+  }
+  return frameSize;
+}
+
+- (IBAction)saveDocumentAs:(id)sender
+{
+  NSSavePanel *savePanel = [NSSavePanel savePanel];
+  [savePanel setNameFieldStringValue:@"Untitled"];  //
+
+  if ([savePanel runModal] == NSModalResponseOK)
+  {
+    NSURL *documentURL = [savePanel URL];
+    auto fsp = fs::path{[[documentURL path] UTF8String]};
+    auto fn = fsp.replace_extension(".cwstream");
+
+    auto standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
+
+    try
+    {
+      standaloneHost->saveStandaloneAndPluginSettings(fn.parent_path(), fn.filename());
+    }
+    catch (const fs::filesystem_error &e)
+    {
+      NSAlert *alert = [[NSAlert alloc] init];
+      [alert setMessageText:@"Unable to save file"];
+      [alert setInformativeText:[[NSString alloc] initWithUTF8String:e.what()]];
+      [alert addButtonWithTitle:@"OK"];
+      [alert runModal];
+
+    }
+  }
+}
+
+- (IBAction)openDocument:(id)sender
+{
+  NSOpenPanel *openPanel = [NSOpenPanel openPanel];
+  [openPanel setCanChooseFiles:YES];
+  [openPanel setCanChooseDirectories:NO];
+  [openPanel setAllowedFileTypes:[NSArray arrayWithObject:@"cwstream"]];
+  [openPanel setAllowsMultipleSelection:NO];
+
+  if ([openPanel runModal] == NSModalResponseOK)
+  {
+    NSURL *selectedUrl = [[openPanel URLs] objectAtIndex:0];
+
+    auto fn = fs::path{[[selectedUrl path] UTF8String]};
+
+    auto standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
+
+    try
+    {
+      standaloneHost->tryLoadStandaloneAndPluginSettings(fn.parent_path(), fn.filename());
+    }
+    catch (const fs::filesystem_error &e)
+    {
+      NSAlert *alert = [[NSAlert alloc] init];
+      [alert setMessageText:@"Unable to open file"];
+      [alert setInformativeText:[[NSString alloc] initWithUTF8String:e.what()]];
+      [alert addButtonWithTitle:@"OK"];
+      [alert runModal];
+    }
+  }
 }
 
 @end
