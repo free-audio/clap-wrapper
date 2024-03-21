@@ -6,6 +6,7 @@
 #include <thread>
 #include <mutex>
 #include <optional>
+#include <tuple>
 
 #include "standalone_details.h"
 
@@ -232,10 +233,25 @@ struct StandaloneHost : Clap::IHost
   // in standalone_host.cpp
   void clapProcess(void *pOutput, const void *pInoput, uint32_t frameCount);
 
-  // In standalone_host_audio.cpp
+  // Actual audi IO In standalone_host_audio.cpp
   std::unique_ptr<RtAudio> rtaDac;
+  std::function<void(const std::string &)> displayAudioError{nullptr};
+  unsigned int audioInputDeviceID{0}, audioOutputDeviceID{0};
+  bool audioInputUsed{true}, audioOutputUsed{true};
+  int32_t currentSampleRate{0};
+  void guaranteeRtAudioDAC();
+  std::tuple<unsigned int, unsigned int, int32_t> getDefaultAudioInOutSampleRate();
   void startAudioThread();
+  void startAudioThreadOn(unsigned int inputDeviceID, uint32_t inputChannels, bool useInput,
+                          unsigned int outputDeviceID, uint32_t outputChannels, bool useOutput,
+                          int32_t sampleRate);
   void stopAudioThread();
+
+  void activatePlugin(int32_t sr, int32_t minBlock, int32_t maxBlock);
+  bool isActive{false};
+
+  std::vector<RtAudio::DeviceInfo> getInputAudioDevices();
+  std::vector<RtAudio::DeviceInfo> getOutputAudioDevices();
 
   clap_input_events inputEvents{};
   clap_output_events outputEvents{};
