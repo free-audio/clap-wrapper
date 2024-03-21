@@ -42,14 +42,16 @@ void StandaloneHost::startAudioThread()
   auto dnms = rtaDac->getDeviceNames();
 
   RtAudio::StreamParameters oParams;
-  oParams.nChannels = 2;
-  oParams.firstChannel = 0;
   oParams.deviceId = rtaDac->getDefaultOutputDevice();
+  auto outInfo = rtaDac->getDeviceInfo(oParams.deviceId);
+  oParams.nChannels = std::min(2U, outInfo.outputChannels);
+  oParams.firstChannel = 0;
 
   RtAudio::StreamParameters iParams;
-  iParams.nChannels = 2;
-  iParams.firstChannel = 0;
   iParams.deviceId = rtaDac->getDefaultInputDevice();
+  auto inInfo = rtaDac->getDeviceInfo(iParams.deviceId);
+  iParams.nChannels = std::min(2U, inInfo.inputChannels);
+  iParams.firstChannel = 0;
 
   LOG << "RtAudio Attached Devices" << std::endl;
   for (auto i = 0U; i < dids.size(); ++i)
@@ -89,19 +91,26 @@ void StandaloneHost::startAudioThread()
 void StandaloneHost::stopAudioThread()
 {
   LOG << "Shutting down audio" << std::endl;
-  running = false;
-
-  // bit of a hack. Wait until we get an ack from audio callback
-  for (auto i = 0; i < 10000 && !finishedRunning; ++i)
+  if (!rtaDac->isStreamRunning())
   {
-    using namespace std::chrono_literals;
-    std::this_thread::sleep_for(1ms);
-    // todo put a sleep here
+    LOG << "Stream not running" << std::endl;
   }
-  LOG << "Audio Thread acknowledges shutdown" << std::endl;
+  else
+  {
+    running = false;
 
-  if (rtaDac && rtaDac->isStreamRunning()) rtaDac->stopStream();
-  LOG << "RtAudio stream stopped" << std::endl;
+    // bit of a hack. Wait until we get an ack from audio callback
+    for (auto i = 0; i < 10000 && !finishedRunning; ++i)
+    {
+      using namespace std::chrono_literals;
+      std::this_thread::sleep_for(1ms);
+      // todo put a sleep here
+    }
+    LOG << "Audio Thread acknowledges shutdown" << std::endl;
+
+    if (rtaDac && rtaDac->isStreamRunning()) rtaDac->stopStream();
+    LOG << "RtAudio stream stopped" << std::endl;
+  }
   return;
 }
 }  // namespace freeaudio::clap_wrapper::standalone
