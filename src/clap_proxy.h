@@ -35,6 +35,8 @@ class Raise;
 class IHost
 {
  public:
+  virtual ~IHost() = default;
+
   virtual void mark_dirty() = 0;
   virtual void restartPlugin() = 0;
   virtual void request_callback() = 0;

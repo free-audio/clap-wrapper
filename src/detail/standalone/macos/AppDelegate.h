@@ -1,5 +1,13 @@
 #import <Cocoa/Cocoa.h>
 
-@interface AppDelegate : NSObject <NSApplicationDelegate>
+// @class AudioSettingsWindowDelegate;
+
+@interface AppDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate>
+{
+  // AudioSettingsWindowDelegate *audioSettingsWindowDelegate;
+}
+@property(assign) IBOutlet NSWindow *window;
+
+- (IBAction)openAudioSettingsWindow:(id)sender;
 
 @end
