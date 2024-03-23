@@ -233,7 +233,7 @@ struct StandaloneHost : Clap::IHost
   // in standalone_host.cpp
   void clapProcess(void *pOutput, const void *pInoput, uint32_t frameCount);
 
-  // Actual audi IO In standalone_host_audio.cpp
+  // Actual audio IO In standalone_host_audio.cpp
   std::unique_ptr<RtAudio> rtaDac;
   std::function<void(const std::string &)> displayAudioError{nullptr};
   unsigned int audioInputDeviceID{0}, audioOutputDeviceID{0};

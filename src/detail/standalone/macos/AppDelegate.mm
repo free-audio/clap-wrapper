@@ -438,7 +438,7 @@
     const auto sr = [[[sampleRateSelection selectedItem] title] integerValue];
 
     auto standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
-    standaloneHost->startAudioThreadOn(inId, 2, useIn, outId, 2, useOut, sr);
+    standaloneHost->startAudioThreadOn(inId, 2, useIn, outId, 2, useOut, (int32_t)sr);
 
     [self close];
   }
