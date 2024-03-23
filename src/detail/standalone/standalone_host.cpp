@@ -364,4 +364,24 @@ bool StandaloneHost::tryLoadStandaloneAndPluginSettings(const fs::path &fromDir,
   return true;
 }
 
+void StandaloneHost::activatePlugin(int32_t sr, int32_t minBlock, int32_t maxBlock)
+{
+  if (isActive)
+  {
+    clapPlugin->stop_processing();
+    clapPlugin->deactivate();
+    isActive = false;
+  }
+
+  LOG << "Activating plugin : sampleRate=" << sr << " blockBounds=" << minBlock << " to " << maxBlock
+      << std::endl;
+  clapPlugin->setSampleRate(sr);
+  clapPlugin->setBlockSizes(minBlock, maxBlock);
+  clapPlugin->activate();
+
+  clapPlugin->start_processing();
+
+  isActive = true;
+}
+
 }  // namespace freeaudio::clap_wrapper::standalone

@@ -70,12 +70,6 @@ std::shared_ptr<Clap::Plugin> mainCreatePlugin(const clap_plugin_entry *ee, cons
     }
   }
 
-  plugin->setSampleRate(48000);
-  plugin->setBlockSizes(32, 1024);
-  plugin->activate();
-
-  plugin->start_processing();
-
   return plugin;
 }
 
