@@ -30,13 +30,27 @@ int rtaCallback(void *outputBuffer, void *inputBuffer, unsigned int nBufferFrame
   return 0;
 }
 
-void rtaErrorCallback(RtAudioErrorType, const std::string &errorText)
+void rtaErrorCallback(RtAudioErrorType errorType, const std::string &errorText)
 {
-  LOG << "[ERROR] RtAudio reports '" << errorText << "'" << std::endl;
-  auto ae = getStandaloneHost()->displayAudioError;
-  if (ae)
+  if (errorType != RTAUDIO_OUTPUT_UNDERFLOW && errorType != RTAUDIO_INPUT_OVERFLOW)
   {
-    ae(errorText);
+    LOG << "[ERROR] RtAudio reports '" << errorText << "'"
+        << " " << errorType << std::endl;
+    auto ae = getStandaloneHost()->displayAudioError;
+    if (ae)
+    {
+      ae(errorText);
+    }
+  }
+  else
+  {
+    static bool reported = false;
+    if (!reported)
+    {
+      LOG << "[ERROR] RtAudio reports '" << errorText << "'" << std::endl;
+      LOG << "[ERROR] Supressing future underflow reports" << std::endl;
+      reported = true;
+    }
   }
 }
 
@@ -64,8 +78,18 @@ void StandaloneHost::startAudioThread()
 {
   guaranteeRtAudioDAC();
 
-  auto [in, out, sr] = getDefaultAudioInOutSampleRate();
-  startAudioThreadOn(in, 2, numAudioInputs > 0, out, 2, numAudioOutputs > 0, sr);
+  if (startupAudioSet)
+  {
+    auto in = startAudioIn;
+    auto out = startAudioOut;
+    auto sr = startSampleRate;
+    startAudioThreadOn(in, 2, in > 0 && numAudioInputs > 0, out, 2, out > 0 && numAudioOutputs > 0, sr);
+  }
+  else
+  {
+    auto [in, out, sr] = getDefaultAudioInOutSampleRate();
+    startAudioThreadOn(in, 2, numAudioInputs > 0, out, 2, numAudioOutputs > 0, sr);
+  }
 }
 
 std::vector<RtAudio::DeviceInfo> filterDevicesBy(const std::unique_ptr<RtAudio> &rtaDac,

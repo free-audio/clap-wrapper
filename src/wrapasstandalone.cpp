@@ -39,6 +39,18 @@ int main(int argc, char **argv)
 
 #endif
 
+#if LIN
+#if CLAP_WRAPPER_HAS_GTK3
+  freeaudio::clap_wrapper::standalone::linux_standalone::GtkGui gtkGui{};
+
+  if (!gtkGui.parseCommandLine(argc, argv))
+  {
+    return 1;
+  }
+  gtkGui.initialize(freeaudio::clap_wrapper::standalone::getStandaloneHost());
+#endif
+#endif
+
   if (!entry)
   {
     std::cerr << "Clap Standalone: No Entry as configured" << std::endl;
@@ -54,9 +66,6 @@ int main(int argc, char **argv)
 
 #if LIN
 #if CLAP_WRAPPER_HAS_GTK3
-  freeaudio::clap_wrapper::standalone::linux::GtkGui gtkGui{};
-
-  gtkGui.initialize(freeaudio::clap_wrapper::standalone::getStandaloneHost());
   gtkGui.setPlugin(plugin);
   gtkGui.runloop(argc, argv);
   gtkGui.shutdown();

@@ -248,6 +248,7 @@ const char *StandaloneHost::host_get_name()
 bool StandaloneHost::register_timer(uint32_t period_ms, clap_id *timer_id)
 {
 #if LIN && CLAP_WRAPPER_HAS_GTK3
+  assert(gtkGui);
   return gtkGui->register_timer(period_ms, timer_id);
 #else
   return false;
