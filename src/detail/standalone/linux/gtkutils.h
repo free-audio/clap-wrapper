@@ -5,12 +5,16 @@
 #include "detail/standalone/standalone_host.h"
 
 struct _GtkApplication;  // sigh their typedef screws up forward decls
-namespace freeaudio::clap_wrapper::standalone::linux
+struct _GtkWidget;
+
+namespace freeaudio::clap_wrapper::standalone::linux_standalone
 {
 struct GtkGui
 {
   _GtkApplication *app{nullptr};
   std::shared_ptr<Clap::Plugin> plugin;
+
+  bool parseCommandLine(int argc, char **argv);
 
   void initialize(freeaudio::clap_wrapper::standalone::StandaloneHost *);
   void setPlugin(std::shared_ptr<Clap::Plugin>);
@@ -18,9 +22,10 @@ struct GtkGui
   void shutdown();
 
   void setupPlugin(_GtkApplication *app);
+  bool resizePlugin(_GtkWidget *wid, uint32_t w, uint32_t h);
 
   clap_id currTimer{8675309};
-  std::mutex cbMutex;
+  std::mutex cbMutex{};
 
   struct TimerCB
   {
@@ -47,4 +52,4 @@ struct GtkGui
   bool unregister_fd(int fd);
   int runFD(int fd, clap_posix_fd_flags_t flags);
 };
-}  // namespace freeaudio::clap_wrapper::standalone::linux
+}  // namespace freeaudio::clap_wrapper::standalone::linux_standalone

@@ -31,7 +31,7 @@ namespace freeaudio::clap_wrapper::standalone
 {
 #if LIN
 #if CLAP_WRAPPER_HAS_GTK3
-namespace linux
+namespace linux_standalone
 {
 struct GtkGui;
 }
@@ -183,7 +183,7 @@ struct StandaloneHost : Clap::IHost
 
 #if LIN
 #if CLAP_WRAPPER_HAS_GTK3
-  freeaudio::clap_wrapper::standalone::linux::GtkGui *gtkGui{nullptr};
+  freeaudio::clap_wrapper::standalone::linux_standalone::GtkGui *gtkGui{nullptr};
 #endif
 #endif
 
@@ -246,6 +246,17 @@ struct StandaloneHost : Clap::IHost
                           unsigned int outputDeviceID, uint32_t outputChannels, bool useOutput,
                           int32_t sampleRate);
   void stopAudioThread();
+
+  bool startupAudioSet{false};
+  unsigned int startAudioIn{0}, startAudioOut{0};
+  int startSampleRate{0};
+  void setStartupAudio(unsigned int in, unsigned int out, int sr)
+  {
+    startupAudioSet = true;
+    startAudioIn = in;
+    startAudioOut = out;
+    startSampleRate = sr;
+  }
 
   void activatePlugin(int32_t sr, int32_t minBlock, int32_t maxBlock);
   bool isActive{false};
