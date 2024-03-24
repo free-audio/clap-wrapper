@@ -324,8 +324,6 @@
     // Create the button
     NSButton *okButton = [[NSButton alloc] initWithFrame:NSMakeRect(400 - 80 - 80, 0, 80, 30)];
     [okButton setTitle:@"OK"];
-    [okButton setButtonType:NSMomentaryLightButton];  // Set the button type
-    [okButton setBezelStyle:NSRoundedBezelStyle];
     [okButton setTarget:self];
     [okButton setAction:@selector(okButtonPressed:)];
 
@@ -333,8 +331,6 @@
 
     NSButton *cancelButton = [[NSButton alloc] initWithFrame:NSMakeRect(400 - 80, 0, 80, 30)];
     [cancelButton setTitle:@"Cancel"];
-    [cancelButton setButtonType:NSMomentaryLightButton];  // Set the button type
-    [cancelButton setBezelStyle:NSRoundedBezelStyle];
     [cancelButton setTarget:self];
     [cancelButton setAction:@selector(cancelButtonPressed:)];
 
@@ -349,8 +345,6 @@
 
     NSButton *defaultButton = [[NSButton alloc] initWithFrame:NSMakeRect(95, 215, 300, 30)];
     [defaultButton setTitle:@"Reset to System Default"];
-    [defaultButton setButtonType:NSMomentaryLightButton];  // Set the button type
-    [defaultButton setBezelStyle:NSRoundedBezelStyle];
     [defaultButton setTarget:self];
     [defaultButton setAction:@selector(defaultButtonPressed:)];
     [[self contentView] addSubview:defaultButton];
@@ -475,9 +469,8 @@
     const auto sri = [[item title] integerValue];
     if ((int)sr == (int)sri)
     {
-      [sampleRateSelection selectItem: item];
+      [sampleRateSelection selectItem:item];
     }
-
   }
 }
 
