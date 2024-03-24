@@ -29,7 +29,10 @@ std::shared_ptr<Clap::Plugin> mainCreatePlugin(const clap_plugin_entry *ee, cons
     return nullptr;
   }
 
-  standaloneHost = std::make_unique<StandaloneHost>();
+  if (!standaloneHost)
+  {
+    standaloneHost = std::make_unique<StandaloneHost>();
+  }
 
   if (clapId.empty())
   {
@@ -86,6 +89,10 @@ std::shared_ptr<Clap::Plugin> getMainPlugin()
 
 StandaloneHost *getStandaloneHost()
 {
+  if (!standaloneHost)
+  {
+    standaloneHost = std::make_unique<StandaloneHost>();
+  }
   return standaloneHost.get();
 }
 
