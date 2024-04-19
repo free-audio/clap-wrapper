@@ -1229,8 +1229,6 @@ void wrapper_context_menu_item::vst3_to_clap(clap_id action_id)
   name = std::make_unique<std::string>();
   *name = VST3::StringConvert::convert(vst3item.name);
 
-  bool is_checked = vst3item.flags & vst3item.kIsChecked;
-
   if (vst3item.flags == vst3item.kIsGroupStart)
   {
     kind = CLAP_CONTEXT_MENU_ITEM_BEGIN_SUBMENU;
@@ -1344,6 +1342,7 @@ bool ClapAsVst3::context_menu_perform(const clap_context_menu_target_t* target, 
     auto& item = contextmenuitems.at(action_id);
     bool okay = (kResultOk == item.vst3target->executeMenuItem(item.vst3item.tag));
     clearContextMenu();
+    return okay;
   }
   return false;
 }
