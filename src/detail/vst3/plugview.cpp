@@ -3,11 +3,13 @@
 #include <cassert>
 
 WrappedView::WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui,
-                         std::function<void()> onDestroy, std::function<void()> onRunLoopAvailable)
+                         std::function<void()> onRemoved, std::function<void()> onDestroy,
+                         std::function<void()> onRunLoopAvailable)
   : IPlugView()
   , FObject()
   , _plugin(plugin)
   , _extgui(gui)
+  , _onRemoved(onRemoved)
   , _onDestroy(onDestroy)
   , _onRunLoopAvailable(onRunLoopAvailable)
 {
@@ -15,10 +17,6 @@ WrappedView::WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* g
 
 WrappedView::~WrappedView()
 {
-  if (_onDestroy)
-  {
-    _onDestroy();
-  }
   drop_ui();
 }
 
@@ -47,9 +45,13 @@ void WrappedView::drop_ui()
 {
   if (_created)
   {
-    _created = false;
     _attached = false;
+    if (_onDestroy)
+    {
+      _onDestroy();
+    }
     _extgui->destroy(_plugin);
+    _created = false;
   }
 }
 
@@ -113,7 +115,11 @@ tresult PLUGIN_API WrappedView::attached(void* parent, FIDString /*type*/)
 
 tresult PLUGIN_API WrappedView::removed()
 {
-  drop_ui();
+  if (_onRemoved)
+  {
+    _onRemoved();
+  }
+  _attached = false;
   _window.ptr = nullptr;
   return kResultOk;
 }
