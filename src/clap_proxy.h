@@ -72,10 +72,10 @@ class IHost
   virtual const char* host_get_name() = 0;
 
   // context menu
- 
+
   // actually, everything here should be virtual only, but until all wrappers are updated,
   // IHost provides default implementations.
-  
+
   virtual bool supportsContextMenu() const
   {
     return false;
@@ -96,13 +96,12 @@ class IHost
   {
     return false;
   }
-  
+
   virtual bool context_menu_popup(const clap_context_menu_target_t* target, int32_t screen_index,
                                   int32_t x, int32_t y)
   {
     return false;
   }
-
 
 #if LIN
   virtual bool register_fd(int fd, clap_posix_fd_flags_t flags) = 0;
@@ -227,8 +226,8 @@ class Plugin
                              const clap_context_menu_builder_t* builder);
   bool context_menu_perform(const clap_context_menu_target_t* target, clap_id action_id);
   bool context_menu_can_popup();
-  bool context_menu_popup(const clap_context_menu_target_t* target, int32_t screen_index,
-             int32_t x, int32_t y);
+  bool context_menu_popup(const clap_context_menu_target_t* target, int32_t screen_index, int32_t x,
+                          int32_t y);
 
   // hostgui
   void resize_hints_changed()
