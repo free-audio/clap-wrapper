@@ -277,8 +277,19 @@ tresult PLUGIN_API ClapAsVst3::getParamStringByValue(Vst::ParamID id, Vst::Param
     return kResultOk;
   }
 
+  if (param->isMidi)
+  {
+    auto r = std::to_string((int)val);
+    UString wrapper(&string[0], str16BufferSize(Steinberg::Vst::String128));
+
+    wrapper.assign(r.c_str(), r.size()+1);
+
+    return kResultOk;
+  }
+
   char outbuf[128];
   memset(outbuf, 0, sizeof(outbuf));
+
   if (this->_plugin->_ext._params->value_to_text(_plugin->_plugin, param->id, val, outbuf, 127))
   {
     UString wrapper(&string[0], str16BufferSize(Steinberg::Vst::String128));
