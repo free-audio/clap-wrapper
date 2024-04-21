@@ -110,6 +110,23 @@ const clap_host_posix_fd_support hostposixfd = {
 const clap_host_latency latency = {[](const clap_host_t* host) -> void
                                    { self(host)->latency_changed(); }};
 
+const clap_host_state_t state = {[](const clap_host_t* host) -> void { self(host)->mark_dirty(); }};
+
+const clap_host_context_menu_t context_menu = {
+    /* populate */
+    [](const clap_host_t* host, const clap_context_menu_target_t* target,
+       const clap_context_menu_builder_t* builder) -> bool
+    { return self(host)->context_menu_populate(target, builder); },
+    /* perform */
+    [](const clap_host_t* host, const clap_context_menu_target_t* target, clap_id action_id) -> bool
+    { return self(host)->context_menu_perform(target, action_id); },
+    /* can_popup */
+    [](const clap_host_t* host) -> bool { return self(host)->context_menu_can_popup(); },
+    /* popup */
+    [](const clap_host_t* host, const clap_context_menu_target_t* target, int32_t screen_index,
+       int32_t x, int32_t y) -> bool
+    { return self(host)->context_menu_popup(target, screen_index, x, y); }};
+
 static void tail_changed(const clap_host_t* host)
 {
   self(host)->tail_changed();
@@ -119,23 +136,23 @@ const clap_host_tail tail = {tail_changed};
 
 }  // namespace HostExt
 
-std::shared_ptr<Plugin> Plugin::createInstance(const clap_plugin_factory* fac, const std::string& id,
+std::shared_ptr<Plugin> Plugin::createInstance(const clap_plugin_factory* factory, const std::string& id,
                                                Clap::IHost* host)
 {
   auto plug = std::shared_ptr<Plugin>(new Plugin(host));
-  auto instance = fac->create_plugin(fac, plug->getClapHostInterface(), id.c_str());
+  auto instance = factory->create_plugin(factory, plug->getClapHostInterface(), id.c_str());
   plug->connectClap(instance);
 
   return plug;
 }
 
-std::shared_ptr<Plugin> Plugin::createInstance(const clap_plugin_factory* fac, size_t idx,
+std::shared_ptr<Plugin> Plugin::createInstance(const clap_plugin_factory* factory, size_t idx,
                                                Clap::IHost* host)
 {
-  auto pc = fac->get_plugin_count(fac);
+  auto pc = factory->get_plugin_count(factory);
   if (idx >= pc) return nullptr;
-  auto desc = fac->get_plugin_descriptor(fac, (uint32_t)idx);
-  return createInstance(fac, desc->id, host);
+  auto desc = factory->get_plugin_descriptor(factory, (uint32_t)idx);
+  return createInstance(factory, desc->id, host);
 }
 
 std::shared_ptr<Plugin> Plugin::createInstance(Clap::Library& library, size_t index, IHost* host)
@@ -195,6 +212,13 @@ void Plugin::connectClap(const clap_plugin_t* clap)
   getExtension(_plugin, _ext._tail, CLAP_EXT_TAIL);
   getExtension(_plugin, _ext._gui, CLAP_EXT_GUI);
   getExtension(_plugin, _ext._timer, CLAP_EXT_TIMER_SUPPORT);
+
+  getExtension(_plugin, _ext._contextmenu, CLAP_EXT_CONTEXT_MENU);
+  if (_ext._contextmenu == nullptr)
+  {
+    getExtension(_plugin, _ext._contextmenu, CLAP_EXT_CONTEXT_MENU_COMPAT);
+  }
+
 #if LIN
   getExtension(_plugin, _ext._posixfd, CLAP_EXT_POSIX_FD_SUPPORT);
 #endif
@@ -331,6 +355,11 @@ const clap_plugin_gui_t* Plugin::getUI() const
   return nullptr;
 }
 
+void Plugin::mark_dirty()
+{
+  _parentHost->mark_dirty();
+}
+
 void Plugin::latency_changed()
 {
   _parentHost->latency_changed();
@@ -339,6 +368,34 @@ void Plugin::latency_changed()
 void Plugin::tail_changed()
 {
   _parentHost->tail_changed();
+}
+
+bool Plugin::context_menu_populate(const clap_context_menu_target_t* target,
+                                   const clap_context_menu_builder_t* builder)
+{
+  if (_parentHost->supportsContextMenu())
+  {
+    return this->_parentHost->context_menu_populate(target, builder);
+  }
+
+  // don't interfere with the context menu building
+  return true;
+}
+
+bool Plugin::context_menu_perform(const clap_context_menu_target_t* target, clap_id action_id)
+{
+  return this->_parentHost->context_menu_perform(target, action_id);
+}
+
+bool Plugin::context_menu_can_popup()
+{
+  return this->_parentHost->supportsContextMenu();
+}
+
+bool Plugin::context_menu_popup(const clap_context_menu_target_t* target, int32_t screen_index,
+                                int32_t x, int32_t y)
+{
+  return this->_parentHost->context_menu_popup(target, screen_index, x, y);
 }
 
 void Plugin::log(clap_log_severity severity, const char* msg)
@@ -448,6 +505,8 @@ const void* Plugin::clapExtension(const clap_host* /*host*/, const char* extensi
   {
     // TODO: implement CLAP_EXT_RENDER
   }
+  if (!strcmp(extension, CLAP_EXT_STATE)) return &HostExt::state;
+  if (!strcmp(extension, CLAP_EXT_CONTEXT_MENU)) return &HostExt::context_menu;
 
   return nullptr;
 }

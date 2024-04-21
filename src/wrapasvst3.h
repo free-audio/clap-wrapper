@@ -24,6 +24,7 @@
 #include <pluginterfaces/vst/ivstnoteexpression.h>
 #include <public.sdk/source/vst/vstsinglecomponenteffect.h>
 #include <public.sdk/source/vst/vstnoteexpressiontypes.h>
+#include <pluginterfaces/vst/ivstcontextmenu.h>
 
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
@@ -89,9 +90,26 @@ class valueEvent : public queueEvent
   }
 };
 
+struct wrapper_context_menu_item
+{
+  Vst::IContextMenuItem vst3item;
+  Vst::IContextMenuTarget* vst3target;
+  clap_context_menu_item_kind_t kind;
+  union _entry
+  {
+    clap_context_menu_entry_t entry;
+    clap_context_menu_check_entry_t menu_check_entry;
+    clap_context_menu_item_title_t menu_item_title;
+    clap_context_menu_submenu_t submenu;
+  } clap;
+  std::unique_ptr<std::string> name;
+  void vst3_to_clap(clap_id action_id);
+};
+
 class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
                    public Steinberg::Vst::IMidiMapping,
                    public Steinberg::Vst::INoteExpressionController,
+                   public Steinberg::Vst::IContextMenuTarget,
                    public Clap::IHost,
                    public Clap::IAutomation,
                    public os::IPlugObject
@@ -130,6 +148,9 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
                                        Vst::SpeakerArrangement& arr) override;
   tresult PLUGIN_API activateBus(Vst::MediaType type, Vst::BusDirection dir, int32 index,
                                  TBool state) override;
+
+  // from IEditController
+  tresult PLUGIN_API setComponentHandler(Vst::IComponentHandler* handler) override;
 
   //----from IEditControllerEx1--------------------------------
   IPlugView* PLUGIN_API createView(FIDString name) override;
@@ -179,6 +200,9 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
 	}
 #endif
 
+  //---IContextMenuTarget ----------------------------------------------------------------
+  tresult PLUGIN_API executeMenuItem(int32 tag) override;
+
   //---Interface--------------------------------------------------------------------------
   OBJ_METHODS(ClapAsVst3, SingleComponentEffect)
   DEFINE_INTERFACES
@@ -191,6 +215,13 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
       DEF_INTERFACE(IMidiMapping)
     }
   }
+  if (::Steinberg::FUnknownPrivate::iidEqual(iid, IContextMenuTarget::iid))
+  {
+    if (_plugin->_ext._contextmenu)
+    {
+      DEF_INTERFACE(IContextMenuTarget);
+    }
+  }
   // add any other interfaces here:
   //if (::Steinberg::FUnknownPrivate::iidEqual(iid, IExampleSomething::iid))
   //{
@@ -201,6 +232,13 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   // tresult PLUGIN_API queryInterface(const TUID iid, void** obj) override;
   END_DEFINE_INTERFACES(SingleComponentEffect)
   REFCOUNT_METHODS(SingleComponentEffect);
+
+  IPtr<Steinberg::Vst::IComponentHandler3> componentHandler3 = nullptr;
+  IPtr<Steinberg::Vst::IContextMenu> vst3ContextMenu = nullptr;
+  std::vector<wrapper_context_menu_item> contextmenuitems;
+  uint32_t vst3ContextMenuParamID = 0;
+
+  void clearContextMenu();
 
   //---Clap::IHost------------------------------------------------------------------------
 
@@ -235,6 +273,15 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   bool unregister_timer(clap_id timer_id) override;
 
   const char* host_get_name() override;
+
+  bool supportsContextMenu() const override;
+  // context_menu
+  bool context_menu_populate(const clap_context_menu_target_t* target,
+                             const clap_context_menu_builder_t* builder) override;
+  bool context_menu_perform(const clap_context_menu_target_t* target, clap_id action_id) override;
+  bool context_menu_can_popup() override;
+  bool context_menu_popup(const clap_context_menu_target_t* target, int32_t screen_index, int32_t x,
+                          int32_t y) override;
 
 #if LIN
   bool register_fd(int fd, clap_posix_fd_flags_t flags) override;
