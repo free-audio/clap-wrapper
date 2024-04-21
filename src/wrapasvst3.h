@@ -214,6 +214,9 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
     {
       DEF_INTERFACE(IMidiMapping)
     }
+  }
+  if (::Steinberg::FUnknownPrivate::iidEqual(iid, IContextMenuTarget::iid))
+  {
     if (_plugin->_ext._contextmenu)
     {
       DEF_INTERFACE(IContextMenuTarget);

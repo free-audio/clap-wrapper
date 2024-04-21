@@ -282,7 +282,7 @@ tresult PLUGIN_API ClapAsVst3::getParamStringByValue(Vst::ParamID id, Vst::Param
     auto r = std::to_string((int)val);
     UString wrapper(&string[0], str16BufferSize(Steinberg::Vst::String128));
 
-    wrapper.assign(r.c_str(), r.size()+1);
+    wrapper.assign(r.c_str(), r.size() + 1);
 
     return kResultOk;
   }
