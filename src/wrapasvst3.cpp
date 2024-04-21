@@ -56,6 +56,7 @@ tresult PLUGIN_API ClapAsVst3::initialize(FUnknown* context)
 
 tresult PLUGIN_API ClapAsVst3::terminate()
 {
+  clearContextMenu();
   if (_plugin)
   {
     _os_attached.off();  // ensure we are detached
@@ -229,27 +230,34 @@ IPlugView* PLUGIN_API ClapAsVst3::createView(FIDString /*name*/)
 {
   if (_plugin->_ext._gui)
   {
-    _wrappedview = new WrappedView(
-        _plugin->_plugin, _plugin->_ext._gui,
-        [this]()
-        {
+    clearContextMenu();
+    if (_wrappedview == nullptr)
+    {
+      _wrappedview = new WrappedView(
+          _plugin->_plugin, _plugin->_ext._gui, [this]() { clearContextMenu(); },
+          [this]()
+          {
 #if LIN
-          // the host calls the destructor, the wrapper just removes its pointer
-          detachTimers(_wrappedview->getRunLoop());
-          detachPosixFD(_wrappedview->getRunLoop());
-          _iRunLoop = nullptr;
+            // the host calls the destructor, the wrapper just removes its pointer
+            detachTimers(_wrappedview->getRunLoop());
+            detachPosixFD(_wrappedview->getRunLoop());
+            _iRunLoop = nullptr;
 #endif
-          _wrappedview = nullptr;
-        },
-        [this]()
-        {
+
+            clearContextMenu();
+            this->_wrappedview = nullptr;
+          },
+          [this]()
+          {
+
 #if LIN
-          attachTimers(_wrappedview->getRunLoop());
-          attachPosixFD(_wrappedview->getRunLoop());
+            attachTimers(_wrappedview->getRunLoop());
+            attachPosixFD(_wrappedview->getRunLoop());
 #else
-          (void)this;  // silence warning on non-linux
+            (void)this;  // silence warning on non-linux
 #endif
-        });
+          });
+    }
     return _wrappedview;
   }
   return nullptr;
@@ -269,8 +277,19 @@ tresult PLUGIN_API ClapAsVst3::getParamStringByValue(Vst::ParamID id, Vst::Param
     return kResultOk;
   }
 
+  if (param->isMidi)
+  {
+    auto r = std::to_string((int)val);
+    UString wrapper(&string[0], str16BufferSize(Steinberg::Vst::String128));
+
+    wrapper.assign(r.c_str(), (Steinberg::int32)(r.size() + 1));
+
+    return kResultOk;
+  }
+
   char outbuf[128];
   memset(outbuf, 0, sizeof(outbuf));
+
   if (this->_plugin->_ext._params->value_to_text(_plugin->_plugin, param->id, val, outbuf, 127))
   {
     UString wrapper(&string[0], str16BufferSize(Steinberg::Vst::String128));
@@ -301,6 +320,23 @@ tresult PLUGIN_API ClapAsVst3::activateBus(Vst::MediaType type, Vst::BusDirectio
                                            TBool state)
 {
   return super::activateBus(type, dir, index, state);
+}
+
+//-----------------------------------------------------------------------------
+
+tresult PLUGIN_API ClapAsVst3::setComponentHandler(Vst::IComponentHandler* handler)
+{
+  componentHandler3.reset();
+
+  // the base class extracts IComponentHandler and IComponentHandler2
+  auto result = super::setComponentHandler(handler);
+  // but for context menus IComponentHandler3 is needed, so it is being retrieved here.
+  if (componentHandler && result == kResultOk)
+  {
+    this->componentHandler->queryInterface(Vst::IComponentHandler3::iid, (void**)&componentHandler3);
+  }
+
+  return result;
 }
 
 //-----------------------------------------------------------------------------
@@ -379,6 +415,11 @@ tresult ClapAsVst3::getUnitByBus(Vst::MediaType type, Vst::BusDirection dir, int
     }
   }
   return kResultFalse;
+}
+
+tresult ClapAsVst3::executeMenuItem(int32 tag)
+{
+  return kResultOk;
 }
 
 static Vst::SpeakerArrangement speakerArrFromPortType(const char* port_type)
@@ -1198,3 +1239,145 @@ void ClapAsVst3::firePosixFDIsSet(int fd, clap_posix_fd_flags_t flags)
   _plugin->_ext._posixfd->on_fd(_plugin->_plugin, fd, flags);
 }
 #endif
+
+void wrapper_context_menu_item::vst3_to_clap(clap_id action_id)
+{
+  name = std::make_unique<std::string>();
+  *name = VST3::StringConvert::convert(vst3item.name);
+
+  if (vst3item.flags == vst3item.kIsGroupStart)
+  {
+    kind = CLAP_CONTEXT_MENU_ITEM_BEGIN_SUBMENU;
+    this->clap.submenu.label = name->c_str();
+    this->clap.submenu.is_enabled = true;  // this works different to the VST3 submenus
+    return;
+  }
+  if (vst3item.flags == vst3item.kIsGroupEnd)
+  {
+    this->kind = CLAP_CONTEXT_MENU_ITEM_END_SUBMENU;
+    return;
+  }
+  if (vst3item.flags & vst3item.kIsSeparator)
+  {
+    this->kind = CLAP_CONTEXT_MENU_ITEM_SEPARATOR;
+    return;
+  }
+  // now this is a weird one in VST3 (or in CLAP, depends on the POV)
+  if (vst3item.flags & vst3item.kIsChecked)
+  {
+    this->kind = CLAP_CONTEXT_MENU_ITEM_CHECK_ENTRY;
+    this->clap.menu_check_entry.label = name->c_str();
+    this->clap.menu_check_entry.is_checked = true;  // of course it is checked
+    this->clap.menu_check_entry.is_enabled = !(vst3item.flags & vst3item.kIsDisabled);
+    this->clap.menu_check_entry.action_id = action_id;
+    return;
+  }
+  this->kind = CLAP_CONTEXT_MENU_ITEM_ENTRY;
+  this->clap.entry.label = name->c_str();
+  this->clap.entry.is_enabled = !(vst3item.flags & vst3item.kIsDisabled);
+  this->clap.entry.action_id = action_id;
+}
+
+bool ClapAsVst3::supportsContextMenu() const
+{
+  return (this->componentHandler3 != nullptr);
+}
+
+bool ClapAsVst3::context_menu_populate(const clap_context_menu_target_t* target,
+                                       const clap_context_menu_builder_t* builder)
+{
+  vst3ContextMenu.reset();
+
+  // first check if all entry types are supported.
+  if (!builder->supports(builder, CLAP_CONTEXT_MENU_ITEM_ENTRY)) return false;
+  if (!builder->supports(builder, CLAP_CONTEXT_MENU_ITEM_CHECK_ENTRY)) return false;
+  if (!builder->supports(builder, CLAP_CONTEXT_MENU_ITEM_SEPARATOR)) return false;
+  if (!builder->supports(builder, CLAP_CONTEXT_MENU_ITEM_BEGIN_SUBMENU)) return false;
+  if (!builder->supports(builder, CLAP_CONTEXT_MENU_ITEM_END_SUBMENU)) return false;
+  // CLAP_CONTEXT_MENU_ITEM_TITLE is not used by VST3
+
+  if (target->kind == CLAP_CONTEXT_MENU_TARGET_KIND_GLOBAL)
+  {
+    this->vst3ContextMenu = componentHandler3->createContextMenu(this->_wrappedview, nullptr);
+  }
+  if (target->kind == CLAP_CONTEXT_MENU_TARGET_KIND_PARAM)
+  {
+    vst3ContextMenuParamID = target->id;
+    vst3ContextMenu = componentHandler3->createContextMenu(_wrappedview, &vst3ContextMenuParamID);
+  }
+  if (vst3ContextMenu)
+  {
+    vst3ContextMenu->release();  // the IPtr holds the reference
+    // preparing the internal mapping structure with wrapper_context_menu_item
+    auto itmcnt = vst3ContextMenu->getItemCount();
+    this->contextmenuitems.resize(itmcnt);
+
+    for (decltype(itmcnt) i = 0; i < itmcnt; ++i)
+    {
+      wrapper_context_menu_item& item = contextmenuitems.at(i);
+
+      if (kResultOk == vst3ContextMenu->getItem(i, item.vst3item, &item.vst3target))
+      {
+        // create the appropriate clap structure
+        item.vst3_to_clap((clap_id)i);
+
+        switch (item.kind)
+        {
+          case CLAP_CONTEXT_MENU_ITEM_ENTRY:
+            builder->add_item(builder, item.kind, &item.clap.entry);
+            break;
+          case CLAP_CONTEXT_MENU_ITEM_CHECK_ENTRY:
+            builder->add_item(builder, item.kind, &item.clap.menu_check_entry);
+            break;
+          case CLAP_CONTEXT_MENU_ITEM_SEPARATOR:
+            builder->add_item(builder, item.kind, nullptr);
+            break;
+          case CLAP_CONTEXT_MENU_ITEM_BEGIN_SUBMENU:
+            builder->add_item(builder, item.kind, &item.clap.submenu);
+            break;
+          case CLAP_CONTEXT_MENU_ITEM_END_SUBMENU:
+            builder->add_item(builder, item.kind, nullptr);
+            break;
+          case CLAP_CONTEXT_MENU_ITEM_TITLE:
+            // this does not exist
+            break;
+          default:
+            break;
+        }
+      }
+    }
+    return true;
+  }
+
+  return false;
+}
+
+bool ClapAsVst3::context_menu_perform(const clap_context_menu_target_t* target, clap_id action_id)
+{
+  (void)target;
+  if (action_id < contextmenuitems.size())
+  {
+    auto& item = contextmenuitems.at(action_id);
+    bool okay = (kResultOk == item.vst3target->executeMenuItem(item.vst3item.tag));
+    clearContextMenu();
+    return okay;
+  }
+  return false;
+}
+
+bool ClapAsVst3::context_menu_can_popup()
+{
+  return false;
+}
+
+bool ClapAsVst3::context_menu_popup(const clap_context_menu_target_t* target, int32_t screen_index,
+                                    int32_t x, int32_t y)
+{
+  return false;
+}
+
+void ClapAsVst3::clearContextMenu()
+{
+  vst3ContextMenu.reset();
+  contextmenuitems.clear();
+}
