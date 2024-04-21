@@ -18,8 +18,9 @@ using namespace Steinberg;
 class WrappedView : public Steinberg::IPlugView, public Steinberg::FObject
 {
  public:
-  WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui, std::function<void()> onRemoved,
-              std::function<void()> onDestroy, std::function<void()> onRunLoopAvailable);
+  WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui,
+              std::function<void()> onReleaseAdditionalReferences, std::function<void()> onDestroy,
+              std::function<void()> onRunLoopAvailable);
   ~WrappedView();
 
   // IPlugView interface
@@ -90,9 +91,11 @@ class WrappedView : public Steinberg::IPlugView, public Steinberg::FObject
  private:
   void ensure_ui();
   void drop_ui();
+  void releaseAdditionalReferences();
   const clap_plugin_t* _plugin = nullptr;
   const clap_plugin_gui_t* _extgui = nullptr;
-  std::function<void()> _onRemoved = nullptr, _onDestroy = nullptr, _onRunLoopAvailable = nullptr;
+  std::function<void()> _onReleaseAdditionalReferences = nullptr, _onDestroy = nullptr,
+                        _onRunLoopAvailable = nullptr;
   clap_window_t _window = {nullptr, {nullptr}};
   IPlugFrame* _plugFrame = nullptr;
   ViewRect _rect = {0, 0, 0, 0};

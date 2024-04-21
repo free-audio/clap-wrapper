@@ -3,13 +3,13 @@
 #include <cassert>
 
 WrappedView::WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui,
-                         std::function<void()> onRemoved, std::function<void()> onDestroy,
-                         std::function<void()> onRunLoopAvailable)
+                         std::function<void()> onReleaseAdditionalReferences,
+                         std::function<void()> onDestroy, std::function<void()> onRunLoopAvailable)
   : IPlugView()
   , FObject()
   , _plugin(plugin)
   , _extgui(gui)
-  , _onRemoved(onRemoved)
+  , _onReleaseAdditionalReferences(onReleaseAdditionalReferences)
   , _onDestroy(onDestroy)
   , _onRunLoopAvailable(onRunLoopAvailable)
 {
@@ -45,6 +45,7 @@ void WrappedView::drop_ui()
 {
   if (_created)
   {
+    releaseAdditionalReferences();
     _attached = false;
     if (_onDestroy)
     {
@@ -52,6 +53,17 @@ void WrappedView::drop_ui()
     }
     _extgui->destroy(_plugin);
     _created = false;
+  }
+}
+
+void WrappedView::releaseAdditionalReferences()
+{
+  // releases things like IContextMenu when the wrapper provided entries, but the user chose
+  // a plugin-owned entry.
+
+  if (_onReleaseAdditionalReferences)
+  {
+    _onReleaseAdditionalReferences();
   }
 }
 
@@ -115,10 +127,7 @@ tresult PLUGIN_API WrappedView::attached(void* parent, FIDString /*type*/)
 
 tresult PLUGIN_API WrappedView::removed()
 {
-  if (_onRemoved)
-  {
-    _onRemoved();
-  }
+  releaseAdditionalReferences();
   _attached = false;
   _window.ptr = nullptr;
   return kResultOk;
@@ -189,15 +198,21 @@ tresult PLUGIN_API WrappedView::onSize(ViewRect* newSize)
   return kResultOk;
 }
 
-tresult PLUGIN_API WrappedView::onFocus(TBool /*state*/)
+tresult PLUGIN_API WrappedView::onFocus(TBool state)
 {
   // TODO: this might be something for the wrapperhost API
   // to notify the plugin about a focus change
+  if (state == false)
+  {
+    releaseAdditionalReferences();
+  }
   return kResultOk;
 }
 
 tresult PLUGIN_API WrappedView::setFrame(IPlugFrame* frame)
 {
+  releaseAdditionalReferences();
+
   _plugFrame = frame;
 
 #if LIN
@@ -211,7 +226,6 @@ tresult PLUGIN_API WrappedView::setFrame(IPlugFrame* frame)
     }
   }
 #endif
-
   return kResultOk;
 }
 

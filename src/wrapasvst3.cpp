@@ -56,6 +56,7 @@ tresult PLUGIN_API ClapAsVst3::initialize(FUnknown* context)
 
 tresult PLUGIN_API ClapAsVst3::terminate()
 {
+  clearContextMenu();
   if (_plugin)
   {
     _os_attached.off();  // ensure we are detached
@@ -229,30 +230,34 @@ IPlugView* PLUGIN_API ClapAsVst3::createView(FIDString /*name*/)
 {
   if (_plugin->_ext._gui)
   {
-    _wrappedview = new WrappedView(
-        _plugin->_plugin, _plugin->_ext._gui, [this]() { clearContextMenu(); },
-        [this]()
-        {
+    clearContextMenu();
+    if (_wrappedview == nullptr)
+    {
+      _wrappedview = new WrappedView(
+          _plugin->_plugin, _plugin->_ext._gui, [this]() { clearContextMenu(); },
+          [this]()
+          {
 #if LIN
-          // the host calls the destructor, the wrapper just removes its pointer
-          detachTimers(_wrappedview->getRunLoop());
-          detachPosixFD(_wrappedview->getRunLoop());
-          _iRunLoop = nullptr;
+            // the host calls the destructor, the wrapper just removes its pointer
+            detachTimers(_wrappedview->getRunLoop());
+            detachPosixFD(_wrappedview->getRunLoop());
+            _iRunLoop = nullptr;
 #endif
 
-          clearContextMenu();
-          this->_wrappedview = nullptr;
-        },
-        [this]()
-        {
+            clearContextMenu();
+            this->_wrappedview = nullptr;
+          },
+          [this]()
+          {
 
 #if LIN
-          attachTimers(_wrappedview->getRunLoop());
-          attachPosixFD(_wrappedview->getRunLoop());
+            attachTimers(_wrappedview->getRunLoop());
+            attachPosixFD(_wrappedview->getRunLoop());
 #else
-          (void)this;  // silence warning on non-linux
+            (void)this;  // silence warning on non-linux
 #endif
-        });
+          });
+    }
     return _wrappedview;
   }
   return nullptr;
@@ -1291,6 +1296,7 @@ bool ClapAsVst3::context_menu_populate(const clap_context_menu_target_t* target,
   }
   if (vst3ContextMenu)
   {
+    vst3ContextMenu->release();  // the IPtr holds the reference
     // preparing the internal mapping structure with wrapper_context_menu_item
     auto itmcnt = vst3ContextMenu->getItemCount();
     this->contextmenuitems.resize(itmcnt);
@@ -1337,6 +1343,7 @@ bool ClapAsVst3::context_menu_populate(const clap_context_menu_target_t* target,
 
 bool ClapAsVst3::context_menu_perform(const clap_context_menu_target_t* target, clap_id action_id)
 {
+  (void)target;
   if (action_id < contextmenuitems.size())
   {
     auto& item = contextmenuitems.at(action_id);
@@ -1360,7 +1367,6 @@ bool ClapAsVst3::context_menu_popup(const clap_context_menu_target_t* target, in
 
 void ClapAsVst3::clearContextMenu()
 {
-  if (vst3ContextMenu) vst3ContextMenu->release();
   vst3ContextMenu.reset();
   contextmenuitems.clear();
 }
