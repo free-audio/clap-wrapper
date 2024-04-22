@@ -235,6 +235,8 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
 
   IPtr<Steinberg::Vst::IComponentHandler3> componentHandler3 = nullptr;
   IPtr<Steinberg::Vst::IContextMenu> vst3ContextMenu = nullptr;
+  IPtr<Steinberg::Vst::IHostApplication> vst3HostApplication = nullptr;
+  std::string wrapper_hostname = "CLAP-As-VST3-Wrapper";
   std::vector<wrapper_context_menu_item> contextmenuitems;
   uint32_t vst3ContextMenuParamID = 0;
 
