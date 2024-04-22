@@ -58,6 +58,8 @@ tresult PLUGIN_API ClapAsVst3::initialize(FUnknown* context)
 tresult PLUGIN_API ClapAsVst3::terminate()
 {
   clearContextMenu();
+  vst3HostApplication.reset();
+
   if (_plugin)
   {
     _os_attached.off();  // ensure we are detached
@@ -332,7 +334,6 @@ tresult PLUGIN_API ClapAsVst3::activateBus(Vst::MediaType type, Vst::BusDirectio
 
 tresult PLUGIN_API ClapAsVst3::setComponentHandler(Vst::IComponentHandler* handler)
 {
-  vst3HostApplication.reset();
   componentHandler3.reset();
 
   // the base class extracts IComponentHandler and IComponentHandler2
@@ -341,7 +342,6 @@ tresult PLUGIN_API ClapAsVst3::setComponentHandler(Vst::IComponentHandler* handl
   if (componentHandler && result == kResultOk)
   {
     this->componentHandler->queryInterface(Vst::IComponentHandler3::iid, (void**)&componentHandler3);
-    this->componentHandler->queryInterface(Vst::IHostApplication::iid, (void**)&vst3HostApplication);
   }
 
   return result;
