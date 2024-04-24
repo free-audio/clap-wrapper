@@ -42,6 +42,7 @@ struct ClapHostExtensions
 tresult PLUGIN_API ClapAsVst3::initialize(FUnknown* context)
 {
   auto result = super::initialize(context);
+  context->queryInterface(Vst::IHostApplication::iid, (void**)&vst3HostApplication);
   if (result == kResultOk)
   {
     if (!_plugin)
@@ -57,6 +58,8 @@ tresult PLUGIN_API ClapAsVst3::initialize(FUnknown* context)
 tresult PLUGIN_API ClapAsVst3::terminate()
 {
   clearContextMenu();
+  vst3HostApplication.reset();
+
   if (_plugin)
   {
     _os_attached.off();  // ensure we are detached
@@ -165,13 +168,16 @@ uint32 PLUGIN_API ClapAsVst3::getLatencySamples()
 uint32 PLUGIN_API ClapAsVst3::getTailSamples()
 {
   // options would be kNoTail, number of samples or kInfiniteTail
-  if (this->_plugin->_ext._tail)
+  if (this->_active)
   {
-    auto tailsize = this->_plugin->_ext._tail->get(_plugin->_plugin);
+    if (this->_plugin->_ext._tail)
+    {
+      auto tailsize = this->_plugin->_ext._tail->get(_plugin->_plugin);
 
-    // Any value greater or equal to INT32_MAX implies infinite tail.
-    if (tailsize >= INT32_MAX) return Vst::kInfiniteTail;
-    return tailsize;
+      // Any value greater or equal to INT32_MAX implies infinite tail.
+      if (tailsize >= INT32_MAX) return Vst::kInfiniteTail;
+      return tailsize;
+    }
   }
   return super::getTailSamples();
 }
@@ -271,9 +277,11 @@ tresult PLUGIN_API ClapAsVst3::getParamStringByValue(Vst::ParamID id, Vst::Param
 
   if (param->getInfo().flags & Vst::ParameterInfo::kIsProgramChange)
   {
+    std::string program("Program ");
+    program.append(std::to_string((int)val));
     UString wrapper(&string[0], str16BufferSize(Steinberg::Vst::String128));
 
-    wrapper.assign("Program", 8);
+    wrapper.assign(program.c_str(), (Steinberg::int32)(program.size() + 1));
     return kResultOk;
   }
 
@@ -983,7 +991,16 @@ bool ClapAsVst3::unregister_timer(clap_id timer_id)
 
 const char* ClapAsVst3::host_get_name()
 {
-  return "Clap-As-VST3-Wrapper";
+  if (vst3HostApplication)
+  {
+    Steinberg::Vst::String128 res;
+    if (kResultOk == vst3HostApplication->getName(res))
+    {
+      wrapper_hostname = VST3::StringConvert::convert(res);
+      wrapper_hostname.append(" (CLAP-as-VST3-wrapper)");
+    }
+  }
+  return wrapper_hostname.c_str();
 }
 
 void ClapAsVst3::onIdle()
