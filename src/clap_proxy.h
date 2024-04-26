@@ -76,32 +76,13 @@ class IHost
   // actually, everything here should be virtual only, but until all wrappers are updated,
   // IHost provides default implementations.
 
-  virtual bool supportsContextMenu() const
-  {
-    return false;
-  }
-
+  virtual bool supportsContextMenu() const = 0;
   virtual bool context_menu_populate(const clap_context_menu_target_t* target,
-                                     const clap_context_menu_builder_t* builder)
-  {
-    return false;
-  }
-
-  virtual bool context_menu_perform(const clap_context_menu_target_t* target, clap_id action_id)
-  {
-    return false;
-  }
-
-  virtual bool context_menu_can_popup()
-  {
-    return false;
-  }
-
+                                     const clap_context_menu_builder_t* builder) = 0;
+  virtual bool context_menu_perform(const clap_context_menu_target_t* target, clap_id action_id) = 0;
+  virtual bool context_menu_can_popup() = 0;
   virtual bool context_menu_popup(const clap_context_menu_target_t* target, int32_t screen_index,
-                                  int32_t x, int32_t y)
-  {
-    return false;
-  }
+                                  int32_t x, int32_t y) = 0;
 
 #if LIN
   virtual bool register_fd(int fd, clap_posix_fd_flags_t flags) = 0;

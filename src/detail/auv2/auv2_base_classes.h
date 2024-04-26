@@ -425,7 +425,43 @@ class WrapAsAUV2 : public ausdk::AUBase,
 
   const char* host_get_name() override
   {
-    return "Clap-As-AUV2-Wrapper";
+    char text[65];
+
+    CFBundleRef applicationBundle = CFBundleGetMainBundle();
+    if (applicationBundle != NULL)
+    {
+      CFStringRef myProductString =
+          (CFStringRef)CFBundleGetValueForInfoDictionaryKey(applicationBundle, kCFBundleNameKey);
+      if (myProductString)
+      {
+        CFStringGetCString(myProductString, text, 64, kCFStringEncodingUTF8);
+        _hostname = text;
+        CFRelease(myProductString);
+      }
+      else
+      {
+        CFStringRef applicationBundleID = CFBundleGetIdentifier(applicationBundle);
+        if (applicationBundleID)
+        {
+          CFStringGetCString(applicationBundleID, text, 64, kCFStringEncodingUTF8);
+          _hostname = text;
+          CFRelease(applicationBundleID);
+        }
+      }
+      //  CFRelease(applicationBundle);  Don't release it
+      CFStringRef myVersionString =
+          (CFStringRef)CFBundleGetValueForInfoDictionaryKey(applicationBundle, kCFBundleVersionKey);
+      if (myVersionString)
+      {
+        CFStringGetCString(myVersionString, text, 64, kCFStringEncodingUTF8);
+        _hostname.append(" (");
+        _hostname.append(text);
+        _hostname.append(")");
+        CFRelease(myVersionString);
+      }
+      _hostname.append(" (CLAP-as-AUv2-wrapper)");
+    }
+    return _hostname.c_str();
   }
 
   // --------------- IAutomation
@@ -435,6 +471,30 @@ class WrapAsAUV2 : public ausdk::AUBase,
 
   // --------------- IPlugObject
   void onIdle() override;
+
+  // context menu extension
+  bool supportsContextMenu() const override
+  {
+    return false;
+  }
+  bool context_menu_populate(const clap_context_menu_target_t* target,
+                             const clap_context_menu_builder_t* builder) override
+  {
+    return false;
+  }
+  bool context_menu_perform(const clap_context_menu_target_t* target, clap_id action_id) override
+  {
+    return false;
+  }
+  bool context_menu_can_popup() override
+  {
+    return false;
+  }
+  bool context_menu_popup(const clap_context_menu_target_t* target, int32_t screen_index, int32_t x,
+                          int32_t y) override
+  {
+    return false;
+  }
 
   // --------------- IMIDIOutputs
   void send(const Clap::AUv2::clap_multi_event_t& event) override;
@@ -474,6 +534,8 @@ class WrapAsAUV2 : public ausdk::AUBase,
   bool _midi_wants_midi_input = false;  // takes any input
   bool _midi_understands_midi2 = false;
   // std::vector<clap_note_port_info_t> _midi_outports_info;
+
+  std::string _hostname = "CLAP-as-AUv2-wrapper";
 
 #ifdef DUAL_SCHEDULING_ENABLED
   bool _midi_dualscheduling_mode = false;

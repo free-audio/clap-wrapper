@@ -131,7 +131,7 @@ WrapAsAUV2::WrapAsAUV2(AUV2_Type type, const std::string& clapname, const std::s
        * ToDo: Stand up the host, create the plugin instance here
        */
 
-      // pffffrzz();
+      // pffffrzz();  // <- enable this to have a hook to attach a debugger
       _plugin = Clap::Plugin::createInstance(_library._pluginFactory, _desc->id, this);
 
       _plugin->initialize();

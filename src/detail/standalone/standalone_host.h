@@ -198,6 +198,30 @@ struct StandaloneHost : Clap::IHost
 
   const char *host_get_name() override;
 
+  // context menu extension
+  bool supportsContextMenu() const override
+  {
+    return false;
+  }
+  bool context_menu_populate(const clap_context_menu_target_t *target,
+                             const clap_context_menu_builder_t *builder) override
+  {
+    return false;
+  }
+  bool context_menu_perform(const clap_context_menu_target_t *target, clap_id action_id) override
+  {
+    return false;
+  }
+  bool context_menu_can_popup() override
+  {
+    return false;
+  }
+  bool context_menu_popup(const clap_context_menu_target_t *target, int32_t screen_index, int32_t x,
+                          int32_t y) override
+  {
+    return false;
+  }
+
 #if LIN
   bool register_fd(int fd, clap_posix_fd_flags_t flags) override;
   bool modify_fd(int fd, clap_posix_fd_flags_t flags) override;

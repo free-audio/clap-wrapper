@@ -997,7 +997,7 @@ const char* ClapAsVst3::host_get_name()
     if (kResultOk == vst3HostApplication->getName(res))
     {
       wrapper_hostname = VST3::StringConvert::convert(res);
-      wrapper_hostname.append(" (CLAP-as-VST3-wrapper)");
+      wrapper_hostname.append(" (CLAP-as-VST3)");
     }
   }
   return wrapper_hostname.c_str();
