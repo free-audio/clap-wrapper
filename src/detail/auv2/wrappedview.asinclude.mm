@@ -111,7 +111,18 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
   gui->set_parent(ui._plugin->_plugin, &m);
   gui->set_scale(ui._plugin->_plugin, 1.0);
 
-  if (gui->can_resize(ui._plugin->_plugin)) gui->set_size(ui._plugin->_plugin, size.width, size.height);
+  if (gui->can_resize(ui._plugin->_plugin)) 
+  {
+    clap_gui_resize_hints_t resize_hints;
+    gui->get_resize_hints(ui._plugin->_plugin, &resize_hints);
+    NSAutoresizingMaskOptions mask = 0;
+
+    if (resize_hints.can_resize_horizontally) mask |= NSViewWidthSizable;
+    if (resize_hints.can_resize_vertically) mask |= NSViewHeightSizable;
+
+    [self setAutoresizingMask:mask];
+    gui->set_size(ui._plugin->_plugin, size.width, size.height);
+  }
 
   idleTimer = nil;
   CFTimeInterval TIMER_INTERVAL = .05;  // In SurgeGUISynthesizer.h it uses 50 ms
