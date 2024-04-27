@@ -333,7 +333,7 @@ tresult PLUGIN_API ClapAsVst3::activateBus(Vst::MediaType type, Vst::BusDirectio
 tresult PLUGIN_API ClapAsVst3::setIoMode(Vst::IoMode mode)
 {
   auto rext = _plugin->_ext._render;
-  
+
   if (rext)
   {
     auto mainthread = _plugin->AlwaysMainThread();
