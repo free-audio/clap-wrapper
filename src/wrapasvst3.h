@@ -149,6 +149,8 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   tresult PLUGIN_API activateBus(Vst::MediaType type, Vst::BusDirection dir, int32 index,
                                  TBool state) override;
 
+  tresult PLUGIN_API setIoMode(Vst::IoMode mode) override;
+
   // from IEditController
   tresult PLUGIN_API setComponentHandler(Vst::IComponentHandler* handler) override;
 

@@ -330,6 +330,33 @@ tresult PLUGIN_API ClapAsVst3::activateBus(Vst::MediaType type, Vst::BusDirectio
   return super::activateBus(type, dir, index, state);
 }
 
+tresult PLUGIN_API ClapAsVst3::setIoMode(Vst::IoMode mode)
+{
+  auto rext = _plugin->_ext._render;
+  
+  if (rext)
+  {
+    auto mainthread = _plugin->AlwaysMainThread();
+
+    bool realtime_only = rext->has_hard_realtime_requirement(_plugin->_plugin);
+    switch (mode)
+    {
+      case Vst::kOfflineProcessing:
+        if (realtime_only) return kResultFalse;
+        return (rext->set(_plugin->_plugin, CLAP_RENDER_OFFLINE)) ? kResultOk : kResultFalse;
+        break;
+      case Vst::kSimple:
+      case Vst::kAdvanced:
+        // both does not make any difference
+        return (rext->set(_plugin->_plugin, CLAP_RENDER_REALTIME)) ? kResultOk : kResultFalse;
+        break;
+      default:
+        return kNotImplemented;
+    }
+  }
+  return super::setIoMode(mode);
+}
+
 //-----------------------------------------------------------------------------
 
 tresult PLUGIN_API ClapAsVst3::setComponentHandler(Vst::IComponentHandler* handler)
