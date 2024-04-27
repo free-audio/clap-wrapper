@@ -188,6 +188,22 @@ tresult PLUGIN_API ClapAsVst3::setupProcessing(Vst::ProcessSetup& newSetup)
   {
     return kResultFalse;
   }
+  if (_plugin->_ext._render)
+  {
+    if (_plugin->_ext._render->has_hard_realtime_requirement(_plugin->_plugin) &&
+        newSetup.processMode != Vst::kRealtime)
+    {
+      return kResultFalse;
+    }
+    clap_plugin_render_mode new_render_mode = CLAP_RENDER_REALTIME;
+    if (newSetup.processMode == Vst::kOffline)
+    {
+      new_render_mode = CLAP_RENDER_OFFLINE;
+    }
+    // handling Vst::kPrefetch as Vst::kRealTime
+
+    _plugin->_ext._render->set(_plugin->_plugin, new_render_mode);
+  }
   _plugin->setSampleRate(newSetup.sampleRate);
   _plugin->setBlockSizes(newSetup.maxSamplesPerBlock, newSetup.maxSamplesPerBlock);
 
