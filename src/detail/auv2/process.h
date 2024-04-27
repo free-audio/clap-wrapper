@@ -53,6 +53,7 @@ struct ProcessData
   Boolean _isPlaying;
   Boolean _transportChanged;
   Boolean _isLooping;
+  Boolean _isRecording;
 
   // --------------
   bool _AUbeatAndTempoValid;  // true if:
