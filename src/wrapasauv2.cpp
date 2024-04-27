@@ -920,19 +920,29 @@ OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags& inFlags, const AudioTime
 
     // retrieve musical information for this render block
 
-    // TODO: clarify how we can get transportStateProc2
-    // mHostCallbackInfo.transportStateProc2
-#if 1
-    data._AUtransportValid =
-        (noErr == CallHostTransportState(&data._isPlaying, &data._transportChanged,
-                                         &data._currentSongPosInSeconds, &data._isLooping,
-                                         &data._cycleStart, &data._cycleEnd));
+    auto hcb = GetHostCallbackInfo();
+    if (hcb.transportStateProc2)
+    {
+      data._AUtransportValid =
+          (noErr == (hcb.transportStateProc2)(hcb.hostUserData, &data._isPlaying, &data._isRecording,
+                                              &data._transportChanged, &data._currentSongPosInSeconds,
+                                              &data._isLooping, &data._cycleStart, &data._cycleEnd));
+    }
+    else
+    {
+      data._isRecording = FALSE;
+
+      data._AUtransportValid =
+          (noErr == CallHostTransportState(&data._isPlaying, &data._transportChanged,
+                                           &data._currentSongPosInSeconds, &data._isLooping,
+                                           &data._cycleStart, &data._cycleEnd));
+    }
+
     data._currentSongPosInSeconds /= std::max(_plugin->getSampleRate(), 1.0);  // just in case
     data._AUbeatAndTempoValid = (noErr == CallHostBeatAndTempo(&data._beat, &data._tempo));
     data._AUmusicalTimeValid =
         (noErr == CallHostMusicalTimeLocation(&data._offsetToNextBeat, &data._musicalNumerator,
                                               &data._musicalDenominator, &data._currentDownBeat));
-#endif
     // Get output buffer list and extract the i/o buffer pointers.
     // The loop is done so that an arbitrary number of output busses
     // with an arbitrary number of output channels is mapped onto a
