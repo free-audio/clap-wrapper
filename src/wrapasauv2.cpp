@@ -930,6 +930,8 @@ OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags& inFlags, const AudioTime
     }
     else
     {
+      data._isRecording = FALSE;
+
       data._AUtransportValid =
           (noErr == CallHostTransportState(&data._isPlaying, &data._transportChanged,
                                            &data._currentSongPosInSeconds, &data._isLooping,
