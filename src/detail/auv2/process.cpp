@@ -180,6 +180,7 @@ void ProcessAdapter::process(ProcessData& data)
   {
     // TODO: transportchanged flag?
     _transport.flags |= data._isPlaying ? CLAP_TRANSPORT_IS_PLAYING : 0;
+    _transport.flags |= data._isRecording ? CLAP_TRANSPORT_IS_RECORDING : 0;
     // CLAP_TRANSPORT_IS_RECORDING can not be retrieved from this data block
     _transport.flags |= data._isLooping ? CLAP_TRANSPORT_IS_LOOP_ACTIVE : 0;
     // CLAP_TRANSPORT_IS_RECORDING can not be retrieved from the AudioUnit API
