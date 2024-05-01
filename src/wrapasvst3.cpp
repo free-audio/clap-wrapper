@@ -348,7 +348,7 @@ tresult PLUGIN_API ClapAsVst3::activateBus(Vst::MediaType type, Vst::BusDirectio
 
 tresult PLUGIN_API ClapAsVst3::setIoMode(Vst::IoMode mode)
 {
-#if 0 // disabled for now
+#if 0  // disabled for now
   // since there is always the override in setupProcessing, setting the mode here
   // does not make much sense - even for a VST3
   // so for now this stays kUnimplemented until we find a proper use case
@@ -375,7 +375,7 @@ tresult PLUGIN_API ClapAsVst3::setIoMode(Vst::IoMode mode)
         return kNotImplemented;
     }
   }
-  #endif
+#endif
   return super::setIoMode(mode);
 }
 
