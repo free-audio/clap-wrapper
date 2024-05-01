@@ -501,10 +501,6 @@ const void* Plugin::clapExtension(const clap_host* /*host*/, const char* extensi
   {
     return &HostExt::tail;
   }
-  if (!strcmp(extension, CLAP_EXT_RENDER))
-  {
-    // TODO: implement CLAP_EXT_RENDER
-  }
   if (!strcmp(extension, CLAP_EXT_STATE)) return &HostExt::state;
   if (!strcmp(extension, CLAP_EXT_CONTEXT_MENU)) return &HostExt::context_menu;
 

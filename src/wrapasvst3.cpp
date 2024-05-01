@@ -188,6 +188,22 @@ tresult PLUGIN_API ClapAsVst3::setupProcessing(Vst::ProcessSetup& newSetup)
   {
     return kResultFalse;
   }
+  if (_plugin->_ext._render)
+  {
+    if (_plugin->_ext._render->has_hard_realtime_requirement(_plugin->_plugin) &&
+        newSetup.processMode != Vst::kRealtime)
+    {
+      return kResultFalse;
+    }
+    clap_plugin_render_mode new_render_mode = CLAP_RENDER_REALTIME;
+    if (newSetup.processMode == Vst::kOffline)
+    {
+      new_render_mode = CLAP_RENDER_OFFLINE;
+    }
+    // handling Vst::kPrefetch as Vst::kRealTime
+
+    _plugin->_ext._render->set(_plugin->_plugin, new_render_mode);
+  }
   _plugin->setSampleRate(newSetup.sampleRate);
   _plugin->setBlockSizes(newSetup.maxSamplesPerBlock, newSetup.maxSamplesPerBlock);
 
@@ -328,6 +344,39 @@ tresult PLUGIN_API ClapAsVst3::activateBus(Vst::MediaType type, Vst::BusDirectio
                                            TBool state)
 {
   return super::activateBus(type, dir, index, state);
+}
+
+tresult PLUGIN_API ClapAsVst3::setIoMode(Vst::IoMode mode)
+{
+#if 0  // disabled for now
+  // since there is always the override in setupProcessing, setting the mode here
+  // does not make much sense - even for a VST3
+  // so for now this stays kUnimplemented until we find a proper use case
+
+  auto rext = _plugin->_ext._render;
+
+  if (rext)
+  {
+    auto mainthread = _plugin->AlwaysMainThread();
+
+    bool realtime_only = rext->has_hard_realtime_requirement(_plugin->_plugin);
+    switch (mode)
+    {
+      case Vst::kOfflineProcessing:
+        if (realtime_only) return kResultFalse;
+        return (rext->set(_plugin->_plugin, CLAP_RENDER_OFFLINE)) ? kResultOk : kResultFalse;
+        break;
+      case Vst::kSimple:
+      case Vst::kAdvanced:
+        // both does not make any difference
+        return (rext->set(_plugin->_plugin, CLAP_RENDER_REALTIME)) ? kResultOk : kResultFalse;
+        break;
+      default:
+        return kNotImplemented;
+    }
+  }
+#endif
+  return super::setIoMode(mode);
 }
 
 //-----------------------------------------------------------------------------
