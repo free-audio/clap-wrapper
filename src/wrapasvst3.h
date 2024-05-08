@@ -192,15 +192,16 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   tresult PLUGIN_API getUnitByBus(Vst::MediaType /*type*/, Vst::BusDirection /*dir*/, int32 /*busIndex*/,
                                   int32 /*channel*/, Vst::UnitID& /*unitId*/ /*out*/) SMTG_OVERRIDE;
 
-#if 0
-	// units selection --------------------
-	Vst::UnitID PLUGIN_API getSelectedUnit () SMTG_OVERRIDE { return selectedUnit; }
-	tresult PLUGIN_API selectUnit (Vst::UnitID unitId) SMTG_OVERRIDE
-	{
-		selectedUnit = unitId;
-		return kResultTrue;
-	}
-#endif
+  // units selection --------------------
+  Vst::UnitID PLUGIN_API getSelectedUnit() SMTG_OVERRIDE
+  {
+    return selectedUnit;
+  }
+  tresult PLUGIN_API selectUnit(Vst::UnitID unitId) SMTG_OVERRIDE
+  {
+    selectedUnit = unitId;
+    return kResultTrue;
+  }
 
   //---IContextMenuTarget ----------------------------------------------------------------
   tresult PLUGIN_API executeMenuItem(int32 tag) override;
