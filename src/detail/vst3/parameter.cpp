@@ -44,7 +44,7 @@ Vst3Parameter::Vst3Parameter(const Steinberg::Vst::ParameterInfo& vst3info, uint
 Vst3Parameter::~Vst3Parameter() = default;
 
 bool Vst3Parameter::setNormalized(Steinberg::Vst::ParamValue v)
-{  
+{
   return super::setNormalized(v);
 }
 
