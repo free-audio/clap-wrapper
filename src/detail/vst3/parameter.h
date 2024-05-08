@@ -52,6 +52,10 @@ class Vst3Parameter : public Steinberg::Vst::Parameter
 
   inline double asClapValue(double vst3value) const
   {
+    if (info.stepCount > 0)
+    {
+      return (vst3value * info.stepCount) + min_value;
+    }
     return (vst3value * (max_value - min_value)) + min_value;
   }
   inline double asVst3Value(double clapvalue) const

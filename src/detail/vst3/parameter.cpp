@@ -44,11 +44,7 @@ Vst3Parameter::Vst3Parameter(const Steinberg::Vst::ParameterInfo& vst3info, uint
 Vst3Parameter::~Vst3Parameter() = default;
 
 bool Vst3Parameter::setNormalized(Steinberg::Vst::ParamValue v)
-{
-  if (isMidi && (info.flags & Steinberg::Vst::ParameterInfo::kIsProgramChange))
-  {
-    return true;
-  }
+{  
   return super::setNormalized(v);
 }
 
