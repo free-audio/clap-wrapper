@@ -3,13 +3,14 @@
 #include <clap/clap.h>
 
 // ARA support
-// 
+//
 
 //! Factory ID for retrieving the clap_ara_factory_t extension from clap_plugin_entry_t.get_factory()
 static CLAP_CONSTEXPR const char CLAP_EXT_ARA_FACTORY[] = "com.celemony.ara.factory.draft/1";
 
 //! Extension ID for retrieving the clap_ara_plugin_extension_t from clap_plugin_t.get_extension()
-static CLAP_CONSTEXPR const char CLAP_EXT_ARA_PLUGIN_EXTENSION[] = "com.celemony.ara.plugin_extension.draft/1";
+static CLAP_CONSTEXPR const char CLAP_EXT_ARA_PLUGIN_EXTENSION[] =
+    "com.celemony.ara.plugin_extension.draft/1";
 
 //! Add this feature if your plugin requires ARA to operate (will not work as normal insert plug-in).
 //! This allows non-ARA CLAP hosts to suppress the plug-in since it cannot be used there.
@@ -19,7 +20,8 @@ static CLAP_CONSTEXPR const char CLAP_EXT_ARA_PLUGIN_EXTENSION[] = "com.celemony
 #define kARAMainFactoryClass "ARA Main Factory Class"
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
   // substitute types so we don't need to include the ARA SDK in full
@@ -40,18 +42,18 @@ extern "C" {
     //! The returned pointer must remain valid until clap_plugin_entry_t.deinit() is called.
     //! The returned ARAFactory must be equal to the ARAFactory returned from instances of the
     //! associated CLAP plug-in through their clap_ara_plugin_extension_t.get_factory().
-    const ARAFactoryPtr (CLAP_ABI* get_ara_factory)(const struct clap_ara_factory* factory, uint32_t index);
+    ARAFactoryPtr(CLAP_ABI* get_ara_factory)(const struct clap_ara_factory* factory, uint32_t index);
 
     //! Get the ID of the CLAP plug-in associated with the ARA factory for the given index.
     //! The plug-in must be in the same binary.
     //! The returned pointer must remain valid until clap_plugin_entry_t.deinit is called.
-    const char* (CLAP_ABI* get_plugin_id)(const struct clap_ara_factory* factory, uint32_t index);
+    const char*(CLAP_ABI* get_plugin_id)(const struct clap_ara_factory* factory, uint32_t index);
   } clap_ara_factory_t;
 
   typedef struct clap_ara_plugin_extension
   {
     //! Access the ARAFactory associated with this plug-in.
-    const ARAFactoryPtr (CLAP_ABI* get_factory)(const clap_plugin_t* plugin);
+    ARAFactoryPtr(CLAP_ABI* get_factory)(const clap_plugin_t* plugin);
 
     //! Bind the CLAP instance to an ARA document controller, switching it from "normal" operation
     //! to ARA mode with the assigned roles, and exposing the ARA plug-in extension.
@@ -66,12 +68,10 @@ extern "C" {
     //! the clap_plugin_t instance and for deleting ARA document controller is undefined.
     //! Plug-ins must handle both potential destruction orders to allow for a simpler reference
     //! counting implementation on the host side.
-    const ARAPlugInExtensionInstancePtr (CLAP_ABI* bind_to_document_controller)(const clap_plugin_t* plugin,
-      ARADocumentControllerRef   documentControllerRef,
-      ARAPlugInInstanceRoleFlags knownRoles,
-      ARAPlugInInstanceRoleFlags assignedRoles);
+    ARAPlugInExtensionInstancePtr(CLAP_ABI* bind_to_document_controller)(
+        const clap_plugin_t* plugin, ARADocumentControllerRef documentControllerRef,
+        ARAPlugInInstanceRoleFlags knownRoles, ARAPlugInInstanceRoleFlags assignedRoles);
   } clap_ara_plugin_extension_t;
-
 
 #ifdef __cplusplus
 }
