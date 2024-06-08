@@ -38,7 +38,9 @@ class IMainFactory : public Steinberg::FUnknown
   //! The returned ARAFactory must be equal to the ARAFactory provided by the associated
   //! IAudioProcessor class through its IPlugInEntryPoint.
   virtual ARAFactoryPtr PLUGIN_API getFactory() = 0;
-  virtual ~IMainFactory() {}
+  virtual ~IMainFactory()
+  {
+  }
   static const Steinberg::FUID iid;
 };
 
