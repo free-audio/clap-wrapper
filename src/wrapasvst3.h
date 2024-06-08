@@ -211,8 +211,8 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
 
   //---IContextMenuTarget ----------------------------------------------------------------
   tresult PLUGIN_API executeMenuItem(int32 tag) override;
-  
-	//----from ARA::IPlugInEntryPoint
+
+  //----from ARA::IPlugInEntryPoint
   ARAFactoryPtr PLUGIN_API getFactory() override;
   ARAPlugInExtensionInstancePtr PLUGIN_API
   bindToDocumentController(ARADocumentControllerRef documentControllerRef) override;

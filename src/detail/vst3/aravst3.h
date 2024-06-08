@@ -72,7 +72,7 @@ class IPlugInEntryPoint : public Steinberg::FUnknown
   //! Same call order rules as bindToDocumentControllerWithRoles () apply.
   ARA_DEPRECATED(2_0_Draft)
   virtual ARAPlugInExtensionInstancePtr PLUGIN_API
-      bindToDocumentController(ARADocumentControllerRef documentControllerRef) = 0;
+  bindToDocumentController(ARADocumentControllerRef documentControllerRef) = 0;
 
   static const Steinberg::FUID iid;
 };
