@@ -337,11 +337,9 @@ class ARAMainFactory : public ARA::IMainFactory
 {
  public:
   ARAMainFactory(ARAFactoryPtr factory, Steinberg::FUID uid)
-    : ARA::IMainFactory(), _arafactory(factory), _uid(uid)
-  {
-    FUNKNOWN_CTOR
-  }
-  ARAFactoryPtr PLUGIN_API getFactory() override
+    : ARA::IMainFactory()
+    , _arafactory(factory)
+    , _uid(uid){FUNKNOWN_CTOR} ARAFactoryPtr PLUGIN_API getFactory() override
   {
     return _arafactory;
   }
