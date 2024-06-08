@@ -59,7 +59,7 @@ class IPlugInEntryPoint : public Steinberg::FUnknown
   //! The returned ARAFactory must be equal to the ARAFactory provided by the associated IMainFactory.
   //! To prevent ambiguities, the name of the plug-in as stored in the PClassInfo.name of this
   //! class must match the ARAFactory.plugInName returned here.
-  virtual const ARAFactoryPtr PLUGIN_API getFactory() = 0;
+  virtual ARAFactoryPtr PLUGIN_API getFactory() = 0;
 
   //! Bind the VST3 instance to an ARA document controller, switching it from "normal" operation
   //! to ARA mode, and exposing the ARA plug-in extension.
@@ -71,7 +71,7 @@ class IPlugInEntryPoint : public Steinberg::FUnknown
   //! safely assume those three roles to be enabled if this call was made.
   //! Same call order rules as bindToDocumentControllerWithRoles () apply.
   ARA_DEPRECATED(2_0_Draft)
-  virtual const ARAPlugInExtensionInstancePtr PLUGIN_API
+  virtual ARAPlugInExtensionInstancePtr PLUGIN_API
       bindToDocumentController(ARADocumentControllerRef documentControllerRef) = 0;
 
   static const Steinberg::FUID iid;
@@ -97,7 +97,7 @@ class ARA_ADDENDUM(2_0_Draft) IPlugInEntryPoint2 : public Steinberg::FUnknown
   //! the IAudioProcessor instance and for deleting ARA document controller is undefined.
   //! Plug-ins must handle both potential destruction orders to allow for a simpler reference
   //! counting implementation on the host side.
-  virtual const ARAPlugInExtensionInstancePtr PLUGIN_API bindToDocumentControllerWithRoles(
+  virtual ARAPlugInExtensionInstancePtr PLUGIN_API bindToDocumentControllerWithRoles(
       ARADocumentControllerRef documentControllerRef, ARAPlugInInstanceRoleFlags knownRoles,
       ARAPlugInInstanceRoleFlags assignedRoles) = 0;
   static const Steinberg::FUID iid;

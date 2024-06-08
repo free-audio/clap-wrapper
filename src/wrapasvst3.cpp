@@ -482,7 +482,7 @@ tresult ClapAsVst3::executeMenuItem(int32 tag)
   return kResultOk;
 }
 
-const ARAFactoryPtr PLUGIN_API ClapAsVst3::getFactory()
+ARAFactoryPtr PLUGIN_API ClapAsVst3::getFactory()
 {
   LOGDETAIL("-> ARA::IPlugInEntryPoint::getFactory");
   if (_plugin->_ext._ara)
@@ -492,7 +492,7 @@ const ARAFactoryPtr PLUGIN_API ClapAsVst3::getFactory()
   return nullptr;
 }
 
-const ARAPlugInExtensionInstancePtr PLUGIN_API
+ARAPlugInExtensionInstancePtr PLUGIN_API
 ClapAsVst3::bindToDocumentController(ARADocumentControllerRef documentControllerRef)
 {
   LOGDETAIL("-> ARA::IPlugInEntryPoint::bindToDocumentController (!!! DEPRECATED !!!)");
@@ -500,7 +500,7 @@ ClapAsVst3::bindToDocumentController(ARADocumentControllerRef documentController
   return nullptr;
 }
 
-const ARAPlugInExtensionInstancePtr PLUGIN_API ClapAsVst3::bindToDocumentControllerWithRoles(
+ARAPlugInExtensionInstancePtr PLUGIN_API ClapAsVst3::bindToDocumentControllerWithRoles(
     ARADocumentControllerRef documentControllerRef, ARAPlugInInstanceRoleFlags knownRoles,
     ARAPlugInInstanceRoleFlags assignedRoles)
 {

@@ -213,12 +213,12 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   tresult PLUGIN_API executeMenuItem(int32 tag) override;
   
 	//----from ARA::IPlugInEntryPoint
-  const ARAFactoryPtr PLUGIN_API getFactory() override;
-  const ARAPlugInExtensionInstancePtr PLUGIN_API
+  ARAFactoryPtr PLUGIN_API getFactory() override;
+  ARAPlugInExtensionInstancePtr PLUGIN_API
   bindToDocumentController(ARADocumentControllerRef documentControllerRef) override;
 
   //----from ARA::IPlugInEntryPoint2---------------------------
-  const ARAPlugInExtensionInstancePtr PLUGIN_API bindToDocumentControllerWithRoles(
+  ARAPlugInExtensionInstancePtr PLUGIN_API bindToDocumentControllerWithRoles(
       ARADocumentControllerRef documentControllerRef, ARAPlugInInstanceRoleFlags knownRoles,
       ARAPlugInInstanceRoleFlags assignedRoles);
 

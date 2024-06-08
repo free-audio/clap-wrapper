@@ -38,7 +38,6 @@ namespace fs = std::filesystem;
 #include <CoreFoundation/CoreFoundation.h>
 #endif
 
-
 namespace Clap
 {
 
