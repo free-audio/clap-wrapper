@@ -220,7 +220,7 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   //----from ARA::IPlugInEntryPoint2---------------------------
   ARAPlugInExtensionInstancePtr PLUGIN_API bindToDocumentControllerWithRoles(
       ARADocumentControllerRef documentControllerRef, ARAPlugInInstanceRoleFlags knownRoles,
-      ARAPlugInInstanceRoleFlags assignedRoles);
+      ARAPlugInInstanceRoleFlags assignedRoles) override;
 
   //---Interface--------------------------------------------------------------------------
   OBJ_METHODS(ClapAsVst3, SingleComponentEffect)
