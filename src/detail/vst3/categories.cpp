@@ -101,6 +101,9 @@ static const struct _translate
   {   CLAP_PLUGIN_FEATURE_MIXING                , "Mixing"},
   {   CLAP_PLUGIN_FEATURE_MASTERING             , "Mastering"},
 
+  {   "only-ara"                                , "OnlyARA" },
+  {   "ara::required"                           , "OnlyARA" },
+
   {   "external"                                , "External"},
 
   {nullptr, nullptr}

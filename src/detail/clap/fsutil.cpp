@@ -244,12 +244,16 @@ void Library::setupPluginsFromPluginEntry(const char *path)
           _pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_VST3));
       _pluginFactoryAUv2Info = static_cast<const clap_plugin_factory_as_auv2 *>(
           _pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_AUV2));
+      _pluginFactoryARAInfo =
+          static_cast<const clap_ara_factory_t *>(_pluginEntry->get_factory(CLAP_EXT_ARA_FACTORY));
 
       // detect plugins that do not check the CLAP_PLUGIN_FACTORY_ID
       if ((void *)_pluginFactory == (void *)_pluginFactoryVst3Info)
       {
+        // in this case, don't trust anything from there
         _pluginFactoryVst3Info = nullptr;
         _pluginFactoryAUv2Info = nullptr;
+        _pluginFactoryARAInfo = nullptr;
       }
 
       auto count = _pluginFactory->get_plugin_count(_pluginFactory);

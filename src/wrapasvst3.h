@@ -34,6 +34,8 @@
 #include "detail/vst3/plugview.h"
 #include "detail/clap/automation.h"
 #include "detail/shared/fixedqueue.h"
+#include "detail/ara/ara.h"
+#include "detail/vst3/aravst3.h"
 #include <mutex>
 
 using namespace Steinberg;
@@ -110,6 +112,8 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
                    public Steinberg::Vst::IMidiMapping,
                    public Steinberg::Vst::INoteExpressionController,
                    public Steinberg::Vst::IContextMenuTarget,
+                   public ARA::IPlugInEntryPoint,
+                   public ARA::IPlugInEntryPoint2,
                    public Clap::IHost,
                    public Clap::IAutomation,
                    public os::IPlugObject
@@ -123,6 +127,8 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
     : super()
     , Steinberg::Vst::IMidiMapping()
     , Steinberg::Vst::INoteExpressionController()
+    , ARA::IPlugInEntryPoint()
+    , ARA::IPlugInEntryPoint2()
     , _library(lib)
     , _libraryIndex(number)
     , _creationcontext(context)
@@ -205,6 +211,16 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
 
   //---IContextMenuTarget ----------------------------------------------------------------
   tresult PLUGIN_API executeMenuItem(int32 tag) override;
+  
+	//----from ARA::IPlugInEntryPoint
+  const ARAFactoryPtr PLUGIN_API getFactory() override;
+  const ARAPlugInExtensionInstancePtr PLUGIN_API
+  bindToDocumentController(ARADocumentControllerRef documentControllerRef) override;
+
+  //----from ARA::IPlugInEntryPoint2---------------------------
+  const ARAPlugInExtensionInstancePtr PLUGIN_API bindToDocumentControllerWithRoles(
+      ARADocumentControllerRef documentControllerRef, ARAPlugInInstanceRoleFlags knownRoles,
+      ARAPlugInInstanceRoleFlags assignedRoles);
 
   //---Interface--------------------------------------------------------------------------
   OBJ_METHODS(ClapAsVst3, SingleComponentEffect)
@@ -225,6 +241,12 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
       DEF_INTERFACE(IContextMenuTarget);
     }
   }
+  if (_plugin->_ext._ara)
+  {
+    DEF_INTERFACE(IPlugInEntryPoint)
+    DEF_INTERFACE(IPlugInEntryPoint2)
+  }
+
   // add any other interfaces here:
   //if (::Steinberg::FUnknownPrivate::iidEqual(iid, IExampleSomething::iid))
   //{

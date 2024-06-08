@@ -17,6 +17,7 @@ function(private_add_vst3_wrapper_sources)
             ${sd}/src/wrapasvst3.h
             ${sd}/src/wrapasvst3.cpp
             ${sd}/src/wrapasvst3_entry.cpp
+            ${sd}/src/detail/ara/ara.h
             ${sd}/src/detail/vst3/parameter.h
             ${sd}/src/detail/vst3/parameter.cpp
             ${sd}/src/detail/vst3/plugview.h
@@ -26,6 +27,7 @@ function(private_add_vst3_wrapper_sources)
             ${sd}/src/detail/vst3/process.cpp
             ${sd}/src/detail/vst3/categories.h
             ${sd}/src/detail/vst3/categories.cpp
+            ${sd}/src/detail/vst3/aravst3.h
             )
 
     target_include_directories(${V3_TARGET}-clap-wrapper-vst3-lib PRIVATE "${sd}/include")

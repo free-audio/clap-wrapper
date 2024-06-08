@@ -285,12 +285,83 @@ IPluginFactory* GetPluginFactoryEntryPoint()
       gPluginFactory->registerClass(&gCreationContexts.back().classinfo, ClapAsVst3::createInstance,
                                     &gCreationContexts.back());
     }
+
+    if (gClapLibrary._pluginFactoryARAInfo)
+    {
+      LOGINFO("creating ARA companion factories");
+      auto factory = gClapLibrary._pluginFactoryARAInfo;
+      auto count = factory->get_factory_count(factory);
+      for (decltype(count) i = 0; i < count; ++i)
+      {
+        auto matching_plugin = factory->get_plugin_id(factory, i);
+        LOGDETAIL("number of ARA plugins: {}", numPlugins);
+        for (int ctr = 0; ctr < numPlugins; ++ctr)
+        {
+          auto& clapdescr = gClapLibrary.plugins[ctr];
+          if (!strcmp(clapdescr->id, matching_plugin))
+          {
+            std::string extended_id(matching_plugin);
+            extended_id.append("-ARA");
+            auto g = Crypto::create_sha1_guid_from_name(extended_id.c_str(), extended_id.size());
+            TUID lcid;
+            memcpy(&lcid, &g, sizeof(TUID));
+
+            std::string n(clapdescr->name);
+#ifdef _DEBUG
+            n.append(" (CLAP->VST3)");
+#endif
+            auto plugname = n.c_str();  //  clapdescr->name;
+            gCreationContexts.push_back({
+
+                &gClapLibrary, (int)i,
+                PClassInfo2(lcid, PClassInfo::kManyInstances, kARAMainFactoryClass, plugname, 0,
+                            "", /* not used in this context */
+                            "", /* not used in this context */
+                            clapdescr->version, kVstVersionString)});
+            gPluginFactory->registerClass(&gCreationContexts.back().classinfo,
+                                          ClapAsVst3::createInstance, &gCreationContexts.back());
+
+            break;
+          }
+        }
+      }
+    }
   }
   else
     gPluginFactory->addRef();
 
   return gPluginFactory;
 }
+
+class ARAMainFactory : public ARA::IMainFactory
+{
+ public:
+  ARAMainFactory(ARAFactoryPtr factory, Steinberg::FUID uid)
+    : ARA::IMainFactory(), _arafactory(factory), _uid(uid)
+  {
+    FUNKNOWN_CTOR
+  }
+  const ARAFactoryPtr PLUGIN_API getFactory() override
+  {
+    return _arafactory;
+  }
+  //---Interface--------------------------------------------------------------------------
+  DECLARE_FUNKNOWN_METHODS
+
+  // Class ID
+  const Steinberg::FUID getClassFUID()
+  {
+    return _uid;
+  }
+
+ private:
+  ARAFactoryPtr _arafactory = nullptr;
+  Steinberg::FUID _uid;
+};
+
+IMPLEMENT_FUNKNOWN_METHODS(ARAMainFactory, ARA::IMainFactory, ARA::IMainFactory::iid)
+
+DEF_CLASS_IID(ARA::IMainFactory)
 
 /*
     creates an Instance from the creationContext.
@@ -300,11 +371,25 @@ FUnknown* ClapAsVst3::createInstance(void* context)
 {
   auto ctx = static_cast<CreationContext*>(context);
 
-  LOGINFO("creating plugin {} (#{})", ctx->classinfo.name, ctx->index);
-  if (ctx->lib->hasEntryPoint())
+  if (!strcmp(ctx->classinfo.category, kVstAudioEffectClass))
   {
-    // MessageBoxA(NULL, "halt", "create", MB_OK);
-    return (IAudioProcessor*)new ClapAsVst3(ctx->lib, ctx->index, context);
+    LOGINFO("creating plugin {} (#{})", ctx->classinfo.name, ctx->index);
+    if (ctx->lib->hasEntryPoint())
+    {
+      // MessageBoxA(NULL, "create ClapAsVst3", "create", MB_OK);
+      return (IAudioProcessor*)new ClapAsVst3(ctx->lib, ctx->index, context);
+    }
+  }
+
+  if (!strcmp(ctx->classinfo.category, kARAMainFactoryClass))
+  {
+    LOGINFO("creating ARAMainFactory {} (#{})", ctx->classinfo.name, ctx->index);
+    if (ctx->lib->hasEntryPoint())
+    {
+      const auto ara_factory = ctx->lib->_pluginFactoryARAInfo;
+      return static_cast<FUnknown*>(new ARAMainFactory(
+          ara_factory->get_ara_factory(ara_factory, ctx->index), Steinberg::FUID(ctx->classinfo.cid)));
+    }
   }
   return nullptr;  // this should never happen.
 }
