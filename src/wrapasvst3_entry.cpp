@@ -341,7 +341,7 @@ class ARAMainFactory : public ARA::IMainFactory
   {
     FUNKNOWN_CTOR
   }
-  const ARAFactoryPtr PLUGIN_API getFactory() override
+  ARAFactoryPtr PLUGIN_API getFactory() override
   {
     return _arafactory;
   }

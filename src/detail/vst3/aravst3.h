@@ -37,7 +37,7 @@ class IMainFactory : public Steinberg::FUnknown
   //! The returned pointer must remain valid throughout the lifetime of the object that provided it.
   //! The returned ARAFactory must be equal to the ARAFactory provided by the associated
   //! IAudioProcessor class through its IPlugInEntryPoint.
-  virtual const ARAFactoryPtr PLUGIN_API getFactory() = 0;
+  virtual ARAFactoryPtr PLUGIN_API getFactory() = 0;
 
   static const Steinberg::FUID iid;
 };
