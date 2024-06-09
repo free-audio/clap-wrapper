@@ -212,7 +212,7 @@ void Plugin::connectClap(const clap_plugin_t* clap)
   getExtension(_plugin, _ext._tail, CLAP_EXT_TAIL);
   getExtension(_plugin, _ext._gui, CLAP_EXT_GUI);
   getExtension(_plugin, _ext._timer, CLAP_EXT_TIMER_SUPPORT);
-  getExtension(_plugin, _ext._ara, CLAP_EXT_ARA_PLUGIN_EXTENSION);
+  getExtension(_plugin, _ext._ara, CLAP_EXT_ARA_PLUGINEXTENSION);
 
   getExtension(_plugin, _ext._contextmenu, CLAP_EXT_CONTEXT_MENU);
   if (_ext._contextmenu == nullptr)

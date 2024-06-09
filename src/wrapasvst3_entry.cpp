@@ -389,5 +389,6 @@ FUnknown* ClapAsVst3::createInstance(void* context)
           ara_factory->get_ara_factory(ara_factory, ctx->index), Steinberg::FUID(ctx->classinfo.cid)));
     }
   }
+
   return nullptr;  // this should never happen.
 }
