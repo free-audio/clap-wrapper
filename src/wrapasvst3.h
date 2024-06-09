@@ -241,10 +241,19 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
       DEF_INTERFACE(IContextMenuTarget);
     }
   }
-  if (_plugin->_ext._ara)
+  if (::Steinberg::FUnknownPrivate::iidEqual(iid, IPlugInEntryPoint::iid))
   {
-    DEF_INTERFACE(IPlugInEntryPoint)
-    DEF_INTERFACE(IPlugInEntryPoint2)
+    if (_plugin->_ext._ara)
+    {
+      DEF_INTERFACE(IPlugInEntryPoint)
+    }
+  }
+  if (::Steinberg::FUnknownPrivate::iidEqual(iid, IPlugInEntryPoint2::iid))
+  {
+    if (_plugin->_ext._ara)
+    {
+      DEF_INTERFACE(IPlugInEntryPoint2)
+    }
   }
 
   // add any other interfaces here:

@@ -132,7 +132,7 @@ IPluginFactory* GetPluginFactoryEntryPoint()
   // static IPtr<Steinberg::CPluginFactory> gPluginFactory = nullptr;
   static Clap::Library gClapLibrary;
 
-  static std::vector<CreationContext> gCreationContexts;
+  static std::vector<std::shared_ptr<CreationContext>> gCreationContexts;
 
   // if there is no ClapLibrary yet
   if (!gClapLibrary._pluginFactory)
@@ -275,15 +275,15 @@ IPluginFactory* GetPluginFactoryEntryPoint()
         LOGDETAIL("plugin id: {} -> {}", clapdescr->id, x);
       }
 #endif
-
-      gCreationContexts.push_back(
-          {&gClapLibrary, ctr,
-           PClassInfo2(
-               lcid, PClassInfo::kManyInstances, kVstAudioEffectClass, plugname,
-               0 /* the only flag is usually Vst:kDistributable, but CLAPs aren't distributable */,
-               features.c_str(), pluginvendor, clapdescr->version, kVstVersionString)});
-      gPluginFactory->registerClass(&gCreationContexts.back().classinfo, ClapAsVst3::createInstance,
-                                    &gCreationContexts.back());
+      auto ptr = std::make_shared<CreationContext>();
+      *ptr = {&gClapLibrary, ctr,
+              PClassInfo2(
+                  lcid, PClassInfo::kManyInstances, kVstAudioEffectClass, plugname,
+                  0 /* the only flag is usually Vst:kDistributable, but CLAPs aren't distributable */,
+                  features.c_str(), pluginvendor, clapdescr->version, kVstVersionString)};
+      gCreationContexts.push_back(ptr);
+      gPluginFactory->registerClass(&gCreationContexts.back()->classinfo, ClapAsVst3::createInstance,
+                                    gCreationContexts.back().get());
     }
 
     if (gClapLibrary._pluginFactoryARAInfo)
@@ -311,15 +311,15 @@ IPluginFactory* GetPluginFactoryEntryPoint()
             n.append(" (CLAP->VST3)");
 #endif
             auto plugname = n.c_str();  //  clapdescr->name;
-            gCreationContexts.push_back({
-
-                &gClapLibrary, (int)i,
-                PClassInfo2(lcid, PClassInfo::kManyInstances, kARAMainFactoryClass, plugname, 0,
-                            "", /* not used in this context */
-                            "", /* not used in this context */
-                            clapdescr->version, kVstVersionString)});
-            gPluginFactory->registerClass(&gCreationContexts.back().classinfo,
-                                          ClapAsVst3::createInstance, &gCreationContexts.back());
+            auto ptr = std::make_shared<CreationContext>();
+            *ptr = {&gClapLibrary, (int)i,
+                    PClassInfo2(lcid, PClassInfo::kManyInstances, kARAMainFactoryClass, plugname, 0,
+                                "", /* not used in this context */
+                                "", /* not used in this context */
+                                clapdescr->version, kVstVersionString)};
+            gCreationContexts.push_back(ptr);
+            gPluginFactory->registerClass(&gCreationContexts.back()->classinfo,
+                                          ClapAsVst3::createInstance, gCreationContexts.back().get());
 
             break;
           }
