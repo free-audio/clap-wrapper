@@ -15,7 +15,7 @@
 //
 // the clap-wrapper itself does not require the ARA SDK because CLAP is a shell API only and
 // just passes interface pointers through extensions between the foreign host and the ARA plugin core.
-// 
+//
 // do not use this file in your clap plugin, use the ARA SDK!
 //
 
