@@ -2,7 +2,7 @@
 
 #include <clap/clap.h>
 
-// ARA support
+// ARA support for clap-wrapper
 //
 // the structs and identifiers are a copy from the ARA SDK (file ARA_API/ARACLAP.h from https://github.com/Celemony/ARA_API).
 // ARA is Copyright (c) 2022-2024, Celemony Software GmbH, All Rights Reserved.
@@ -14,7 +14,9 @@
 // More information about ARA can be found here: https://vwww.celemony.com/ara
 //
 // the clap-wrapper itself does not require the ARA SDK because CLAP is a shell API only and
-// just passes pointers through extensions to the ARA plugin core.
+// just passes interface pointers through extensions between the foreign host and the ARA plugin core.
+// 
+// do not use this file in your clap plugin, use the ARA SDK!
 //
 
 //! Factory ID for retrieving the clap_ara_factory_t extension from clap_plugin_entry_t.get_factory()
