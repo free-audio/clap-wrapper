@@ -596,6 +596,8 @@ OSStatus WrapAsAUV2::GetPropertyInfo(AudioUnitPropertyID inID, AudioUnitScope in
         break;
 
       case kAudioUnitProperty_CocoaUI:
+        if (!_plugin->_ext._gui)
+          return kAudioUnitErr_InvalidProperty;
         outWritable = false;
         outDataSize = sizeof(struct AudioUnitCocoaViewInfo);
         return noErr;
@@ -676,7 +678,7 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
       case kAudioUnitProperty_CocoaUI:
         LOGINFO("[clap-wrapper] Property: kAudioUnitProperty_CocoaUI {}",
                 (_plugin) ? "plugin" : "no plugin");
-        if (_plugin &&
+        if (_plugin && _plugin->_ext._gui &&
             (_plugin->_ext._gui->is_api_supported(_plugin->_plugin, CLAP_WINDOW_API_COCOA, false)))
         {
           fillAudioUnitCocoaView(((AudioUnitCocoaViewInfo*)outData), _plugin);
