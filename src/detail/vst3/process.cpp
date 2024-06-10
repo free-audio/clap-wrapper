@@ -225,8 +225,8 @@ void ProcessAdapter::process(Steinberg::Vst::ProcessData& data)
     _transport.song_pos_beats = 0;
 
     // samplerate and projectTimeSamples are always valid
-    _transport.song_pos_seconds =
-        _vstdata->processContext->projectTimeSamples / _vstdata->processContext->sampleRate;
+    _transport.song_pos_seconds = doubleToSecTime(_vstdata->processContext->projectTimeSamples /
+                                                  _vstdata->processContext->sampleRate);
 
     if ((_vstdata->processContext->state & Vst::ProcessContext::kProjectTimeMusicValid))
     {
