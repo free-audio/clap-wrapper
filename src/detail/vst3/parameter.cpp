@@ -123,7 +123,7 @@ Vst3Parameter* Vst3Parameter::create(
   v.defaultNormalizedValue = (info->default_value - info->min_value) / param_range;
   if ((info->flags & CLAP_PARAM_IS_STEPPED) || (info->flags & CLAP_PARAM_IS_ENUM))
   {
-    auto steps = param_range + 1;
+    auto steps = param_range;
     v.stepCount = steps;
   }
   else
