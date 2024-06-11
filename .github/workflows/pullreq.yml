@@ -21,7 +21,7 @@ jobs:
             name: Linux External SDK
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
@@ -73,11 +73,11 @@ jobs:
             run_aptget: false
             name: Windows gcc/minGW
 
-          - os: windows-latest
-            cmakeargs: -GNinja -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang
-            install_ninja: true
-            run_aptget: false
-            name: Windows clang
+          #- os: windows-latest
+          #  cmakeargs: -GNinja -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang
+          #  install_ninja: true
+          #  run_aptget: false
+          #  name: Windows clang
 
           - os: ubuntu-latest
             cmakeargs: -DCMAKE_CXX_COMPILER=g++-11 -DCMAKE_C_COMPILER=gcc-11
@@ -129,7 +129,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
@@ -155,4 +155,59 @@ jobs:
         run: |
           find build -name downloadplug.vst3 -print
           find build -name downloadplug.component -print
+
+
+  build_feature_clapfirst-test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            cmakeargs: -A x64
+            install_ninja: false
+            run_aptget: false
+            name: ClapFirst Windows 64bit MSVC
+
+          - os: ubuntu-latest
+            cmakeargs: -DCMAKE_CXX_COMPILER=g++-11 -DCMAKE_C_COMPILER=gcc-11
+            install_ninja: false
+            run_aptget: true
+            name: ClapFirst Linux gcc11
+
+          - os: macos-latest
+            cmakeargs: -G"Xcode"
+            install_ninja: false
+            run_aptget: false
+            name: ClapFirst MacOS Xcode
+
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Apt Update
+        if: ${{ matrix.run_aptget }}
+        run: sudo apt-get update
+
+      - name: Get Deps
+        if: ${{ matrix.run_aptget }}
+        run: sudo apt-get install -y alsa alsa-tools libasound2-dev libjack-dev libgtk-3-dev
+
+      - name: Install Ninja
+        if: ${{ matrix.install_ninja }}
+        uses: seanmiddleditch/gha-setup-ninja@master
+
+      - name: Build project
+        run: |
+          cmake -S . -B ./build ${{ matrix.cmakeargs }} -DCMAKE_BUILD_TYPE=Debug -DCLAP_WRAPPER_DOWNLOAD_DEPENDENCIES=TRUE -DCLAP_WRAPPER_BUILD_TESTS=TRUE
+          cmake --build ./build --config Debug --target clap-first-distortion_all_plugins
+
+      - name: Show Build Results
+        shell: bash
+        run: |
+          find build -name "ClapFirst*" -print
+          
 

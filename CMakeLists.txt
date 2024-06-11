@@ -33,6 +33,7 @@ set(CMAKE_COLOR_DIAGNOSTICS ON)
 # can just build with this turned on and it will forward all note expressions to your CLAP
 option(CLAP_SUPPORTS_ALL_NOTE_EXPRESSIONS "Does the underlying CLAP support note expressions" OFF)
 option(CLAP_WRAPPER_WINDOWS_SINGLE_FILE "Build a single fine (rather than folder) on windows" ON)
+option(CLAP_WRAPPER_BUILD_TESTS "Build test CLAP wrappers" OFF)
 
 project(clap-wrapper
 	LANGUAGES C CXX
@@ -131,3 +132,6 @@ else()
 
 endif()
 
+if (${CLAP_WRAPPER_BUILD_TESTS})
+    add_subdirectory(tests)
+endif()
