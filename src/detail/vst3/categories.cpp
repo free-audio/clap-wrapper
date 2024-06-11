@@ -44,6 +44,7 @@
 #include <clap/plugin-features.h>
 #include <pluginterfaces/base/ipluginbase.h>
 #include <pluginterfaces/vst/ivstaudioprocessor.h>
+#include "../ara/ara.h"
 
 using namespace Steinberg;
 using namespace Steinberg::Vst;
@@ -100,6 +101,9 @@ static const struct _translate
 
   {   CLAP_PLUGIN_FEATURE_MIXING                , "Mixing"},
   {   CLAP_PLUGIN_FEATURE_MASTERING             , "Mastering"},
+
+  {   CLAP_PLUGIN_FEATURE_ARA_SUPPORTED         , "OnlyARA" },
+  {   CLAP_PLUGIN_FEATURE_ARA_REQUIRED          , "OnlyARA" },
 
   {   "external"                                , "External"},
 

@@ -112,6 +112,7 @@ struct ClapPluginExtensions
   const clap_plugin_tail_t* _tail = nullptr;
   const clap_plugin_timer_support_t* _timer = nullptr;
   const clap_plugin_context_menu_t* _contextmenu = nullptr;
+  const clap_ara_plugin_extension_t* _ara = nullptr;
 #if LIN
   const clap_plugin_posix_fd_support* _posixfd = nullptr;
 #endif
