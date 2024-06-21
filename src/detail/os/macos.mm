@@ -142,6 +142,11 @@ fs::path getBundlePath()
   return {};
 }
 
+std::string getModulePath()
+{
+  return getBundlePath().string();
+}
+
 std::string getParentFolderName()
 {
   return getBundlePath().parent_path().stem();

@@ -58,6 +58,12 @@ static TCHAR* getModuleName()
   return modulename;
 }
 
+std::string getModulePath()
+{
+  std::filesystem::path path = getModuleName();
+  return path.u8string();
+}
+
 std::string getParentFolderName()
 {
   std::filesystem::path n = getModuleName();
