@@ -26,6 +26,12 @@
 #include <iostream>
 #endif
 
+#include "../os/osutil.h"
+
+#if STATICALLY_LINKED_CLAP_ENTRY
+extern clap_plugin_entry_t const clap_entry;
+#endif
+
 namespace Clap
 {
 #if WIN
@@ -284,6 +290,14 @@ static void ffeomwe()
 
 Library::Library()
 {
+#if STATICALLY_LINKED_CLAP_ENTRY
+  _pluginEntry = &clap_entry;
+  _selfcontained = true;
+  std::string path = os::getModulePath();
+  setupPluginsFromPluginEntry(path.c_str());
+  return;
+#endif
+
 #if WIN
   fs::path modulename;
   HMODULE selfmodule;

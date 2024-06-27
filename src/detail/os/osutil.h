@@ -65,6 +65,7 @@ class IPlugObject
 void attach(IPlugObject* plugobject);
 void detach(IPlugObject* plugobject);
 uint64_t getTickInMS();
+std::string getModulePath();
 std::string getParentFolderName();
 std::string getBinaryName();
 
