@@ -17,6 +17,7 @@ function(private_add_vst3_wrapper_sources)
             ${sd}/src/wrapasvst3.h
             ${sd}/src/wrapasvst3.cpp
             ${sd}/src/wrapasvst3_entry.cpp
+            ${sd}/src/detail/ara/ara.h
             ${sd}/src/detail/vst3/parameter.h
             ${sd}/src/detail/vst3/parameter.cpp
             ${sd}/src/detail/vst3/plugview.h
@@ -26,6 +27,7 @@ function(private_add_vst3_wrapper_sources)
             ${sd}/src/detail/vst3/process.cpp
             ${sd}/src/detail/vst3/categories.h
             ${sd}/src/detail/vst3/categories.cpp
+            ${sd}/src/detail/vst3/aravst3.h
             )
 
     target_include_directories(${V3_TARGET}-clap-wrapper-vst3-lib PRIVATE "${sd}/include")
@@ -84,7 +86,8 @@ function(target_add_vst3_wrapper)
         target_link_libraries(${V3_TARGET}-clap-wrapper-vst3-lib PUBLIC clap base-sdk-vst3)
 
         # clap-wrapper-extensions are PUBLIC, so a clap linking the library can access the clap-wrapper-extensions
-        target_link_libraries(${V3_TARGET}-clap-wrapper-vst3-lib PUBLIC clap-wrapper-extensions clap-wrapper-compile-options clap-wrapper-shared-detail)
+        target_link_libraries(${V3_TARGET}-clap-wrapper-vst3-lib PUBLIC clap-wrapper-extensions clap-wrapper-shared-detail)
+        target_link_libraries(${V3_TARGET}-clap-wrapper-vst3-lib PRIVATE clap-wrapper-compile-options)
 
         target_compile_options(${V3_TARGET}-clap-wrapper-vst3-lib PRIVATE
                 -DCLAP_SUPPORTS_ALL_NOTE_EXPRESSIONS=$<IF:$<BOOL:${V3_SUPPORTS_ALL_NOTE_EXPRESSIONS}>,1,0>

@@ -46,18 +46,6 @@ class WindowsHelper
 static Steinberg::ModuleInitializer createMessageWindow([] { gWindowsHelper.init(); });
 static Steinberg::ModuleTerminator dropMessageWindow([] { gWindowsHelper.terminate(); });
 
-static char* getModuleNameA()
-{
-  static char modulename[2048];
-  HMODULE selfmodule;
-  if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCSTR)getModuleNameA, &selfmodule))
-  {
-    /* auto size = */
-    GetModuleFileNameA(selfmodule, modulename, 2048);
-  }
-  return modulename;
-}
-
 static TCHAR* getModuleName()
 {
   static TCHAR modulename[2048];
@@ -70,9 +58,15 @@ static TCHAR* getModuleName()
   return modulename;
 }
 
+std::string getModulePath()
+{
+  std::filesystem::path path = getModuleName();
+  return path.u8string();
+}
+
 std::string getParentFolderName()
 {
-  std::filesystem::path n = getModuleNameA();
+  std::filesystem::path n = getModuleName();
   if (n.has_parent_path())
   {
     auto p = n.parent_path();
@@ -87,7 +81,7 @@ std::string getParentFolderName()
 
 std::string getBinaryName()
 {
-  std::filesystem::path n = getModuleNameA();
+  std::filesystem::path n = getModuleName();
   if (n.has_filename())
   {
     return n.stem().u8string();

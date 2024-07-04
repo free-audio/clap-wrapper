@@ -32,6 +32,7 @@ namespace fs = std::filesystem;
 
 #include "clapwrapper/vst3.h"
 #include "clapwrapper/auv2.h"
+#include "../ara/ara.h"
 
 #if MAC
 #include <CoreFoundation/CoreFoundation.h>
@@ -55,6 +56,7 @@ class Library
   const clap_plugin_factory_t* _pluginFactory = nullptr;
   const clap_plugin_factory_as_vst3* _pluginFactoryVst3Info = nullptr;
   const clap_plugin_factory_as_auv2* _pluginFactoryAUv2Info = nullptr;
+  const clap_ara_factory_t* _pluginFactoryARAInfo = nullptr;
   std::vector<const clap_plugin_descriptor_t*> plugins;
   const clap_plugin_info_as_vst3_t* get_vst3_info(uint32_t index) const;
 

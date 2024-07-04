@@ -54,7 +54,7 @@ class Vst3Parameter : public Steinberg::Vst::Parameter
   {
     if (info.stepCount > 0)
     {
-      return (vst3value * info.stepCount) + min_value;
+      return (vst3value * info.stepCount + 1) + min_value;
     }
     return (vst3value * (max_value - min_value)) + min_value;
   }
@@ -63,7 +63,7 @@ class Vst3Parameter : public Steinberg::Vst::Parameter
     auto& info = this->getInfo();
     if (info.stepCount > 0)
     {
-      return (clapvalue - min_value) / float(info.stepCount);
+      return (clapvalue - min_value) / float(info.stepCount + 1);
     }
     return (clapvalue - min_value) / (max_value - min_value);
   }

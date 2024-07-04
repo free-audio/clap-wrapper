@@ -26,6 +26,12 @@
 #include <iostream>
 #endif
 
+#include "../os/osutil.h"
+
+#if STATICALLY_LINKED_CLAP_ENTRY
+extern clap_plugin_entry_t const clap_entry;
+#endif
+
 namespace Clap
 {
 #if WIN
@@ -244,12 +250,16 @@ void Library::setupPluginsFromPluginEntry(const char *path)
           _pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_VST3));
       _pluginFactoryAUv2Info = static_cast<const clap_plugin_factory_as_auv2 *>(
           _pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_AUV2));
+      _pluginFactoryARAInfo =
+          static_cast<const clap_ara_factory_t *>(_pluginEntry->get_factory(CLAP_EXT_ARA_FACTORY));
 
       // detect plugins that do not check the CLAP_PLUGIN_FACTORY_ID
       if ((void *)_pluginFactory == (void *)_pluginFactoryVst3Info)
       {
+        // in this case, don't trust anything from there
         _pluginFactoryVst3Info = nullptr;
         _pluginFactoryAUv2Info = nullptr;
+        _pluginFactoryARAInfo = nullptr;
       }
 
       auto count = _pluginFactory->get_plugin_count(_pluginFactory);
@@ -280,6 +290,14 @@ static void ffeomwe()
 
 Library::Library()
 {
+#if STATICALLY_LINKED_CLAP_ENTRY
+  _pluginEntry = &clap_entry;
+  _selfcontained = true;
+  std::string path = os::getModulePath();
+  setupPluginsFromPluginEntry(path.c_str());
+  return;
+#endif
+
 #if WIN
   fs::path modulename;
   HMODULE selfmodule;

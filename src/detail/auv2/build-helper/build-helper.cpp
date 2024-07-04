@@ -442,6 +442,7 @@ int main(int argc, char **argv)
         else
         {
           fillOSS << "\n  if (strcmp(_plugin->_plugin->desc->id,\"" << u.clapid << "\") == 0) {\n";
+          fillOSS << "    if (!_plugin->_ext._gui) return false;\n";
           fillOSS << "    return fillAUCV_" << on << "(viewInfo);\n";
           fillOSS << "  }\n";
         }

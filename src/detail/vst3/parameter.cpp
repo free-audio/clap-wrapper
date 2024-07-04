@@ -123,7 +123,7 @@ Vst3Parameter* Vst3Parameter::create(
   v.defaultNormalizedValue = (info->default_value - info->min_value) / param_range;
   if ((info->flags & CLAP_PARAM_IS_STEPPED) || (info->flags & CLAP_PARAM_IS_ENUM))
   {
-    auto steps = param_range + 1;
+    auto steps = param_range;
     v.stepCount = steps;
   }
   else
@@ -166,15 +166,15 @@ Vst3Parameter* Vst3Parameter::create(uint8_t bus, uint8_t channel, uint8_t cc, V
   if (cc == Vst::ControllerNumbers::kCtrlProgramChange)
   {
     v.flags |= Vst::ParameterInfo::kIsProgramChange | Vst::ParameterInfo::kCanAutomate;
-    v.stepCount = 128;
+    v.stepCount = 127;
   }
 
   v.defaultNormalizedValue = 0;
-  v.stepCount = 128;
+  v.stepCount = 127;
 
   if (cc == Vst::ControllerNumbers::kPitchBend)
   {
-    v.stepCount = 16384;
+    v.stepCount = 16383;
   }
 
   auto result = new Vst3Parameter(v, bus, channel, cc);

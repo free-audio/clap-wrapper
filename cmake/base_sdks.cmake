@@ -247,6 +247,11 @@ function(guarantee_rtaudio)
     set(BUILD_TESTING OFF CACHE BOOL "don't eject test targets")
 
 
+    if (APPLE)
+        # If you brew install jack, rtaudio will find it but not link it properly
+        set(RTAUDIO_API_JACK FALSE CACHE STRING "No jack by default on macos")
+    endif()
+
     if (NOT "${RTAUDIO_SDK_ROOT}" STREQUAL "")
         # Use the provided root
     elseif (${CLAP_WRAPPER_DOWNLOAD_DEPENDENCIES})
