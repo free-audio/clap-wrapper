@@ -102,7 +102,7 @@ static const struct _translate
   {   CLAP_PLUGIN_FEATURE_MIXING                , "Mixing"},
   {   CLAP_PLUGIN_FEATURE_MASTERING             , "Mastering"},
 
-  {   CLAP_PLUGIN_FEATURE_ARA_SUPPORTED         , "OnlyARA" },
+/*{   CLAP_PLUGIN_FEATURE_ARA_SUPPORTED         , "OnlyARA" }, this is indicated by a missing factory in VST3 */
   {   CLAP_PLUGIN_FEATURE_ARA_REQUIRED          , "OnlyARA" },
 
   {   "external"                                , "External"},
