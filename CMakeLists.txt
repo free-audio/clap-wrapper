@@ -37,7 +37,7 @@ option(CLAP_WRAPPER_BUILD_TESTS "Build test CLAP wrappers" OFF)
 
 project(clap-wrapper
 	LANGUAGES C CXX
-	VERSION 0.9.2
+	VERSION 0.10.0
 	DESCRIPTION "CLAP-as-X wrappers"
 )
 set(CLAP_WRAPPER_VERSION "${CMAKE_PROJECT_VERSION}" CACHE STRING "Version of the wrapper project")
