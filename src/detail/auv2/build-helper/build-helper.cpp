@@ -331,13 +331,20 @@ int main(int argc, char **argv)
         {
           cppf << "AUV2_Type::aumu_musicdevice";
         }
-        if (u.type == "aumi")
+        else if (u.type == "aumi")
         {
           cppf << "AUV2_Type::aumi_noteeffect";
         }
-        if (u.type == "aufx")
+        else if (u.type == "aufx")
         {
           cppf << "AUV2_Type::aufx_effect";
+        }
+        else
+        {
+          std::cout << "   + WARNING: Unable to determine AUV2_Type for instrument type '" << u.type
+                    << "'" << std::endl;
+          std::cout << "     Defaulting to AUV2_Type::musicdevice" << std::endl;
+          cppf << "AUV2_Type::aumu_musicdevice";
         }
         cppf << "," << args << ", ci) {}"
              << "};\n"
