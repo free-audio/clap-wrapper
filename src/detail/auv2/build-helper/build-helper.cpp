@@ -341,9 +341,9 @@ int main(int argc, char **argv)
         }
         else
         {
-          std::cout << "   + WARNING: Unable to determine AUV2_Type for instrument type '" << u.type
-                    << "'" << std::endl;
-          std::cout << "     Defaulting to AUV2_Type::musicdevice" << std::endl;
+          std::cout << "    + WARNING: Unable to determine AUV2_Type for instrument type '" << u.type
+                    << "'\n"
+                    << "      Defaulting to AUV2_Type::musicdevice" << std::endl;
           cppf << "AUV2_Type::aumu_musicdevice";
         }
         cppf << "," << args << ", ci) {}"
