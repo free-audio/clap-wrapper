@@ -53,6 +53,7 @@ cmake -B build \
       -DVST3_SDK_ROOT={path to vst3 sdk} \
       -DCLAP_WRAPPER_OUTPUT_NAME="The Name of your CLAP"
 ```
+If you'd like to also build for AUv2 include `-DCLAP_WRAPPER_BUILD_AUV2=ON` and the SDK in the folder `AudioUnitSDK`.
 
 ## Licensing
 
