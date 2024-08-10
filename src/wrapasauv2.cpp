@@ -1114,6 +1114,17 @@ OSStatus WrapAsAUV2::SaveState(CFPropertyListRef* ptPList)
     Clap::StateMemento chunk;
     _plugin->_ext._state->save(_plugin->_plugin, chunk);
 
+#if DICTIONARY_STREAM_FORMAT_JUCE
+    auto err = ausdk::AUBase::SaveState(ptPList);
+    if (err != noErr) return err;
+
+    CFDataRef tData = CFDataCreate(0, (UInt8*)chunk.data(), chunk.size());
+    CFMutableDictionaryRef dict = (CFMutableDictionaryRef)*ptPList;
+
+    CFDictionarySetValue(dict, CFSTR("jucePluginState"), tData);
+    CFRelease(tData);
+    chunk.clear();
+#else
     CFDataRef tData = CFDataCreate(0, (UInt8*)chunk.data(), chunk.size());
     const AudioComponentDescription desc = GetComponentDescription();
 
@@ -1148,10 +1159,12 @@ OSStatus WrapAsAUV2::SaveState(CFPropertyListRef* ptPList)
     CFDictionarySetValue(*dict, CFSTR(kAUPresetNameKey), _current_program_name);
 
     *ptPList = static_cast<CFPropertyListRef>(dict.release());  // transfer ownership
+#endif
   }
 
   return noErr;
 }
+
 OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
 {
   if (!plist) return kAudioUnitErr_InvalidParameter;
@@ -1162,7 +1175,39 @@ OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
 
   // Find 'data' key
   const void* pData = CFDictionaryGetValue(tDict, CFSTR(kAUPresetDataKey));
-  if (CFGetTypeID(CFTypeRef(pData)) != CFDataGetTypeID()) return -1;
+  if (!pData || CFGetTypeID(CFTypeRef(pData)) != CFDataGetTypeID()) return -1;
+
+    /*
+   * In the read side I fall through to default, whereas in the write
+   * side I use an 'else' on the set of stream formats. This means
+   * you at least try in case saved with an older wrapper version
+   */
+#if DICTIONARY_STREAM_FORMAT_JUCE
+  /*
+   * In the case when migrating from a JUCE AUv2 to a
+   * clap-wrapper one, if you want to preserve state
+   * you want to read the juce key from the dictionary.
+   */
+  CFDataRef juceData{nullptr};
+  CFStringRef juceKey(
+      CFStringCreateWithCString(kCFAllocatorDefault, "jucePluginState", kCFStringEncodingUTF8));
+  bool valuePresent = CFDictionaryGetValueIfPresent(tDict, juceKey, (const void**)&juceData);
+  CFRelease(juceKey);
+  if (valuePresent && juceData)
+  {
+    LOGINFO("[clap-wrapper] Restoring from JUCE block");
+    const int numBytes = (int)CFDataGetLength(juceData);
+    if (numBytes > 0)
+    {
+      Clap::StateMemento chunk;
+      UInt8* streamData = (UInt8*)(CFDataGetBytePtr(juceData));
+
+      chunk.setData(streamData, numBytes);
+      _plugin->_ext._state->load(_plugin->_plugin, chunk);
+    }
+    return noErr;
+  }
+#endif
 
   const void* pName = CFDictionaryGetValue(tDict, CFSTR(kAUPresetNameKey));
   if (pName)
@@ -1355,7 +1400,6 @@ UInt32 WrapAsAUV2::GetAudioChannelLayout(AudioUnitScope scope, AudioUnitElement 
                                          AudioChannelLayout* outLayoutPtr, bool& outWritable)
 {
   // TODO: This is never called so the layout is never found
-  LOGINFO("[clap-wrapper] GetAudioChannelLayout");
   return Base::GetAudioChannelLayout(scope, element, outLayoutPtr, outWritable);
 }
 
