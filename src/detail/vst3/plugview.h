@@ -10,12 +10,15 @@
 
 #include "base/source/fobject.h"
 #include <pluginterfaces/gui/iplugview.h>
+#include <pluginterfaces/gui/iplugviewcontentscalesupport.h>
 #include <clap/clap.h>
 #include <functional>
 
 using namespace Steinberg;
 
-class WrappedView : public Steinberg::IPlugView, public Steinberg::FObject
+class WrappedView : public Steinberg::IPlugView,
+                    public Steinberg::IPlugViewContentScaleSupport,
+                    public Steinberg::FObject
 {
  public:
   WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui,
@@ -78,10 +81,13 @@ class WrappedView : public Steinberg::IPlugView, public Steinberg::FObject
 	 *	adjust the rect to the allowed size. */
   tresult PLUGIN_API checkSizeConstraint(ViewRect* rect) override;
 
+  tresult setContentScaleFactor(ScaleFactor factor) override;
+
   //---Interface------
   OBJ_METHODS(WrappedView, FObject)
   DEFINE_INTERFACES
   DEF_INTERFACE(IPlugView)
+  DEF_INTERFACE(IPlugViewContentScaleSupport)
   END_DEFINE_INTERFACES(FObject)
   REFCOUNT_METHODS(FObject)
 
