@@ -1,6 +1,7 @@
 #include "plugview.h"
 #include <clap/clap.h>
 #include <cassert>
+#include <iostream>
 
 WrappedView::WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui,
                          std::function<void()> onReleaseAdditionalReferences,
@@ -268,4 +269,13 @@ bool WrappedView::request_resize(uint32_t width, uint32_t height)
     return false;
   }
   return true;
+}
+tresult WrappedView::setContentScaleFactor(IPlugViewContentScaleSupport::ScaleFactor factor)
+{
+  ensure_ui();
+  if (_extgui->set_scale(_plugin, factor))
+  {
+    return kResultOk;
+  }
+  return kResultFalse;
 }
