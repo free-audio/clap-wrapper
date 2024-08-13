@@ -955,7 +955,10 @@ bool ClapAsVst3::gui_can_resize()
 
 bool ClapAsVst3::gui_request_resize(uint32_t width, uint32_t height)
 {
-  return _wrappedview->request_resize(width, height);
+  if (_wrappedview)
+    return _wrappedview->request_resize(width, height);
+  else
+    return false;
 }
 
 bool ClapAsVst3::gui_request_show()
