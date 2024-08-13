@@ -4,14 +4,14 @@
 
 WrappedView::WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui,
                          std::function<void()> onReleaseAdditionalReferences,
-                         std::function<void()> onDestroy, std::function<void()> onRunLoopAvailable)
+                         std::function<void(bool)> onDestroy, std::function<void()> onRunLoopAvailable)
   : IPlugView()
   , FObject()
   , _plugin(plugin)
   , _extgui(gui)
   , _onReleaseAdditionalReferences(onReleaseAdditionalReferences)
-  , _onDestroy(onDestroy)
   , _onRunLoopAvailable(onRunLoopAvailable)
+  , _onDestroy(onDestroy)
 {
 }
 
@@ -49,10 +49,17 @@ void WrappedView::drop_ui()
     _attached = false;
     if (_onDestroy)
     {
-      _onDestroy();
+      _onDestroy(true);
     }
     _extgui->destroy(_plugin);
     _created = false;
+  }
+  else
+  {
+    if (_onDestroy)
+    {
+      _onDestroy(false);
+    }
   }
 }
 

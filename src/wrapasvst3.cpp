@@ -60,7 +60,6 @@ tresult PLUGIN_API ClapAsVst3::initialize(FUnknown* context)
 
 tresult PLUGIN_API ClapAsVst3::terminate()
 {
-  clearContextMenu();
   vst3HostApplication.reset();
 
   if (_plugin)
@@ -260,16 +259,19 @@ IPlugView* PLUGIN_API ClapAsVst3::createView(FIDString /*name*/)
     {
       _wrappedview = new WrappedView(
           _plugin->_plugin, _plugin->_ext._gui, [this]() { clearContextMenu(); },
-          [this]()
+          [this](bool everCreated)
           {
+            if (everCreated)
+            {
 #if LIN
-            // the host calls the destructor, the wrapper just removes its pointer
-            detachTimers(_wrappedview->getRunLoop());
-            detachPosixFD(_wrappedview->getRunLoop());
-            _iRunLoop = nullptr;
+              // the host calls the destructor, the wrapper just removes its pointer
+              detachTimers(_wrappedview->getRunLoop());
+              detachPosixFD(_wrappedview->getRunLoop());
+              _iRunLoop = nullptr;
 #endif
 
-            clearContextMenu();
+              clearContextMenu();
+            }
             this->_wrappedview = nullptr;
           },
           [this]()
