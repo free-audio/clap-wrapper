@@ -391,19 +391,27 @@ void ProcessAdapter::process(Steinberg::Vst::ProcessData& data)
     auto inbusses = _audioinputs->size();
     for (auto i = 0U; i < inbusses; ++i)
     {
-      if (_vstdata->inputs[i].numChannels > 0)
+      if (_vstdata->inputs[i].numChannels == (Steinberg::int32)_input_ports[i].channel_count)
+      {
         _input_ports[i].data32 = _vstdata->inputs[i].channelBuffers32;
+      }
       else
+      {
         doProcess = false;
+      }
     }
 
     auto outbusses = _audiooutputs->size();
     for (auto i = 0U; i < outbusses; ++i)
     {
-      if (_vstdata->outputs[i].numChannels > 0)
+      if (_vstdata->outputs[i].numChannels == (Steinberg::int32)_output_ports[i].channel_count)
+      {
         _output_ports[i].data32 = _vstdata->outputs[i].channelBuffers32;
+      }
       else
+      {
         doProcess = false;
+      }
     }
     if (doProcess)
       _plugin->process(_plugin, &_processData);
