@@ -1483,3 +1483,33 @@ void ClapAsVst3::clearContextMenu()
   vst3ContextMenu.reset();
   contextmenuitems.clear();
 }
+
+tresult ClapAsVst3::getBusInfo(Vst::MediaType type, Vst::BusDirection dir, int32 index,
+                               Vst::BusInfo& bus)
+{
+  if (_plugin->_ext._audioports)
+  {
+    if (type == Vst::kAudio)
+    {
+      clap_audio_port_info_t info;
+      if (_plugin->_ext._audioports->get(_plugin->_plugin, (uint32_t)index, (dir == Vst::kInput), &info))
+      {
+        bus.mediaType = Vst::kAudio;
+        bus.channelCount = info.channel_count;
+        bus.direction = dir;
+        bus.busType = (info.flags & CLAP_AUDIO_PORT_IS_MAIN) ? Vst::kMain : Vst::kAux;
+        bus.flags = Vst::BusInfo::kDefaultActive;
+
+        UString wrapper(&bus.name[0], str16BufferSize(Steinberg::Vst::String128));
+        wrapper.assign(info.name, (Steinberg::int32)CLAP_NAME_SIZE);
+
+        return kResultOk;
+      }
+      else
+      {
+        return kResultFalse;
+      }
+    }
+  }
+  return SingleComponentEffect::getBusInfo(type, dir, index, bus);
+}
