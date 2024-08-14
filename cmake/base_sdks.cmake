@@ -320,3 +320,34 @@ function(guarantee_rtmidi)
     add_library(base-sdk-rtmidi INTERFACE)
     target_link_libraries(base-sdk-rtmidi INTERFACE rtmidi)
 endfunction(guarantee_rtmidi)
+
+function(guarantee_wil)
+    if (TARGET base-sdk-wil)
+        return()
+    endif()
+
+    if (NOT "${WIL_SDK_ROOT}" STREQUAL "")
+        # Use the provided root
+    elseif (${CLAP_WRAPPER_DOWNLOAD_DEPENDENCIES})
+        guarantee_cpm()
+        CPMAddPackage(
+                NAME "wil"
+                GITHUB_REPOSITORY "microsoft/wil"
+                GIT_TAG "v1.0.240803.1"
+                EXCLUDE_FROM_ALL TRUE
+                DOWNLOAD_ONLY TRUE
+                SOURCE_DIR cpm/wil
+        )
+        set(WIL_SDK_ROOT "${CMAKE_CURRENT_BINARY_DIR}/cpm/wil")
+    else()
+        search_for_sdk_source(SDKDIR wil RESULT WIL_SDK_ROOT)
+    endif()
+
+    cmake_path(CONVERT "${WIL_SDK_ROOT}" TO_CMAKE_PATH_LIST WIL_SDK_ROOT)
+    if(NOT EXISTS "${WIL_SDK_ROOT}/include/wil/common.h")
+        message(FATAL_ERROR "There is no wil at ${WIL_SDK_ROOT}. Please set WIL_SDK_ROOT appropriately ")
+    endif()
+
+    add_library(base-sdk-wil INTERFACE)
+    target_include_directories(base-sdk-wil INTERFACE "${WIL_SDK_ROOT}/include")
+endfunction(guarantee_wil)
