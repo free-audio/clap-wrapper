@@ -154,8 +154,6 @@ int HostWindow::onWindowPosChanged(::LPARAM lParam)
 {
   auto windowPos{reinterpret_cast<::LPWINDOWPOS>(lParam)};
 
-  helpers::log("WM_WINDOWPOSCHANGED: {} x {}", windowPos->cx, windowPos->cy);
-
   if (windowPos->flags & SWP_SHOWWINDOW)
   {
     m_pluginGui->show(m_plugin);
