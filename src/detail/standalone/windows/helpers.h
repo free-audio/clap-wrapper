@@ -64,18 +64,18 @@ auto createWindow(std::string_view name, T* self) -> ::HWND
   auto hInstance{getInstance()};
   auto iconFromResource{loadIconFromResource()};
 
-  ::WNDCLASSEXW windowClass{.cbSize{sizeof(::WNDCLASSEXW)},
-                            .style{0},
-                            .lpfnWndProc{self->wndProc},
-                            .cbClsExtra{0},
-                            .cbWndExtra{sizeof(intptr_t)},
-                            .hInstance{hInstance},
-                            .hIcon{iconFromResource ? iconFromResource : loadIconFromSystem()},
-                            .hCursor{loadCursorFromSystem()},
-                            .hbrBackground{loadBrushFromSystem()},
-                            .lpszMenuName{nullptr},
-                            .lpszClassName{className.c_str()},
-                            .hIconSm{iconFromResource ? iconFromResource : loadIconFromSystem()}};
+  ::WNDCLASSEXW windowClass{sizeof(::WNDCLASSEXW),
+                            0,
+                            self->wndProc,
+                            0,
+                            sizeof(intptr_t),
+                            hInstance,
+                            iconFromResource ? iconFromResource : loadIconFromSystem(),
+                            loadCursorFromSystem(),
+                            loadBrushFromSystem(),
+                            nullptr,
+                            className.c_str(),
+                            iconFromResource ? iconFromResource : loadIconFromSystem()};
 
   if (::GetClassInfoExW(hInstance, className.c_str(), &windowClass) == 0)
   {
@@ -122,44 +122,44 @@ auto checkSafeSize(T value) -> R
 }
 
 template <typename... Args>
-auto log(const std::format_string<Args...> fmt, Args&&... args) -> void
+auto log(const fmt::format_string<Args...> fmt, Args&&... args) -> void
 {
-  ::OutputDebugStringW(toUTF16(std::vformat(fmt.get(), std::make_format_args(args...))).c_str());
+  ::OutputDebugStringW(toUTF16(fmt::vformat(fmt.get(), fmt::make_format_args(args...))).c_str());
   ::OutputDebugStringW(L"\n");
 }
 
 template <typename... Args>
-auto log(const std::wformat_string<Args...> fmt, Args&&... args) -> void
+auto log(const fmt::wformat_string<Args...> fmt, Args&&... args) -> void
 {
-  ::OutputDebugStringW(std::vformat(fmt.get(), std::make_wformat_args(args...)).c_str());
+  ::OutputDebugStringW(fmt::vformat(fmt.get(), fmt::make_wformat_args(args...)).c_str());
   ::OutputDebugStringW(L"\n");
 }
 
 template <typename... Args>
-auto messageBox(const std::format_string<Args...> fmt, Args&&... args) -> void
+auto messageBox(const fmt::format_string<Args...> fmt, Args&&... args) -> void
 {
-  ::MessageBoxW(nullptr, toUTF16(std::vformat(fmt.get(), std::make_format_args(args...))).c_str(),
+  ::MessageBoxW(nullptr, toUTF16(fmt::vformat(fmt.get(), fmt::make_format_args(args...))).c_str(),
                 nullptr, MB_OK | MB_ICONASTERISK);
 }
 
 template <typename... Args>
-auto messageBox(const std::wformat_string<Args...> fmt, Args&&... args) -> void
+auto messageBox(const fmt::wformat_string<Args...> fmt, Args&&... args) -> void
 {
-  ::MessageBoxW(nullptr, std::vformat(fmt.get(), std::make_wformat_args(args...)).c_str(), nullptr,
+  ::MessageBoxW(nullptr, fmt::vformat(fmt.get(), fmt::make_wformat_args(args...)).c_str(), nullptr,
                 MB_OK | MB_ICONASTERISK);
 }
 
 template <typename... Args>
-auto errorBox(const std::format_string<Args...> fmt, Args&&... args) -> void
+auto errorBox(const fmt::format_string<Args...> fmt, Args&&... args) -> void
 {
-  ::MessageBoxW(nullptr, toUTF16(std::vformat(fmt.get(), std::make_format_args(args...))).c_str(),
+  ::MessageBoxW(nullptr, toUTF16(fmt::vformat(fmt.get(), fmt::make_format_args(args...))).c_str(),
                 nullptr, MB_OK | MB_ICONHAND);
 }
 
 template <typename... Args>
-auto errorBox(const std::wformat_string<Args...> fmt, Args&&... args) -> void
+auto errorBox(const fmt::wformat_string<Args...> fmt, Args&&... args) -> void
 {
-  ::MessageBoxW(nullptr, std::vformat(fmt.get(), std::make_wformat_args(args...)).c_str(), nullptr,
+  ::MessageBoxW(nullptr, fmt::vformat(fmt.get(), fmt::make_wformat_args(args...)).c_str(), nullptr,
                 MB_OK | MB_ICONHAND);
 }
 }  // namespace freeaudio::clap_wrapper::standalone::windows::helpers

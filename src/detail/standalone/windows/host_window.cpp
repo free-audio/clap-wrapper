@@ -101,14 +101,14 @@ void HostWindow::setupPlugin()
 
   setWindowSize(width, height);
 
-  clap_window clapWindow{.api{CLAP_WINDOW_API_WIN32}, .win32{static_cast<void*>(m_hWnd.get())}};
+  clap_window clapWindow{CLAP_WINDOW_API_WIN32, static_cast<void*>(m_hWnd.get())};
 
   m_pluginGui->set_parent(m_plugin, &clapWindow);
 }
 
 bool HostWindow::setWindowSize(uint32_t width, uint32_t height)
 {
-  ::RECT rect{.left{0}, .top{0}, .right{static_cast<LONG>(width)}, .bottom{static_cast<LONG>(height)}};
+  ::RECT rect{0, 0, static_cast<LONG>(width), static_cast<LONG>(height)};
 
   ::AdjustWindowRectExForDpi(&rect, static_cast<::DWORD>(::GetWindowLongPtrW(m_hWnd.get(), GWL_STYLE)),
                              ::GetMenu(m_hWnd.get()) != nullptr,
