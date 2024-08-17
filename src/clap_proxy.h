@@ -217,12 +217,7 @@ class Plugin
   }
   bool request_resize(uint32_t width, uint32_t height)
   {
-    if (_parentHost->gui_can_resize())
-    {
-      _parentHost->gui_request_resize(width, height);
-      return true;
-    }
-    return false;
+    return _parentHost->gui_request_resize(width, height);
   }
   bool request_show()
   {
