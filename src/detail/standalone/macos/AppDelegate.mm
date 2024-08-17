@@ -145,6 +145,11 @@
   freeaudio::clap_wrapper::standalone::mainStartAudio();
 }
 
+- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender
+{
+  return true;
+}
+
 - (void)applicationWillTerminate:(NSNotification *)aNotification
 {
   LOG << "applicationWillTerminate shutdown" << std::endl;
