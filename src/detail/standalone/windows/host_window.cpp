@@ -10,6 +10,10 @@
 
 namespace freeaudio::clap_wrapper::standalone::windows
 {
+// We could also just have these at the call-site, but this kinda makes them easier to find.
+static constexpr auto s_timerId{0};
+static constexpr auto s_timerIntervalMs{8};
+
 HostWindow::HostWindow(std::shared_ptr<Clap::Plugin> clapPlugin)
   : m_clapPlugin{clapPlugin}
   , m_plugin{m_clapPlugin->_plugin}
@@ -73,6 +77,8 @@ void HostWindow::setupStandaloneHost()
 {
   freeaudio::clap_wrapper::standalone::getStandaloneHost()->onRequestResize =
       [this](uint32_t width, uint32_t height) { return setWindowSize(width, height); };
+  // Launch our timer
+  helpers::startTimer(m_hWnd.get(), s_timerId, s_timerIntervalMs);
 }
 
 void HostWindow::setupPlugin()
@@ -137,6 +143,8 @@ LRESULT CALLBACK HostWindow::wndProc(::HWND hWnd, ::UINT uMsg, ::WPARAM wParam, 
         return self->onSysCommand(hWnd, uMsg, wParam, lParam);
       case WM_DESTROY:
         return self->onDestroy();
+      case WM_TIMER:
+        return self->onTimerEvent(wParam);
     }
   }
 
@@ -300,11 +308,25 @@ int HostWindow::onSysCommand(::HWND hWnd, ::UINT uMsg, ::WPARAM wParam, ::LPARAM
 int HostWindow::onDestroy()
 {
   m_pluginGui->destroy(m_plugin);
+  helpers::stopTimer(m_hWnd.get(), s_timerId);
 
   freeaudio::clap_wrapper::standalone::mainFinish();
 
   helpers::quit();
 
+  return 0;
+}
+
+int HostWindow::onTimerEvent(::WPARAM wParam)
+{
+  if (wParam != s_timerId) return -1;  // or assert fail, etc
+  auto* standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
+  const auto hasCallbacks = standaloneHost->callbackRequested.load();
+  if (hasCallbacks)
+  {
+    standaloneHost->callbackRequested.store(false);
+    m_plugin->on_main_thread(m_plugin);
+  }
   return 0;
 }
 }  // namespace freeaudio::clap_wrapper::standalone::windows

@@ -70,6 +70,16 @@ double getScale(::HWND window)
   return static_cast<double>(::GetDpiForWindow(window)) / static_cast<double>(USER_DEFAULT_SCREEN_DPI);
 }
 
+void startTimer(::HWND window, UINT_PTR timerId, UINT intervalMs)
+{
+  ::SetTimer(window, timerId, intervalMs, (::TIMERPROC)NULL);
+}
+
+void stopTimer(::HWND window, UINT_PTR timerId)
+{
+  ::KillTimer(window, timerId);
+}
+
 void abort(unsigned int exitCode)
 {
   ::ExitProcess(exitCode);
