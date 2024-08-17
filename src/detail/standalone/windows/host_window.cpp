@@ -78,7 +78,11 @@ void HostWindow::setupStandaloneHost()
   freeaudio::clap_wrapper::standalone::getStandaloneHost()->onRequestResize =
       [this](uint32_t width, uint32_t height) { return setWindowSize(width, height); };
   // Launch our timer
-  helpers::startTimer(m_hWnd.get(), s_timerId, s_timerIntervalMs);
+  m_isTimerRunning = helpers::startTimer(m_hWnd.get(), s_timerId, s_timerIntervalMs);
+  if (!m_isTimerRunning)
+  {
+    TRACE;  // maybe
+  }
 }
 
 void HostWindow::setupPlugin()
@@ -308,7 +312,14 @@ int HostWindow::onSysCommand(::HWND hWnd, ::UINT uMsg, ::WPARAM wParam, ::LPARAM
 int HostWindow::onDestroy()
 {
   m_pluginGui->destroy(m_plugin);
-  helpers::stopTimer(m_hWnd.get(), s_timerId);
+  if (m_isTimerRunning)
+  {
+    if (!helpers::stopTimer(m_hWnd.get(), s_timerId))
+    {
+      // We can grab the error with ::GetLastError, and format it with ::FormatMessage - but not sure if that's overkill
+      TRACE;
+    }
+  }
 
   freeaudio::clap_wrapper::standalone::mainFinish();
 
@@ -321,10 +332,8 @@ int HostWindow::onTimerEvent(::WPARAM wParam)
 {
   if (wParam != s_timerId) return -1;  // or assert fail, etc
   auto* standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
-  const auto hasCallbacks = standaloneHost->callbackRequested.load();
-  if (hasCallbacks)
+  if (standaloneHost->callbackRequested.exchange(false))
   {
-    standaloneHost->callbackRequested.store(false);
     m_plugin->on_main_thread(m_plugin);
   }
   return 0;
