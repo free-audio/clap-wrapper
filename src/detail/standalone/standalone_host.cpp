@@ -121,6 +121,8 @@ void StandaloneHost::clapProcess(void *pOutput, const void *pInput, uint32_t fra
   process.in_events = &inputEvents;
   process.out_events = &outputEvents;
   process.frames_count = frameCount;
+  process.audio_inputs_count = numAudioInputs;
+  process.audio_outputs_count = numAudioOutputs;
 
   assert(frameCount < utilityBufferSize);
   if (frameCount >= utilityBufferSize)
