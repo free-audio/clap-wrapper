@@ -117,9 +117,10 @@ struct StandaloneHost : Clap::IHost
   {
     TRACE;
   }
+  std::atomic<bool> callbackRequested{false};
   void request_callback() override
   {
-    TRACE;
+    callbackRequested = true;
   }
   void setupWrapperSpecifics(const clap_plugin_t *plugin) override
   {
