@@ -27,6 +27,16 @@
 
 @implementation AppDelegate
 
+- (void)timerCallback:(NSTimer *)instance
+{
+  auto *standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
+  if (standaloneHost->callbackRequested.exchange(false))
+  {
+    auto *plugin = freeaudio::clap_wrapper::standalone::getMainPlugin()->_plugin;
+    plugin->on_main_thread(plugin);
+  }
+}
+
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification
 {
   // Insert code here to initialize your application
@@ -61,7 +71,13 @@
   {
     return;
   }
-
+  self.requestCallbackTimer = [NSTimer timerWithTimeInterval:0.08
+                                                      target:self
+                                                    selector:@selector(timerCallback:)
+                                                    userInfo:nil
+                                                     repeats:YES];
+  auto *runLoop = [NSRunLoop currentRunLoop];
+  [runLoop addTimer:self.requestCallbackTimer forMode:NSDefaultRunLoopMode];
   std::string pid{PLUGIN_ID};
   int pindex{PLUGIN_INDEX};
 
@@ -142,12 +158,19 @@
       [alert runModal];
     }
   };
+
   freeaudio::clap_wrapper::standalone::mainStartAudio();
 }
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender
 {
   return true;
+}
+- (void)windowWillClose:(NSNotification *)notification
+{
+  // According to the docs, "For an NSWindow object, the default is to be released on closing"
+  [[self window] setDelegate:nil];
+  self.window = nil;
 }
 
 - (void)applicationWillTerminate:(NSNotification *)aNotification
@@ -164,8 +187,15 @@
     plugin->_ext._gui->destroy(plugin->_plugin);
   }
 
-  [[self window] setDelegate:nil];
-  [[self window] release];
+  [self.requestCallbackTimer invalidate];
+  self.requestCallbackTimer = nil;
+
+  if (self.window != nil)
+  {
+    [[self window] setDelegate:nil];
+    [[self window] release];
+    self.window = nil;
+  }
 
   freeaudio::clap_wrapper::standalone::mainFinish();
 }
