@@ -6,7 +6,9 @@
 {
   // AudioSettingsWindowDelegate *audioSettingsWindowDelegate;
 }
-@property(assign) IBOutlet NSWindow *window;
+
+@property(assign) NSTimer* requestCallbackTimer;
+@property(assign) IBOutlet NSWindow* window;
 
 - (IBAction)openAudioSettingsWindow:(id)sender;
 
