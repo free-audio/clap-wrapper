@@ -166,12 +166,6 @@
 {
   return true;
 }
-- (void)windowWillClose:(NSNotification *)notification
-{
-  // According to the docs, "For an NSWindow object, the default is to be released on closing"
-  [[self window] setDelegate:nil];
-  self.window = nil;
-}
 
 - (void)applicationWillTerminate:(NSNotification *)aNotification
 {
@@ -189,13 +183,6 @@
 
   [self.requestCallbackTimer invalidate];
   self.requestCallbackTimer = nil;
-
-  if (self.window != nil)
-  {
-    [[self window] setDelegate:nil];
-    [[self window] release];
-    self.window = nil;
-  }
 
   freeaudio::clap_wrapper::standalone::mainFinish();
 }
