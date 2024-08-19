@@ -53,6 +53,7 @@ function(target_add_auv2_wrapper)
     set(bhsc "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv2/build-helper/")
     add_executable(${bhtg} ${bhsc}/build-helper.cpp)
     target_link_libraries(${bhtg} PRIVATE
+            clap-wrapper-compile-options
             clap-wrapper-shared-detail
             macos_filesystem_support
             "-framework Foundation"
