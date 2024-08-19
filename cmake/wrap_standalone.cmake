@@ -53,11 +53,11 @@ function(target_add_standalone_wrapper)
             )
     target_link_libraries(${salib}
             PUBLIC
-            clap-wrapper-compile-options
             clap-wrapper-shared-detail
             base-sdk-rtmidi
             base-sdk-rtaudio
             )
+    target_link_libraries(${salib} PRIVATE clap-wrapper-compile-options)
 
     if (APPLE)
         target_sources(${salib} PRIVATE)
@@ -185,7 +185,6 @@ function(target_add_standalone_wrapper)
             )
 
     target_link_libraries(${SA_TARGET} PRIVATE
-            clap-wrapper-compile-options
             ${salib}
             )
 endfunction(target_add_standalone_wrapper)
