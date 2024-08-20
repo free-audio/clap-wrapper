@@ -164,6 +164,9 @@ function(guarantee_vst3sdk)
             ${VST3_SDK_ROOT}/public.sdk/source/vst/vstparameters.cpp
             ${VST3_SDK_ROOT}/public.sdk/source/vst/utility/stringconvert.cpp
             )
+    # The VST3 SDK doesn't compile with unity builds
+    set_target_properties(base-sdk-vst3 PROPERTIES UNITY_BUILD FALSE)
+
 
     target_include_directories(base-sdk-vst3 PUBLIC ${VST3_SDK_ROOT} ${VST3_SDK_ROOT}/public.sdk ${VST3_SDK_ROOT}/pluginterfaces)
     target_compile_options(base-sdk-vst3 PUBLIC $<IF:$<CONFIG:Debug>,-DDEVELOPMENT=1,-DRELEASE=1>) # work through steinbergs alternate choices for these
