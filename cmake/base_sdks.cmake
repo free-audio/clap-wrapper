@@ -280,6 +280,7 @@ function(guarantee_rtaudio)
     add_subdirectory(${RTAUDIO_SDK_ROOT} base-sdk-rtaudio EXCLUDE_FROM_ALL)
     add_library(base-sdk-rtaudio INTERFACE)
     target_link_libraries(base-sdk-rtaudio INTERFACE rtaudio)
+    set_target_properties(rtaudio PROPERTIES UNITY_BUILD FALSE)
 endfunction(guarantee_rtaudio)
 
 
@@ -322,6 +323,8 @@ function(guarantee_rtmidi)
     add_subdirectory(${RTMIDI_SDK_ROOT} base-sdk-rtmidi EXCLUDE_FROM_ALL)
     add_library(base-sdk-rtmidi INTERFACE)
     target_link_libraries(base-sdk-rtmidi INTERFACE rtmidi)
+
+    set_target_properties(rtmidi PROPERTIES UNITY_BUILD FALSE)
 endfunction(guarantee_rtmidi)
 
 function(guarantee_wil)
