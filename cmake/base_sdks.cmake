@@ -132,8 +132,8 @@ function(guarantee_vst3sdk)
             ${VST3_SDK_ROOT}/public.sdk/source/common/*.cpp
             ${VST3_SDK_ROOT}/pluginterfaces/base/*.cpp
             )
-    if( UNIX AND NOT APPLE )
-        # Sigh - ${VST3_SDK_ROOT} ships with non-working code if you has it
+    if (UNIX AND NOT APPLE AND ${SDKVERSION} VERSION_LESS 3.7.9)
+        # Sigh - VST3 SDK before 3.7.9 ships with non-working timer code
         get_filename_component(full_path_test_cpp ${VST3_SDK_ROOT}/base/source/timer.cpp ABSOLUTE)
         list(REMOVE_ITEM VST3_GLOB "${full_path_test_cpp}")
     endif()
