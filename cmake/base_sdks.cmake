@@ -164,6 +164,9 @@ function(guarantee_vst3sdk)
             ${VST3_SDK_ROOT}/public.sdk/source/vst/vstparameters.cpp
             ${VST3_SDK_ROOT}/public.sdk/source/vst/utility/stringconvert.cpp
             )
+    # The VST3 SDK doesn't compile with unity builds
+    set_target_properties(base-sdk-vst3 PROPERTIES UNITY_BUILD FALSE)
+
 
     target_include_directories(base-sdk-vst3 PUBLIC ${VST3_SDK_ROOT} ${VST3_SDK_ROOT}/public.sdk ${VST3_SDK_ROOT}/pluginterfaces)
     target_compile_options(base-sdk-vst3 PUBLIC $<IF:$<CONFIG:Debug>,-DDEVELOPMENT=1,-DRELEASE=1>) # work through steinbergs alternate choices for these
@@ -277,6 +280,7 @@ function(guarantee_rtaudio)
     add_subdirectory(${RTAUDIO_SDK_ROOT} base-sdk-rtaudio EXCLUDE_FROM_ALL)
     add_library(base-sdk-rtaudio INTERFACE)
     target_link_libraries(base-sdk-rtaudio INTERFACE rtaudio)
+    set_target_properties(rtaudio PROPERTIES UNITY_BUILD FALSE)
 endfunction(guarantee_rtaudio)
 
 
@@ -319,4 +323,37 @@ function(guarantee_rtmidi)
     add_subdirectory(${RTMIDI_SDK_ROOT} base-sdk-rtmidi EXCLUDE_FROM_ALL)
     add_library(base-sdk-rtmidi INTERFACE)
     target_link_libraries(base-sdk-rtmidi INTERFACE rtmidi)
+
+    set_target_properties(rtmidi PROPERTIES UNITY_BUILD FALSE)
 endfunction(guarantee_rtmidi)
+
+function(guarantee_wil)
+    if (TARGET base-sdk-wil)
+        return()
+    endif()
+
+    if (NOT "${WIL_SDK_ROOT}" STREQUAL "")
+        # Use the provided root
+    elseif (${CLAP_WRAPPER_DOWNLOAD_DEPENDENCIES})
+        guarantee_cpm()
+        CPMAddPackage(
+                NAME "wil"
+                GITHUB_REPOSITORY "microsoft/wil"
+                GIT_TAG "v1.0.240803.1"
+                EXCLUDE_FROM_ALL TRUE
+                DOWNLOAD_ONLY TRUE
+                SOURCE_DIR cpm/wil
+        )
+        set(WIL_SDK_ROOT "${CMAKE_CURRENT_BINARY_DIR}/cpm/wil")
+    else()
+        search_for_sdk_source(SDKDIR wil RESULT WIL_SDK_ROOT)
+    endif()
+
+    cmake_path(CONVERT "${WIL_SDK_ROOT}" TO_CMAKE_PATH_LIST WIL_SDK_ROOT)
+    if(NOT EXISTS "${WIL_SDK_ROOT}/include/wil/common.h")
+        message(FATAL_ERROR "There is no wil at ${WIL_SDK_ROOT}. Please set WIL_SDK_ROOT appropriately ")
+    endif()
+
+    add_library(base-sdk-wil INTERFACE)
+    target_include_directories(base-sdk-wil INTERFACE "${WIL_SDK_ROOT}/include")
+endfunction(guarantee_wil)

@@ -13,6 +13,17 @@ function(target_add_auv2_wrapper)
 
             CLAP_TARGET_FOR_CONFIG
 
+            # AUV2 uses a CFDictionary to store state so
+            # we need to choose what keys to populate it with.
+            # The wrapper by default uses the key choices from
+            # the AUSDK example, but for compatability with people
+            # moving from other frameworks we do support other schema.
+            #
+            # SUpported schema today are
+            # - WRAPPER (the default)
+            # - JUCE (use the JUCE AUV2 default)
+            DICTIONARY_STREAM_FORMAT
+
             MACOS_EMBEDDED_CLAP_LOCATION
             )
     cmake_parse_arguments(AUV2 "" "${oneValueArgs}" "" ${ARGN})
@@ -42,6 +53,7 @@ function(target_add_auv2_wrapper)
     set(bhsc "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv2/build-helper/")
     add_executable(${bhtg} ${bhsc}/build-helper.cpp)
     target_link_libraries(${bhtg} PRIVATE
+            clap-wrapper-compile-options
             clap-wrapper-shared-detail
             macos_filesystem_support
             "-framework Foundation"
@@ -149,6 +161,14 @@ function(target_add_auv2_wrapper)
             
 	    ${bhtgoutdir}/generated_entrypoints.hxx)
     target_compile_options(${AUV2_TARGET} PRIVATE -fno-char8_t)
+    if (DEFINED AUV2_DICTIONARY_STREAM_FORMAT)
+        # valud options check
+        set (sf ${AUV2_DICTIONARY_STREAM_FORMAT})
+        if (NOT ((${sf} STREQUAL "JUCE") OR (${sf} STREQUAL "WRAPPER")))
+            message(FATAL_ERROR "Unrecognized DICTIONARY_STREAM_FORMAT in AUV2: ${sf}")
+        endif()
+        target_compile_definitions(${AUV2_TARGET} PRIVATE DICTIONARY_STREAM_FORMAT_${AUV2_DICTIONARY_STREAM_FORMAT}=1)
+    endif()
 
     if (NOT TARGET ${AUV2_TARGET}-clap-wrapper-auv2-lib)
         # For now make this an interface

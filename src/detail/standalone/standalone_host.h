@@ -38,15 +38,6 @@ struct GtkGui;
 #endif
 #endif
 
-#if WIN
-#if CLAP_WRAPPER_HAS_WIN32
-namespace windows
-{
-struct Win32Gui;
-}
-#endif
-#endif
-
 std::optional<fs::path> getStandaloneSettingsPath();
 
 struct StandaloneHost : Clap::IHost
@@ -126,9 +117,10 @@ struct StandaloneHost : Clap::IHost
   {
     TRACE;
   }
+  std::atomic<bool> callbackRequested{false};
   void request_callback() override
   {
-    TRACE;
+    callbackRequested = true;
   }
   void setupWrapperSpecifics(const clap_plugin_t *plugin) override
   {
@@ -184,12 +176,6 @@ struct StandaloneHost : Clap::IHost
 #if LIN
 #if CLAP_WRAPPER_HAS_GTK3
   freeaudio::clap_wrapper::standalone::linux_standalone::GtkGui *gtkGui{nullptr};
-#endif
-#endif
-
-#if WIN
-#if CLAP_WRAPPER_HAS_WIN32
-  freeaudio::clap_wrapper::standalone::windows::Win32Gui *win32Gui{nullptr};
 #endif
 #endif
 

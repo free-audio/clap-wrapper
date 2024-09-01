@@ -24,9 +24,19 @@
 
 cmake_minimum_required(VERSION 3.21)
 cmake_policy(SET CMP0091 NEW)
-set(CMAKE_OSX_DEPLOYMENT_TARGET 10.13 CACHE STRING "Minimum macOS version")
-set(CMAKE_OSX_ARCHITECTURES "x86_64;arm64" CACHE STRING "Build Universal Always")
-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>") # Statically link the MSVC Runtime
+if (NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET)
+	message(STATUS "[clap-wrapper]: OSX_DEPLOYEMNT_TARGET is undefined. Setting to 10.13")
+	set(CMAKE_OSX_DEPLOYMENT_TARGET 10.13 CACHE STRING "Minimum macOS version")
+endif()
+if (NOT DEFINED CMAKE_OSX_ARCHITECTURES)
+	message(STATUS "[clap-wrapper]: CMAKE_OSX_ARCHITECTURES is not set. Using native build for clap wrapper")
+endif()
+if (NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
+  if (WIN32)
+    message(STATUS "CMAKE_MSVC_RUNTIME_LIBRARY not defined. Setting to static link")
+  endif()
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>") # Statically link the MSVC Runtime
+endif()
 set(CMAKE_COLOR_DIAGNOSTICS ON)
 
 # If your clap supports note expressions you *can* implement the wrapper extension here or you
@@ -37,7 +47,7 @@ option(CLAP_WRAPPER_BUILD_TESTS "Build test CLAP wrappers" OFF)
 
 project(clap-wrapper
 	LANGUAGES C CXX
-	VERSION 0.9.2
+	VERSION 0.10.1
 	DESCRIPTION "CLAP-as-X wrappers"
 )
 set(CLAP_WRAPPER_VERSION "${CMAKE_PROJECT_VERSION}" CACHE STRING "Version of the wrapper project")
@@ -47,13 +57,18 @@ if (APPLE)
 	enable_language(OBJCXX)
 endif()
 
-if (DEFINED CLAP_WRAPPER_CXX_STANDARD)
-	set(CMAKE_CXX_STANDARD ${CLAP_WRAPPER_CXX_STANDARD})
-else()
-	set(CMAKE_CXX_STANDARD 17)
+if (PROJECT_IS_TOP_LEVEL)
+	if (DEFINED CLAP_WRAPPER_CXX_STANDARD)
+		set(CMAKE_CXX_STANDARD ${CLAP_WRAPPER_CXX_STANDARD})
+	else()
+		if (NOT DEFINED CMAKE_CXX_STANDARD)
+			set(CMAKE_CXX_STANDARD 17)
+		elseif ( ${CMAKE_CXX_STANDARD} VERSION_LESS 17)
+			message(WARNING "CMAKE_CXX_STANDARD of ${CMAKE_CXX_STANDARD} < 17 not well tested")
+		endif()
+	endif()
 endif()
 message(STATUS "clap-wrapper: Building with C++ standard ${CMAKE_CXX_STANDARD}")
-
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_OBJC_VISIBILITY_PRESET hidden)

@@ -9,24 +9,12 @@
         </dependentAssembly>
     </dependency>
 
-    <dependency>
-        <dependentAssembly>
-            <assemblyIdentity type="win32" name="Microsoft.Windows.Gdiplus"
-                version="1.1.0.0"
-                processorArchitecture="*" publicKeyToken="6595b64144ccf1df" language="*" />
-        </dependentAssembly>
-    </dependency>
-
     <asmv3:application>
+        <asmv3:windowsSettings xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">
+            <dpiAware>true/pm</dpiAware>
+        </asmv3:windowsSettings>
         <asmv3:windowsSettings xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">
             <dpiAwareness>PerMonitorV2</dpiAwareness>
-            <longPathAware>true</longPathAware>
-        </asmv3:windowsSettings>
-        <asmv3:windowsSettings xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">
-            <activeCodePage>UTF-8</activeCodePage>
-        </asmv3:windowsSettings>
-        <asmv3:windowsSettings xmlns="http://schemas.microsoft.com/SMI/2020/WindowsSettings">
-            <heapType>SegmentHeap</heapType>
         </asmv3:windowsSettings>
     </asmv3:application>
 </assembly>

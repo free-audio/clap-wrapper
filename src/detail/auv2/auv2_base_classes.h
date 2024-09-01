@@ -459,7 +459,7 @@ class WrapAsAUV2 : public ausdk::AUBase,
         _hostname.append(")");
         CFRelease(myVersionString);
       }
-      _hostname.append(" (CLAP-as-AUv2-wrapper)");
+      _hostname.append(" (CLAP-as-AUv2)");
     }
     return _hostname.c_str();
   }
@@ -535,7 +535,7 @@ class WrapAsAUV2 : public ausdk::AUBase,
   bool _midi_understands_midi2 = false;
   // std::vector<clap_note_port_info_t> _midi_outports_info;
 
-  std::string _hostname = "CLAP-as-AUv2-wrapper";
+  std::string _hostname = "CLAP-as-AUv2";
 
 #ifdef DUAL_SCHEDULING_ENABLED
   bool _midi_dualscheduling_mode = false;

@@ -34,6 +34,12 @@ endif()
 
 # Compiler options for warnings, errors etc
 add_library(clap-wrapper-compile-options INTERFACE)
+add_library(clap-wrapper-compile-options-public INTERFACE)
+target_link_libraries(clap-wrapper-compile-options INTERFACE clap-wrapper-compile-options-public)
+
+# This is useful for debugging cmake link problems2
+# target_compile_definitions(clap-wrapper-compile-options INTERFACE -DTHIS_BUILD_USED_CLAP_WRAPPER_COMPILE_OPTIONS=1)
+# target_compile_definitions(clap-wrapper-compile-options-public INTERFACE -DTHIS_BUILD_USED_CLAP_WRAPPER_COMPILE_OPTIONS_PUBLIC=1)
 add_library(clap-wrapper-sanitizer-options INTERFACE)
 
 target_compile_options(clap-wrapper-compile-options INTERFACE -D${CLAP_WRAPPER_PLATFORM}=1 -DCLAP_WRAPPER_VERSION="${CLAP_WRAPPER_VERSION}")
@@ -58,7 +64,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     endif()
     if (${CMAKE_CXX_STANDARD} GREATER_EQUAL 20)
         message(STATUS "clap-wrapper: Turning off char8_t c++20 changes")
-        target_compile_options(clap-wrapper-compile-options INTERFACE -fno-char8_t)
+        target_compile_options(clap-wrapper-compile-options-public INTERFACE -fno-char8_t)
     endif()
     if (${CLAP_WRAPPER_ENABLE_SANITIZER})
         message(STATUS "clap-wrapper: enabling sanitizer build")
@@ -79,9 +85,10 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
 endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+    target_compile_options(clap-wrapper-compile-options INTERFACE /utf-8)
     if (${CMAKE_CXX_STANDARD} GREATER_EQUAL 20)
         message(STATUS "clap-wrapper: Turning off char8_t c++20 changes")
-        target_compile_options(clap-wrapper-compile-options INTERFACE /Zc:char8_t-)
+        target_compile_options(clap-wrapper-compile-options-public INTERFACE /Zc:char8_t-)
     endif()
 endif()
 

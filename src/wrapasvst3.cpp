@@ -60,7 +60,6 @@ tresult PLUGIN_API ClapAsVst3::initialize(FUnknown* context)
 
 tresult PLUGIN_API ClapAsVst3::terminate()
 {
-  clearContextMenu();
   vst3HostApplication.reset();
 
   if (_plugin)
@@ -260,16 +259,19 @@ IPlugView* PLUGIN_API ClapAsVst3::createView(FIDString /*name*/)
     {
       _wrappedview = new WrappedView(
           _plugin->_plugin, _plugin->_ext._gui, [this]() { clearContextMenu(); },
-          [this]()
+          [this](bool everCreated)
           {
+            if (everCreated)
+            {
 #if LIN
-            // the host calls the destructor, the wrapper just removes its pointer
-            detachTimers(_wrappedview->getRunLoop());
-            detachPosixFD(_wrappedview->getRunLoop());
-            _iRunLoop = nullptr;
+              // the host calls the destructor, the wrapper just removes its pointer
+              detachTimers(_wrappedview->getRunLoop());
+              detachPosixFD(_wrappedview->getRunLoop());
+              _iRunLoop = nullptr;
 #endif
 
-            clearContextMenu();
+              clearContextMenu();
+            }
             this->_wrappedview = nullptr;
           },
           [this]()
@@ -953,7 +955,10 @@ bool ClapAsVst3::gui_can_resize()
 
 bool ClapAsVst3::gui_request_resize(uint32_t width, uint32_t height)
 {
-  return _wrappedview->request_resize(width, height);
+  if (_wrappedview)
+    return _wrappedview->request_resize(width, height);
+  else
+    return false;
 }
 
 bool ClapAsVst3::gui_request_show()
@@ -1480,4 +1485,34 @@ void ClapAsVst3::clearContextMenu()
 {
   vst3ContextMenu.reset();
   contextmenuitems.clear();
+}
+
+tresult ClapAsVst3::getBusInfo(Vst::MediaType type, Vst::BusDirection dir, int32 index,
+                               Vst::BusInfo& bus)
+{
+  if (_plugin->_ext._audioports)
+  {
+    if (type == Vst::kAudio)
+    {
+      clap_audio_port_info_t info;
+      if (_plugin->_ext._audioports->get(_plugin->_plugin, (uint32_t)index, (dir == Vst::kInput), &info))
+      {
+        bus.mediaType = Vst::kAudio;
+        bus.channelCount = info.channel_count;
+        bus.direction = dir;
+        bus.busType = (info.flags & CLAP_AUDIO_PORT_IS_MAIN) ? Vst::kMain : Vst::kAux;
+        bus.flags = Vst::BusInfo::kDefaultActive;
+
+        UString wrapper(&bus.name[0], str16BufferSize(Steinberg::Vst::String128));
+        wrapper.assign(info.name, (Steinberg::int32)CLAP_NAME_SIZE);
+
+        return kResultOk;
+      }
+      else
+      {
+        return kResultFalse;
+      }
+    }
+  }
+  return SingleComponentEffect::getBusInfo(type, dir, index, bus);
 }

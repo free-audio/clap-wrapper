@@ -1,17 +1,18 @@
 #include "plugview.h"
 #include <clap/clap.h>
 #include <cassert>
+#include <iostream>
 
 WrappedView::WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui,
                          std::function<void()> onReleaseAdditionalReferences,
-                         std::function<void()> onDestroy, std::function<void()> onRunLoopAvailable)
+                         std::function<void(bool)> onDestroy, std::function<void()> onRunLoopAvailable)
   : IPlugView()
   , FObject()
   , _plugin(plugin)
   , _extgui(gui)
   , _onReleaseAdditionalReferences(onReleaseAdditionalReferences)
-  , _onDestroy(onDestroy)
   , _onRunLoopAvailable(onRunLoopAvailable)
+  , _onDestroy(onDestroy)
 {
 }
 
@@ -49,10 +50,17 @@ void WrappedView::drop_ui()
     _attached = false;
     if (_onDestroy)
     {
-      _onDestroy();
+      _onDestroy(true);
     }
     _extgui->destroy(_plugin);
     _created = false;
+  }
+  else
+  {
+    if (_onDestroy)
+    {
+      _onDestroy(false);
+    }
   }
 }
 
@@ -261,4 +269,13 @@ bool WrappedView::request_resize(uint32_t width, uint32_t height)
     return false;
   }
   return true;
+}
+tresult WrappedView::setContentScaleFactor(IPlugViewContentScaleSupport::ScaleFactor factor)
+{
+  ensure_ui();
+  if (_extgui->set_scale(_plugin, factor))
+  {
+    return kResultOk;
+  }
+  return kResultFalse;
 }

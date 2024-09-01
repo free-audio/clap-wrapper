@@ -152,6 +152,8 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
                                         Vst::SpeakerArrangement* outputs, int32 numOuts) override;
   tresult PLUGIN_API getBusArrangement(Vst::BusDirection dir, int32 index,
                                        Vst::SpeakerArrangement& arr) override;
+  tresult PLUGIN_API getBusInfo(Vst::MediaType type, Vst::BusDirection dir, int32 index,
+                                Vst::BusInfo& bus) override;
   tresult PLUGIN_API activateBus(Vst::MediaType type, Vst::BusDirection dir, int32 index,
                                  TBool state) override;
 
