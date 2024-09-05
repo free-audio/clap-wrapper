@@ -26,6 +26,7 @@
 #include <clap/ext/params.h>
 #include <public.sdk/source/vst/vstparameters.h>
 #include <functional>
+#include <cmath>
 
 class Vst3Parameter : public Steinberg::Vst::Parameter
 {
