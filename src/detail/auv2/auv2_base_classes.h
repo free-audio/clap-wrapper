@@ -426,17 +426,19 @@ class WrapAsAUV2 : public ausdk::AUBase,
   const char* host_get_name() override
   {
     char text[65];
+    // No need to release any of these "Get" functions.
+    // https://developer.apple.com/library/archive/documentation/CoreFoundation/Conceptual/CFMemoryMgmt/Concepts/Ownership.html#//apple_ref/doc/uid/20001148-SW1
 
     CFBundleRef applicationBundle = CFBundleGetMainBundle();
     if (applicationBundle != NULL)
     {
       CFStringRef myProductString =
           (CFStringRef)CFBundleGetValueForInfoDictionaryKey(applicationBundle, kCFBundleNameKey);
+
       if (myProductString)
       {
         CFStringGetCString(myProductString, text, 64, kCFStringEncodingUTF8);
         _hostname = text;
-        CFRelease(myProductString);
       }
       else
       {
@@ -445,10 +447,8 @@ class WrapAsAUV2 : public ausdk::AUBase,
         {
           CFStringGetCString(applicationBundleID, text, 64, kCFStringEncodingUTF8);
           _hostname = text;
-          CFRelease(applicationBundleID);
         }
       }
-      //  CFRelease(applicationBundle);  Don't release it
       CFStringRef myVersionString =
           (CFStringRef)CFBundleGetValueForInfoDictionaryKey(applicationBundle, kCFBundleVersionKey);
       if (myVersionString)
@@ -457,12 +457,12 @@ class WrapAsAUV2 : public ausdk::AUBase,
         _hostname.append(" (");
         _hostname.append(text);
         _hostname.append(")");
-        CFRelease(myVersionString);
       }
-      _hostname.append(" (CLAP-as-AUv2)");
+      _hostname.append(" (CLAP-as-AUv2-wrapper)");
     }
     return _hostname.c_str();
   }
+
 
   // --------------- IAutomation
   void onBeginEdit(clap_id id) override;
