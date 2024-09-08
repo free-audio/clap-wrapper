@@ -26,6 +26,7 @@
 #include <clap/ext/params.h>
 #include <public.sdk/source/vst/vstparameters.h>
 #include <functional>
+#include <cmath>
 
 class Vst3Parameter : public Steinberg::Vst::Parameter
 {
@@ -50,11 +51,15 @@ class Vst3Parameter : public Steinberg::Vst::Parameter
   bool fromString(const Steinberg::Vst::TChar* string, Steinberg::Vst::ParamValue& valueNormalized) const override;
 #endif
 
+  // for asClapValue() and asVst3Value()
+  // regarding conversion and the meaning of stepCount take a look here:
+  // https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical+Documentation/Parameters+Automation/Index.html#conversion-of-normalized-values
+
   inline double asClapValue(double vst3value) const
   {
     if (info.stepCount > 0)
     {
-      return (vst3value * info.stepCount + 1) + min_value;
+      return (vst3value * info.stepCount) + min_value;
     }
     return (vst3value * (max_value - min_value)) + min_value;
   }
@@ -63,7 +68,7 @@ class Vst3Parameter : public Steinberg::Vst::Parameter
     auto& info = this->getInfo();
     if (info.stepCount > 0)
     {
-      return (clapvalue - min_value) / float(info.stepCount + 1);
+      return floor(clapvalue - min_value) / float(info.stepCount);
     }
     return (clapvalue - min_value) / (max_value - min_value);
   }
