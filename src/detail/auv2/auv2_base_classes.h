@@ -458,11 +458,10 @@ class WrapAsAUV2 : public ausdk::AUBase,
         _hostname.append(text);
         _hostname.append(")");
       }
-      _hostname.append(" (CLAP-as-AUv2-wrapper)");
+      _hostname.append(" (CLAP-as-AUv2)");
     }
     return _hostname.c_str();
   }
-
 
   // --------------- IAutomation
   void onBeginEdit(clap_id id) override;
