@@ -11,7 +11,7 @@ function(target_add_standalone_wrapper)
             STATICALLY_LINKED_CLAP_ENTRY
             HOSTED_CLAP_NAME
 
-            WIN32_ICON
+            WINDOWS_ICON
 
             MACOS_EMBEDDED_CLAP_LOCATION
             )
@@ -37,8 +37,8 @@ function(target_add_standalone_wrapper)
         set(SA_OUTPUT_NAME ${SA_TARGET})
     endif()
 
-    if (NOT DEFINED SA_WIN32_ICON)
-        set(SA_WIN32_ICON "")
+    if (NOT DEFINED SA_WINDOWS_ICON)
+        set(SA_WINDOWS_ICON "")
     endif()
 
     guarantee_rtaudio()
@@ -102,16 +102,20 @@ function(target_add_standalone_wrapper)
                 MACOS_EMBEDDED_CLAP_LOCATION ${SA_MACOS_EMBEDDED_CLAP_LOCATION})
 
     elseif(WIN32 AND (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang"))
-        if(NOT "${SA_WIN32_ICON}" STREQUAL "")
-            message(STATUS "Win32 icon found: ${SA_WIN32_ICON}")
-            file(WRITE "${CMAKE_BINARY_DIR}/standalone_win32.rc" "1 ICON \"standalone_win32.ico\"")
-            file(COPY_FILE ${SA_WIN32_ICON} "${CMAKE_BINARY_DIR}/standalone_win32.ico")
-        else()
-            message(STATUS "Win32 icon not found, using default")
+        guarantee_wil()
+
+        if(NOT "${SA_WINDOWS_ICON}" STREQUAL "")
+            file(WRITE "${CMAKE_BINARY_DIR}/generated_icons/windows_standalone_${SA_TARGET}.rc" "1 ICON \"windows_standalone_${SA_TARGET}.ico\"")
+            file(COPY_FILE ${SA_WINDOWS_ICON} "${CMAKE_BINARY_DIR}/generated_icons/windows_standalone_${SA_TARGET}.ico")
+            target_sources(${SA_TARGET} PRIVATE
+                "${CMAKE_BINARY_DIR}/generated_icons/windows_standalone_${SA_TARGET}.rc"
+            )
         endif()
 
-        set_target_properties(${SA_TARGET} PROPERTIES
-                WIN32_EXECUTABLE TRUE
+        target_sources(${SA_TARGET} PRIVATE
+                "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/wrapasstandalone_windows.cpp"
+                "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/windows/windows_standalone.cpp"
+                "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/windows/windows_standalone.manifest"
                 )
 
         target_compile_definitions(${salib} PUBLIC
@@ -120,22 +124,9 @@ function(target_add_standalone_wrapper)
                 CLAP_WRAPPER_HAS_WIN32
                 )
 
-        target_sources(${SA_TARGET} PRIVATE
-                "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/wrapasstandalone_win32.cpp"
-                "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/windows/host_window.cpp"
-                # "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/windows/settings_window.cpp"
-                "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/windows/helpers.cpp"
-                "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/windows/standalone.manifest"
+        set_target_properties(${SA_TARGET} PROPERTIES
+                WIN32_EXECUTABLE TRUE
                 )
-
-        guarantee_wil()
-        target_link_libraries(${SA_TARGET} PRIVATE base-sdk-wil)
-
-        if(NOT "${SA_WIN32_ICON}" STREQUAL "")
-            target_sources(${SA_TARGET} PRIVATE
-                        "${CMAKE_BINARY_DIR}/standalone_win32.rc"
-                        )
-        endif()
 
         if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
             target_link_options(
@@ -150,6 +141,8 @@ function(target_add_standalone_wrapper)
                 -Wl,/entry:mainCRTStartup
                 )
         endif()
+
+        target_link_libraries(${SA_TARGET} PRIVATE base-sdk-wil ComCtl32.Lib)
 
     elseif(UNIX)
         target_sources(${SA_TARGET} PRIVATE

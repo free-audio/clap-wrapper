@@ -63,6 +63,7 @@ std::shared_ptr<Clap::Plugin> mainCreatePlugin(const clap_plugin_entry *ee, cons
     try
     {
       LOG << "Trying to save default clap wrapper settings" << std::endl;
+      fs::create_directories(loadPath);
       standaloneHost->saveStandaloneAndPluginSettings(loadPath, "defaults.clapwrapper");
     }
     catch (const fs::filesystem_error &e)
@@ -75,6 +76,7 @@ std::shared_ptr<Clap::Plugin> mainCreatePlugin(const clap_plugin_entry *ee, cons
       if (fs::exists(loadPath / "settings.clapwrapper"))
       {
         LOG << "Trying to load from clap wrapper settings" << std::endl;
+        fs::create_directories(loadPath);
         standaloneHost->tryLoadStandaloneAndPluginSettings(loadPath, "settings.clapwrapper");
       }
     }

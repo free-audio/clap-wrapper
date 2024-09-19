@@ -59,9 +59,17 @@ void StandaloneHost::guaranteeRtAudioDAC()
   if (!rtaDac)
   {
     LOG << "Creating RtAudio DAC" << std::endl;
-    rtaDac = std::make_unique<RtAudio>(RtAudio::UNSPECIFIED, &rtaErrorCallback);
-    rtaDac->showWarnings(true);
+    setAudioApi(RtAudio::Api::UNSPECIFIED);
   }
+}
+
+void StandaloneHost::setAudioApi(RtAudio::Api api)
+{
+  rtaDac = std::make_unique<RtAudio>(api, &rtaErrorCallback);
+  audioApi = api;
+  audioApiName = rtaDac->getApiName(api);
+  audioApiDisplayName = rtaDac->getApiDisplayName(api);
+  rtaDac->showWarnings(true);
 }
 
 std::tuple<unsigned int, unsigned int, int32_t> StandaloneHost::getDefaultAudioInOutSampleRate()
@@ -109,6 +117,16 @@ std::vector<RtAudio::DeviceInfo> filterDevicesBy(const std::unique_ptr<RtAudio> 
   return res;
 }
 
+std::vector<RtAudio::Api> StandaloneHost::getCompiledApi()
+{
+  guaranteeRtAudioDAC();
+
+  std::vector<RtAudio::Api> compiledApi;
+  rtaDac->getCompiledApi(compiledApi);
+
+  return compiledApi;
+}
+
 std::vector<RtAudio::DeviceInfo> StandaloneHost::getInputAudioDevices()
 {
   guaranteeRtAudioDAC();
@@ -119,6 +137,31 @@ std::vector<RtAudio::DeviceInfo> StandaloneHost::getOutputAudioDevices()
 {
   guaranteeRtAudioDAC();
   return filterDevicesBy(rtaDac, [](auto &a) { return a.outputChannels > 0; });
+}
+
+std::vector<int32_t> StandaloneHost::getSampleRates()
+{
+  guaranteeRtAudioDAC();
+
+  std::vector<int32_t> res;
+
+  auto samplesRates{rtaDac->getDeviceInfo(audioInputDeviceID).sampleRates};
+
+  for (auto &sampleRate : rtaDac->getDeviceInfo(audioInputDeviceID).sampleRates)
+  {
+    res.push_back(sampleRate);
+  }
+
+  return res;
+}
+
+std::vector<uint32_t> StandaloneHost::getBufferSizes()
+{
+  guaranteeRtAudioDAC();
+
+  std::vector<uint32_t> res{16,  32,  48,  64,  96,  128,  144,  160,
+                            192, 224, 256, 480, 512, 1024, 2048, 4096};
+  return res;
 }
 
 void StandaloneHost::startAudioThreadOn(unsigned int inputDeviceID, uint32_t inputChannels,
@@ -197,9 +240,14 @@ void StandaloneHost::startAudioThreadOn(unsigned int inputDeviceID, uint32_t inp
    * this for now at 256 and return to it shortly.
    */
   LOG << "[WARNING] Hardcoding frame size to 256 samples for now" << std::endl;
-  uint32_t bufferFrames{256};
+
+  if (currentBufferSize == 0)
+  {
+    currentBufferSize = 256;
+  }
+
   if (rtaDac->openStream((useOutput) ? &oParams : nullptr, (useInput) ? &iParams : nullptr,
-                         RTAUDIO_FLOAT32, sampleRate, &bufferFrames, &rtaCallback, (void *)this,
+                         RTAUDIO_FLOAT32, sampleRate, &currentBufferSize, &rtaCallback, (void *)this,
                          &options))
   {
     LOG << "[ERROR]" << rtaDac->getErrorText() << std::endl;
@@ -207,7 +255,7 @@ void StandaloneHost::startAudioThreadOn(unsigned int inputDeviceID, uint32_t inp
     return;
   }
 
-  activatePlugin(sampleRate, 1, bufferFrames * 2);
+  activatePlugin(sampleRate, 1, currentBufferSize * 2);
 
   LOG << "RtAudio Attached Devices" << std::endl;
   if (useOutput)
