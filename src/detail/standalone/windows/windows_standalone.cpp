@@ -704,132 +704,132 @@ Plugin::Plugin(const clap_plugin_entry* entry, int argc, char** argv)
                         return 0;
                       });
 
-  message.on(
-      WM_SYSCOMMAND,
-      [this](Message msg)
-      {
-        switch (msg.wparam)
-        {
-          case Menu::Identifier::AudioMidiSettings:
-          {
-            settings.isVisible() ? settings.hide() : settings.show();
+  message.on(WM_SYSCOMMAND,
+             [this](Message msg)
+             {
+               switch (msg.wparam)
+               {
+                 case Menu::Identifier::AudioMidiSettings:
+                 {
+                   settings.isVisible() ? settings.hide() : settings.show();
 
-            return 0;
-          }
+                   return 0;
+                 }
 
-          case Menu::Identifier::MuteInput:
-          {
-            if (menu.item[1].fState == MFS_UNCHECKED)
-            {
-              sah->audioInputUsed = false;
-              menu.item[1].fState = MFS_CHECKED;
-            }
-            else
-            {
-              sah->audioInputUsed = true;
-              menu.item[1].fState = MFS_UNCHECKED;
-            }
+                 case Menu::Identifier::MuteInput:
+                 {
+                   if (menu.item[1].fState == MFS_UNCHECKED)
+                   {
+                     sah->audioInputUsed = false;
+                     menu.item[1].fState = MFS_CHECKED;
+                   }
+                   else
+                   {
+                     sah->audioInputUsed = true;
+                     menu.item[1].fState = MFS_UNCHECKED;
+                   }
 
-            SetMenuItemInfoW(getSystemMenu(hwnd.get()), 1, FALSE, &menu.item[1]);
+                   SetMenuItemInfoW(getSystemMenu(hwnd.get()), 1, FALSE, &menu.item[1]);
 
-            saveSettings();
-            startAudio();
+                   saveSettings();
+                   startAudio();
 
-            return 0;
-          }
+                   return 0;
+                 }
 
-          case Menu::Identifier::SaveState:
-          {
-            auto fileSaveDialog{wil::CoCreateInstance<::IFileSaveDialog>(CLSID_FileSaveDialog)};
+                 case Menu::Identifier::SaveState:
+                 {
+                   auto fileSaveDialog{wil::CoCreateInstance<::IFileSaveDialog>(CLSID_FileSaveDialog)};
 
-            fileSaveDialog->SetDefaultExtension(fileTypes.at(0).pszName);
-            fileSaveDialog->SetFileTypes(static_cast<::UINT>(fileTypes.size()), fileTypes.data());
-            fileSaveDialog->Show(hwnd.get());
+                   fileSaveDialog->SetDefaultExtension(fileTypes.at(0).pszName);
+                   fileSaveDialog->SetFileTypes(static_cast<::UINT>(fileTypes.size()), fileTypes.data());
+                   fileSaveDialog->Show(hwnd.get());
 
-            wil::com_ptr<::IShellItem> shellItem;
+                   wil::com_ptr<::IShellItem> shellItem;
 
-            if (auto hr{fileSaveDialog->GetResult(&shellItem)}; SUCCEEDED(hr))
-            {
-              wil::unique_cotaskmem_string result;
-              shellItem->GetDisplayName(SIGDN_FILESYSPATH, &result);
+                   if (auto hr{fileSaveDialog->GetResult(&shellItem)}; SUCCEEDED(hr))
+                   {
+                     wil::unique_cotaskmem_string result;
+                     shellItem->GetDisplayName(SIGDN_FILESYSPATH, &result);
 
-              auto saveFile{std::filesystem::path(result.get())};
+                     auto saveFile{std::filesystem::path(result.get())};
 
-              try
-              {
-                sah->saveStandaloneAndPluginSettings(saveFile.parent_path(), saveFile.filename());
-              }
-              catch (const fs::filesystem_error& e)
-              {
-                message.error("Unable to save state: {}", e.what());
-              }
-            }
+                     try
+                     {
+                       sah->saveStandaloneAndPluginSettings(saveFile.parent_path(), saveFile.filename());
+                     }
+                     catch (const fs::filesystem_error& e)
+                     {
+                       message.error("Unable to save state: {}", e.what());
+                     }
+                   }
 
-            return 0;
-          }
+                   return 0;
+                 }
 
-          case Menu::Identifier::LoadState:
-          {
-            auto fileOpenDialog{wil::CoCreateInstance<::IFileOpenDialog>(CLSID_FileOpenDialog)};
+                 case Menu::Identifier::LoadState:
+                 {
+                   auto fileOpenDialog{wil::CoCreateInstance<::IFileOpenDialog>(CLSID_FileOpenDialog)};
 
-            fileOpenDialog->SetDefaultExtension(fileTypes.at(0).pszName);
-            fileOpenDialog->SetFileTypes(static_cast<::UINT>(fileTypes.size()), fileTypes.data());
-            fileOpenDialog->Show(hwnd.get());
+                   fileOpenDialog->SetDefaultExtension(fileTypes.at(0).pszName);
+                   fileOpenDialog->SetFileTypes(static_cast<::UINT>(fileTypes.size()), fileTypes.data());
+                   fileOpenDialog->Show(hwnd.get());
 
-            wil::com_ptr<::IShellItem> shellItem;
+                   wil::com_ptr<::IShellItem> shellItem;
 
-            if (auto hr{fileOpenDialog->GetResult(&shellItem)}; SUCCEEDED(hr))
-            {
-              wil::unique_cotaskmem_string result;
-              shellItem->GetDisplayName(SIGDN_FILESYSPATH, &result);
+                   if (auto hr{fileOpenDialog->GetResult(&shellItem)}; SUCCEEDED(hr))
+                   {
+                     wil::unique_cotaskmem_string result;
+                     shellItem->GetDisplayName(SIGDN_FILESYSPATH, &result);
 
-              auto saveFile{std::filesystem::path(result.get())};
+                     auto saveFile{std::filesystem::path(result.get())};
 
-              try
-              {
-                if (fs::exists(saveFile))
-                {
-                  sah->tryLoadStandaloneAndPluginSettings(saveFile.parent_path(), saveFile.filename());
-                }
-              }
-              catch (const fs::filesystem_error& e)
-              {
-                message.error("Unable to load state: {}", e.what());
-              }
-            }
+                     try
+                     {
+                       if (fs::exists(saveFile))
+                       {
+                         sah->tryLoadStandaloneAndPluginSettings(saveFile.parent_path(),
+                                                                 saveFile.filename());
+                       }
+                     }
+                     catch (const fs::filesystem_error& e)
+                     {
+                       message.error("Unable to load state: {}", e.what());
+                     }
+                   }
 
-            return 0;
-          }
+                   return 0;
+                 }
 
-          case Menu::Identifier::ResetState:
-          {
-            auto pt{freeaudio::clap_wrapper::standalone::getStandaloneSettingsPath()};
+                 case Menu::Identifier::ResetState:
+                 {
+                   auto pt{freeaudio::clap_wrapper::standalone::getStandaloneSettingsPath()};
 
-            if (pt.has_value())
-            {
-              auto loadPath{*pt / plugin.plugin->desc->id};
+                   if (pt.has_value())
+                   {
+                     auto loadPath{*pt / plugin.plugin->desc->id};
 
-              try
-              {
-                if (fs::exists(loadPath / "defaults.clapwrapper"))
-                {
-                  sah->tryLoadStandaloneAndPluginSettings(loadPath, "defaults.clapwrapper");
-                }
-              }
-              catch (const fs::filesystem_error& e)
-              {
-                message.error("Unable to reset state: {}", e.what());
-              }
-            }
+                     try
+                     {
+                       if (fs::exists(loadPath / "defaults.clapwrapper"))
+                       {
+                         sah->tryLoadStandaloneAndPluginSettings(loadPath, "defaults.clapwrapper");
+                       }
+                     }
+                     catch (const fs::filesystem_error& e)
+                     {
+                       message.error("Unable to reset state: {}", e.what());
+                     }
+                   }
 
-            return 0;
-          }
-        }
+                   return 0;
+                 }
+               }
 
-        ::DefWindowProcW(msg.hwnd, msg.msg, msg.wparam, msg.lparam);
+               ::DefWindowProcW(msg.hwnd, msg.msg, msg.wparam, msg.lparam);
 
-        return 0;
-      });
+               return 0;
+             });
 
   settings.message.on(
       WM_COMMAND,
