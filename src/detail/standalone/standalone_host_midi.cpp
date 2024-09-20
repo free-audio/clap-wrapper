@@ -16,12 +16,11 @@ namespace freeaudio::clap_wrapper::standalone
 {
 void StandaloneHost::startMIDIThread()
 {
-  unsigned int numPorts{0};
   try
   {
     LOG << "Initializing Midi" << std::endl;
     auto midiIn = std::make_unique<RtMidiIn>();
-    numPorts = midiIn->getPortCount();
+    numMidiPorts = midiIn->getPortCount();
   }
   catch (RtMidiError &error)
   {
@@ -29,8 +28,8 @@ void StandaloneHost::startMIDIThread()
     exit(EXIT_FAILURE);
   }
 
-  LOG << "MIDI: There are " << numPorts << " MIDI input sources available. Binding all.\n";
-  for (unsigned int i = 0; i < numPorts; i++)
+  LOG << "MIDI: There are " << numMidiPorts << " MIDI input sources available. Binding all.\n";
+  for (unsigned int i = 0; i < numMidiPorts; i++)
   {
     try
     {

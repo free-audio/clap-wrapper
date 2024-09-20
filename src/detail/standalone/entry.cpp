@@ -63,6 +63,7 @@ std::shared_ptr<Clap::Plugin> mainCreatePlugin(const clap_plugin_entry *ee, cons
     try
     {
       LOG << "Trying to save default clap wrapper settings" << std::endl;
+      fs::create_directories(loadPath);
       standaloneHost->saveStandaloneAndPluginSettings(loadPath, "defaults.clapwrapper");
     }
     catch (const fs::filesystem_error &e)

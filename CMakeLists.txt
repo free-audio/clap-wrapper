@@ -24,6 +24,7 @@
 
 cmake_minimum_required(VERSION 3.21)
 cmake_policy(SET CMP0091 NEW)
+cmake_policy(SET CMP0149 NEW)
 if (NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET)
 	message(STATUS "[clap-wrapper]: OSX_DEPLOYEMNT_TARGET is undefined. Setting to 10.13")
 	set(CMAKE_OSX_DEPLOYMENT_TARGET 10.13 CACHE STRING "Minimum macOS version")

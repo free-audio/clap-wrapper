@@ -235,6 +235,8 @@ struct StandaloneHost : Clap::IHost
   };
   ClapWrapper::detail::shared::fixedqueue<midiChunk, 4096> midiToAudioQueue;
   std::vector<std::unique_ptr<RtMidiIn>> midiIns;
+  uint32_t numMidiPorts{0};
+  std::vector<uint32_t> currentMidiPorts;
   void startMIDIThread();
   void stopMIDIThread();
   void processMIDIEvents(double deltatime, std::vector<unsigned char> *message);
@@ -246,10 +248,15 @@ struct StandaloneHost : Clap::IHost
   // Actual audio IO In standalone_host_audio.cpp
   std::unique_ptr<RtAudio> rtaDac;
   std::function<void(const std::string &)> displayAudioError{nullptr};
+  RtAudio::Api audioApi{RtAudio::Api::UNSPECIFIED};
+  std::string audioApiName{RtAudio::getApiName(RtAudio::Api::UNSPECIFIED)};
+  std::string audioApiDisplayName{RtAudio::getApiDisplayName(RtAudio::Api::UNSPECIFIED)};
   unsigned int audioInputDeviceID{0}, audioOutputDeviceID{0};
   bool audioInputUsed{true}, audioOutputUsed{true};
   int32_t currentSampleRate{0};
+  uint32_t currentBufferSize{0};
   void guaranteeRtAudioDAC();
+  void setAudioApi(RtAudio::Api api);
   std::tuple<unsigned int, unsigned int, int32_t> getDefaultAudioInOutSampleRate();
   void startAudioThread();
   void startAudioThreadOn(unsigned int inputDeviceID, uint32_t inputChannels, bool useInput,
@@ -271,8 +278,11 @@ struct StandaloneHost : Clap::IHost
   void activatePlugin(int32_t sr, int32_t minBlock, int32_t maxBlock);
   bool isActive{false};
 
+  std::vector<RtAudio::Api> getCompiledApi();
   std::vector<RtAudio::DeviceInfo> getInputAudioDevices();
   std::vector<RtAudio::DeviceInfo> getOutputAudioDevices();
+  std::vector<int32_t> getSampleRates();
+  std::vector<uint32_t> getBufferSizes();
 
   clap_input_events inputEvents{};
   clap_output_events outputEvents{};
