@@ -150,6 +150,8 @@ function(target_add_standalone_wrapper)
 
         target_link_libraries(${SA_TARGET} PRIVATE base-sdk-wil ComCtl32.Lib)
 
+        set_target_properties(${SA_TARGET} PROPERTIES OUTPUT_NAME ${SA_OUTPUT_NAME})
+
     elseif(UNIX)
         target_sources(${SA_TARGET} PRIVATE
                 ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/wrapasstandalone.cpp)
@@ -166,6 +168,8 @@ function(target_add_standalone_wrapper)
         else()
             message(STATUS "clap-wrapper: can't find gtkmm-3.0; no ui in standalone")
         endif()
+
+        set_target_properties(${SA_TARGET} PROPERTIES OUTPUT_NAME ${SA_OUTPUT_NAME})
 
     else()
         target_sources(${SA_TARGET} PRIVATE
