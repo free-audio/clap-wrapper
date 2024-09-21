@@ -119,22 +119,28 @@ function(target_add_standalone_wrapper)
                 )
 
         target_compile_definitions(${salib} PUBLIC
-                NOMINMAX
-                WIN32_LEAN_AND_MEAN
                 CLAP_WRAPPER_HAS_WIN32
+                )
+
+        target_compile_definitions(${salib} PUBLIC
+                NOMINMAX
                 )
 
         set_target_properties(${SA_TARGET} PROPERTIES
                 WIN32_EXECUTABLE TRUE
                 )
 
-        if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+        if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+            target_compile_definitions(${SA_TARGET} PRIVATE _SILENCE_CLANG_COROUTINE_MESSAGE)
+        endif()
+
+        if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
             target_link_options(
                 ${SA_TARGET}
                 PRIVATE
                 /entry:mainCRTStartup
                 )
-        elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        elseif(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
             target_link_options(
                 ${SA_TARGET}
                 PRIVATE
