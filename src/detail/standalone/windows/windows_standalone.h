@@ -39,8 +39,8 @@ namespace freeaudio::clap_wrapper::standalone::windows_standalone
 ::HFONT getFontFromSystem(int name = DEFAULT_GUI_FONT);
 ::HFONT getScaledFontFromSystem(double scale);
 ::HBRUSH getBrushFromSystem(int name = BLACK_BRUSH);
-::HCURSOR getCursorFromSystem(::LPCSTR name = IDC_ARROW);
-::HICON getIconFromSystem(::LPCSTR name = IDI_APPLICATION);
+::HCURSOR getCursorFromSystem(::LPCWSTR name = IDC_ARROW);
+::HICON getIconFromSystem(::LPCWSTR name = IDI_APPLICATION);
 ::HICON getIconFromResource();
 ::HMENU getSystemMenu(::HWND hwnd);
 

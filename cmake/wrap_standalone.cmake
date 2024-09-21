@@ -122,7 +122,8 @@ function(target_add_standalone_wrapper)
                 CLAP_WRAPPER_HAS_WIN32
                 )
 
-        target_compile_definitions(${salib} PUBLIC
+        target_compile_definitions(${SA_TARGET} PRIVATE
+                UNICODE
                 NOMINMAX
                 )
 
