@@ -31,15 +31,15 @@ namespace freeaudio::clap_wrapper::standalone::windows_standalone
   return static_cast<::HBRUSH>(::GetStockObject(name));
 }
 
-::HCURSOR getCursorFromSystem(::LPCSTR name)
+::HCURSOR getCursorFromSystem(::LPCWSTR name)
 {
   return static_cast<::HCURSOR>(
-      ::LoadImageA(nullptr, name, IMAGE_CURSOR, 0, 0, LR_SHARED | LR_DEFAULTSIZE));
+      ::LoadImageW(nullptr, name, IMAGE_CURSOR, 0, 0, LR_SHARED | LR_DEFAULTSIZE));
 }
 
-::HICON getIconFromSystem(::LPCSTR name)
+::HICON getIconFromSystem(::LPCWSTR name)
 {
-  return static_cast<::HICON>(::LoadImageA(nullptr, name, IMAGE_ICON, 0, 0, LR_SHARED | LR_DEFAULTSIZE));
+  return static_cast<::HICON>(::LoadImageW(nullptr, name, IMAGE_ICON, 0, 0, LR_SHARED | LR_DEFAULTSIZE));
 }
 
 ::HICON getIconFromResource()
@@ -433,7 +433,7 @@ void Control::refreshFont(double scale)
 
 void ComboBox::create(const std::string& name, uintptr_t id, ::HWND parentHwnd)
 {
-  hwnd.reset(::CreateWindowExW(0, toUTF16(WC_COMBOBOX).c_str(), toUTF16(name).c_str(),
+  hwnd.reset(::CreateWindowExW(0, WC_COMBOBOXW, toUTF16(name).c_str(),
                                WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST, 0, 0, 0, 0, parentHwnd,
                                (::HMENU)id, getInstance(), nullptr));
 
@@ -494,7 +494,7 @@ bool ComboBox::set(const std::string& searchString)
 
 void ListBox::create(const std::string& name, uintptr_t id, ::HWND parentHwnd)
 {
-  hwnd.reset(::CreateWindowExW(0, toUTF16(WC_LISTBOX).c_str(), toUTF16(name).c_str(),
+  hwnd.reset(::CreateWindowExW(0, WC_LISTBOXW, toUTF16(name).c_str(),
                                WS_CHILD | WS_VISIBLE | LBS_MULTIPLESEL | LBS_NOTIFY, 0, 0, 0, 0,
                                parentHwnd, (::HMENU)id, getInstance(), nullptr));
 
