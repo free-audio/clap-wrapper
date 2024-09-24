@@ -92,9 +92,11 @@ Vst3Parameter* Vst3Parameter::create(
     }
   }
 
-  str8ToStr16(v.title, fullname.c_str(), str16BufferSize(v.title));
+  // str8ToStr16(v.title, fullname.c_str(), str16BufferSize(v.title));
+  utf8_to_utf16l(fullname.c_str(), (uint16_t*)(v.title), str16BufferSize(v.title));
   // TODO: string shrink algorithm shortening the string a bit
-  str8ToStr16(v.shortTitle, info->name, str16BufferSize(v.shortTitle));
+  // str8ToStr16(v.shortTitle, info->name, str16BufferSize(v.shortTitle));
+  utf8_to_utf16l(info->name, (uint16_t*)v.shortTitle, str16BufferSize(v.shortTitle));
   v.units[0] = 0;  // unfortunately, CLAP has no unit for parameter values
   v.unitId = unit;
 
@@ -153,9 +155,13 @@ Vst3Parameter* Vst3Parameter::create(uint8_t bus, uint8_t channel, uint8_t cc, V
   {
     fullname = "controller";
   }
-  str8ToStr16(v.title, fullname.c_str(), str16BufferSize(v.title));
+
+  utf8_to_utf16l(fullname.c_str(), (uint16_t*)(v.title), str16BufferSize(v.title));
+  utf8_to_utf16l(name, (uint16_t*)v.shortTitle, str16BufferSize(v.shortTitle));
+
+  // str8ToStr16(v.title, fullname.c_str(), str16BufferSize(v.title));
   // TODO: string shrink algorithm shortening the string a bit
-  str8ToStr16(v.shortTitle, name, str16BufferSize(v.shortTitle));
+  // str8ToStr16(v.shortTitle, name, str16BufferSize(v.shortTitle));
 
   v.units[0] = 0;  // nothing in the "unit" field
   // the unit will not be set here, but outside
