@@ -43,7 +43,7 @@ struct ClapHostExtensions
 #endif
 
 void utf8_to_utf16l(const char* utf8string, uint16_t* target, size_t targetsize)
-{  
+{
   uint32_t codepoint = 0;
   size_t targetpos = 0;
 
