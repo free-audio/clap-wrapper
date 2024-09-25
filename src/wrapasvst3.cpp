@@ -42,6 +42,84 @@ struct ClapHostExtensions
 };
 #endif
 
+void utf8_to_utf16l(const char* utf8string, uint16_t* target, size_t targetsize)
+{
+  bool result = true;
+  uint32_t codepoint = 0;
+  int state = 1;
+  size_t targetpos = 0;
+
+  auto src = reinterpret_cast<const uint8_t*>(utf8string);
+  size_t pos = 0;
+  while (src[pos] && (targetpos < (targetsize - 1)))
+  {
+    auto byte = src[pos];
+
+    if ((byte & 0b10000000) == 0b00000000)
+    {
+      codepoint = byte;
+      pos += 1;
+    }
+    else
+    {
+      if (((byte & 0b11100000) == 0b11000000) && src[1])
+      {
+        codepoint = byte & 0b00011111;
+        codepoint = (codepoint << 6) | ((src[pos + 1]) & 0b00111111);
+        pos += 2;
+      }
+      else if (((byte & 0b11110000) == 0b11100000) && src[1] && src[2])
+      {
+        codepoint = byte & 0b00001111;
+        codepoint = (codepoint << 6) | ((src[pos + 1] & 0b00111111));
+        codepoint = (codepoint << 6) | ((src[pos + 2] & 0b00111111));
+        pos += 3;
+      }
+      else if (((byte & 0b11111000) == 0b11110000) && src[1] && src[2] && src[3])
+      {
+        codepoint = byte & 0b00000111;
+        codepoint = (codepoint << 6) | ((src[pos + 1] & 0b00111111));
+        codepoint = (codepoint << 6) | ((src[pos + 2] & 0b00111111));
+        codepoint = (codepoint << 6) | ((src[pos + 3] & 0b00111111));
+        pos += 4;
+      }
+      else
+      {
+        return;
+      }
+    }
+    {
+      if (codepoint >= 0xD800 && codepoint <= 0xDFFF)
+      {
+        target[targetpos] = 0;
+        return;
+        // throw conversion_error("illegal UTF-32 codepoint (surrogat area)");
+      }
+      if (codepoint <= 0xFFFF)
+      {
+        target[targetpos++] = codepoint;
+      }
+      else
+      {
+        if (codepoint <= 0x10FFFF && (targetpos < (targetsize - 3)))
+        {
+          codepoint -= 0x10000;
+          uint16_t highsurr = static_cast<uint16_t>((codepoint >> 10) + 0xD800);
+          uint16_t lowsurr = static_cast<uint16_t>((codepoint & 0x3FF) + 0xDC00);
+          target[targetpos++] = highsurr;
+          target[targetpos++] = lowsurr;
+        }
+        else
+        {
+          target[targetpos] = 0;
+          return;
+        }
+      }
+    }
+  }
+  target[targetpos] = 0;
+}
+
 tresult PLUGIN_API ClapAsVst3::initialize(FUnknown* context)
 {
   auto result = super::initialize(context);
@@ -337,6 +415,10 @@ tresult PLUGIN_API ClapAsVst3::getParamValueByString(Vst::ParamID id, Vst::TChar
   char inbuf[128];
   m.copyTo8(inbuf, 0, 128);
   double out = 0.;
+  if (param->isMidi)
+  {
+    return Steinberg::kResultFalse;
+  }
   if (this->_plugin->_ext._params->text_to_value(_plugin->_plugin, param->id, inbuf, &out))
   {
     valueNormalized = param->asVst3Value(out);
@@ -545,7 +627,9 @@ void ClapAsVst3::addAudioBusFrom(const clap_audio_port_info_t* info, bool is_inp
   // bool supports64bit = (info->flags & CLAP_AUDIO_PORT_SUPPORTS_64BITS);
   Steinberg::char16 name16[256];
   // str8tostr16 writes to position n to terminate, so don't overflow
-  Steinberg::str8ToStr16(&name16[0], info->name, 255);
+
+  // Steinberg::str8ToStr16(&name16[0], info->name, 255);
+  utf8_to_utf16l(info->name, (uint16_t*)name16, 255);
   if (is_input)
   {
     addAudioInput(name16, spk, bustype, Vst::BusInfo::kDefaultActive);
@@ -569,7 +653,8 @@ void ClapAsVst3::addMIDIBusFrom(const clap_note_port_info_t* info, uint32_t inde
 
     Steinberg::char16 name16[256];
     // str8tostr16 writes to position n to terminate, so don't overflow
-    Steinberg::str8ToStr16(&name16[0], info->name, 255);
+    // Steinberg::str8ToStr16(&name16[0], info->name, 255);
+    utf8_to_utf16l(info->name, (uint16_t*)name16, 255);
     if (is_input)
     {
       addEventInput(name16, numchannels, Vst::BusTypes::kMain, Vst::BusInfo::kDefaultActive);
