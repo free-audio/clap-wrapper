@@ -49,7 +49,7 @@ void utf8_to_utf16l(const char* utf8string, uint16_t* target, size_t targetsize)
 
   auto src = reinterpret_cast<const uint8_t*>(utf8string);
   size_t pos = 0;
-  while (src[pos] && (targetpos < (targetsize - 1)))
+  while (src[pos] && (targetpos < (targetsize - 2)))
   {
     auto byte = src[pos];
 
