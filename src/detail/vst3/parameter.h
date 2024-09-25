@@ -76,7 +76,9 @@ class Vst3Parameter : public Steinberg::Vst::Parameter
                                std::function<Steinberg::Vst::UnitID(const char* modulepath)> getUnitId);
   static Vst3Parameter* create(uint8_t bus, uint8_t channel, uint8_t cc, Steinberg::Vst::ParamID id);
   // copies from the clap_param_info_t
+  uint32_t param_index_for_clap_get_info = 0;
   clap_id id = 0;
+
   void* cookie = nullptr;
   double min_value;  // minimum plain value
   double max_value;  // maximum plain value

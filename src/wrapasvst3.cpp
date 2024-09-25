@@ -782,6 +782,7 @@ void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
       auto p = Vst3Parameter::create(
           &info, [&](const char* modstring) { return this->getOrCreateUnitInfo(modstring); });
       // auto p = Vst3Parameter::create(&info,nullptr);
+      p->param_index_for_clap_get_info = i;
       parameters.addParameter(p);
     }
   }
@@ -922,6 +923,17 @@ void ClapAsVst3::param_rescan(clap_param_rescan_flags flags)
         if (p->getNormalized() != newval)
         {
           p->setNormalized(newval);
+        }
+      }
+      if (flags & CLAP_PARAM_RESCAN_INFO)
+      {
+        // In this case, the name and module can also change.
+        // For now, don't rebuild the unit tree with modules but
+        // do rescan the name
+        clap_param_info_t info;
+        if (_plugin->_ext._params->get_info(_plugin->_plugin, p->param_index_for_clap_get_info, &info))
+        {
+          str8ToStr16(p->getInfo().title, info.name, str16BufferSize(p->getInfo().title));
         }
       }
     }
