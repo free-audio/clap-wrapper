@@ -43,10 +43,8 @@ struct ClapHostExtensions
 #endif
 
 void utf8_to_utf16l(const char* utf8string, uint16_t* target, size_t targetsize)
-{
-  bool result = true;
+{  
   uint32_t codepoint = 0;
-  int state = 1;
   size_t targetpos = 0;
 
   auto src = reinterpret_cast<const uint8_t*>(utf8string);
