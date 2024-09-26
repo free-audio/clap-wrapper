@@ -28,6 +28,8 @@
 #include <functional>
 #include <cmath>
 
+void utf8_to_utf16l(const char* utf8string, uint16_t* target, size_t targetsize);
+
 class Vst3Parameter : public Steinberg::Vst::Parameter
 {
   using super = Steinberg::Vst::Parameter;
