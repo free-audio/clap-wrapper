@@ -385,6 +385,8 @@ tresult PLUGIN_API ClapAsVst3::getParamStringByValue(Vst::ParamID id, Vst::Param
   if (param->isMidi)
   {
     auto r = std::to_string((int)val);
+
+    // usually we try to avoid UString assignment, but here it is okay.
     UString wrapper(&string[0], str16BufferSize(Steinberg::Vst::String128));
 
     wrapper.assign(r.c_str(), (Steinberg::int32)(r.size() + 1));
@@ -397,9 +399,8 @@ tresult PLUGIN_API ClapAsVst3::getParamStringByValue(Vst::ParamID id, Vst::Param
 
   if (this->_plugin->_ext._params->value_to_text(_plugin->_plugin, param->id, val, outbuf, 127))
   {
-    UString wrapper(&string[0], str16BufferSize(Steinberg::Vst::String128));
+    utf8_to_utf16l(outbuf, (uint16_t*) &string[0], str16BufferSize(Steinberg::Vst::String128));
 
-    wrapper.assign(outbuf, sizeof(outbuf));
     return kResultOk;
   }
   return super::getParamStringByValue(id, valueNormalized, string);
@@ -1586,8 +1587,7 @@ tresult ClapAsVst3::getBusInfo(Vst::MediaType type, Vst::BusDirection dir, int32
         bus.busType = (info.flags & CLAP_AUDIO_PORT_IS_MAIN) ? Vst::kMain : Vst::kAux;
         bus.flags = Vst::BusInfo::kDefaultActive;
 
-        UString wrapper(&bus.name[0], str16BufferSize(Steinberg::Vst::String128));
-        wrapper.assign(info.name, (Steinberg::int32)CLAP_NAME_SIZE);
+        utf8_to_utf16l(info.name, (uint16_t*)&bus.name[0], str16BufferSize(Steinberg::Vst::String128));
 
         return kResultOk;
       }
