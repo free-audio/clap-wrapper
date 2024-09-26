@@ -399,7 +399,7 @@ tresult PLUGIN_API ClapAsVst3::getParamStringByValue(Vst::ParamID id, Vst::Param
 
   if (this->_plugin->_ext._params->value_to_text(_plugin->_plugin, param->id, val, outbuf, 127))
   {
-    utf8_to_utf16l(outbuf, (uint16_t*) &string[0], str16BufferSize(Steinberg::Vst::String128));
+    utf8_to_utf16l(outbuf, (uint16_t*)&string[0], str16BufferSize(Steinberg::Vst::String128));
 
     return kResultOk;
   }
