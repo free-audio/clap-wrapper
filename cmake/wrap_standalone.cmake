@@ -120,15 +120,13 @@ function(target_add_standalone_wrapper)
 
         target_compile_definitions(${salib} PUBLIC
                 CLAP_WRAPPER_HAS_WIN32
-                )
-
-        target_compile_definitions(${SA_TARGET} PRIVATE
                 UNICODE
                 NOMINMAX
                 )
 
         set_target_properties(${SA_TARGET} PROPERTIES
                 WIN32_EXECUTABLE TRUE
+                OUTPUT_NAME ${SA_OUTPUT_NAME}
                 )
 
         if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
@@ -150,8 +148,6 @@ function(target_add_standalone_wrapper)
         endif()
 
         target_link_libraries(${SA_TARGET} PRIVATE base-sdk-wil ComCtl32.Lib)
-
-        set_target_properties(${SA_TARGET} PROPERTIES OUTPUT_NAME ${SA_OUTPUT_NAME})
 
     elseif(UNIX)
         target_sources(${SA_TARGET} PRIVATE
