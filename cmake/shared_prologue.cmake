@@ -42,9 +42,9 @@ target_link_libraries(clap-wrapper-compile-options INTERFACE clap-wrapper-compil
 # target_compile_definitions(clap-wrapper-compile-options-public INTERFACE -DTHIS_BUILD_USED_CLAP_WRAPPER_COMPILE_OPTIONS_PUBLIC=1)
 add_library(clap-wrapper-sanitizer-options INTERFACE)
 
-target_compile_options(clap-wrapper-compile-options INTERFACE -D${CLAP_WRAPPER_PLATFORM}=1 -DCLAP_WRAPPER_VERSION="${CLAP_WRAPPER_VERSION}")
+target_compile_options(clap-wrapper-compile-options-public INTERFACE -D${CLAP_WRAPPER_PLATFORM}=1 -DCLAP_WRAPPER_VERSION="${CLAP_WRAPPER_VERSION}")
 if (APPLE)
-    target_link_libraries(clap-wrapper-compile-options INTERFACE macos_filesystem_support)
+    target_link_libraries(clap-wrapper-compile-options-public INTERFACE macos_filesystem_support)
 endif()
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(clap-wrapper-compile-options INTERFACE -Wall -Wextra -Wno-unused-parameter -Wpedantic)
@@ -85,7 +85,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
 endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-    target_compile_options(clap-wrapper-compile-options INTERFACE /utf-8 /Zc:__cplusplus)
+    target_compile_options(clap-wrapper-compile-options-public INTERFACE /utf-8 /Zc:__cplusplus)
     if (${CMAKE_CXX_STANDARD} GREATER_EQUAL 20)
         message(STATUS "clap-wrapper: Turning off char8_t c++20 changes")
         target_compile_options(clap-wrapper-compile-options-public INTERFACE /Zc:char8_t-)
@@ -149,7 +149,8 @@ function(guarantee_clap_wrapper_shared)
             src/detail/clap/fsutil.cpp
             src/detail/clap/automation.h
             )
-    target_link_libraries(clap-wrapper-shared-detail PUBLIC clap clap-wrapper-extensions clap-wrapper-compile-options)
+    target_link_libraries(clap-wrapper-shared-detail PUBLIC clap clap-wrapper-extensions clap-wrapper-compile-options-public)
+    target_link_libraries(clap-wrapper-shared-detail PRIVATE clap-wrapper-compile-options)
     target_include_directories(clap-wrapper-shared-detail PUBLIC libs/fmt)
     target_include_directories(clap-wrapper-shared-detail PUBLIC src)
 
