@@ -149,7 +149,8 @@ function(guarantee_clap_wrapper_shared)
             src/detail/clap/fsutil.cpp
             src/detail/clap/automation.h
             )
-    target_link_libraries(clap-wrapper-shared-detail PUBLIC clap clap-wrapper-extensions clap-wrapper-compile-options)
+    target_link_libraries(clap-wrapper-shared-detail PUBLIC clap clap-wrapper-extensions clap-wrapper-compile-options-public)
+    target_link_libraries(clap-wrapper-shared-detail PRIVATE clap-wrapper-compile-options)
     target_include_directories(clap-wrapper-shared-detail PUBLIC libs/fmt)
     target_include_directories(clap-wrapper-shared-detail PUBLIC src)
 
