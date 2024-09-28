@@ -42,7 +42,7 @@ target_link_libraries(clap-wrapper-compile-options INTERFACE clap-wrapper-compil
 # target_compile_definitions(clap-wrapper-compile-options-public INTERFACE -DTHIS_BUILD_USED_CLAP_WRAPPER_COMPILE_OPTIONS_PUBLIC=1)
 add_library(clap-wrapper-sanitizer-options INTERFACE)
 
-target_compile_options(clap-wrapper-compile-options INTERFACE -D${CLAP_WRAPPER_PLATFORM}=1 -DCLAP_WRAPPER_VERSION="${CLAP_WRAPPER_VERSION}")
+target_compile_options(clap-wrapper-compile-options-public INTERFACE -D${CLAP_WRAPPER_PLATFORM}=1 -DCLAP_WRAPPER_VERSION="${CLAP_WRAPPER_VERSION}")
 if (APPLE)
     target_link_libraries(clap-wrapper-compile-options-public INTERFACE macos_filesystem_support)
 endif()
