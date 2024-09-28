@@ -44,7 +44,7 @@ add_library(clap-wrapper-sanitizer-options INTERFACE)
 
 target_compile_options(clap-wrapper-compile-options INTERFACE -D${CLAP_WRAPPER_PLATFORM}=1 -DCLAP_WRAPPER_VERSION="${CLAP_WRAPPER_VERSION}")
 if (APPLE)
-    target_link_libraries(clap-wrapper-compile-options INTERFACE macos_filesystem_support)
+    target_link_libraries(clap-wrapper-compile-options-public INTERFACE macos_filesystem_support)
 endif()
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(clap-wrapper-compile-options INTERFACE -Wall -Wextra -Wno-unused-parameter -Wpedantic)
