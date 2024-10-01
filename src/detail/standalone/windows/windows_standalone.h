@@ -68,8 +68,8 @@ void log(const fmt::wformat_string<Args...> fmt, Args&&... args)
 }
 
 int run();
-int abort(int exitCode = EXIT_FAILURE);
-int quit(int exitCode = EXIT_SUCCESS);
+void abort(int exitCode = EXIT_FAILURE);
+void quit(int exitCode = EXIT_SUCCESS);
 
 struct Message
 {
