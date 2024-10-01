@@ -21,7 +21,7 @@ namespace freeaudio::clap_wrapper::standalone::windows_standalone
 {
   ::LOGFONTW fontAttributes{};
   ::GetObjectW(getFontFromSystem(), sizeof(fontAttributes), &fontAttributes);
-  fontAttributes.lfHeight = fontAttributes.lfHeight * scale;
+  fontAttributes.lfHeight = static_cast<::LONG>(fontAttributes.lfHeight * scale);
 
   return ::CreateFontIndirectW(&fontAttributes);
 }
@@ -161,18 +161,14 @@ int run()
   return static_cast<int>(msg.wParam);
 }
 
-int abort(int exitCode)
+void abort(int exitCode)
 {
   ::ExitProcess(exitCode);
-
-  return exitCode;
 }
 
-int quit(int exitCode)
+void quit(int exitCode)
 {
   ::PostQuitMessage(exitCode);
-
-  return exitCode;
 }
 
 bool MessageHandler::on(::UINT msg, MessageCallback callback)
@@ -1072,7 +1068,7 @@ Plugin::Plugin(const clap_plugin_entry* entry, int argc, char** argv)
         // We can restore size here
         // setWindowPosition(m_window.hwnd.get(), previousWidth, previousHeight);
         // log("x: {} y: {}", sah->position.x, sah->position.y);
-        if (position.width != 0 | position.height != 0)
+        if (position.width != 0 || position.height != 0)
         {
           setPosition(position);
         }
@@ -1100,7 +1096,7 @@ Plugin::Plugin(const clap_plugin_entry* entry, int argc, char** argv)
   else
   {
     setStyle(WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX);
-    adjustSize(500 * scale, 0);
+    adjustSize(static_cast<uint32_t>(500 * scale), 0);
     toggleCentered(true);
   }
 
@@ -1163,8 +1159,8 @@ void Plugin::refreshLayout()
   settings.bufferSize.refreshFont(settings.scale);
   settings.midiIn.refreshFont(settings.scale);
 
-  auto x{150 * settings.scale};
-  auto width{500 * settings.scale};
+  auto x{static_cast<uint32_t>(150 * settings.scale)};
+  auto width{static_cast<uint32_t>(500 * settings.scale)};
   auto height{settings.api.position.height};
 
   settings.api.setPosition(x, 10, width - x - 10, height);
@@ -1182,9 +1178,9 @@ void Plugin::refreshLayout()
       x, settings.sampleRate.position.y + settings.sampleRate.position.height + 10, width - x - 10,
       height);
 
-  settings.midiIn.setPosition(x,
-                              settings.bufferSize.position.y + settings.bufferSize.position.height + 10,
-                              width - x - 10, (settings.midiIn.getItemHeight() * sah->numMidiPorts));
+  settings.midiIn.setPosition(
+      x, settings.bufferSize.position.y + settings.bufferSize.position.height + 10, width - x - 10,
+      (static_cast<uint32_t>(settings.midiIn.getItemHeight() * sah->numMidiPorts)));
 
   if (sah->numMidiPorts != 0)
   {
@@ -1327,12 +1323,13 @@ bool Plugin::loadSettings()
         sah->audioApiName = settings.get<std::string>("audioApiName");
         sah->audioApi = sah->rtaDac->getCompiledApiByName(sah->audioApiName);
         sah->audioApiDisplayName = sah->rtaDac->getApiDisplayName(sah->audioApi);
-        sah->audioInputDeviceID = settings.get<double>("audioInputDeviceID");
-        sah->audioOutputDeviceID = settings.get<double>("audioOutputDeviceID");
+        sah->audioInputDeviceID = static_cast<unsigned int>(settings.get<double>("audioInputDeviceID"));
+        sah->audioOutputDeviceID =
+            static_cast<unsigned int>(settings.get<double>("audioOutputDeviceID"));
         sah->audioInputUsed = settings.get<bool>("audioInputUsed");
         sah->audioOutputUsed = settings.get<bool>("audioOutputUsed");
-        sah->currentSampleRate = settings.get<double>("currentSampleRate");
-        sah->currentBufferSize = settings.get<double>("currentBufferSize");
+        sah->currentSampleRate = static_cast<unsigned int>(settings.get<double>("currentSampleRate"));
+        sah->currentBufferSize = static_cast<unsigned int>(settings.get<double>("currentBufferSize"));
         position = settings.get<Position>("position");
 
         return parsed;
