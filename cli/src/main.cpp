@@ -28,8 +28,8 @@ include(${CMAKE_CURRENT_BINARY_DIR}/cmake/CPM.cmake)
 set(CLAP_WRAPPER_DOWNLOAD_DEPENDENCIES ON)
 CPMAddPackage(
   NAME clap-wrapper
-  GITHUB_REPOSITORY baconpaul/clap-wrapper
-  GIT_TAG use-embedded-clap-for-plist
+  GITHUB_REPOSITORY "${CLAP_WRAPPER_GITHUB_REPO}"
+  GIT_TAG "${CLAP_WRAPPER_GIT_TAG}"
 )
 
 if(BUILD_AU)
@@ -160,6 +160,9 @@ int main(int argc, char** argv)
   std::string au_manufacturer_code = "";
   std::string au_manufacturer_name = "";
 
+  std::string clap_wrapper_github_repo = "free-audio/clap-wrapper";
+  std::string clap_wrapper_git_tag = "main";
+
   app.add_option("-i,--input", input_path_raw, "Input .clap file or directory")->required();
   app.add_option("-o,--output_dir", output_dir_raw, "Output directory");
   app.add_option("-b,--build_dir", build_dir_raw, "Build directory for CMake");
@@ -169,6 +172,11 @@ int main(int argc, char** argv)
 
   app.add_option("-c,--au_manufacturer_code", au_manufacturer_code, "AU manufacturer code (4 letters)");
   app.add_option("-n,--au_manufacturer_name", au_manufacturer_name, "AU manufacturer display name");
+
+  app.add_option("-r, --clap_wrapper_github_repo", clap_wrapper_github_repo,
+                 "GitHub repository for clap-wrapper (default: free-audio/clap-wrapper)");
+  app.add_option("-t, --clap_wrapper_git_tag", clap_wrapper_git_tag,
+                 "Git tag or branch for clap-wrapper (default: main)");
 
   CLI11_PARSE(app, argc, argv)
 
@@ -229,7 +237,9 @@ int main(int argc, char** argv)
         "-DBUILD_AU={} "
         "-DBUILD_VST3={} "
         "-DAU_MANUFACTURER_CODE=\"{}\" "
-        "-DAU_MANUFACTURER_NAME=\"{}\" ",
+        "-DAU_MANUFACTURER_NAME=\"{}\" "
+        "-DCLAP_WRAPPER_GITHUB_REPO=\"{}\" "
+        "-DCLAP_WRAPPER_GIT_TAG=\"{}\" ",
         // PROJECT_NAME
         project_name,
         // CLAP_PLUGIN_PATH
@@ -243,7 +253,11 @@ int main(int argc, char** argv)
         // AU_MANUFACTURER_CODE
         au_manufacturer_code,
         // AU_MANUFACTURER_NAME
-        au_manufacturer_name);
+        au_manufacturer_name,
+        // CLAP_WRAPPER_GITHUB_REPO
+        clap_wrapper_github_repo,
+        // CLAP_WRAPPER_GIT_TAG
+        clap_wrapper_git_tag);
 
     // build CMake invocation
 #if defined(__APPLE__)
