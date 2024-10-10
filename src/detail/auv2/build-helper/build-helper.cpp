@@ -236,9 +236,17 @@ int main(int argc, char **argv)
     try
     {
       auto p = fs::path{clapfile};
-      // This is a hack for now - we get to the dll
-      p = p.parent_path().parent_path().parent_path();
-      clapfile = p.u8string();
+      if (fs::is_directory(p))
+      {
+        std::cout << "  - CLAP is a directory. Assuming bundle\n";
+      }
+      else
+      {
+        // This is a hack for now - we get to the dll
+        std::cout << "  - CLAP is a regular file. Assuming dll in bundle\n";
+        p = p.parent_path().parent_path().parent_path();
+        clapfile = p.u8string();
+      }
     }
     catch (const fs::filesystem_error &e)
     {

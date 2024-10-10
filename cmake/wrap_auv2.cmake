@@ -24,9 +24,23 @@ function(target_add_auv2_wrapper)
             # - JUCE (use the JUCE AUV2 default)
             DICTIONARY_STREAM_FORMAT
 
+            # These two are aliases of each other but the one without the X
+            # came first and doesn't match the rest of CMake naming standards
             MACOS_EMBEDDED_CLAP_LOCATION
+            MACOSX_EMBEDDED_CLAP_LOCATION
             )
     cmake_parse_arguments(AUV2 "" "${oneValueArgs}" "" ${ARGN})
+
+
+    if (NOT DEFINED AUV2_MACOS_EMBEDDED_CLAP_LOCATION AND DEFINED AUV2_MACOSX_EMBEDDED_CLAP_LOCATION)
+        # resolve the alias
+        set(AUV2_MACOS_EMBEDDED_CLAP_LOCATION ${AUV2_MACOSX_EMBEDDED_CLAP_LOCATION})
+    endif()
+
+    if (NOT DEFINED AUV2_MACOSX_EMBEDDED_CLAP_LOCATION AND DEFINED AUV2_MACOS_EMBEDDED_CLAP_LOCATION)
+        # resolve the alias
+        set(AUV2_MACOSX_EMBEDDED_CLAP_LOCATION ${AUV2_MACOS_EMBEDDED_CLAP_LOCATION})
+    endif()
 
     if (NOT APPLE)
         message(STATUS "clap-wrapper: auv2 is only available on macOS")
@@ -231,7 +245,7 @@ function(target_add_auv2_wrapper)
     set_target_properties(${AUV2_TARGET} PROPERTIES XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${AUV2_BUNDLE_IDENTIFIER}.component")
 
     macos_include_clap_in_bundle(TARGET ${AUV2_TARGET}
-            MACOS_EMBEDDED_CLAP_LOCATION ${AUV2_MACOS_EMBEDDED_CLAP_LOCATION})
+            MACOS_EMBEDDED_CLAP_LOCATION ${AUV2_MACOSX_EMBEDDED_CLAP_LOCATION})
     macos_bundle_flag(TARGET ${AUV2_TARGET})
 
     if (${CLAP_WRAPPER_COPY_AFTER_BUILD})
