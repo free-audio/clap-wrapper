@@ -67,11 +67,18 @@ if(BUILD_VST3)
   )
 
   # copy VST3 to output directory
-  add_custom_command(TARGET ${VST3_TARGET} POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy_directory
-          $<TARGET_BUNDLE_DIR:${VST3_TARGET}>
-          "${OUTPUT_DIR}/${PROJECT_NAME}.vst3"
-  )
+  if (APPLE)
+    add_custom_command(TARGET ${VST3_TARGET} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            $<TARGET_BUNDLE_DIR:${VST3_TARGET}>
+            "${OUTPUT_DIR}/${PROJECT_NAME}.vst3"
+    )
+  else()
+    add_custom_command(TARGET ${VST3_TARGET} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${OUTPUT_DIR}/${PROJECT_NAME}.vst3"
+    )
+  endif()
 endif()
 )";
 
@@ -129,11 +136,6 @@ std::string sanitize_cmake_identifier(const std::string& input)
 bool is_valid_au_manufacturer_code(const std::string& code)
 {
   if (code.length() != 4)
-  {
-    return false;
-  }
-
-  if (code == "0000")
   {
     return false;
   }
