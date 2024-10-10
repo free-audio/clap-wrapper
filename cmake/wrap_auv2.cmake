@@ -90,6 +90,22 @@ function(target_add_auv2_wrapper)
                 "$<TARGET_FILE:${clpt}>" "${AUV2_BUNDLE_VERSION}"
                 "${AUV2_MANUFACTURER_CODE}" "${AUV2_MANUFACTURER_NAME}"
         )
+    elseif (DEFINED AUV2_MACOSX_EMBEDDED_CLAP_LOCATION)
+        message(STATUS "clap-wrapper: building auv2 based on clap ${AUV2_MACOSX_EMBEDDED_CLAP_LOCATION}")
+        set(AUV2_SUBTYPE_CODE "----")
+        set(AUV2_INSTRUMENT_TYPE "aumu")
+
+        add_custom_command(
+                TARGET ${bhtg}
+                POST_BUILD
+                WORKING_DIRECTORY ${bhtgoutdir}
+                BYPRODUCTS ${bhtgoutdir}/auv2_Info.plist ${bhtgoutdir}/generated_entrypoints.hxx
+                COMMAND codesign -s - -f "$<TARGET_FILE:${bhtg}>"
+                COMMAND $<TARGET_FILE:${bhtg}> --fromclap
+                "${AUV2_OUTPUT_NAME}"
+                "${AUV2_MACOSX_EMBEDDED_CLAP_LOCATION}" "${AUV2_BUNDLE_VERSION}"
+                "${AUV2_MANUFACTURER_CODE}" "${AUV2_MANUFACTURER_NAME}"
+        )
     else ()
         if (NOT DEFINED AUV2_OUTPUT_NAME)
             message(FATAL_ERROR "clap-wrapper: target_add_auv2_wrapper requires an output name")
