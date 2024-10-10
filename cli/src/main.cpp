@@ -60,24 +60,11 @@ void create_directory(const std::string& path)
   }
 }
 
-void write_cmakelists(const std::string& output_dir)
-{
-  std::string cmake_path = output_dir + "/CMakeLists.txt";
-  std::ofstream cmake_file(cmake_path);
-  if (!cmake_file)
-  {
-    throw std::runtime_error("Failed to create CMakeLists.txt");
-  }
-
-  const char* cmake_content = R"(
+const char* cmake_content = R"(
 cmake_minimum_required(VERSION 3.15)
 project(${PROJECT_NAME})
 
 set(CMAKE_CXX_STANDARD 17)
-if (APPLE)
-  enable_language(OBJC)
-  enable_language(OBJCXX)
-endif()
 
 # Download CPM.cmake
 file(
@@ -97,6 +84,10 @@ CPMAddPackage(
 )
 
 if(BUILD_AU)
+  # required to compile AU SDK
+  enable_language(OBJC)
+  enable_language(OBJCXX)
+
   set(AUV2_TARGET ${PROJECT_NAME}_auv2)
   add_library(${AUV2_TARGET} MODULE)
   target_add_auv2_wrapper(
@@ -113,6 +104,7 @@ if(BUILD_AU)
       INSTRUMENT_TYPE "aufx"
   )
 
+  # copy AU to output directory
   add_custom_command(TARGET ${AUV2_TARGET} POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy_directory
           $<TARGET_BUNDLE_DIR:${AUV2_TARGET}>
@@ -130,6 +122,7 @@ if(BUILD_VST3)
       OUTPUT_NAME "${PROJECT_NAME}"
   )
 
+  # copy VST3 to output directory
   add_custom_command(TARGET ${VST3_TARGET} POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy_directory
           $<TARGET_BUNDLE_DIR:${VST3_TARGET}>
@@ -146,12 +139,8 @@ if(BUILD_STANDALONE)
       OUTPUT_NAME "${PROJECT_NAME}"
   )
 
+  # copy Standalone to output directory
   if(APPLE)
-    set_target_properties(${STANDALONE_TARGET} PROPERTIES
-        MACOSX_BUNDLE TRUE
-        MACOSX_BUNDLE_GUI_IDENTIFIER "com.yourcompany.${PROJECT_NAME}standalone"
-        MACOSX_BUNDLE_BUNDLE_NAME "${PROJECT_NAME}"
-    )
     add_custom_command(TARGET ${STANDALONE_TARGET} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             $<TARGET_BUNDLE_DIR:${STANDALONE_TARGET}>
@@ -173,8 +162,17 @@ if(BUILD_STANDALONE)
 endif()
 )";
 
+
+void write_cmakelists(const std::string& output_dir)
+{
+  std::string cmake_path = output_dir + "/CMakeLists.txt";
+  std::ofstream cmake_file(cmake_path);
+  if (!cmake_file)
+  {
+    throw std::runtime_error("Failed to create CMakeLists.txt");
+  }
+
   cmake_file << cmake_content;
-  cmake_file.close();
 }
 
 int main(int argc, char** argv)
@@ -201,7 +199,6 @@ int main(int argc, char** argv)
   {
     throw std::runtime_error("At least one output format must be specified");
   }
-
 
   // resolve paths to absolute
   input_path = get_absolute_path(input_path);
