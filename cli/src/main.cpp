@@ -3,7 +3,12 @@
 #include <fstream>
 #include <stdexcept>
 #include <CLI/CLI.hpp>
+
+#define FMT_HEADER_ONLY
 #include <fmt/format.h>
+
+#include "detail/clap/fsutil.h"
+
 
 // rationale against using std::filesystem is that
 // it requires macOS 10.15, but our min supported version is 10.13 atm
@@ -48,15 +53,15 @@ std::string get_absolute_path(const std::string& path)
  * Creates a directory if it doesn't exist.
  * @param path Path of the directory to create.
  */
-void create_directory(const std::string& path)
+void create_directory(const fs::path& path)
 {
-  if (CREATE_DIRECTORY(path.c_str()) != 0)
+  try
   {
-    if (!DIRECTORY_EXISTS)
-    {
-      throw std::runtime_error("Failed to create directory: " + path +
-                               " Error: " + std::strerror(errno));
-    }
+    fs::create_directories(path);
+  }
+  catch (fs::filesystem_error &fs)
+  {
+    throw fs;
   }
 }
 
