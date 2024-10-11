@@ -190,8 +190,23 @@ endfunction(macos_bundle_flag)
 # location optionally. Called by the target_add_xyz_wrapper functions to allow self contained
 # non  relinked macos bundles
 function(macos_include_clap_in_bundle)
-    set(oneValueArgs TARGET MACOS_EMBEDDED_CLAP_LOCATION)
+    set(oneValueArgs
+            TARGET
+            MACOS_EMBEDDED_CLAP_LOCATION
+            MACOSX_EMBEDDED_CLAP_LOCATION
+    )
+
     cmake_parse_arguments(MBC "" "${oneValueArgs}" "" ${ARGN})
+
+    if (NOT DEFINED MBC_MACOS_EMBEDDED_CLAP_LOCATION AND DEFINED MBC_MACOSX_EMBEDDED_CLAP_LOCATION)
+        # resolve the alias
+        set(MBC_MACOS_EMBEDDED_CLAP_LOCATION ${MBC_MACOSX_EMBEDDED_CLAP_LOCATION})
+    endif()
+
+    if (NOT DEFINED MBC_MACOSX_EMBEDDED_CLAP_LOCATION AND DEFINED MBC_MACOS_EMBEDDED_CLAP_LOCATION)
+        # resolve the alias
+        set(MBC_MACOSX_EMBEDDED_CLAP_LOCATION ${MBC_MACOS_EMBEDDED_CLAP_LOCATION})
+    endif()
 
     if (NOT APPLE)
         message(WARNING "Calling macos_include_clap_in_bundle on non APPLE system. Is this intentional?")
@@ -199,7 +214,7 @@ function(macos_include_clap_in_bundle)
     endif()
 
     if (NOT ${MBC_MACOS_EMBEDDED_CLAP_LOCATION} STREQUAL "")
-        message(STATUS "clap-wraiier: including embedded clap in target ${MBC_TARGET}")
+        message(STATUS "clap-wrapper: including embedded clap in target ${MBC_TARGET}")
         add_custom_command(TARGET ${MBC_TARGET} PRE_BUILD
                 WORKING_DIRECTORY $<TARGET_PROPERTY:${MBC_TARGET},LIBRARY_OUTPUT_DIRECTORY>
                 COMMAND ${CMAKE_COMMAND} -E echo "Installing ${MBC_MACOS_EMBEDDED_CLAP_LOCATION} in $<TARGET_PROPERTY:${MBC_TARGET},MACOSX_BUNDLE_BUNDLE_NAME>.$<TARGET_PROPERTY:${MBC_TARGET},BUNDLE_EXTENSION>/Contents/PlugIns/$<TARGET_PROPERTY:${MBC_TARGET},MACOSX_BUNDLE_BUNDLE_NAME>.clap"
