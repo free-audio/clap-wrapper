@@ -224,10 +224,11 @@ int main(int argc, char** argv)
   // and resolve to absolute
   fs::path input_path = fs::absolute({fs::u8path(input_path_raw.c_str())});
   fs::path output_dir = fs::absolute({fs::u8path(output_dir_raw.c_str())});
-  fs::path build_dir = fs::absolute(build_dir_raw.empty()
-                                        // default to adding a build dir in the working directory
-                                        ? "wrap-build"
-                                        : build_dir_raw);
+  fs::path build_dir =
+      fs::absolute({fs::u8path(build_dir_raw.empty()
+                                   // default to adding a build dir in the working directory
+                                   ? "wrap-build"
+                                   : build_dir_raw)});
 
   try
   {
