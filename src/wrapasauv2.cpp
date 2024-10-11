@@ -627,8 +627,6 @@ OSStatus WrapAsAUV2::GetPropertyInfo(AudioUnitPropertyID inID, AudioUnitScope in
   return Base::GetPropertyInfo(inID, inScope, inElement, outDataSize, outWritable);
 }
 
-ui_connection _uiconn;
-
 OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScope,
                                  AudioUnitElement inElement, void* outData)
 {
@@ -673,6 +671,7 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
       case kAudioUnitProperty_ClapWrapper_UIConnection_id:
         _uiconn._plugin = _plugin.get();
         _uiconn._window = nullptr;
+        _uiconn._registerWindow = [this](auto* x) { this->_uiconn._window = x; };
         *static_cast<ui_connection*>(outData) = _uiconn;
         return noErr;
 

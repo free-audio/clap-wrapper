@@ -13,6 +13,7 @@
  */
 
 #include <iostream>
+#include <functional>
 #include "clap_proxy.h"
 #include <AudioToolbox/AudioUnitProperties.h>
 
@@ -24,8 +25,9 @@ namespace free_audio::auv2_wrapper
 typedef struct ui_connection
 {
   uint32_t identifier = kAudioUnitProperty_ClapWrapper_UIConnection_id;
-  Clap::Plugin* _plugin = nullptr;
-  clap_window_t* _window = nullptr;
+  Clap::Plugin *_plugin = nullptr;
+  clap_window_t *_window = nullptr;
+  std::function<void(clap_window_t *)> _registerWindow = nullptr;
 } ui_connection;
 
 }  // namespace free_audio::auv2_wrapper
