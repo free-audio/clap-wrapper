@@ -244,6 +244,8 @@ class WrapAsAUV2 : public ausdk::AUBase,
  private:
   AUV2_Type _autype;
 
+  ui_connection _uiconn;
+
   bool initializeClapDesc();
 
  public:
@@ -403,7 +405,8 @@ class WrapAsAUV2 : public ausdk::AUBase,
   }
   bool gui_request_resize(uint32_t width, uint32_t height) override
   {
-    return false;
+    extern bool auv2shared_mm_request_resize(const clap_window_t*, uint32_t, uint32_t);
+    return auv2shared_mm_request_resize(_uiconn._window, width, height);
   }
   bool gui_request_show() override
   {

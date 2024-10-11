@@ -86,6 +86,10 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
   LOGINFO("[clap-wrapper] creating NSView");
 
   ui = *cont;
+  if (ui._registerWindow)
+  {
+    ui._registerWindow((clap_window_t *)self);
+  }
   ui._plugin->_ext._gui->create(ui._plugin->_plugin, CLAP_WINDOW_API_COCOA, false);
   auto gui = ui._plugin->_ext._gui;
 
@@ -111,7 +115,7 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
   gui->set_parent(ui._plugin->_plugin, &m);
   gui->set_scale(ui._plugin->_plugin, 1.0);
 
-  if (gui->can_resize(ui._plugin->_plugin)) 
+  if (gui->can_resize(ui._plugin->_plugin))
   {
     clap_gui_resize_hints_t resize_hints;
     gui->get_resize_hints(ui._plugin->_plugin, &resize_hints);
