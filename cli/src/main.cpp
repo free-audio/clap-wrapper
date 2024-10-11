@@ -149,6 +149,12 @@ bool is_valid_au_manufacturer_code(const std::string& code)
                      [](unsigned char c) { return std::islower(c) || std::isdigit(c); });
 }
 
+void error_exit(const std::string& msg, int code = 1)
+{
+  std::cerr << msg << std::endl;
+  exit(code);
+}
+
 int main(int argc, char** argv)
 {
   CLI::App app{"CLAP Wrapper CLI"};
@@ -188,11 +194,11 @@ int main(int argc, char** argv)
   {
     if (au_manufacturer_code.empty() != au_manufacturer_name.empty())
     {
-      throw std::runtime_error("Both AU manufacturer code and name must be set if one is provided");
+      error_exit("Both AU manufacturer code and name must be set if one is provided");
     }
     if (!au_manufacturer_code.empty() && !is_valid_au_manufacturer_code(au_manufacturer_code))
     {
-      throw std::runtime_error(
+      error_exit(
           "AU manufacturer code must be exactly 4 characters long, and start with an uppercase letter "
           "followed only by lowercase letters and/or numbers");
     }
@@ -200,13 +206,13 @@ int main(int argc, char** argv)
 #else
   if (build_au)
   {
-    throw std::runtime_error("AU output format is only supported on macOS");
+    error_exit("AU output format is only supported on macOS");
   }
 #endif
 
   if (!build_au && !build_vst3)
   {
-    throw std::runtime_error("At least one output format must be specified");
+    error_exit("At least one output format must be specified");
   }
 
   // convert paths away from raw strings
@@ -228,7 +234,7 @@ int main(int argc, char** argv)
     write_cmakelists(build_dir);
 
     // extract project name from input path
-    auto project_name = sanitize_cmake_identifier(input_path.stem());
+    auto project_name = sanitize_cmake_identifier(input_path.stem().u8string());
 
     // construct cmake command with variables supplied
     std::string cmake_cmd = fmt::format(
@@ -324,7 +330,7 @@ int main(int argc, char** argv)
   }
   catch (const std::exception& e)
   {
-    std::cerr << "Error during wrapping: " << e.what() << std::endl;
+    error_exit("Error during wrapping: " + std::string(e.what()));
     return 1;
   }
 
