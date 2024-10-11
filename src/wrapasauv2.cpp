@@ -338,9 +338,18 @@ void WrapAsAUV2::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
         double result;
         if (p->get_value(_plugin->_plugin, paraminfo.id, &result))
         {
-          // creating the mapping object and insert it into the tree
-          // this will also create Clumps if necessary
-          _parametertree[paraminfo.id] = std::make_unique<Clap::AUv2::Parameter>(paraminfo);
+          // If the parametre is already created, just restate its info
+          auto piter = _parametertree.find(paraminfo.id);
+          if (piter == _parametertree.end())
+          {
+            // creating the mapping object and insert it into the tree
+            // this will also create Clumps if necessary
+            _parametertree[paraminfo.id] = std::make_unique<Clap::AUv2::Parameter>(paraminfo);
+          }
+          else
+          {
+            piter->second->resetInfo(paraminfo);
+          }
           Globals()->SetParameter(paraminfo.id, result);
         }
       }
@@ -356,35 +365,47 @@ OSStatus WrapAsAUV2::GetParameterList(AudioUnitScope inScope, AudioUnitParameter
 
 void WrapAsAUV2::param_rescan(clap_param_rescan_flags flags)
 {
+  // Re-call setup parameters which will just reset info if the param exists
+  setupParameters(_plugin->_plugin, _plugin->_ext._params);
+
   // if ( flags & CLAP_PARAM_RESCAN_ALL) // TODO: check out how differentiated we can do this
   {
-    PropertyChanged(kAudioUnitProperty_ParameterInfo, kAudioUnitScope_Global, 0);
     PropertyChanged(kAudioUnitProperty_ParameterList, kAudioUnitScope_Global, 0);
+    PropertyChanged(kAudioUnitProperty_ParameterInfo, kAudioUnitScope_Global, 0);
+    PropertyChanged(kAudioUnitProperty_ClassInfo, kAudioUnitScope_Global, 0);
     return;
   }
 
+  // This code doesn't actually do what we want but leave it hear for the comment
+  // above and future investigation
 #if 0
   AudioUnitEvent myEvent;
   myEvent.mArgument.mProperty.mAudioUnit = GetComponentInstance();
   myEvent.mArgument.mProperty.mScope = kAudioUnitScope_Global;
   myEvent.mArgument.mProperty.mElement = 0;
   myEvent.mEventType = kAudioUnitEvent_PropertyChange;
-  
+
   {
-    for ( auto& i : _parametertree)
+    for (auto& i : _parametertree)
     {
-      if ( i.second->info().flags & CLAP_PARAM_IS_AUTOMATABLE)
+      *of << "Considering param" << std::endl;
+      if (i.second->info().flags & CLAP_PARAM_IS_AUTOMATABLE)
       {
+        *of << "which is automatable" << std::endl;
         myEvent.mArgument.mProperty.mElement = i.second->info().id;
-  
-        if ( flags & CLAP_PARAM_RESCAN_INFO)
+
+        if (flags & CLAP_PARAM_RESCAN_INFO)
         {
+          *of << "rescan info" << std::endl;
           myEvent.mArgument.mProperty.mPropertyID = kAudioUnitProperty_ParameterInfo;
+          AUEventListenerNotify(NULL, NULL, &myEvent);
+          myEvent.mArgument.mProperty.mPropertyID = kAudioUnitProperty_ParameterIDName;
           AUEventListenerNotify(NULL, NULL, &myEvent);
         }
 
-        if ( flags & CLAP_PARAM_RESCAN_TEXT )
+        if (flags & CLAP_PARAM_RESCAN_TEXT)
         {
+          *of << "wrescan text" << std::endl;
           myEvent.mArgument.mProperty.mPropertyID = kAudioUnitProperty_ParameterValueStrings;
           AUEventListenerNotify(NULL, NULL, &myEvent);
         }
