@@ -76,6 +76,7 @@ if(BUILD_VST3)
   else()
     add_custom_command(TARGET ${VST3_TARGET} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
+            $<TARGET_FILE_DIR:${VST3_TARGET}>
             "${OUTPUT_DIR}/${PROJECT_NAME}.vst3"
     )
   endif()
