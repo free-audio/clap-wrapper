@@ -12,7 +12,7 @@ bool auv2shared_mm_request_resize(const clap_window_t* win, uint32_t w, uint32_t
   if (!win) return false;
 
   auto* nsv = (NSView*)win;
-  [nsv setFrameSize:NSMakeSize(w, h)];
+  [nsv setFrame:NSMakeRect(0, 0, w, h)];
 
   return false;
 }

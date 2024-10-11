@@ -157,8 +157,6 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
 }
 - (void)setFrame:(NSRect)newSize
 {
-  LOGINFO("[clap-wrapper] new size");
-
   [super setFrame:newSize];
   auto gui = ui._plugin->_ext._gui;
   gui->set_scale(ui._plugin->_plugin, 1.0);
