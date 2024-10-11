@@ -45,6 +45,8 @@ class Parameter
     return _cfstring;
   }
 
+  void resetInfo(const clap_param_info_t& i);
+
  private:
   clap_param_info_t _info;
   CFStringRef _cfstring;
