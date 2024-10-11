@@ -171,6 +171,8 @@ int main(int argc, char** argv)
   std::string clap_wrapper_github_repo = "free-audio/clap-wrapper";
   std::string clap_wrapper_git_tag = "main";
 
+  std::string cmake_binary_path = "cmake";
+
   app.add_option("-i,--input", input_path_raw, "Input .clap file or directory")->required();
   app.add_option("-o,--output_dir", output_dir_raw, "Output directory");
   app.add_option("-b,--build_dir", build_dir_raw, "Build directory for CMake");
@@ -178,13 +180,15 @@ int main(int argc, char** argv)
   app.add_flag("--au", build_au, "Build Audio Unit wrapper");
   app.add_flag("--vst3", build_vst3, "Build VST3 wrapper");
 
-  app.add_option("-c,--au_manufacturer_code", au_manufacturer_code, "AU manufacturer code (4 letters)");
-  app.add_option("-n,--au_manufacturer_name", au_manufacturer_name, "AU manufacturer display name");
+  app.add_option("--au_manufacturer_code", au_manufacturer_code, "AU manufacturer code (4 letters)");
+  app.add_option("--au_manufacturer_name", au_manufacturer_name, "AU manufacturer display name");
 
   app.add_option("-r, --clap_wrapper_github_repo", clap_wrapper_github_repo,
                  "GitHub repository for clap-wrapper (default: free-audio/clap-wrapper)");
   app.add_option("-t, --clap_wrapper_git_tag", clap_wrapper_git_tag,
                  "Git tag or branch for clap-wrapper (default: main)");
+
+  app.add_option("--cmake", cmake_binary_path, "Path to CMake binary to use for wrapping");
 
   CLI11_PARSE(app, argc, argv)
 
@@ -238,7 +242,7 @@ int main(int argc, char** argv)
 
     // construct cmake command with variables supplied
     std::string cmake_cmd = fmt::format(
-        "cmake . "
+        "{} . "
         "-DPROJECT_NAME=\"{}\" "
         "-DCLAP_PLUGIN_PATH=\"{}\" "
         "-DOUTPUT_DIR=\"{}\" "
@@ -248,6 +252,7 @@ int main(int argc, char** argv)
         "-DAU_MANUFACTURER_NAME=\"{}\" "
         "-DCLAP_WRAPPER_GITHUB_REPO=\"{}\" "
         "-DCLAP_WRAPPER_GIT_TAG=\"{}\" ",
+        cmake_binary_path,
         // PROJECT_NAME
         project_name,
         // CLAP_PLUGIN_PATH
@@ -273,8 +278,8 @@ int main(int argc, char** argv)
     auto error_log_path = build_dir / "build_error.log";
     cmake_cmd = fmt::format(
         "cd \"{}\" && "
-        "{{ {} && cmake --build . --config Release ; }} 2>&1 | tee \"{}\" ; exit ${{PIPESTATUS[0]}}",
-        build_dir.string(), cmake_cmd, error_log_path.string());
+        "{{ {} && {} --build . --config Release ; }} 2>&1 | tee \"{}\" ; exit ${{PIPESTATUS[0]}}",
+        build_dir.string(), cmake_cmd, cmake_binary_path, error_log_path.string());
 #else
     cmake_cmd = fmt::format("cd \"{}\" && {} && cmake --build . --config Release", build_dir.string(),
                             cmake_cmd);
