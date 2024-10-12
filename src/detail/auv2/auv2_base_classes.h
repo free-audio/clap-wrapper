@@ -452,14 +452,24 @@ class WrapAsAUV2 : public ausdk::AUBase,
           _hostname = text;
         }
       }
-      CFStringRef myVersionString =
-          (CFStringRef)CFBundleGetValueForInfoDictionaryKey(applicationBundle, kCFBundleVersionKey);
+      CFStringRef myVersionString = (CFStringRef)CFBundleGetValueForInfoDictionaryKey(
+          applicationBundle, CFSTR("CFBundleShortVersionString"));
       if (myVersionString)
       {
         CFStringGetCString(myVersionString, text, 64, kCFStringEncodingUTF8);
-        _hostname.append(" (");
+        _hostname.append(" ");
         _hostname.append(text);
-        _hostname.append(")");
+      }
+      else
+      {
+        myVersionString =
+            (CFStringRef)CFBundleGetValueForInfoDictionaryKey(applicationBundle, kCFBundleVersionKey);
+        if (myVersionString)
+        {
+          CFStringGetCString(myVersionString, text, 64, kCFStringEncodingUTF8);
+          _hostname.append(" ");
+          _hostname.append(text);
+        }
       }
       _hostname.append(" (CLAP-as-AUv2)");
     }
