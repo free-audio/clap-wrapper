@@ -133,20 +133,6 @@ function(target_add_standalone_wrapper)
             target_compile_definitions(${SA_TARGET} PRIVATE _SILENCE_CLANG_COROUTINE_MESSAGE)
         endif()
 
-        if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
-            target_link_options(
-                ${SA_TARGET}
-                PRIVATE
-                /entry:mainCRTStartup
-                )
-        elseif(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
-            target_link_options(
-                ${SA_TARGET}
-                PRIVATE
-                -Wl,/entry:mainCRTStartup
-                )
-        endif()
-
         target_link_libraries(${SA_TARGET} PRIVATE base-sdk-wil ComCtl32.Lib)
 
     elseif(UNIX)
