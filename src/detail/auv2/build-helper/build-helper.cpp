@@ -18,6 +18,7 @@ struct auInfo
 {
   std::string name, vers, type, subt, manu, manunm, clapid, desc, clapname, bundlevers;
   bool explicitMode{false};
+  std::vector<std::string> tags;
 
   const std::string factoryBase{"wrapAsAUV2_inst"};
 
@@ -78,8 +79,19 @@ struct auInfo
        << "           <true/>\n"
        << "           <key>temporary-exception.files.all.read-write</key>\n"
        << "           <true/>\n"
-       << "        </dict>\n"
-       << "      </dict>\n";
+       << "        </dict>\n";
+
+    if (!tags.empty())
+    {
+      of << "        <key>tags</key>\n"
+         << "        <array>\n";
+      for (const auto &tag : tags)
+      {
+        of << "          <string>" << tag << "</string>\n";
+      }
+      of << "        </array>\n";
+    }
+    of << "      </dict>\n";
   }
 };
 
@@ -152,6 +164,13 @@ bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname
     {
       std::cout << "[WARNING] can't determine instrument type. Using aumu" << std::endl;
       u.type = "aumu";
+    }
+
+    auto fp = clapPlug->features;
+    while (*fp)
+    {
+      u.tags.push_back(*fp);
+      ++fp;
     }
 
     if (loader._pluginFactoryAUv2Info)
