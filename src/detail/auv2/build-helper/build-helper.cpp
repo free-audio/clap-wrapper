@@ -85,8 +85,13 @@ struct auInfo
     {
       of << "        <key>tags</key>\n"
          << "        <array>\n";
-      for (const auto &tag : tags)
+      for (auto tag : tags)  // purposefully take a copy so we can mutate case
       {
+        if (tag[0] >= 'a' && tag[0] <= 'z')
+        {
+          // Upper case the first char
+          tag[0] = std::toupper(tag[0]);
+        }
         of << "          <string>" << tag << "</string>\n";
       }
       of << "        </array>\n";
