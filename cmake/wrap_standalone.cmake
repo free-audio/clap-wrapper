@@ -12,6 +12,7 @@ function(target_add_standalone_wrapper)
             HOSTED_CLAP_NAME
 
             WINDOWS_ICON
+            MACOS_ICON
 
             MACOS_EMBEDDED_CLAP_LOCATION
             )
@@ -96,6 +97,12 @@ function(target_add_standalone_wrapper)
                     COMMAND ${CMAKE_COMMAND} -E echo ${IBTOOL} --compile "$<TARGET_FILE_DIR:${SA_TARGET}>/../Resources/MainMenu.nib" ${GEN_XIB}
                     COMMAND ${IBTOOL} --compile "$<TARGET_FILE_DIR:${SA_TARGET}>/../Resources/MainMenu.nib" ${GEN_XIB}
                     )
+        endif()
+
+        if(NOT "${SA_MACOS_ICON}" STREQUAL "")
+            add_custom_command(TARGET ${SA_TARGET} POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy ${SA_MACOS_ICON} "$<TARGET_FILE_DIR:${SA_TARGET}>/../Resources/Icon.icns"
+            )
         endif()
 
         macos_include_clap_in_bundle(TARGET ${SA_TARGET}
