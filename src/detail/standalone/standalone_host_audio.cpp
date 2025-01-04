@@ -80,7 +80,9 @@ std::tuple<unsigned int, unsigned int, int32_t> StandaloneHost::getDefaultAudioI
   auto outInfo = rtaDac->getDeviceInfo(oid);
   auto sr = outInfo.currentSampleRate;
   if (sr < 1)
+  {
     sr = outInfo.preferredSampleRate;
+  }
 
   return {iid, oid, (int32_t)sr};
 }
