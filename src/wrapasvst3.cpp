@@ -202,6 +202,9 @@ tresult PLUGIN_API ClapAsVst3::process(Vst::ProcessData& data)
   {
     return kNotInitialized;
   }
+
+  ClapWrapper::detail::shared::SpinLockGuard spinLock(_processOrFlushLock);
+
   auto thisFn = _plugin->AlwaysAudioThread();
 
   // FIXME: At this transition we probably need to be careful that we aren't in a flush
@@ -1221,6 +1224,9 @@ void ClapAsVst3::onIdle()
 
   if (_requestedFlush)
   {
+    // Lock against ::process with a spin lock
+    ClapWrapper::detail::shared::SpinLockGuard everLock(_processOrFlushLock);
+    // Lock against setProcess with a mutex
     std::lock_guard lock(_processingLock);
 
     _requestedFlush = false;
