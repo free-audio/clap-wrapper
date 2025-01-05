@@ -202,8 +202,13 @@ tresult PLUGIN_API ClapAsVst3::process(Vst::ProcessData& data)
   {
     return kNotInitialized;
   }
+
+  ClapWrapper::detail::shared::SpinLockGuard spinLock(_processOrFlushLock);
+
   auto thisFn = _plugin->AlwaysAudioThread();
 
+  // FIXME: At this transition we probably need to be careful that we aren't in a flush
+  _processEverCalled = true;
   this->_processAdapter->process(data);
   return kResultOk;
 }
@@ -313,6 +318,8 @@ tresult PLUGIN_API ClapAsVst3::setProcessing(TBool state)
       // VST3 has no specific reset - but it should happen when setprocessing is being called
       // https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical+Documentation/Workflow+Diagrams/Audio+Processor+Call+Sequence.html
       _plugin->reset();
+
+      _processEverCalled = false;
     }
   }
   return result;
@@ -1217,17 +1224,19 @@ void ClapAsVst3::onIdle()
 
   if (_requestedFlush)
   {
+    // Lock against ::process with a spin lock
+    ClapWrapper::detail::shared::SpinLockGuard everLock(_processOrFlushLock);
+    // Lock against setProcess with a mutex
     std::lock_guard lock(_processingLock);
 
     _requestedFlush = false;
-    if (!_active)
+    if (!_processing || !_processEverCalled)
     {
       // setup a ProcessAdapter just for flush with no audio
       Clap::ProcessAdapter pa;
       pa.setupProcessing(_plugin->_plugin, _plugin->_ext._params, audioInputs, audioOutputs, 0, 0, 0,
                          this->parameters, componentHandler, nullptr, false, false);
-
-      auto thisFn = _plugin->AlwaysMainThread();  // just to pacify the clap-helper
+      auto thisFn = _plugin->AlwaysAudioThread();  // just to pacify the clap-helper
 
       pa.flush();
     }
