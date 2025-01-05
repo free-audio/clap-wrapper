@@ -362,6 +362,7 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   bool _active = false;
   os::State _os_attached;
   bool _processing = false;
+  std::atomic<bool> _processEverCalled{false};
   std::mutex _processingLock;
   std::atomic_bool _requestedFlush = false;
   std::atomic_bool _requestUICallback = false;
