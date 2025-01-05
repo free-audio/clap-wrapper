@@ -720,7 +720,7 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
         if (std::find(_gesturedParameters.begin(), _gesturedParameters.end(), param_id) !=
             _gesturedParameters.end())
         {
-          _automation->onPerformEdit(ev);
+          if (_automation) _automation->onPerformEdit(ev);
         }
 
         // it also needs to be communicated to the audio thread,otherwise the parameter jumps back to the original value
@@ -730,7 +730,7 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
 
         // the vst3 validator from the VST3 SDK does not provide always an object to output parameters, probably other hosts won't to that, too
         // therefore we are cautious.
-        if (_vstdata->outputParameterChanges)
+        if (_vstdata && _vstdata->outputParameterChanges)
         {
           auto list = _vstdata->outputParameterChanges->addParameterData(param_id, index);
 
@@ -756,7 +756,7 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
       auto ev = (clap_event_param_gesture*)event;
       auto param = (Vst3Parameter*)this->parameters->getParameter(ev->param_id & 0x7FFFFFFF);
       _gesturedParameters.push_back(param->getInfo().id);
-      _automation->onBeginEdit(param->getInfo().id);
+      if (_automation) _automation->onBeginEdit(param->getInfo().id);
     }
       return true;
 
@@ -770,7 +770,7 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
       if (n != _gesturedParameters.end())
       {
         _gesturedParameters.erase(n, _gesturedParameters.end());
-        _automation->onEndEdit(param->getInfo().id);
+        if (_automation) _automation->onEndEdit(param->getInfo().id);
       }
     }
       return true;

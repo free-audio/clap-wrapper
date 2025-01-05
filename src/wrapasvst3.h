@@ -36,6 +36,7 @@
 #include "detail/shared/fixedqueue.h"
 #include "detail/ara/ara.h"
 #include "detail/vst3/aravst3.h"
+#include "detail/shared/spinlock.h"
 #include <mutex>
 
 using namespace Steinberg;
@@ -362,8 +363,12 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   bool _active = false;
   os::State _os_attached;
   bool _processing = false;
+
+  std::atomic<bool> _processEverCalled{false};
   std::mutex _processingLock;
   std::atomic_bool _requestedFlush = false;
+  ClapWrapper::detail::shared::SpinLock _processOrFlushLock;
+
   std::atomic_bool _requestUICallback = false;
   bool _missedLatencyRequest = false;
 
