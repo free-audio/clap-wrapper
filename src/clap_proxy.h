@@ -178,6 +178,7 @@ class Plugin
   void deactivate() const;
   bool start_processing();
   void stop_processing();
+  void reset();
   // void process(const clap_process_t* data);
   const clap_plugin_gui_t* getUI() const;
 
