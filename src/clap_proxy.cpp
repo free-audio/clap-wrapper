@@ -338,6 +338,12 @@ void Plugin::stop_processing()
   _plugin->stop_processing(_plugin);
 }
 
+void Plugin::reset()
+{
+  auto thisFn = AlwaysAudioThread();
+  _plugin->reset(_plugin);
+}
+
 //void Plugin::process(const clap_process_t* data)
 //{
 //  auto thisFn = AlwaysAudioThread();
