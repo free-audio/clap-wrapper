@@ -309,6 +309,10 @@ tresult PLUGIN_API ClapAsVst3::setProcessing(TBool state)
     {
       _processing = false;
       _plugin->stop_processing();
+
+      // VST3 has no specific reset - but it should happen when setprocessing is being called
+      // https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical+Documentation/Workflow+Diagrams/Audio+Processor+Call+Sequence.html
+      _plugin->reset();
     }
   }
   return result;
