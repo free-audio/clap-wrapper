@@ -91,6 +91,12 @@ jobs:
             run_aptget: true
             name: Linux gcc12
 
+          - os: ubuntu-24.04
+            cmakeargs: -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_C_COMPILER=gcc-14
+            install_ninja: false
+            run_aptget: true
+            name: Linux ub-24 gcc14
+
           - os: ubuntu-latest
             cmakeargs: -DCLAP_WRAPPER_CXX_STANDARD=20 -DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_C_COMPILER=gcc-12
             install_ninja: false
@@ -174,6 +180,12 @@ jobs:
             install_ninja: false
             run_aptget: true
             name: ClapFirst Linux gcc11
+
+          - os: ubuntu-24.04
+            cmakeargs: -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_C_COMPILER=gcc-14
+            install_ninja: false
+            run_aptget: true
+            name: ClapFirst Linux ub24 gcc14
 
           - os: macos-latest
             cmakeargs: -G"Xcode"
