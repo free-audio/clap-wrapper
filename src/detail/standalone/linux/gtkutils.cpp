@@ -116,7 +116,7 @@ void GtkGui::setupPlugin(_GtkApplication *app)
 void GtkGui::initialize(freeaudio::clap_wrapper::standalone::StandaloneHost *sah)
 {
   sah->gtkGui = this;
-  app = gtk_application_new("org.gtk.example", G_APPLICATION_FLAGS_NONE);
+  app = gtk_application_new("org.gtk.example", G_APPLICATION_DEFAULT_FLAGS);
   g_signal_connect(app, "activate", G_CALLBACK(activate), this);
 }
 
