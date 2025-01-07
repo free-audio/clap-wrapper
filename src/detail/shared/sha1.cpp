@@ -197,7 +197,10 @@ void Sha1::padmessage()
        */
   if (_messageBlockIndex > 55)
   {
-    _messageBlock[_messageBlockIndex++] = 0x80;
+    if (_messageBlockIndex < 64)
+    {
+      _messageBlock[_messageBlockIndex++] = 0x80;
+    }
     while (_messageBlockIndex < 64)
     {
       _messageBlock[_messageBlockIndex++] = 0;
@@ -212,7 +215,10 @@ void Sha1::padmessage()
   }
   else
   {
-    _messageBlock[_messageBlockIndex++] = 0x80;
+    if (_messageBlockIndex < 64)
+    {
+      _messageBlock[_messageBlockIndex++] = 0x80;
+    }
     while (_messageBlockIndex < 56)
     {
       _messageBlock[_messageBlockIndex++] = 0;
