@@ -24,9 +24,19 @@ static const CLAP_CONSTEXPR char CLAP_PLUGIN_AS_VST3[] = "clap.plugin-info-as-vs
 typedef uint8_t array_of_16_bytes[16];
 
 // clang-format off
-// VST3GUID allows you to provide the 4 uint32_t parts of the GUID and transforms them to the 16 byte array
-#if WIN
-#define VST3GUID(g1, g2, g3, g4) \
+// COMPONENT allows you to provide the 4 uint32_t parts of the GUID and transforms them to the 16 byte array
+// To use this to port an existing VST3
+// 1. Run the vst3 validator
+// 2. Find the line cid = 30D2C648CCAABA57976D20DEFF9B93C1 in the output
+// 3. Implement this extension to provide an info with (for example)
+//      static array_of_16_bytes cid COMPONENT_ID(0x30D2C648, 0xCCAABA57, 0x976D20DE, 0xFF9B93C1);
+//      static clap_plugin_info_as_vst3 info {
+//           "Vendor",
+//            &cid,
+//            ""
+//      };
+//      return &info;
+#define COMPONENT_ID(g1, g2, g3, g4) \
 {                                \
 (uint8_t)((g1 & 0x000000FF)      ),    \
 (uint8_t)((g1 & 0x0000FF00) >>  8),    \
@@ -45,29 +55,6 @@ typedef uint8_t array_of_16_bytes[16];
 (uint8_t)((g4 & 0x0000FF00) >>  8),    \
 (uint8_t)((g4 & 0x000000FF)      ),    \
 }
-
-#else
-#define VST3GUID(g1, g2, g3, g4) \
-{                                \
-(uint8_t)((g1 & 0xFF000000) >> 24),    \
-(uint8_t)((g1 & 0x00FF0000) >> 16),    \
-(uint8_t)((g1 & 0x0000FF00) >>  8),    \
-(uint8_t)((g1 & 0x000000FF)      ),    \
-(uint8_t)((g2 & 0xFF000000) >> 24),    \
-(uint8_t)((g2 & 0x00FF0000) >> 16),    \
-(uint8_t)((g2 & 0x0000FF00) >>  8),    \
-(uint8_t)((g2 & 0x000000FF)      ),    \
-(uint8_t)((g3 & 0xFF000000) >> 24),    \
-(uint8_t)((g3 & 0x00FF0000) >> 16),    \
-(uint8_t)((g3 & 0x0000FF00) >>  8),    \
-(uint8_t)((g3 & 0x000000FF)      ),    \
-(uint8_t)((g4 & 0xFF000000) >> 24),    \
-(uint8_t)((g4 & 0x00FF0000) >> 16),    \
-(uint8_t)((g4 & 0x0000FF00) >>  8),    \
-(uint8_t)((g4 & 0x000000FF)      ),    \
-}
-
-#endif
 
 // clang-format on
 
