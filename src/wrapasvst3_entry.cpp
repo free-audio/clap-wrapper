@@ -245,6 +245,23 @@ IPluginFactory* GetPluginFactoryEntryPoint()
         }
 
         memcpy(&lcid, &g, sizeof(TUID));
+
+#if !COM_COMPATIBLE
+        /*
+         * The steinberg APIs retain 'com compatability' by flipping the first pair of ints
+         * in the UID. That results in CID which are not compatbile across platforms and so
+         * mac won't load a win session etc.
+         *
+         * We apply that flip on MAC and LIN also in the wrapper here. The flip is: The first
+         * 8 bits endian, and then the pair of 4 bit endians
+         */
+
+        std::swap(lcid[0], lcid[3]);
+        std::swap(lcid[1], lcid[2]);
+
+        std::swap(lcid[4], lcid[5]);
+        std::swap(lcid[6], lcid[7]);
+#endif
       }
 
       // features ----------------------------------------
