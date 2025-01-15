@@ -606,6 +606,35 @@ void ProcessAdapter::processInputEvents(Steinberg::Vst::IEventList* eventlist)
           _eventindices.push_back(_events.size());
           _events.push_back(n);
         }
+        else if (vstevent.type == Vst::Event::kPolyPressureEvent)
+        {
+          // Convert into midi1 polyphonic aftertouch event
+          clap_multi_event n;
+          n.param.header.type = CLAP_EVENT_MIDI;
+          n.param.header.flags = 0;
+          n.param.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+          n.param.header.time = vstevent.sampleOffset;
+          n.param.header.size = sizeof(clap_event_midi_t);
+          n.midi.port_index = 0;
+          n.midi.data[0] = 0xA0 + vstevent.polyPressure.channel;
+          int key{-1};
+          for (auto& i : _activeNotes)
+          {
+            if (i.used && i.note_id == vstevent.polyPressure.noteId)
+            {
+              key = i.key;
+              break;
+            }
+          }
+          if (key >= 0)
+          {
+            n.midi.data[1] = key;
+            n.midi.data[2] = vstevent.polyPressure.pressure * 127.0;
+
+            _eventindices.push_back(_events.size());
+            _events.push_back(n);
+          }
+        }
         if (vstevent.type == Vst::Event::kNoteExpressionValueEvent)
         {
           clap_multi_event_t n;
