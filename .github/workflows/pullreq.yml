@@ -80,16 +80,16 @@ jobs:
           #  name: Windows clang
 
           - os: ubuntu-latest
-            cmakeargs: -DCMAKE_CXX_COMPILER=g++-11 -DCMAKE_C_COMPILER=gcc-11
-            install_ninja: false
-            run_aptget: true
-            name: Linux gcc11
-
-          - os: ubuntu-latest
             cmakeargs: -DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_C_COMPILER=gcc-12
             install_ninja: false
             run_aptget: true
             name: Linux gcc12
+
+          - os: ubuntu-latest
+            cmakeargs: -DCMAKE_CXX_COMPILER=g++-13 -DCMAKE_C_COMPILER=gcc-13
+            install_ninja: false
+            run_aptget: true
+            name: Linux gcc13
 
           - os: ubuntu-24.04
             cmakeargs: -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_C_COMPILER=gcc-14
@@ -176,10 +176,10 @@ jobs:
             name: ClapFirst Windows 64bit MSVC
 
           - os: ubuntu-latest
-            cmakeargs: -DCMAKE_CXX_COMPILER=g++-11 -DCMAKE_C_COMPILER=gcc-11
+            cmakeargs: -DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_C_COMPILER=gcc-12
             install_ninja: false
             run_aptget: true
-            name: ClapFirst Linux gcc11
+            name: ClapFirst Linux gcc12
 
           - os: ubuntu-24.04
             cmakeargs: -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_C_COMPILER=gcc-14
