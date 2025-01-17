@@ -42,6 +42,10 @@ function(target_add_standalone_wrapper)
         set(SA_WINDOWS_ICON "")
     endif()
 
+    if (NOT DEFINED SA_MACOS_ICON)
+        set(SA_MACOS_ICON "")
+    endif()
+
     guarantee_rtaudio()
     guarantee_rtmidi()
 
