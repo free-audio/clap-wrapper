@@ -27,3 +27,6 @@ guarantee_clap_wrapper_shared()
 include(cmake/wrap_auv2.cmake)
 include(cmake/wrap_vst3.cmake)
 include(cmake/wrap_standalone.cmake)
+include(cmake/wrap_clap.cmake)
+
+include(cmake/make_clapfirst.cmake)
