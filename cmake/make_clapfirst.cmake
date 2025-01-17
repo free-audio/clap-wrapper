@@ -16,6 +16,9 @@ function(make_clapfirst_plugins)
             BUNDLE_VERSION
 
             COPY_AFTER_BUILD
+
+            STANDALONE_MACOS_ICON
+            STANDALONE_WINDOWS_ICON
     )
     set(multiValueArgs
             PLUGIN_FORMATS
@@ -143,7 +146,10 @@ function(make_clapfirst_plugins)
                 target_add_standalone_wrapper(TARGET ${SATARG}
                         OUTPUT_NAME "${saname}"
                         STATICALLY_LINKED_CLAP_ENTRY TRUE
-                        PLUGIN_ID "${clapid}")
+                        PLUGIN_ID "${clapid}"
+                        MACOS_ICON "${C1ST_STANDALONE_MACOS_ICON}"
+                        WINDOWS_ICON "${C1ST_STANDALONE_WINDOWS_ICON}"
+                )
 
                 add_dependencies(${ALL_TARGET} ${SATARG})
 
