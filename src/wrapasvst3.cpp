@@ -329,7 +329,7 @@ tresult PLUGIN_API ClapAsVst3::setBusArrangements(Vst::SpeakerArrangement* input
                                                   Vst::SpeakerArrangement* outputs, int32 numOuts)
 {
   return super::setBusArrangements(inputs, numIns, outputs, numOuts);
-};
+}
 
 tresult PLUGIN_API ClapAsVst3::getBusArrangement(Vst::BusDirection dir, int32 index,
                                                  Vst::SpeakerArrangement& arr)
