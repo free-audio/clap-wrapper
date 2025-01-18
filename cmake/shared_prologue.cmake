@@ -124,13 +124,23 @@ function(target_copy_after_build)
                 COMMAND ${CMAKE_COMMAND} -E copy_directory "${input_bundle}" "~/Library/Audio/Plug-Ins/${macdir}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}"
                 )
     elseif (UNIX)
-        message(STATUS "clap-wrapper: will copy ${CAB_TARGET} / ${CAB_FLAVOR} after build (untested)")
-        set(products_folder "${CMAKE_BINARY_DIR}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_DIR>")
-        add_custom_command(TARGET ${CAB_TARGET} POST_BUILD
+        message(STATUS "clap-wrapper: will copy ${CAB_TARGET} / ${CAB_FLAVOR} after build")
+        if (${CAB_FLAVOR} STREQUAL "clap")
+            add_custom_command(TARGET ${CAB_TARGET} POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E make_directory "~/${lindir}"
+                    COMMAND ${CMAKE_COMMAND} -E echo installing "$<TARGET_FILE:${CAB_TARGET}> to ~/${lindir}/$<TARGET_FILE_NAME:${CAB_TARGET}>"
+                    COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:${CAB_TARGET}>" "~/${lindir}/$<TARGET_FILE_NAME:${CAB_TARGET}>"
+            )
+        else(${CAB_FLAVOR} STREAQUAL "vst3")
+            set(input_bundle "$<TARGET_FILE_DIR:${CAB_TARGET}>/../../../$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}")
+            set(output_bundle "~/${lindir}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}")
+            add_custom_command(TARGET ${CAB_TARGET} POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E make_directory "~/${lindir}"
-                COMMAND ${CMAKE_COMMAND} -E echo installing "${products_folder}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}" "~/${lindir}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}"
-                COMMAND ${CMAKE_COMMAND} -E copy_directory "${products_folder}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}" "~/${lindir}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}"
-                )
+                COMMAND ${CMAKE_COMMAND} -E echo "install ${CAB_FLAVOR} from : " ${input_bundle}
+                COMMAND ${CMAKE_COMMAND} -E echo "install ${CAB_FLAVOR} to   : "${output_bundle}
+                COMMAND ${CMAKE_COMMAND} -E copy_directory "${input_bundle}" "${output_bundle}"
+            )
+        endif()
     endif ()
 endfunction(target_copy_after_build)
 
