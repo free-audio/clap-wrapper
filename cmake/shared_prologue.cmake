@@ -136,8 +136,8 @@ function(target_copy_after_build)
             set(output_bundle "~/${lindir}/$<TARGET_PROPERTY:${CAB_TARGET},LIBRARY_OUTPUT_NAME>.${postfix}")
             add_custom_command(TARGET ${CAB_TARGET} POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E make_directory "~/${lindir}"
-                COMMAND ${CMAKE_COMMAND} -E echo "install ${CAB_FLAVOR} from : " ${input_bundle}
-                COMMAND ${CMAKE_COMMAND} -E echo "install ${CAB_FLAVOR} to   : "${output_bundle}
+                COMMAND ${CMAKE_COMMAND} -E echo "install ${CAB_FLAVOR} from : ${input_bundle}"
+                COMMAND ${CMAKE_COMMAND} -E echo "install ${CAB_FLAVOR} to   : ${output_bundle}"
                 COMMAND ${CMAKE_COMMAND} -E copy_directory "${input_bundle}" "${output_bundle}"
             )
         endif()
