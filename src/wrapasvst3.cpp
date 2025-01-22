@@ -328,6 +328,48 @@ tresult PLUGIN_API ClapAsVst3::setProcessing(TBool state)
 tresult PLUGIN_API ClapAsVst3::setBusArrangements(Vst::SpeakerArrangement* inputs, int32 numIns,
                                                   Vst::SpeakerArrangement* outputs, int32 numOuts)
 {
+  if (!_plugin->_ext._audioports)
+  {
+    return kResultFalse;
+  }
+
+  int32_t inc = _plugin->_ext._audioports->count(_plugin->_plugin, true);
+  int32_t ouc = _plugin->_ext._audioports->count(_plugin->_plugin, false);
+  if (inc != numIns || ouc != numOuts)
+  {
+    return kResultFalse;
+  }
+
+  for (int i = 0; i < numIns; ++i)
+  {
+    clap_audio_port_info_t info;
+    _plugin->_ext._audioports->get(_plugin->_plugin, i, true, &info);
+    Vst::SpeakerArrangement sa{0};
+    for (auto c = 0U; c < info.channel_count; ++c)
+    {
+      sa = (sa << 1) + 1;
+    }
+    if (inputs[i] != sa)
+    {
+      return kResultFalse;
+    }
+  }
+
+  for (int i = 0; i < numOuts; ++i)
+  {
+    clap_audio_port_info_t info;
+    _plugin->_ext._audioports->get(_plugin->_plugin, i, false, &info);
+    Vst::SpeakerArrangement sa{0};
+    for (auto c = 0U; c < info.channel_count; ++c)
+    {
+      sa = (sa << 1) + 1;
+    }
+    if (outputs[i] != sa)
+    {
+      return kResultFalse;
+    }
+  }
+
   return super::setBusArrangements(inputs, numIns, outputs, numOuts);
 }
 
