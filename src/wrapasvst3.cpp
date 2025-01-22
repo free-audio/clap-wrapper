@@ -331,7 +331,6 @@ tresult PLUGIN_API ClapAsVst3::setBusArrangements(Vst::SpeakerArrangement* input
   if (!_plugin->_ext._audioports)
   {
     return kResultFalse;
-    ;
   }
 
   int32_t inc = _plugin->_ext._audioports->count(_plugin->_plugin, true);
@@ -339,7 +338,6 @@ tresult PLUGIN_API ClapAsVst3::setBusArrangements(Vst::SpeakerArrangement* input
   if (inc != numIns || ouc != numOuts)
   {
     return kResultFalse;
-    ;
   }
 
   for (int i = 0; i < numIns; ++i)
