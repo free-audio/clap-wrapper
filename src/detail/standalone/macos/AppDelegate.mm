@@ -106,6 +106,16 @@
   [[self window] orderFrontRegardless];
   [[self window] setDelegate:self];
 
+  freeaudio::clap_wrapper::standalone::getStandaloneHost()->onRequestResize =
+      [self](uint32_t w, uint32_t h)
+  {
+    NSSize sz;
+    sz.width = w;
+    sz.height = h;
+    [[self window] setContentSize:sz];
+    return false;
+  };
+
   if (plugin->_ext._gui)
   {
     auto ui = plugin->_ext._gui;
@@ -136,15 +146,6 @@
     ui->show(p);
   }
 
-  freeaudio::clap_wrapper::standalone::getStandaloneHost()->onRequestResize =
-      [self](uint32_t w, uint32_t h)
-  {
-    NSSize sz;
-    sz.width = w;
-    sz.height = h;
-    [[self window] setContentSize:sz];
-    return false;
-  };
 
   freeaudio::clap_wrapper::standalone::getStandaloneHost()->displayAudioError = [](auto &s)
   {
