@@ -1104,7 +1104,7 @@ Plugin::Plugin(const clap_plugin_entry* entry, int argc, char** argv)
   {
     if (placement.showCmd != SW_MAXIMIZE)
     {
-      adjustSize(width, height);
+      adjustSize(scale * width, scale * height);
     }
 
     return true;
