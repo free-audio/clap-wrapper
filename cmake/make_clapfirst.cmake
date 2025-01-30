@@ -19,6 +19,8 @@ function(make_clapfirst_plugins)
 
             STANDALONE_MACOS_ICON
             STANDALONE_WINDOWS_ICON
+
+            ASSET_OUTPUT_DIRECTORY
     )
     set(multiValueArgs
             PLUGIN_FORMATS
@@ -83,6 +85,15 @@ function(make_clapfirst_plugins)
                 BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFIER}.clap"
                 BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
         )
+        if (DEFINED C1ST_ASSET_OUTPUT_DIRECTORY)
+            if (NOT WIN32)
+                set_target_properties(${CLAP_TARGET} PROPERTIES
+                        LIBRARY_OUTPUT_DIRECTORY ${C1ST_ASSET_OUTPUT_DIRECTORY})
+            else ()
+                set_target_properties(${CLAP_TARGET} PROPERTIES
+                        LIBRARY_OUTPUT_DIRECTORY "${C1ST_ASSET_OUTPUT_DIRECTORY}/CLAP")
+            endif()
+        endif()
         set_target_properties(${CLAP_TARGET} PROPERTIES BUNDLE TRUE MACOSX_BUNDLE TRUE)
 
         add_dependencies(${ALL_TARGET} ${CLAP_TARGET})
@@ -95,10 +106,19 @@ function(make_clapfirst_plugins)
         add_library(${VST3_TARGET} MODULE)
         target_sources(${VST3_TARGET} PRIVATE ${C1ST_ENTRY_SOURCE})
         target_link_libraries(${VST3_TARGET} PRIVATE ${C1ST_IMPL_TARGET})
+        set(vod "")
+        if (DEFINED C1ST_ASSET_OUTPUT_DIRECTORY)
+            if (NOT WIN32)
+                set(vod "${C1ST_ASSET_OUTPUT_DIRECTORY}")
+            else ()
+                set(vod "${C1ST_ASSET_OUTPUT_DIRECTORY}/VST3")
+            endif()
+        endif()
         target_add_vst3_wrapper(TARGET ${VST3_TARGET}
                 OUTPUT_NAME "${C1ST_OUTPUT_NAME}"
-                BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFER}.auv2"
+                BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFER}.vst3"
                 BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
+                ASSET_OUTPUT_DIRECTORY "${vod}"
         )
 
         add_dependencies(${ALL_TARGET} ${VST3_TARGET})
@@ -118,6 +138,11 @@ function(make_clapfirst_plugins)
 
                 CLAP_TARGET_FOR_CONFIG "${CLAP_TARGET}"
         )
+
+        if (DEFINED C1ST_ASSET_OUTPUT_DIRECTORY)
+            set_target_properties(${AUV2_TARGET} PROPERTIES
+                    LIBRARY_OUTPUT_DIRECTORY ${C1ST_ASSET_OUTPUT_DIRECTORY})
+        endif()
 
         add_dependencies(${ALL_TARGET} ${AUV2_TARGET})
     endif()
@@ -150,6 +175,15 @@ function(make_clapfirst_plugins)
                         MACOS_ICON "${C1ST_STANDALONE_MACOS_ICON}"
                         WINDOWS_ICON "${C1ST_STANDALONE_WINDOWS_ICON}"
                 )
+                if (DEFINED C1ST_ASSET_OUTPUT_DIRECTORY)
+                    if (NOT WIN32)
+                        set_target_properties(${SATARG} PROPERTIES
+                                RUNTIME_OUTPUT_DIRECTORY ${C1ST_ASSET_OUTPUT_DIRECTORY})
+                    else()
+                        set_target_properties(${SATARG} PROPERTIES
+                                RUNTIME_OUTPUT_DIRECTORY "${C1ST_ASSET_OUTPUT_DIRECTORY}/Standalone-${SATARG}")
+                    endif()
+                endif()
 
                 add_dependencies(${ALL_TARGET} ${SATARG})
 
