@@ -20,7 +20,7 @@ int main(int argc, char **argv)
 #else
   // Library shenanigans t/k
   std::string clapName{HOSTED_CLAP_NAME};
-  LOG << "Loading " << clapName << std::endl;
+  LOGINFO("Loading '{}'", clapName);
 
   auto pts = Clap::getValidCLAPSearchPaths();
 
