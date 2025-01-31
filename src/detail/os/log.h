@@ -4,9 +4,24 @@
 #include "fmt/format.h"
 #include "fmt/ranges.h"
 
+#ifndef CLAP_WRAPPER_LOGLEVEL
+#if NDEBUG
+#define CLAP_WRAPPER_LOGLEVEL 0
+#else
+#define CLAP_WRAPPER_LOGLEVEL 2
+#endif
+#endif
+
+#if CLAP_WRAPPER_LOGLEVEL == 0
+#define LOGINFO(...) (void(0))
+#define LOGDETAIL(...) (void(0))
+
+#else
+
 #if WIN
 #include <windows.h>
 #endif
+#include <stdio.h>
 
 namespace os
 {
@@ -43,14 +58,6 @@ void logWithLocation(const std::string& file, uint32_t line, const std::string f
 }
 }  // namespace os
 
-#ifndef CLAP_WRAPPER_LOGLEVEL
-#if NDEBUG
-#define CLAP_WRAPPER_LOGLEVEL 0
-#else
-#define CLAP_WRAPPER_LOGLEVEL 2
-#endif
-#endif
-
 #if (CLAP_WRAPPER_LOGLEVEL == 0)
 #define LOGINFO(...) (void(0))
 #define LOGDETAIL(...) (void(0))
@@ -64,4 +71,5 @@ void logWithLocation(const std::string& file, uint32_t line, const std::string f
 #if (CLAP_WRAPPER_LOGLEVEL == 2)
 #define LOGINFO(...) os::logWithLocation(__FILE__, __LINE__, __func__, __VA_ARGS__)
 #define LOGDETAIL(...) os::logWithLocation(__FILE__, __LINE__, __func__, __VA_ARGS__)
+#endif
 #endif
