@@ -28,11 +28,6 @@ namespace fs = ghc::filesystem;
 
 namespace os
 {
-void log(const char* text)
-{
-  printf("%s\n", text);
-  // NSLog(@"%s", text);
-}
 
 class MacOSHelper
 {
