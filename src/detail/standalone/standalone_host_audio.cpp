@@ -34,8 +34,7 @@ void rtaErrorCallback(RtAudioErrorType errorType, const std::string &errorText)
 {
   if (errorType != RTAUDIO_OUTPUT_UNDERFLOW && errorType != RTAUDIO_INPUT_OVERFLOW)
   {
-    LOG << "[ERROR] RtAudio reports '" << errorText << "'"
-        << " " << errorType << std::endl;
+    LOGINFO("[ERROR] RtAudio reports '{}' [{}]", errorText, (int)errorType);
     auto ae = getStandaloneHost()->displayAudioError;
     if (ae)
     {
@@ -47,8 +46,7 @@ void rtaErrorCallback(RtAudioErrorType errorType, const std::string &errorText)
     static bool reported = false;
     if (!reported)
     {
-      LOG << "[ERROR] RtAudio reports '" << errorText << "'" << std::endl;
-      LOG << "[ERROR] Supressing future underflow reports" << std::endl;
+      LOGINFO("[ERROR] RtAudio reports under/overflow '{}' [{}]", errorText, (int)errorType);
       reported = true;
     }
   }
@@ -58,7 +56,7 @@ void StandaloneHost::guaranteeRtAudioDAC()
 {
   if (!rtaDac)
   {
-    LOG << "Creating RtAudio DAC" << std::endl;
+    LOGDETAIL("Creating Standalone RtAudioDAC");
     setAudioApi(RtAudio::Api::UNSPECIFIED);
   }
 }
@@ -229,7 +227,7 @@ void StandaloneHost::startAudioThreadOn(unsigned int inputDeviceID, uint32_t inp
 
   if (sampleRate < 0)
   {
-    LOG << "No preferred sample rate detected; using 48k" << std::endl;
+    LOGINFO("[WARNING] No preferred sample rate detected; using 48k");
     sampleRate = 48000;
   }
 
@@ -243,7 +241,7 @@ void StandaloneHost::startAudioThreadOn(unsigned int inputDeviceID, uint32_t inp
    * just tells you to try open stream with power of twos you want. So leave
    * this for now at 256 and return to it shortly.
    */
-  LOG << "[WARNING] Hardcoding frame size to 256 samples for now" << std::endl;
+  LOGINFO("[WARNING] Hardcoding frame size to 256 samples for now");
 
   if (currentBufferSize == 0)
   {
@@ -254,50 +252,47 @@ void StandaloneHost::startAudioThreadOn(unsigned int inputDeviceID, uint32_t inp
                          RTAUDIO_FLOAT32, sampleRate, &currentBufferSize, &rtaCallback, (void *)this,
                          &options))
   {
-    LOG << "[ERROR]" << rtaDac->getErrorText() << std::endl;
+    LOGINFO("[ERROR] Error opening rta stream '{}'", rtaDac->getErrorText());
     rtaDac->closeStream();
     return;
   }
 
   activatePlugin(sampleRate, 1, currentBufferSize * 2);
 
-  LOG << "RtAudio Attached Devices" << std::endl;
+  LOGDETAIL("RtAudio Attached Devices");
   if (useOutput)
   {
     for (auto i = 0U; i < dids.size(); ++i)
     {
-      if (oParams.deviceId == dids[i]) LOG << "  - Output : '" << dnms[i] << "'" << std::endl;
+      if (oParams.deviceId == dids[i]) LOGDETAIL("  - Output : '{}'", dnms[i]);
     }
   }
   if (useInput)
   {
     for (auto i = 0U; i < dids.size(); ++i)
     {
-      if (iParams.deviceId == dids[i]) LOG << "  - Input : '" << dnms[i] << "'" << std::endl;
+      if (iParams.deviceId == dids[i]) LOGDETAIL("  - Input : '{}'", dnms[i]);
     }
   }
 
   if (!rtaDac->isStreamOpen())
   {
-    LOG << "[ERROR] Stream failed to open : " << rtaDac->getErrorText() << std::endl;
+    LOGINFO("[ERROR] Stream failed to open :  {}", rtaDac->getErrorText());
     return;
   }
 
   if (rtaDac->startStream())
   {
-    LOG << "[ERROR] startStream failed : " << rtaDac->getErrorText() << std::endl;
+    LOGINFO("[ERROR] startStream failed : {}", rtaDac->getErrorText());
     return;
   }
-
-  LOG << "RtAudio: Started Stream" << std::endl;
 }
 
 void StandaloneHost::stopAudioThread()
 {
-  LOG << "Shutting down audio" << std::endl;
+  LOGINFO("Shutting down audio");
   if (!rtaDac->isStreamRunning())
   {
-    LOG << "Stream not running" << std::endl;
   }
   else
   {
@@ -309,14 +304,12 @@ void StandaloneHost::stopAudioThread()
       using namespace std::chrono_literals;
       std::this_thread::sleep_for(1ms);
     }
-    LOG << "Audio Thread acknowledges shutdown" << std::endl;
 
     if (rtaDac && rtaDac->isStreamRunning())
     {
       rtaDac->stopStream();
       rtaDac->closeStream();
     }
-    LOG << "RtAudio stream stopped" << std::endl;
   }
   return;
 }

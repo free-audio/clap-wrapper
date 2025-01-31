@@ -18,7 +18,7 @@ void StandaloneHost::startMIDIThread()
 {
   try
   {
-    LOG << "Initializing Midi" << std::endl;
+    LOGINFO("Initializing Midi");
     auto midiIn = std::make_unique<RtMidiIn>();
     numMidiPorts = midiIn->getPortCount();
   }
@@ -28,13 +28,13 @@ void StandaloneHost::startMIDIThread()
     exit(EXIT_FAILURE);
   }
 
-  LOG << "MIDI: There are " << numMidiPorts << " MIDI input sources available. Binding all.\n";
+  LOGDETAIL("MIDI: There are {} MIDI input sources available. Binding all.", numMidiPorts);
   for (unsigned int i = 0; i < numMidiPorts; i++)
   {
     try
     {
       auto midiIn = std::make_unique<RtMidiIn>();
-      LOG << "  - '" << midiIn->getPortName(i) << "'" << std::endl;
+      LOGDETAIL("  - '{}'", midiIn->getPortName(i));
       midiIn->openPort(i);
       midiIn->setCallback(midiCallback, this);
       midiIns.push_back(std::move(midiIn));
