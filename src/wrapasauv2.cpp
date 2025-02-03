@@ -466,7 +466,11 @@ OSStatus WrapAsAUV2::GetParameterInfo(AudioUnitScope inScope, AudioUnitParameter
         }
       }
 
-      flags |= kAudioUnitParameterFlag_HasCFNameString;
+      /*
+       * The CFString() used from the param can reset which releases it. So add a ref count
+       * and ask the param to release it too
+       */
+      flags |= kAudioUnitParameterFlag_HasCFNameString | kAudioUnitParameterFlag_CFNameRelease;
 
       outParameterInfo.flags = flags;
 
@@ -474,6 +478,7 @@ OSStatus WrapAsAUV2::GetParameterInfo(AudioUnitScope inScope, AudioUnitParameter
       // strcpy(outParameterInfo.name, info.name);
       memset(outParameterInfo.name, 0, sizeof(outParameterInfo.name));
 
+      CFRetain(f->CFString());
       outParameterInfo.cfNameString = f->CFString();
       outParameterInfo.minValue = info.min_value;
       outParameterInfo.maxValue = info.max_value;
