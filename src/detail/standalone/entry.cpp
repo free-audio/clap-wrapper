@@ -15,17 +15,17 @@ std::shared_ptr<Clap::Plugin> mainCreatePlugin(const clap_plugin_entry *ee, cons
                                                uint32_t clapIndex, int argc, char **argv)
 {
   entry = ee;
-  LOG << "Standalone starting : " << argv[0] << std::endl;
+  LOGINFO("Standalone starting : {}", argv[0]);
 
-  LOG << "CLAP Version : " << entry->clap_version.major << "." << entry->clap_version.major << "."
-      << entry->clap_version.revision << std::endl;
+  LOGINFO("CLAP Version : {}.{}.{}", entry->clap_version.major, entry->clap_version.major,
+          entry->clap_version.revision);
 
   entry->init(argv[0]);
 
   auto fac = (const clap_plugin_factory *)entry->get_factory(CLAP_PLUGIN_FACTORY_ID);
   if (!fac)
   {
-    LOG << "[ERROR] entry->get_factory return nullptr" << std::endl;
+    LOGINFO("[ERROR] entry->get_factory return nullptr");
     return nullptr;
   }
 
@@ -36,18 +36,18 @@ std::shared_ptr<Clap::Plugin> mainCreatePlugin(const clap_plugin_entry *ee, cons
 
   if (clapId.empty())
   {
-    LOG << "Loading CLAP by index " << clapIndex << std::endl;
+    LOGINFO("Loading CLAP by index {}", clapIndex);
     plugin = Clap::Plugin::createInstance(fac, clapIndex, standaloneHost.get());
   }
   else
   {
-    LOG << "Loading CLAP by id '" << clapId << "'" << std::endl;
+    LOGINFO("Loading CLAP by id '{}'", clapId);
     plugin = Clap::Plugin::createInstance(fac, clapId, standaloneHost.get());
   }
 
   if (!plugin)
   {
-    LOG << "[ERROR] Unable to create plugin" << std::endl;
+    LOGINFO("[ERROR] Unable to create plugin");
     return nullptr;
   }
 
@@ -62,7 +62,6 @@ std::shared_ptr<Clap::Plugin> mainCreatePlugin(const clap_plugin_entry *ee, cons
 
     try
     {
-      LOG << "Trying to save default clap wrapper settings" << std::endl;
       fs::create_directories(loadPath);
       standaloneHost->saveStandaloneAndPluginSettings(loadPath, "defaults.clapwrapper");
     }
@@ -75,7 +74,6 @@ std::shared_ptr<Clap::Plugin> mainCreatePlugin(const clap_plugin_entry *ee, cons
     {
       if (fs::exists(loadPath / "settings.clapwrapper"))
       {
-        LOG << "Trying to load from clap wrapper settings" << std::endl;
         standaloneHost->tryLoadStandaloneAndPluginSettings(loadPath, "settings.clapwrapper");
       }
     }
@@ -120,7 +118,7 @@ int mainWait()
 
 int mainFinish()
 {
-  LOG << "Shutting down" << std::endl;
+  LOGINFO("Shutting down");
 
   if (standaloneHost && plugin)
   {
@@ -131,7 +129,7 @@ int mainFinish()
     if (pt.has_value())
     {
       auto savePath = *pt / plugin->_plugin->desc->id;
-      LOG << "Saving settings to '" << savePath << "'" << std::endl;
+      LOGINFO("Saving settings to '{}'", savePath.u8string());
       try
       {
         fs::create_directories(savePath);
@@ -144,7 +142,7 @@ int mainFinish()
     }
     else
     {
-      LOG << "No Standalone Settings Path; not streaming" << std::endl;
+      LOGINFO("[WARNING] No Standalone Settings Path; not streaming");
     }
 
     plugin->deactivate();

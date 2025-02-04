@@ -49,7 +49,7 @@
 #else
   // Library shenanigans t/k
   std::string clapName{HOSTED_CLAP_NAME};
-  LOG << "Loading " << clapName << std::endl;
+  LOGINFO("Loading '{}'", clapName);
 
   auto pts = Clap::getValidCLAPSearchPaths();
 
@@ -120,7 +120,8 @@
   {
     auto ui = plugin->_ext._gui;
     auto p = plugin->_plugin;
-    if (!ui->is_api_supported(p, CLAP_WINDOW_API_COCOA, false)) LOG << "NO COCOA " << std::endl;
+    if (!ui->is_api_supported(p, CLAP_WINDOW_API_COCOA, false))
+      LOGINFO("[WARNING] GUI API not supported");
 
     ui->create(p, CLAP_WINDOW_API_COCOA, false);
     ui->set_scale(p, 1);
@@ -146,7 +147,6 @@
     ui->show(p);
   }
 
-
   freeaudio::clap_wrapper::standalone::getStandaloneHost()->displayAudioError = [](auto &s)
   {
     NSLog(@"Error Reported: %s", s.c_str());
@@ -170,7 +170,7 @@
 
 - (void)applicationWillTerminate:(NSNotification *)aNotification
 {
-  LOG << "applicationWillTerminate shutdown" << std::endl;
+  LOGDETAIL("Application terminating");
   freeaudio::clap_wrapper::standalone::getStandaloneHost()->displayAudioError = nullptr;
   freeaudio::clap_wrapper::standalone::getStandaloneHost()->onRequestResize = nullptr;
 

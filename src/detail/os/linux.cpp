@@ -16,11 +16,6 @@
 
 namespace os
 {
-void log(const char* text)
-{
-  fprintf(stderr, "%s\n", text);
-}
-
 class LinuxHelper
 {
  public:
