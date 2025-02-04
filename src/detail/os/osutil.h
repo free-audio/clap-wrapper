@@ -7,13 +7,11 @@
 #include <atomic>
 #include <string>
 #include <functional>
-#define FMT_HEADER_ONLY 1
-#include "fmt/format.h"
-#include "fmt/ranges.h"
+
+#include "log.h"
 
 namespace os
 {
-
 class State
 {
   // the State class ensures that a specific function pair (like init/terminate) is only called in pairs.
@@ -68,34 +66,4 @@ uint64_t getTickInMS();
 std::string getModulePath();
 std::string getParentFolderName();
 std::string getBinaryName();
-
-void log(const char* text);
-
-template <typename... Args>
-void log(fmt::string_view format_str, Args&&... args)
-{
-  fmt::memory_buffer buf;
-  fmt::vformat_to(std::back_inserter(buf), format_str, fmt::make_format_args(args...));
-  buf.push_back(0);
-  log((const char*)buf.data());
-}
 }  // namespace os
-
-#ifndef CLAP_WRAPPER_LOGLEVEL
-#define CLAP_WRAPPER_LOGLEVEL 2
-#endif
-
-#if (CLAP_WRAPPER_LOGLEVEL == 0)
-#define LOGINFO(...) (void(0))
-#define LOGDETAIL(...) (void(0))
-#endif
-
-#if (CLAP_WRAPPER_LOGLEVEL == 1)
-#define LOGINFO os::log
-#define LOGDETAIL(...) (void(0))
-#endif
-
-#if (CLAP_WRAPPER_LOGLEVEL == 2)
-#define LOGINFO os::log
-#define LOGDETAIL os::log
-#endif

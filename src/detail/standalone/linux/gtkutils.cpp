@@ -79,7 +79,8 @@ void GtkGui::setupPlugin(_GtkApplication *app)
   {
     auto ui = plugin->_ext._gui;
     auto p = plugin->_plugin;
-    if (!ui->is_api_supported(p, CLAP_WINDOW_API_X11, false)) LOG << "NO X11 " << std::endl;
+    if (!ui->is_api_supported(p, CLAP_WINDOW_API_X11, false))
+      LOGINFO("[ERROR] CLAP does not support X11");
 
     ui->create(p, CLAP_WINDOW_API_X11, false);
     ui->set_scale(p, 1);
@@ -286,8 +287,7 @@ bool GtkGui::parseCommandLine(int argc, char **argv)
     return false;
   }
 
-  LOG << "Post Argument Parse: inId=" << inId << " outId=" << outId << " sampleRate=" << sampleRate
-      << std::endl;
+  LOGINFO("Post Argument Parse: inId={} outId={} sampleRate={}", inId, outId, sampleRate);
   sah->setStartupAudio(inId, outId, sampleRate);
 
   return true;

@@ -55,13 +55,12 @@ void StandaloneHost::setupAudioBusses(const clap_plugin_t *plugin,
   if (!audioports) return;
   numAudioInputs = audioports->count(plugin, true);
   numAudioOutputs = audioports->count(plugin, false);
-  LOG << "inputs/outputs : " << numAudioInputs << "/" << numAudioOutputs << std::endl;
+  LOGDETAIL("inputs/outputs : {}/{}", numAudioInputs, numAudioOutputs);
 
   clap_audio_port_info_t info;
   for (auto i = 0U; i < numAudioInputs; ++i)
   {
     audioports->get(plugin, i, true, &info);
-    // LOG << "  - input " << i << " " << info.name << std::endl;
     inputChannelByBus.push_back(info.channel_count);
     totalInputChannels += info.channel_count;
     if (info.flags & CLAP_AUDIO_PORT_IS_MAIN) mainInput = i;
@@ -69,16 +68,12 @@ void StandaloneHost::setupAudioBusses(const clap_plugin_t *plugin,
   for (auto i = 0U; i < numAudioOutputs; ++i)
   {
     audioports->get(plugin, i, false, &info);
-    // LOG << "  - output " << i << " " << info.name << std::endl;
     outputChannelByBus.push_back(info.channel_count);
     totalOutputChannels += info.channel_count;
     if (info.flags & CLAP_AUDIO_PORT_IS_MAIN) mainOutput = i;
   }
 
   assert(totalOutputChannels + totalInputChannels < utilityBufferMaxChannels);
-  if (numAudioInputs > 0) LOG << "main audio input is " << mainInput << std::endl;
-
-  if (numAudioOutputs > 0) LOG << "main audio output is " << mainOutput << std::endl;
 }
 
 void StandaloneHost::setupMIDIBusses(const clap_plugin_t *plugin,
@@ -97,13 +92,12 @@ void StandaloneHost::setupMIDIBusses(const clap_plugin_t *plugin,
     {
       hasClapNoteInput = true;
     }
-    LOG << "Set up input: midi=" << hasMIDIInput << " clapNote=" << hasClapNoteInput << std::endl;
   }
   auto numMIDIOutPorts = noteports->count(plugin, false);
   if (numMIDIOutPorts > 0)
   {
     createsMidiOutput = true;
-    LOG << "Midi Output not supported yet" << std::endl;
+    LOGINFO("[WARNING] Midi Output not supported yet");
   }
 }
 
@@ -127,8 +121,7 @@ void StandaloneHost::clapProcess(void *pOutput, const void *pInput, uint32_t fra
   assert(frameCount < utilityBufferSize);
   if (frameCount >= utilityBufferSize)
   {
-    LOG << "frameCount " << frameCount << " is beyond utility buffer size " << utilityBufferSize
-        << std::endl;
+    LOGINFO("frameCount {} is beyond utility buffer size {}", frameCount, utilityBufferSize);
     std::terminate();
   }
 
@@ -327,7 +320,7 @@ bool StandaloneHost::saveStandaloneAndPluginSettings(const fs::path &intoDir, co
   std::ofstream ofs(intoDir / withName, std::ios::out | std::ios::binary);
   if (!ofs.is_open())
   {
-    LOG << "Unable to open for writing " << (intoDir / withName).u8string() << std::endl;
+    LOGINFO("[ERROR] Unable to open for writing '{}'", (intoDir / withName).u8string());
     return false;
   }
   if (!clapPlugin || !clapPlugin->_ext._state)
@@ -352,7 +345,6 @@ bool StandaloneHost::tryLoadStandaloneAndPluginSettings(const fs::path &fromDir,
   std::ifstream ifs(fsp, std::ios::in | std::ios::binary);
   if (!ifs.is_open())
   {
-    LOG << "Unable to open for reading " << fsp.u8string() << std::endl;
     return false;
   }
   if (!clapPlugin || !clapPlugin->_ext._state)
@@ -376,8 +368,7 @@ void StandaloneHost::activatePlugin(int32_t sr, int32_t minBlock, int32_t maxBlo
     isActive = false;
   }
 
-  LOG << "Activating plugin : sampleRate=" << sr << " blockBounds=" << minBlock << " to " << maxBlock
-      << std::endl;
+  LOGINFO("Activating plugin : sampleRate={} blockBounds={} to {}", sr, minBlock, maxBlock);
   clapPlugin->setSampleRate(sr);
   clapPlugin->setBlockSizes(minBlock, maxBlock);
   clapPlugin->activate();
