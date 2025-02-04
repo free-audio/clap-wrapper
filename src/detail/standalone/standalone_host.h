@@ -82,12 +82,10 @@ struct StandaloneHost : Clap::IHost
   {
     if (event->size > eventSize)
     {
-      LOG << "BAD EVENT" << std::endl;
       return false;
     }
     if (currInput >= maxEventsPerCycle)
     {
-      LOG << "TOO MANY EVENTS" << std::endl;
       return false;
     }
     memcpy((void *)(eventQueue + currInput * eventSize), (const void *)event, event->size);
