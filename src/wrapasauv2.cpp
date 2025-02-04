@@ -1315,7 +1315,9 @@ OSStatus WrapAsAUV2::ChangeStreamFormat(AudioUnitScope inScope, AudioUnitElement
                                         const AudioStreamBasicDescription& inNewFormat)
 {
   // LOGINFO("ChangedStreamFormat called {} {}", inScope, inNewFormat.mChannelsPerFrame);
-  return noErr;
+  auto res = ausdk::AUBase::ChangeStreamFormat(inScope, inElement, inPrevFormat, inNewFormat);
+
+  return res;
 }
 
 UInt32 WrapAsAUV2::SupportedNumChannels(const AUChannelInfo** outInfo)
