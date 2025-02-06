@@ -2,7 +2,7 @@
 
 // @class AudioSettingsWindowDelegate;
 
-@interface AppDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate>
+@interface ClapWrapperAppDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate>
 {
   // AudioSettingsWindowDelegate *audioSettingsWindowDelegate;
 }
