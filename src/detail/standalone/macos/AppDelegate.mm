@@ -10,7 +10,7 @@
 
 #include "detail/clap/fsutil.h"
 
-@interface AppDelegate ()
+@interface ClapWrapperAppDelegate ()
 
 @end
 
@@ -25,7 +25,7 @@
 
 @end
 
-@implementation AppDelegate
+@implementation ClapWrapperAppDelegate
 
 - (void)timerCallback:(NSTimer *)instance
 {
