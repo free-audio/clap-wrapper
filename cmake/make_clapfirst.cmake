@@ -1,30 +1,54 @@
-# This code is 'where we are going' but not 'where we are yet' way to make clap wrapped plugins
-# easily. Right now we are developing it and it is subject to change. When this message is replaced
-# with some basic documentation, you are probably safe, but until then, chat with baconpaul or timo
-# on discord before you use it ok?
+# The initial version of 'clap first' cmake support in a simple wrapper. This is subject
+# to some syntactic change as we move the wrapper ahead, but the semantics and actions are
+# stable.
+#
+# For examples see `tests/clap-first-example` or `https://github.com/baconpaul/six-sines`
+#
+
+
+
+# make_clapfirst_plugins assembles plugins in all formats - CLAP, VST3, AUv2, Standalone etc
+# from two assets you provide. The first is a static library which contains symbols for the
+# functions clap_init, clap_deinit, and clap_getfactory, named whatever you want. This is
+# where 99.99% of your development will be. The second is a single c++ file which generates
+# a clap_entry structure with the three functions provided in your static library.
+#
+# make_clap_first then assembles a clap, vst3, auv2 etc by recompiling the clap entry
+# tiny file for each plugin format and introducing it to the plugin protocl, either by
+# direct export with the clap or by other methods with the other formats. This assembled
+# wrapper then links to your static library for your functions.
+#
+# This means in practice you just write a clap, but write it as a static lib not a dynamic
+# lib, introduce a small fragment of c++ to make an export, and voila, you have all the formats
+# in self contained standalone assembled items.
 
 function(make_clapfirst_plugins)
     set(oneValueArgs
-            TARGET_NAME
-            IMPL_TARGET
+            TARGET_NAME   # name of the output target. It will be postpended _clap, _vst3, _all
+            IMPL_TARGET   # name of the target you set up with your static library
 
-            OUTPUT_NAME
+            OUTPUT_NAME   # output name of your CLAP, VST3, etc...
 
-            ENTRY_SOURCE
+            ENTRY_SOURCE  # source file of the small cpp with the export directives and link to init
 
-            BUNDLE_IDENTIFIER
+            BUNDLE_IDENTIFIER  # macos bundle identifier and builds
             BUNDLE_VERSION
 
-            COPY_AFTER_BUILD
+            COPY_AFTER_BUILD # If true, on mac and lin the clap/vst3/etc... will install locally
 
-            STANDALONE_MACOS_ICON
+            STANDALONE_MACOS_ICON # Icons for standalone
             STANDALONE_WINDOWS_ICON
 
             ASSET_OUTPUT_DIRECTORY
+
+            AUV2_MANUFACTURER_NAME # The AUV2 info. If absent we will probe the CLAP for the
+            AUV2_MANUFACTURER_CODE # auv2 extension
+            AUV2_SUBTYPE_CODE
+            AUV2_INSTRUMENT_TYPE
     )
     set(multiValueArgs
-            PLUGIN_FORMATS
-            STANDALONE_CONFIGURATIONS
+            PLUGIN_FORMATS   # A list of plugin formats, "CLAP" "VST3" "AUV2"
+            STANDALONE_CONFIGURATIONS # standalone configuration. This is a list of target names and clap ids
     )
     cmake_parse_arguments(C1ST "" "${oneValueArgs}" "${multiValueArgs}" ${ARGN} )
 
@@ -130,14 +154,28 @@ function(make_clapfirst_plugins)
         add_library(${AUV2_TARGET} MODULE)
         target_sources(${AUV2_TARGET} PRIVATE ${C1ST_ENTRY_SOURCE})
         target_link_libraries(${AUV2_TARGET} PRIVATE ${C1ST_IMPL_TARGET})
-        target_add_auv2_wrapper(
-                TARGET ${AUV2_TARGET}
-                OUTPUT_NAME "${C1ST_OUTPUT_NAME}"
-                BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFER}.auv2"
-                BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
+        if (DEFINED C1ST_AUV2_MANUFACTURER_CODE)
+            target_add_auv2_wrapper(
+                    TARGET ${AUV2_TARGET}
+                    OUTPUT_NAME "${C1ST_OUTPUT_NAME}"
+                    BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFER}.auv2"
+                    BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
 
-                CLAP_TARGET_FOR_CONFIG "${CLAP_TARGET}"
-        )
+                    MANUFACTURER_NAME "${C1ST_AUV2_MANUFACTURER_NAME}"
+                    MANUFACTURER_CODE "${C1ST_AUV2_MANUFACTURER_CODE}"
+                    SUBTYPE_CODE "${C1ST_AUV2_SUBTYPE_CODE}"
+                    INSTRUMENT_TYPE "${C1ST_AUV2_INSTRUMENT_TYPE}"
+            )
+        else()
+            target_add_auv2_wrapper(
+                    TARGET ${AUV2_TARGET}
+                    OUTPUT_NAME "${C1ST_OUTPUT_NAME}"
+                    BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFER}.auv2"
+                    BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
+
+                    CLAP_TARGET_FOR_CONFIG "${CLAP_TARGET}"
+            )
+        endif()
 
         if (DEFINED C1ST_ASSET_OUTPUT_DIRECTORY)
             set_target_properties(${AUV2_TARGET} PROPERTIES
