@@ -35,6 +35,13 @@ make_clapfirst_plugins(
 
         ASSET_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${PROJECT_NAME}_assets
 
+        # You can set up the AUv2 for a single plugin here, or you can
+        # set it up with the auv2 extension in your clap
+        AUV2_MANUFACTURER_NAME "Free Audio"
+        AUV2_MANUFACTURER_CODE "FrAD"
+        AUV2_SUBTYPE_CODE "BdDt"
+        AUV2_INSTRUMENT_TYPE "aufx"
+
         # You can add a target-per-standalone you want. Syntax here is
         #   target-postfix output-name clap-id
         # This allows you to make multiple standalones from a multi-plugin clap

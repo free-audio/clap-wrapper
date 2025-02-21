@@ -40,6 +40,11 @@ function(make_clapfirst_plugins)
             STANDALONE_WINDOWS_ICON
 
             ASSET_OUTPUT_DIRECTORY
+
+            AUV2_MANUFACTURER_NAME # The AUV2 info. If absent we will probe the CLAP for the
+            AUV2_MANUFACTURER_CODE # auv2 extension
+            AUV2_SUBTYPE_CODE
+            AUV2_INSTRUMENT_TYPE
     )
     set(multiValueArgs
             PLUGIN_FORMATS   # A list of plugin formats, "CLAP" "VST3" "AUV2"
@@ -149,14 +154,28 @@ function(make_clapfirst_plugins)
         add_library(${AUV2_TARGET} MODULE)
         target_sources(${AUV2_TARGET} PRIVATE ${C1ST_ENTRY_SOURCE})
         target_link_libraries(${AUV2_TARGET} PRIVATE ${C1ST_IMPL_TARGET})
-        target_add_auv2_wrapper(
-                TARGET ${AUV2_TARGET}
-                OUTPUT_NAME "${C1ST_OUTPUT_NAME}"
-                BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFER}.auv2"
-                BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
+        if (DEFINED C1ST_AUV2_MANUFACTURER_CODE)
+            target_add_auv2_wrapper(
+                    TARGET ${AUV2_TARGET}
+                    OUTPUT_NAME "${C1ST_OUTPUT_NAME}"
+                    BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFER}.auv2"
+                    BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
 
-                CLAP_TARGET_FOR_CONFIG "${CLAP_TARGET}"
-        )
+                    MANUFACTURER_NAME "${C1ST_AUV2_MANUFACTURER_NAME}"
+                    MANUFACTURER_CODE "${C1ST_AUV2_MANUFACTURER_CODE}"
+                    SUBTYPE_CODE "${C1ST_AUV2_SUBTYPE_CODE}"
+                    INSTRUMENT_TYPE "${C1ST_AUV2_INSTRUMENT_TYPE}"
+            )
+        else()
+            target_add_auv2_wrapper(
+                    TARGET ${AUV2_TARGET}
+                    OUTPUT_NAME "${C1ST_OUTPUT_NAME}"
+                    BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFER}.auv2"
+                    BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
+
+                    CLAP_TARGET_FOR_CONFIG "${CLAP_TARGET}"
+            )
+        endif()
 
         if (DEFINED C1ST_ASSET_OUTPUT_DIRECTORY)
             set_target_properties(${AUV2_TARGET} PROPERTIES
