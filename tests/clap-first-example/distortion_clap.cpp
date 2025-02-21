@@ -1,6 +1,6 @@
 /*
  * This implements a distortion CLAP and creates the appropriate factory
- * methods as a static library, which are then consumed by the various plugins
+ * methods and entry as a static library, which are then consumed by the various plugins
  * via distortion_clap_entry
  *
  * The DSP here is bad. Really. This is an example you don't want to use this for music.
@@ -13,8 +13,10 @@
 #include <clap/clap.h>
 #include <math.h>
 #include <assert.h>
+#include "distortion_clap_entry.h"
 
-static const char *features[] = {CLAP_PLUGIN_FEATURE_AUDIO_EFFECT, CLAP_PLUGIN_FEATURE_STEREO, CLAP_PLUGIN_FEATURE_DISTORTION, nullptr};
+static const char *features[] = {CLAP_PLUGIN_FEATURE_AUDIO_EFFECT, CLAP_PLUGIN_FEATURE_STEREO,
+                                 CLAP_PLUGIN_FEATURE_DISTORTION, nullptr};
 
 static const clap_plugin_descriptor_t s_clap1stDist_desc = {
     CLAP_VERSION_INIT,
@@ -26,8 +28,7 @@ static const clap_plugin_descriptor_t s_clap1stDist_desc = {
     "",
     "1.0.0",
     "A few sloppy distortion algorithms using naive waveshapers",
-    &features[0]
-};
+    &features[0]};
 
 enum ClipType
 {
@@ -68,7 +69,7 @@ static uint32_t clap1stDist_audio_ports_count(const clap_plugin_t *plugin, bool 
 }
 
 static bool clap1stDist_audio_ports_get(const clap_plugin_t *plugin, uint32_t index, bool is_input,
-                                    clap_audio_port_info_t *info)
+                                        clap_audio_port_info_t *info)
 {
   if (index > 0) return false;
   info->id = 0;
@@ -97,7 +98,7 @@ uint32_t clap1stDist_param_count(const clap_plugin_t *plugin)
   return 3;
 }
 bool clap1stDist_param_get_info(const clap_plugin_t *plugin, uint32_t param_index,
-                            clap_param_info_t *param_info)
+                                clap_param_info_t *param_info)
 {
   switch (param_index)
   {
@@ -161,7 +162,7 @@ bool clap1stDist_param_get_value(const clap_plugin_t *plugin, clap_id param_id, 
   return false;
 }
 bool clap1stDist_param_value_to_text(const clap_plugin_t *plugin, clap_id param_id, double value,
-                                 char *display, uint32_t size)
+                                     char *display, uint32_t size)
 {
   auto *plug = (clap1st_distortion_plug *)plugin->plugin_data;
 
@@ -195,13 +196,13 @@ bool clap1stDist_param_value_to_text(const clap_plugin_t *plugin, clap_id param_
   return false;
 }
 bool clap1stDist_text_to_value(const clap_plugin_t *plugin, clap_id param_id, const char *display,
-                           double *value)
+                               double *value)
 {
   // I'm not going to bother to support this
   return false;
 }
 void clap1stDist_flush(const clap_plugin_t *plugin, const clap_input_events_t *in,
-                   const clap_output_events_t *out)
+                       const clap_output_events_t *out)
 {
   auto *plug = (clap1st_distortion_plug *)plugin->plugin_data;
 
@@ -215,12 +216,9 @@ void clap1stDist_flush(const clap_plugin_t *plugin, const clap_input_events_t *i
   }
 }
 
-static const clap_plugin_params_t s_clap1stDist_params = {clap1stDist_param_count,
-                                                      clap1stDist_param_get_info,
-                                                      clap1stDist_param_get_value,
-                                                      clap1stDist_param_value_to_text,
-                                                      clap1stDist_text_to_value,
-                                                      clap1stDist_flush};
+static const clap_plugin_params_t s_clap1stDist_params = {
+    clap1stDist_param_count,         clap1stDist_param_get_info, clap1stDist_param_get_value,
+    clap1stDist_param_value_to_text, clap1stDist_text_to_value,  clap1stDist_flush};
 
 bool clap1stDist_state_save(const clap_plugin_t *plugin, const clap_ostream_t *stream)
 {
@@ -278,8 +276,7 @@ bool clap1stDist_state_load(const clap_plugin_t *plugin, const clap_istream_t *s
 
   return true;
 }
-static const clap_plugin_state_t s_clap1stDist_state = {clap1stDist_state_save,
-                                                    clap1stDist_state_load};
+static const clap_plugin_state_t s_clap1stDist_state = {clap1stDist_state_save, clap1stDist_state_load};
 
 /////////////////
 // clap_plugin //
@@ -311,7 +308,7 @@ static void clap1stDist_destroy(const struct clap_plugin *plugin)
 }
 
 static bool clap1stDist_activate(const struct clap_plugin *plugin, double sample_rate,
-                             uint32_t min_frames_count, uint32_t max_frames_count)
+                                 uint32_t min_frames_count, uint32_t max_frames_count)
 {
   return true;
 }
@@ -362,7 +359,7 @@ static void clap1stDist_process_event(clap1st_distortion_plug *plug, const clap_
 }
 
 static clap_process_status clap1stDist_process(const struct clap_plugin *plugin,
-                                           const clap_process_t *process)
+                                               const clap_process_t *process)
 {
   auto *plug = (clap1st_distortion_plug *)plugin->plugin_data;
 
@@ -497,7 +494,7 @@ const clap_plugin_descriptor_t *plugin_factory_get_plugin_descriptor(
 }
 
 const clap_plugin_t *plugin_factory_create_plugin(const struct clap_plugin_factory *factory,
-                                                         const clap_host_t *host, const char *plugin_id)
+                                                  const clap_host_t *host, const char *plugin_id)
 {
   if (!clap_version_is_compatible(host->clap_version))
   {
@@ -506,5 +503,28 @@ const clap_plugin_t *plugin_factory_create_plugin(const struct clap_plugin_facto
 
   if (!strcmp(plugin_id, s_clap1stDist_desc.id)) return clap1stDist_create(host);
 
+  return nullptr;
+}
+
+static const clap_plugin_factory_t s_plugin_factory = {
+    plugin_factory_get_plugin_count,
+    plugin_factory_get_plugin_descriptor,
+    plugin_factory_create_plugin,
+};
+
+bool dist_entry_init(const char *plugin_path)
+{
+  // called only once, and very first
+  return true;
+}
+
+void dist_entry_deinit(void)
+{
+  // called before unloading the DSO
+}
+
+const void *dist_entry_get_factory(const char *factory_id)
+{
+  if (!strcmp(factory_id, CLAP_PLUGIN_FACTORY_ID)) return &s_plugin_factory;
   return nullptr;
 }

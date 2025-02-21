@@ -215,7 +215,7 @@ jobs:
       - name: Build project
         run: |
           cmake -S . -B ./build ${{ matrix.cmakeargs }} -DCMAKE_BUILD_TYPE=Debug -DCLAP_WRAPPER_DOWNLOAD_DEPENDENCIES=TRUE -DCLAP_WRAPPER_BUILD_TESTS=TRUE
-          cmake --build ./build --config Debug --target clap-first-distortion_all_plugins
+          cmake --build ./build --config Debug --target clap-first-distortion_all
 
       - name: Show Build Results
         shell: bash
