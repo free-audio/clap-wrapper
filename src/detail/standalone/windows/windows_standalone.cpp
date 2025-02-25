@@ -2,6 +2,22 @@
 
 namespace freeaudio::clap_wrapper::standalone::windows_standalone
 {
+std::pair<int, std::vector<std::string>> getArgs()
+{
+  int argc{0};
+  wil::unique_hlocal_ptr<wchar_t*[]> buffer;
+  buffer.reset(::CommandLineToArgvW(::GetCommandLineW(), &argc));
+
+  std::vector<std::string> argv;
+
+  for (int i = 0; i < argc; i++)
+  {
+    argv.emplace_back(toUTF8(buffer[i]));
+  }
+
+  return {argc, argv};
+}
+
 ::HMODULE getInstance()
 {
   ::HMODULE module;
@@ -591,11 +607,9 @@ void SystemMenu::populate(::HWND hwnd)
   }
 }
 
-Plugin::Plugin(const clap_plugin_entry* entry, int argc, char** argv)
+Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin)
 {
-  plugin.clap =
-      freeaudio::clap_wrapper::standalone::mainCreatePlugin(entry, PLUGIN_ID, PLUGIN_INDEX, argc, argv);
-
+  plugin.clap = clapPlugin;
   plugin.plugin = plugin.clap->_plugin;
   plugin.gui = plugin.clap->_ext._gui;
   plugin.state = plugin.clap->_ext._state;
