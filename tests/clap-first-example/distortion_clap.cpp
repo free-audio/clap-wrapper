@@ -274,6 +274,14 @@ bool clap1stDist_state_load(const clap_plugin_t *plugin, const clap_istream_t *s
   memcpy(&plug->mix, buffer + 8, sizeof(float));
   memcpy(&plug->mode, buffer + 12, sizeof(int32_t));
 
+  const clap_host_t* clapHost = plug->host;
+  const clap_host_params_t * p = (const clap_host_params_t *)(clapHost->get_extension(clapHost, CLAP_EXT_PARAMS));
+  if (p)
+  {
+    p->rescan(clapHost, CLAP_PARAM_RESCAN_VALUES);
+    p->rescan(clapHost, CLAP_PARAM_RESCAN_TEXT);
+    p->request_flush(clapHost);
+  }
   return true;
 }
 static const clap_plugin_state_t s_clap1stDist_state = {clap1stDist_state_save, clap1stDist_state_load};
