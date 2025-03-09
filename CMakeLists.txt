@@ -152,3 +152,5 @@ endif()
 if (${CLAP_WRAPPER_BUILD_TESTS})
     add_subdirectory(tests)
 endif()
+
+add_subdirectory(cli)
