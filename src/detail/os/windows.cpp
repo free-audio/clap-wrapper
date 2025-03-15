@@ -13,6 +13,7 @@
 #include <tchar.h>
 #include "public.sdk/source/main/moduleinit.h"
 #include "osutil.h"
+#include <fmt/xchar.h>
 
 // from dllmain.cpp of the VST3 SDK
 extern HINSTANCE ghInst;
@@ -107,19 +108,23 @@ LRESULT WindowsHelper::Wndproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
   }
 }
 
+static std::wstring helperClassName(HINSTANCE hinst)
+{
+  return fmt::format(L"clapwrapper{}", (void*)hinst);
+}
+
 void WindowsHelper::init()
 {
-  auto modulename = getPluginPath();
+  auto className = helperClassName(ghInst);
   WNDCLASSEXW wc;
   memset(&wc, 0, sizeof(wc));
   wc.cbSize = sizeof(wc);
   wc.hInstance = ghInst;
   wc.lpfnWndProc = (WNDPROC)&Wndproc;
-  wc.lpszClassName = modulename.c_str();
-  /* auto a = */
+  wc.lpszClassName = className.c_str();
   RegisterClassExW(&wc);
 
-  _msgWin = CreateWindowExW(0, modulename.c_str(), NULL, 0, 0, 0, 0, 0, HWND_MESSAGE, 0, 0, 0);
+  _msgWin = CreateWindowExW(0, className.c_str(), NULL, 0, 0, 0, 0, 0, HWND_MESSAGE, 0, 0, 0);
   SetWindowLongW(_msgWin, GWLP_WNDPROC, (LONG_PTR)&Wndproc);
   _timer = SetTimer(_msgWin, 0, 20, NULL);
 }
@@ -128,7 +133,7 @@ void WindowsHelper::terminate()
 {
   KillTimer(_msgWin, _timer);
   DestroyWindow(_msgWin);
-  UnregisterClassW(getPluginPath().c_str(), ghInst);
+  UnregisterClassW(helperClassName(ghInst).c_str(), ghInst);
 }
 
 void WindowsHelper::executeDefered()
