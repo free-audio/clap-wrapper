@@ -103,7 +103,7 @@ LRESULT WindowsHelper::Wndproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
       return 1;
       break;
     default:
-      return ::DefWindowProc(hwnd, msg, wParam, lParam);
+      return DefWindowProc(hwnd, msg, wParam, lParam);
   }
 }
 
@@ -119,16 +119,16 @@ void WindowsHelper::init()
   /* auto a = */
   RegisterClassExW(&wc);
 
-  _msgWin = ::CreateWindowExW(0, modulename.c_str(), NULL, 0, 0, 0, 0, 0, HWND_MESSAGE, 0, 0, 0);
-  ::SetWindowLongW(_msgWin, GWLP_WNDPROC, (LONG_PTR)&Wndproc);
-  _timer = ::SetTimer(_msgWin, 0, 20, NULL);
+  _msgWin = CreateWindowExW(0, modulename.c_str(), NULL, 0, 0, 0, 0, 0, HWND_MESSAGE, 0, 0, 0);
+  SetWindowLongW(_msgWin, GWLP_WNDPROC, (LONG_PTR)&Wndproc);
+  _timer = SetTimer(_msgWin, 0, 20, NULL);
 }
 
 void WindowsHelper::terminate()
 {
-  ::KillTimer(_msgWin, _timer);
-  ::DestroyWindow(_msgWin);
-  ::UnregisterClassW(getPluginPath().c_str(), ghInst);
+  KillTimer(_msgWin, _timer);
+  DestroyWindow(_msgWin);
+  UnregisterClassW(getPluginPath().c_str(), ghInst);
 }
 
 void WindowsHelper::executeDefered()
