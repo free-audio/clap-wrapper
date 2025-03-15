@@ -120,7 +120,7 @@ uint64_t getTickInMS()
   return (::clock() * 1000) / CLOCKS_PER_SEC;
 }
 
-fs::path getBundlePath()
+fs::path getModulePath()
 {
   Dl_info info;
   if (dladdr((void*)getBundlePath, &info))
@@ -132,19 +132,14 @@ fs::path getBundlePath()
   return {};
 }
 
-std::string getModulePath()
-{
-  return getBundlePath().string();
-}
-
 std::string getParentFolderName()
 {
-  return getBundlePath().parent_path().stem();
+  return getModulePath().parent_path().stem();
 }
 
 std::string getBinaryName()
 {
-  return getBundlePath().stem();
+  return getModulePath().stem();
 }
 
 }  // namespace os

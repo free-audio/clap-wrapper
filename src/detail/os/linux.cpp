@@ -73,14 +73,14 @@ static Steinberg::ModuleTerminator dropMessageWindow([] { gLinuxHelper.terminate
 	}
 #endif
 
-std::string getModulePath()
+fs::path getModulePath()
 {
   Dl_info info;
   if (dladdr((void*)getModulePath, &info))
   {
     return info.dli_fname;
   }
-  return std::string();
+  return {};
 }
 
 std::string getParentFolderName()

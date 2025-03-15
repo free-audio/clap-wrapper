@@ -293,8 +293,8 @@ Library::Library()
 #if STATICALLY_LINKED_CLAP_ENTRY
   _pluginEntry = &clap_entry;
   _selfcontained = true;
-  std::string path = os::getModulePath();
-  setupPluginsFromPluginEntry(path.c_str());
+  fs::path path = os::getModulePath();
+  setupPluginsFromPluginEntry(path.u8string().c_str());
   return;
 #endif
 

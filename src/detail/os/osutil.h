@@ -9,6 +9,7 @@
 #include <functional>
 
 #include "log.h"
+#include "fs.h"
 
 namespace os
 {
@@ -63,7 +64,9 @@ class IPlugObject
 void attach(IPlugObject* plugobject);
 void detach(IPlugObject* plugobject);
 uint64_t getTickInMS();
-std::string getModulePath();
+
+// Used for clap_plugin_entry.init(). Path to DSO (Linux, Windows), or the bundle (macOS).
+fs::path getModulePath();
 std::string getParentFolderName();
 std::string getBinaryName();
 }  // namespace os
