@@ -301,7 +301,9 @@ Library::Library()
 #if WIN
   fs::path modulename;
   HMODULE selfmodule;
-  if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCWSTR)ffeomwe, &selfmodule))
+  if (GetModuleHandleExW(
+          GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+          (LPCWSTR)ffeomwe, &selfmodule))
   {
     std::wstring p;
     auto size = GetModuleFileNameW(selfmodule, nullptr, 0);

@@ -44,7 +44,9 @@ static TCHAR* getModuleName()
 {
   static TCHAR modulename[2048];
   HMODULE selfmodule;
-  if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCTSTR)getModuleName, &selfmodule))
+  if (GetModuleHandleEx(
+          GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+          (LPCTSTR)getModuleName, &selfmodule))
   {
     /* auto size = */
     GetModuleFileName(selfmodule, modulename, 2048);
