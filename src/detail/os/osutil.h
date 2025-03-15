@@ -66,7 +66,7 @@ void detach(IPlugObject* plugobject);
 uint64_t getTickInMS();
 
 // Used for clap_plugin_entry.init(). Path to DSO (Linux, Windows), or the bundle (macOS).
-fs::path getModulePath();
+fs::path getPluginPath();
 std::string getParentFolderName();
 std::string getBinaryName();
 }  // namespace os

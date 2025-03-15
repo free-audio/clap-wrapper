@@ -40,13 +40,13 @@ class WindowsHelper
 static Steinberg::ModuleInitializer createMessageWindow([] { gWindowsHelper.init(); });
 static Steinberg::ModuleTerminator dropMessageWindow([] { gWindowsHelper.terminate(); });
 
-fs::path getModulePath()
+fs::path getPluginPath()
 {
   fs::path modulePath{};
   HMODULE selfmodule;
   if (GetModuleHandleExW(
           GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-          (LPCWSTR)getModulePath, &selfmodule))
+          (LPCWSTR)getPluginPath, &selfmodule))
   {
     std::wstring p;
     auto size = GetModuleFileNameW(selfmodule, nullptr, 0);
@@ -69,7 +69,7 @@ fs::path getModulePath()
 
 std::string getParentFolderName()
 {
-  std::filesystem::path n = getModulePath();
+  std::filesystem::path n = getPluginPath();
   if (n.has_parent_path())
   {
     auto p = n.parent_path();
@@ -84,7 +84,7 @@ std::string getParentFolderName()
 
 std::string getBinaryName()
 {
-  std::filesystem::path n = getModulePath();
+  std::filesystem::path n = getPluginPath();
   if (n.has_filename())
   {
     return n.stem().u8string();
@@ -110,7 +110,7 @@ LRESULT WindowsHelper::Wndproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 
 void WindowsHelper::init()
 {
-  auto modulename = getModulePath();
+  auto modulename = getPluginPath();
   WNDCLASSEXW wc;
   memset(&wc, 0, sizeof(wc));
   wc.cbSize = sizeof(wc);
@@ -129,7 +129,7 @@ void WindowsHelper::terminate()
 {
   ::KillTimer(_msgWin, _timer);
   ::DestroyWindow(_msgWin);
-  ::UnregisterClassW(getModulePath().c_str(), ghInst);
+  ::UnregisterClassW(getPluginPath().c_str(), ghInst);
 }
 
 void WindowsHelper::executeDefered()
