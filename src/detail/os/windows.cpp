@@ -48,21 +48,19 @@ fs::path getPluginPath()
           GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
           (LPCWSTR)getPluginPath, &selfmodule))
   {
-    std::wstring p;
-    auto size = GetModuleFileNameW(selfmodule, nullptr, 0);
-    if (size == 0)
+    DWORD bufferSize = MAX_PATH;
+    std::wstring buffer(bufferSize, L'\0');
+
+    DWORD length = GetModuleFileNameW(selfmodule, buffer.data(), bufferSize);
+
+    while (length == bufferSize && GetLastError() == ERROR_INSUFFICIENT_BUFFER)
     {
-      LOGINFO("[ERROR] GetModuleFileNameW failed, win32 code: {}", GetLastError());
-      return {};
+      bufferSize *= 2;
+      buffer.resize(bufferSize);
+      length = GetModuleFileNameW(selfmodule, buffer.data(), bufferSize);
     }
-    p.resize(size);
-    size = GetModuleFileNameW(selfmodule, &p[0], size);
-    modulePath = std::move(p);
-  }
-  else
-  {
-    LOGINFO("[ERROR] GetModuleHandleExW failed, win32 code: {}", GetLastError());
-    return {};
+    buffer.resize(length);
+    modulePath = std::move(buffer);
   }
   return modulePath;
 }

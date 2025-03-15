@@ -305,11 +305,19 @@ Library::Library()
           GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
           (LPCWSTR)ffeomwe, &selfmodule))
   {
-    std::wstring p;
-    auto size = GetModuleFileNameW(selfmodule, nullptr, 0);
-    p.resize(size);
-    size = GetModuleFileNameW(selfmodule, &p[0], size);
-    modulename = std::move(p);
+    DWORD bufferSize = MAX_PATH;
+    std::wstring buffer(bufferSize, L'\0');
+
+    DWORD length = GetModuleFileNameW(selfmodule, buffer.data(), bufferSize);
+
+    while (length == bufferSize && GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+    {
+      bufferSize *= 2;
+      buffer.resize(bufferSize);
+      length = GetModuleFileNameW(selfmodule, buffer.data(), bufferSize);
+    }
+    buffer.resize(length);
+    modulename = std::move(buffer);
   }
   if (selfmodule)
   {
