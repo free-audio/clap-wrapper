@@ -16,15 +16,10 @@
 #endif
 #include "osutil.h"
 #include <vector>
-#if MACOS_USE_STD_FILESYSTEM
-#include <filesystem>
-namespace fs = std::filesystem;
-#else
-#include "ghc/filesystem.hpp"
-namespace fs = ghc::filesystem;
-#endif
 #include <iostream>
 #include <dlfcn.h>
+
+#include "detail/os/fs.h"
 
 namespace os
 {
