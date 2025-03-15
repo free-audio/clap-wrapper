@@ -123,7 +123,7 @@ uint64_t getTickInMS()
 fs::path getPluginPath()
 {
   Dl_info info;
-  if (dladdr((void*)getBundlePath, &info))
+  if (dladdr((void*)getPluginPath, &info))
   {
     fs::path binaryPath = info.dli_fname;
     return binaryPath.parent_path().parent_path().parent_path();
