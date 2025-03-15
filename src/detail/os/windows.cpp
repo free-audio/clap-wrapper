@@ -13,7 +13,6 @@
 #include <tchar.h>
 #include "public.sdk/source/main/moduleinit.h"
 #include "osutil.h"
-#include <filesystem>
 
 // from dllmain.cpp of the VST3 SDK
 extern HINSTANCE ghInst;
@@ -69,7 +68,7 @@ fs::path getPluginPath()
 
 std::string getParentFolderName()
 {
-  std::filesystem::path n = getPluginPath();
+  fs::path n = getPluginPath();
   if (n.has_parent_path())
   {
     auto p = n.parent_path();
@@ -84,7 +83,7 @@ std::string getParentFolderName()
 
 std::string getBinaryName()
 {
-  std::filesystem::path n = getPluginPath();
+  fs::path n = getPluginPath();
   if (n.has_filename())
   {
     return n.stem().u8string();

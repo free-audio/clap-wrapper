@@ -748,7 +748,7 @@ Plugin::Plugin(const clap_plugin_entry* entry, int argc, char** argv)
                      wil::unique_cotaskmem_string result;
                      shellItem->GetDisplayName(SIGDN_FILESYSPATH, &result);
 
-                     auto saveFile{std::filesystem::path(result.get())};
+                     auto saveFile{fs::path(result.get())};
 
                      try
                      {
@@ -778,7 +778,7 @@ Plugin::Plugin(const clap_plugin_entry* entry, int argc, char** argv)
                      wil::unique_cotaskmem_string result;
                      shellItem->GetDisplayName(SIGDN_FILESYSPATH, &result);
 
-                     auto saveFile{std::filesystem::path(result.get())};
+                     auto saveFile{fs::path(result.get())};
 
                      try
                      {
@@ -1275,7 +1275,7 @@ bool Plugin::saveSettings()
 
   if (settingsPath.has_value())
   {
-    std::filesystem::create_directories(settingsPath.value() / plugin.plugin->desc->id);
+    fs::path::create_directories(settingsPath.value() / plugin.plugin->desc->id);
 
     settings.set<std::string>("audioApiName", sah->audioApiName);
     settings.set<double>("audioInputDeviceID", sah->audioInputDeviceID);

@@ -85,7 +85,7 @@ fs::path getPluginPath()
 
 std::string getParentFolderName()
 {
-  std::filesystem::path n = getPluginPath();
+  fs::path n = getPluginPath();
   if (n.has_parent_path())
   {
     auto p = n.parent_path();
@@ -95,17 +95,17 @@ std::string getParentFolderName()
     }
   }
 
-  return std::string();
+  return {};
 }
 
 std::string getBinaryName()
 {
-  std::filesystem::path n = getPluginPath();
+  fs::path n = getPluginPath();
   if (n.has_filename())
   {
     return n.stem().u8string();
   }
-  return std::string();
+  return {};
 }
 
 #if 0
