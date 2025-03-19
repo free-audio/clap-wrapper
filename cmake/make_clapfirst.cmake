@@ -107,7 +107,7 @@ function(make_clapfirst_plugins)
     set(ALL_TARGET ${C1ST_TARGET_NAME}_all)
     add_custom_target(${ALL_TARGET})
 
-    if ({BUILD_CLAP} GREATER -1)
+    if (${BUILD_CLAP} GREATER -1)
         message(STATUS "clap-wrapper: ClapFirst is making a CLAP")
         set(CLAP_TARGET ${C1ST_TARGET_NAME}_clap)
         add_library(${CLAP_TARGET} MODULE ${C1ST_ENTRY_SOURCE})
