@@ -1,10 +1,4 @@
-# This adds a WCLAP target, but should only be called when using Emscripten's toolchain.
-#
-# The following is a robust-ish way to detect Emscripten and set the EMSCRIPTEN flag, before any project/target is defined:
-#
-#   if (CMAKE_TOOLCHAIN_FILE MATCHES "/Emscripten\.cmake$" OR (DEFINED EMSCRIPTEN_SYSTEM_PROCESSOR) OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-#       set(EMSCRIPTEN 1)
-#   endif()
+# This adds a WCLAP target, but must only be called when using Emscripten's toolchain.
 
 function(target_add_wclap_configuration)
     set(oneValueArgs
@@ -12,6 +6,10 @@ function(target_add_wclap_configuration)
             OUTPUT_NAME
     )
     cmake_parse_arguments(TCLP "" "${oneValueArgs}" "" ${ARGN} )
+
+    if (NOT EMSCRIPTEN)
+        message(FATAL_ERROR "Do not call this outside the Emscripten toolchain")
+    endif()
 
     if (NOT DEFINED TCLP_TARGET)
         message(FATAL_ERROR "You must define TARGET in target_library_is_clap")
