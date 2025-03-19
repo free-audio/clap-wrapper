@@ -68,6 +68,7 @@ function(make_clapfirst_plugins)
     list(FIND C1ST_PLUGIN_FORMATS "CLAP" BUILD_CLAP)
     list(FIND C1ST_PLUGIN_FORMATS "VST3" BUILD_VST3)
     list(FIND C1ST_PLUGIN_FORMATS "AUV2" BUILD_AUV2)
+    list(FIND C1ST_PLUGIN_FORMATS "WCLAP" BUILD_WCLAP)
 
     if (${BUILD_CLAP} EQUAL -1)
         message(FATAL_ERROR "You must build a clap when making clap-first")
@@ -99,7 +100,7 @@ function(make_clapfirst_plugins)
     set(ALL_TARGET ${C1ST_TARGET_NAME}_all)
     add_custom_target(${ALL_TARGET})
 
-    if (${BUILD_CLAP} GREATER -1)
+    if (NOT EMSCRIPTEN AND ${BUILD_CLAP} GREATER -1)
         message(STATUS "clap-wrapper: ClapFirst is making a CLAP")
         set(CLAP_TARGET ${C1ST_TARGET_NAME}_clap)
         add_library(${CLAP_TARGET} MODULE ${C1ST_ENTRY_SOURCE})
@@ -123,7 +124,7 @@ function(make_clapfirst_plugins)
         add_dependencies(${ALL_TARGET} ${CLAP_TARGET})
     endif()
 
-    if (${BUILD_VST3} GREATER -1)
+    if (NOT EMSCRIPTEN AND ${BUILD_VST3} GREATER -1)
         message(STATUS "clap-wrapper: ClapFirst is making a VST3")
 
         set(VST3_TARGET ${C1ST_TARGET_NAME}_vst3)
@@ -148,7 +149,7 @@ function(make_clapfirst_plugins)
         add_dependencies(${ALL_TARGET} ${VST3_TARGET})
     endif()
 
-    if (APPLE AND ${BUILD_AUV2} GREATER -1)
+    if (NOT EMSCRIPTEN AND APPLE AND ${BUILD_AUV2} GREATER -1)
         message(STATUS "clap-wrapper: ClapFirst is making a AUv2")
         set(AUV2_TARGET ${C1ST_TARGET_NAME}_auv2)
         add_library(${AUV2_TARGET} MODULE)
@@ -185,7 +186,35 @@ function(make_clapfirst_plugins)
         add_dependencies(${ALL_TARGET} ${AUV2_TARGET})
     endif()
 
-    if (DEFINED C1ST_STANDALONE_CONFIGURATIONS)
+    if (EMSCRIPTEN AND ${BUILD_WCLAP} GREATER -1)
+        message(STATUS "clap-wrapper: ClapFirst is making a WCLAP (with Emscripten)")
+        set(WCLAP_TARGET ${C1ST_TARGET_NAME}_wclap)
+        add_executable(${WCLAP_TARGET} ${C1ST_ENTRY_SOURCE})
+        target_link_libraries(${WCLAP_TARGET} PRIVATE ${C1ST_IMPL_TARGET})
+        target_add_wclap_configuration(TARGET ${WCLAP_TARGET}
+                OUTPUT_NAME ${C1ST_OUTPUT_NAME}
+        )
+        if (DEFINED C1ST_ASSET_OUTPUT_DIRECTORY)
+	    # set the RUNTIME path because module.wasm are built as binaries (dynamic libraries for WASM aren't well-defined)
+            if (NOT WIN32)
+                set_target_properties(${WCLAP_TARGET} PROPERTIES
+                        RUNTIME_OUTPUT_DIRECTORY ${C1ST_ASSET_OUTPUT_DIRECTORY}/${C1ST_OUTPUT_NAME}.wclap)
+            else ()
+                set_target_properties(${WCLAP_TARGET} PROPERTIES
+                        RUNTIME_OUTPUT_DIRECTORY "${C1ST_ASSET_OUTPUT_DIRECTORY}/WCLAP/${C1ST_OUTPUT_NAME}.wclap")
+            endif()
+        endif()
+
+	# Emscripten flags
+        set_target_properties(${WCLAP_TARGET} PROPERTIES
+		COMPILE_FLAGS "-msimd128" # TODO: add this to the static library as well?
+        	LINK_FLAGS    "-msimd128 -sSTANDALONE_WASM --no-entry -s EXPORTED_FUNCTIONS=_clap_entry,_malloc -s INITIAL_MEMORY=512kb -s ALLOW_MEMORY_GROWTH=1 -s ALLOW_TABLE_GROWTH=1 -s PURE_WASI --export-table"
+        )
+
+        add_dependencies(${ALL_TARGET} ${WCLAP_TARGET})
+    endif()
+
+    if (NOT EMSCRIPTEN AND DEFINED C1ST_STANDALONE_CONFIGURATIONS)
         list(LENGTH C1ST_STANDALONE_CONFIGURATIONS salen)
         math(EXPR NUMSA "${salen}/3 - 1")
 

@@ -1,0 +1,39 @@
+# This adds a WCLAP target, but should only be called when using Emscripten's toolchain.
+#
+# The following is a robust-ish way to detect Emscripten and set the EMSCRIPTEN flag, before any project/target is defined:
+#
+#   if (CMAKE_TOOLCHAIN_FILE MATCHES "/Emscripten\.cmake$" OR (DEFINED EMSCRIPTEN_SYSTEM_PROCESSOR) OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+#       set(EMSCRIPTEN 1)
+#   endif()
+
+function(target_add_wclap_configuration)
+    set(oneValueArgs
+            TARGET
+            OUTPUT_NAME
+    )
+    cmake_parse_arguments(TCLP "" "${oneValueArgs}" "" ${ARGN} )
+
+    if (NOT DEFINED TCLP_TARGET)
+        message(FATAL_ERROR "You must define TARGET in target_library_is_clap")
+    endif()
+
+    if (NOT DEFINED TCLP_OUTPUT_NAME)
+        message(STATUS "Using target name as clap name in target_library_is_clap")
+        set(TCLP_OUTPUT_NAME TCLP_TARGET)
+    endif()
+
+    set_target_properties(${TCLP_TARGET}
+            PROPERTIES
+            OUTPUT_NAME "${TCLP_OUTPUT_NAME}"
+            SUFFIX ".wclap/module.wasm"
+            PREFIX ""
+    )
+    # Make sure directory exists
+    add_custom_command(TARGET ${TCLP_TARGET} PRE_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${TCLP_TARGET}>"
+    )
+
+    if (${CLAP_WRAPPER_COPY_AFTER_BUILD})
+        target_copy_after_build(TARGET ${TCLP_TARGET} FLAVOR wclap)
+    endif()
+endfunction(target_add_wclap_configuration)
