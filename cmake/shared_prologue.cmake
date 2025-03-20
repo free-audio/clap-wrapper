@@ -194,10 +194,24 @@ function(macos_bundle_flag)
     endif()
 
     if (NOT ${CMAKE_GENERATOR} STREQUAL "Xcode")
+        message(STATUS "clap-wrapper: will copy ${MBF_TARGET} bundle flag after build")
+        # Check if CLAP_WRAPPER_BUILD_AAX is enabled (default OFF if not defined)
+        if (NOT DEFINED CLAP_WRAPPER_BUILD_AAX)
+            set(CLAP_WRAPPER_BUILD_AAX OFF)
+        endif()
+
+        if (CLAP_WRAPPER_BUILD_AAX)
+            set(PKGINFO_FILE "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/cmake/macBundlePkgInfoAAX")
+        else()
+            set(PKGINFO_FILE "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/cmake/macBundlePkgInfo")
+        endif()
+
+        message(STATUS "HERE ${CLAP_WRAPPER_BUILD_AAX} ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/cmake/${PKGINFO_FILE}")
+
         add_custom_command(TARGET ${MBF_TARGET} POST_BUILD
             WORKING_DIRECTORY $<TARGET_PROPERTY:${MBF_TARGET},LIBRARY_OUTPUT_DIRECTORY>
             COMMAND ${CMAKE_COMMAND} -E copy
-                ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/cmake/macBundlePkgInfo
+                ${PKGINFO_FILE}
                 "$<TARGET_FILE_DIR:${MBF_TARGET}>/../PkgInfo")
     endif()
     set_target_properties(${MBF_TARGET}
