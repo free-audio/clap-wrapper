@@ -46,7 +46,3 @@ if (PROJECT_IS_TOP_LEVEL)
 		    PLUGIN_INDEX 0)
 	endif()
 endif()
-
-if (${CLAP_WRAPPER_BUILD_TESTS})
-    add_subdirectory(tests)
-endif()

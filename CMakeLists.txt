@@ -82,3 +82,7 @@ set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 set(CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR} CACHE STRING "Clap Wrapper Source Location")
 include(cmake/wrapper_functions.cmake)
 include(cmake/top_level_default.cmake)
+
+if (${CLAP_WRAPPER_BUILD_TESTS})
+    add_subdirectory(tests)
+endif()
