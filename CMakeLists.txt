@@ -103,13 +103,14 @@ if (${skipbuild})
 else()
 	# provide the CLAP_WRAPPER_OUTPUT_NAME to specify the matching plugin name.
 	if((NOT CLAP_WRAPPER_OUTPUT_NAME ) OR (CLAP_WRAPPER_OUTPUT_NAME STREQUAL ""))
-		set(CLAP_WRAPPER_OUTPUT_NAME "clapasvst3")
-		message(WARNING "clap-wrapper: CLAP_WRAPPER_OUTPUT_NAME not set - continuing with a default name `clapasvst3`")
+		set(CLAP_WRAPPER_OUTPUT_NAME "clap")
+		message(WARNING "clap-wrapper: CLAP_WRAPPER_OUTPUT_NAME not set - continuing with a default name `clap`")
 	endif()
 
 	string(MAKE_C_IDENTIFIER ${CLAP_WRAPPER_OUTPUT_NAME} pluginname)
 
 	# Link the actual plugin library
+	if (${CLAP_WRAPPER_BUILD_VST3})
 	add_library(${pluginname}_as_vst3 MODULE)
 	target_add_vst3_wrapper(
 			TARGET ${pluginname}_as_vst3
@@ -119,6 +120,20 @@ else()
 			BUNDLE_IDENTIFIER "${CLAP_WRAPPER_BUNDLE_IDENTIFIER}"
 			BUNDLE_VERSION "${CLAP_WRAPPER_BUNDLE_VERSION}"
 			)
+	endif()
+
+	if (${CLAP_WRAPPER_BUILD_AAX})
+		add_library(${pluginname}_as_aax MODULE)
+		target_add_aax_wrapper(
+				TARGET ${pluginname}_as_aax
+				OUTPUT_NAME "${CLAP_WRAPPER_OUTPUT_NAME}"
+				SUPPORTS_ALL_NOTE_EXPRESSIONS $<BOOL:${CLAP_SUPPORTS_ALL_NOTE_EXPRESSIONS}>
+				SINGLE_PLUGIN_TUID "${CLAP_VST3_TUID_STRING}"
+				BUNDLE_IDENTIFIER "${CLAP_WRAPPER_BUNDLE_IDENTIFIER}"
+				BUNDLE_VERSION "${CLAP_WRAPPER_BUNDLE_VERSION}"
+				)
+	endif()
+
 
 	if (APPLE)
 		if (${CLAP_WRAPPER_BUILD_AUV2})

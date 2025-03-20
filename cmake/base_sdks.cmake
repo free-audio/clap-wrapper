@@ -1,4 +1,4 @@
-# base_sdks.cmake provudes a collection of `guarantee_` functions which set up a particular
+# base_sdks.cmake provides a collection of `guarantee_` functions which set up a particular
 # SDK. Those functions have the important property that they can be called as many times as you
 # want and only the first call will set up the SDK. Practically this means they start with
 # if NOT TARGET base-sdk-foo return.
@@ -10,7 +10,7 @@
 # guarantee, especially as we add formats (like VST3 or AAX) where individuals may not be party
 # to the license agreement but will still want to build other formats.
 #
-# THe pattern we take to find a library is
+# The pattern we take to find a library is
 #
 # 1. is FOO_SDK_ROOT set? If so assume it is correct
 # 2. is CMAKE_WRAPPER_DOWNLOAD_DEPENDENCIES set? If so download from github
@@ -186,6 +186,61 @@ function(guarantee_vst3sdk)
         target_compile_options(base-sdk-vst3 PUBLIC -Wno-cpp)
     endif()
 endfunction(guarantee_vst3sdk)
+
+function(guarantee_aaxsdk)
+    if (TARGET base-sdk-aax)
+        return()
+    endif()
+
+    if (NOT "${AAX_SDK_ROOT}" STREQUAL "")
+        # Use the provided root
+    else()
+        search_for_sdk_source(SDKDIR aaxsdk RESULT AAX_SDK_ROOT)
+    endif()
+
+    cmake_path(CONVERT "${AAX_SDK_ROOT}" TO_CMAKE_PATH_LIST AAX_SDK_ROOT)
+    if(NOT EXISTS "${AAX_SDK_ROOT}/Interfaces/AAX.h")
+        message(FATAL_ERROR "There is no AAX SDK at ${AAX_SDK_ROOT}. Please set AAX_SDK_ROOT appropriately ")
+    endif()
+
+    # FIXME: What can we use to get the version of the AAX SDK?
+    # file(STRINGS "${AAX_SDK_ROOT}/CMakeLists.txt" SDKVERSION REGEX "^\[ ]*VERSION .*")
+    # string(STRIP ${SDKVERSION} SDKVERSION)
+    # string(REPLACE "VERSION " "" SDKVERSION ${SDKVERSION})
+    set(SDKVERSION "1.0.0")
+    message(STATUS "clap-wrapper: AAX version: ${SDKVERSION}; AAX Root ${AAX_SDK_ROOT}")
+
+    add_library(base-sdk-aax STATIC)
+    file(GLOB AAX_GLOB
+            ${AAX_SDK_ROOT}/Interfaces/*.cpp
+            ${AAX_SDK_ROOT}/Interfaces/ACF/*.cpp
+            ${AAX_SDK_ROOT}/Libs/AAXLibrary/source/*.cpp
+            )
+
+    target_sources(base-sdk-aax PRIVATE ${AAX_GLOB})
+
+    # The AAX SDK doesn't compile with unity builds
+    set_target_properties(base-sdk-aax PROPERTIES UNITY_BUILD FALSE)
+
+
+    target_include_directories(base-sdk-aax PUBLIC ${AAX_SDK_ROOT}/Interfaces ${AAX_SDK_ROOT}/Interfaces/ACF ${AAX_SDK_ROOT}/Libs/AAXLibrary/include)
+    target_compile_options(base-sdk-aax PUBLIC $<IF:$<CONFIG:Debug>,-DDEVELOPMENT=1,-DRELEASE=1>)
+    target_link_libraries(base-sdk-aax PUBLIC clap-wrapper-sanitizer-options)
+    # The AAXSDK uses sprintf, not snprintf, which macOS flags as deprecated
+    # to move people to snprintf. Silence that warning on the AAX build
+    if (APPLE)
+        target_compile_options(base-sdk-aax PUBLIC -Wno-deprecated-declarations)
+    endif()
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+        # The AAX SDK confuses lld and long long int in format statements in some situations it seems
+        target_compile_options(base-sdk-aax PUBLIC -Wno-format)
+
+        # The SDK also does things like `#warning DEPRECATED No Linux implementation
+        #	assert (false && "DEPRECATED No Linux implementation");` for some methods which
+        # generates a cpp warning. Since we won't fix this do
+        target_compile_options(base-sdk-aax PUBLIC -Wno-cpp)
+    endif()
+endfunction(guarantee_aaxsdk)
 
 function(guarantee_auv2sdk)
     if (TARGET base-sdk-auv2)

@@ -7,13 +7,13 @@
 
 
 
-# make_clapfirst_plugins assembles plugins in all formats - CLAP, VST3, AUv2, Standalone etc
+# make_clapfirst_plugins assembles plugins in all formats - CLAP, VST3, AAX, AUv2, Standalone etc
 # from two assets you provide. The first is a static library which contains symbols for the
 # functions clap_init, clap_deinit, and clap_getfactory, named whatever you want. This is
 # where 99.99% of your development will be. The second is a single c++ file which generates
 # a clap_entry structure with the three functions provided in your static library.
 #
-# make_clap_first then assembles a clap, vst3, auv2 etc by recompiling the clap entry
+# make_clap_first then assembles a clap, vst3, aax, auv2 etc by recompiling the clap entry
 # tiny file for each plugin format and introducing it to the plugin protocl, either by
 # direct export with the clap or by other methods with the other formats. This assembled
 # wrapper then links to your static library for your functions.
@@ -24,7 +24,7 @@
 
 function(make_clapfirst_plugins)
     set(oneValueArgs
-            TARGET_NAME   # name of the output target. It will be postpended _clap, _vst3, _all
+            TARGET_NAME   # name of the output target. It will be postpended _clap, _vst3, _axx, _all
             IMPL_TARGET   # name of the target you set up with your static library
 
             OUTPUT_NAME   # output name of your CLAP, VST3, etc...
@@ -47,7 +47,7 @@ function(make_clapfirst_plugins)
             AUV2_INSTRUMENT_TYPE
     )
     set(multiValueArgs
-            PLUGIN_FORMATS   # A list of plugin formats, "CLAP" "VST3" "AUV2"
+            PLUGIN_FORMATS   # A list of plugin formats, "CLAP" "VST3" "AAX" "AUV2"
             STANDALONE_CONFIGURATIONS # standalone configuration. This is a list of target names and clap ids
     )
     cmake_parse_arguments(C1ST "" "${oneValueArgs}" "${multiValueArgs}" ${ARGN} )
@@ -62,11 +62,12 @@ function(make_clapfirst_plugins)
 
     if (NOT DEFINED C1ST_PLUGIN_FORMATS)
         message(STATUS "clap-wrapper: clapfrist no firmats given. Turning them all on")
-        set(C1ST_PLUGIN_FORMATS CLAP VST3 AUV2)
+        set(C1ST_PLUGIN_FORMATS CLAP VST3 AAX AUV2)
     endif()
 
     list(FIND C1ST_PLUGIN_FORMATS "CLAP" BUILD_CLAP)
     list(FIND C1ST_PLUGIN_FORMATS "VST3" BUILD_VST3)
+    list(FIND C1ST_PLUGIN_FORMATS "AAX" BUILD_AAX)
     list(FIND C1ST_PLUGIN_FORMATS "AUV2" BUILD_AUV2)
 
     if (${BUILD_CLAP} EQUAL -1)
@@ -147,6 +148,31 @@ function(make_clapfirst_plugins)
 
         add_dependencies(${ALL_TARGET} ${VST3_TARGET})
     endif()
+
+    if (${BUILD_AAX} GREATER -1)
+        message(STATUS "clap-wrapper: ClapFirst is making an AAX")
+
+        set(AAX_TARGET ${C1ST_TARGET_NAME}_aax)
+        add_library(${AAX_TARGET} MODULE)
+        target_sources(${AAX_TARGET} PRIVATE ${C1ST_ENTRY_SOURCE})
+        target_link_libraries(${AAX_TARGET} PRIVATE ${C1ST_IMPL_TARGET})
+        set(vod "")
+        if (DEFINED C1ST_ASSET_OUTPUT_DIRECTORY)
+            if (NOT WIN32)
+                set(vod "${C1ST_ASSET_OUTPUT_DIRECTORY}")
+            else ()
+                set(vod "${C1ST_ASSET_OUTPUT_DIRECTORY}/AAX")
+            endif()
+    endif()
+    target_add_aax_wrapper(TARGET ${AAX_TARGET}
+            OUTPUT_NAME "${C1ST_OUTPUT_NAME}"
+            BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFER}.aaxplugin"
+            BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
+            ASSET_OUTPUT_DIRECTORY "${vod}"
+    )
+
+    add_dependencies(${ALL_TARGET} ${AAX_TARGET})
+endif()
 
     if (APPLE AND ${BUILD_AUV2} GREATER -1)
         message(STATUS "clap-wrapper: ClapFirst is making a AUv2")
