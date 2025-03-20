@@ -241,6 +241,7 @@ function(guarantee_rtaudio)
         return()
     endif()
 
+    set(RTAUDIO_INITIAL_DEBUG_POSTFIX ${CMAKE_DEBUG_POSTFIX} CACHE STRING "Initial CMAKE_DEBUG_POSTFIX value")
     set(RTAUDIO_TARGETNAME_UNINSTALL "rtaudio-uninstall" CACHE STRING "Name of 'uninstall' build target")
     set(RTAUDIO_BUILD_STATIC_LIBS TRUE CACHE BOOL "static rdmidi")
     set(RTAUDIO_BUILD_TESTING OFF CACHE BOOL "don't eject test targets")
@@ -281,6 +282,9 @@ function(guarantee_rtaudio)
     add_library(base-sdk-rtaudio INTERFACE)
     target_link_libraries(base-sdk-rtaudio INTERFACE rtaudio)
     set_target_properties(rtaudio PROPERTIES UNITY_BUILD FALSE)
+    
+    unset(CMAKE_DEBUG_POSTFIX CACHE)
+    set(CMAKE_DEBUG_POSTFIX ${RTAUDIO_INITIAL_DEBUG_POSTFIX} CACHE STRING "Reset CMAKE_DEBUG_POSTFIX value")
 endfunction(guarantee_rtaudio)
 
 
@@ -294,6 +298,7 @@ function(guarantee_rtmidi)
         set(RTMIDI_API_JACK FALSE CACHE BOOL "skip jack")
     endif()
 
+    set(RTMIDI_INITIAL_DEBUG_POSTFIX ${CMAKE_DEBUG_POSTFIX} CACHE STRING "Initial CMAKE_DEBUG_POSTFIX value")
     set(RTMIDI_TARGETNAME_UNINSTALL "rtmidi-uninstall" CACHE STRING "Name of 'uninstall' build target")
     set(RTMIDI_BUILD_STATIC_LIBS TRUE CACHE BOOL "static rdmidi")
     set(RTMIDI_BUILD_TESTING OFF CACHE BOOL "don't eject test targets")
@@ -325,6 +330,9 @@ function(guarantee_rtmidi)
     target_link_libraries(base-sdk-rtmidi INTERFACE rtmidi)
 
     set_target_properties(rtmidi PROPERTIES UNITY_BUILD FALSE)
+
+    unset(CMAKE_DEBUG_POSTFIX CACHE)
+    set(CMAKE_DEBUG_POSTFIX ${RTMIDI_INITIAL_DEBUG_POSTFIX} CACHE STRING "Reset CMAKE_DEBUG_POSTFIX value")
 endfunction(guarantee_rtmidi)
 
 function(guarantee_wil)
