@@ -182,10 +182,13 @@ void StandaloneHost::clapProcess(void *pOutput, const void *pInput, uint32_t fra
   if (mainInIdx >= 0 && pInput)
   {
     auto *g = (const float *)pInput;
+    auto stride = currentInputChannels;
+    auto chan2Off = (currentInputChannels > 1) ? 1 : 0;
+
     for (auto i = 0U; i < frameCount; ++i)
     {
-      utilityBuffer[mainInIdx][i] = g[2 * i];
-      utilityBuffer[mainInIdx + 1][i] = g[2 * i + 1];
+      utilityBuffer[mainInIdx][i] = g[stride * i];
+      utilityBuffer[mainInIdx + 1][i] = g[stride * i + chan2Off];
     }
   }
 

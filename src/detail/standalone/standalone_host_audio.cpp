@@ -266,6 +266,8 @@ void StandaloneHost::startAudioThreadOn(unsigned int inputDeviceID, uint32_t inp
     {
       if (oParams.deviceId == dids[i]) LOGDETAIL("  - Output : '{}'", dnms[i]);
     }
+    currentOutputChannels = oParams.nChannels;
+    LOGDETAIL("RtAudio Output Stream Channels {}", oParams.nChannels);
   }
   if (useInput)
   {
@@ -273,6 +275,8 @@ void StandaloneHost::startAudioThreadOn(unsigned int inputDeviceID, uint32_t inp
     {
       if (iParams.deviceId == dids[i]) LOGDETAIL("  - Input : '{}'", dnms[i]);
     }
+    currentInputChannels = iParams.nChannels;
+    LOGDETAIL("RtAudio Input Stream Channels {}", iParams.nChannels);
   }
 
   if (!rtaDac->isStreamOpen())
