@@ -253,6 +253,7 @@ struct StandaloneHost : Clap::IHost
   bool audioInputUsed{true}, audioOutputUsed{true};
   int32_t currentSampleRate{0};
   uint32_t currentBufferSize{0};
+  uint32_t currentInputChannels{0}, currentOutputChannels{0};
   void guaranteeRtAudioDAC();
   void setAudioApi(RtAudio::Api api);
   std::tuple<unsigned int, unsigned int, int32_t> getDefaultAudioInOutSampleRate();
