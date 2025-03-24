@@ -180,20 +180,29 @@ function(target_add_vst3_wrapper)
             endif()
         else()
             message(STATUS "clap-wrapper: Building VST3 Bundle Folder")
+
+            if ("${V3_ASSET_OUTPUT_DIRECTORY}" STREQUAL "")
+                set(v3root "${CMAKE_BINARY_DIR}")
+                set(v3root_dor "$<IF:$<CONFIG:Debug>,Debug,Release>/")
+                set(v3root_d "Debug/")
+                set(v3root_r "Release/")
+            else()
+                set(v3root "${V3_ASSET_OUTPUT_DIRECTORY}")
+                set(v3root_dor "")
+                set(v3root_d "")
+                set(v3root_r "")
+            endif()
+
             add_custom_command(TARGET ${V3_TARGET} PRE_BUILD
-                    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-                    COMMAND ${CMAKE_COMMAND} -E make_directory "$<IF:$<CONFIG:Debug>,Debug,Release>/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-win"
+                    WORKING_DIRECTORY ${v3root}
+                    COMMAND ${CMAKE_COMMAND} -E make_directory "${v3root_dor}${V3_OUTPUT_NAME}.vst3/.vst3/Contents/x86_64-win"
                     )
             set_target_properties(${V3_TARGET} PROPERTIES
                     LIBRARY_OUTPUT_NAME ${V3_OUTPUT_NAME}
-                    LIBRARY_OUTPUT_DIRECTORY "$<IF:$<CONFIG:Debug>,Debug,Release>/${CMAKE_BINARY_DIR}/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-win"
-                    LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/Debug/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-win"
-                    LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/Release/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-win"
+                    LIBRARY_OUTPUT_DIRECTORY "${v3root}/${v3root_dor}${V3_OUTPUT_NAME}.vst3/Contents/x86_64-win"
+                    LIBRARY_OUTPUT_DIRECTORY_DEBUG "${v3root}/${v3root_d}/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-win"
+                    LIBRARY_OUTPUT_DIRECTORY_RELEASE "${v3root}/${v3root_r}/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-win"
                     SUFFIX ".vst3")
-
-            if (NOT "${V3_ASSET_OUTPUT_DIRECTORY}" STREQUAL "")
-                message(WARNING "VST3 Custom Asset Output Dir and WINDOWS VST3 folder bundle not yet implemented")
-            endif()
         endif()
     endif()
 
