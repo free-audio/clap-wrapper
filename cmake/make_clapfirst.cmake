@@ -39,6 +39,8 @@ function(make_clapfirst_plugins)
             STANDALONE_MACOS_ICON # Icons for standalone
             STANDALONE_WINDOWS_ICON
 
+            WINDOWS_FOLDER_VST3 # True for a filder, false for single file (default)
+
             ASSET_OUTPUT_DIRECTORY
 
             AUV2_MANUFACTURER_NAME # The AUV2 info. If absent we will probe the CLAP for the
@@ -58,6 +60,10 @@ function(make_clapfirst_plugins)
 
     if (NOT DEFINED C1ST_TARGET_NAME)
         message(FATAL_ERROR "clap-wrapper: make_clapfirst_plugins requires TARGET_NAME")
+    endif()
+
+    if (NOT DEFINED C1ST_WINDOWS_FOLDER_VST3)
+        set(C1ST_WINDOWS_FOLDER_VST3 FALSE)
     endif()
 
     if (NOT DEFINED C1ST_PLUGIN_FORMATS)
@@ -151,6 +157,7 @@ function(make_clapfirst_plugins)
                 BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFER}.vst3"
                 BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
                 ASSET_OUTPUT_DIRECTORY "${vod}"
+                WINDOWS_FOLDER_VST3 ${C1ST_WINDOWS_FOLDER_VST3}
         )
 
         add_dependencies(${ALL_TARGET} ${VST3_TARGET})
