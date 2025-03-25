@@ -195,7 +195,7 @@ function(target_add_vst3_wrapper)
 
             add_custom_command(TARGET ${V3_TARGET} PRE_BUILD
                     WORKING_DIRECTORY ${v3root}
-                    COMMAND ${CMAKE_COMMAND} -E make_directory "${v3root_dor}${V3_OUTPUT_NAME}.vst3/.vst3/Contents/x86_64-win"
+                    COMMAND ${CMAKE_COMMAND} -E make_directory "${v3root_dor}${V3_OUTPUT_NAME}.vst3/Contents/x86_64-win"
                     )
             set_target_properties(${V3_TARGET} PROPERTIES
                     LIBRARY_OUTPUT_NAME ${V3_OUTPUT_NAME}
