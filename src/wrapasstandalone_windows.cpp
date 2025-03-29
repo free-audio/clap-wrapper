@@ -1,6 +1,7 @@
 #include "detail/standalone/windows/windows_standalone.h"
 
-int wWinMain(::HINSTANCE, ::HINSTANCE, wchar_t*, int)
+int WINAPI wWinMain(::HINSTANCE /* hInstance */, ::HINSTANCE /* hPrevInstance */, ::PWSTR /* pCmdLine */,
+                    int /* nCmdShow */)
 {
   auto coUninitialize{wil::CoInitializeEx(COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE)};
 
