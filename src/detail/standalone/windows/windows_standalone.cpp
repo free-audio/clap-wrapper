@@ -2,7 +2,7 @@
 
 namespace freeaudio::clap_wrapper::standalone::windows_standalone
 {
-std::pair<int, std::vector<std::string>> getArgs()
+std::vector<std::string> getArgs()
 {
   int argc{0};
   wil::unique_hlocal_ptr<wchar_t*[]> buffer;
@@ -15,7 +15,7 @@ std::pair<int, std::vector<std::string>> getArgs()
     argv.emplace_back(toUTF8(buffer[i]));
   }
 
-  return {argc, argv};
+  return argv;
 }
 
 ::HMODULE getInstance()

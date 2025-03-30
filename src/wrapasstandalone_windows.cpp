@@ -38,13 +38,13 @@ int WINAPI wWinMain(::HINSTANCE /* hInstance */, ::HINSTANCE /* hPrevInstance */
 
   std::vector<char*> argv;
 
-  for (int i = 0; i < args.first; i++)
+  for (auto i = 0; i < args.size(); i++)
   {
-    argv.emplace_back(args.second[i].data());
+    argv.emplace_back(args[i].data());
   }
 
   auto clapPlugin{freeaudio::clap_wrapper::standalone::mainCreatePlugin(entry, PLUGIN_ID, PLUGIN_INDEX,
-                                                                        args.first, argv.data())};
+                                                                        argv.size(), argv.data())};
 
   freeaudio::clap_wrapper::standalone::windows_standalone::Plugin plugin{clapPlugin};
 

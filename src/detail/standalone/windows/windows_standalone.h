@@ -7,7 +7,6 @@
 #include <fstream>
 #include <functional>
 #include <limits>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -35,7 +34,7 @@ using namespace winrt::Windows::Data::Json;
 
 namespace freeaudio::clap_wrapper::standalone::windows_standalone
 {
-std::pair<int, std::vector<std::string>> getArgs();
+std::vector<std::string> getArgs();
 ::HMODULE getInstance();
 ::HFONT getFontFromSystem(int name = DEFAULT_GUI_FONT);
 ::HFONT getScaledFontFromSystem(double scale);
