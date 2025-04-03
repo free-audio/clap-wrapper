@@ -305,7 +305,7 @@ Library::Library()
           GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
           (LPCWSTR)ffeomwe, &selfmodule))
   {
-    if (this->getEntryFunction(selfmodule, getModulePath(selfmodule).u8string().c_str()))
+    if (this->getEntryFunction(selfmodule, os::getModulePath(selfmodule).u8string().c_str()))
     {
       _selfcontained = true;
     }
