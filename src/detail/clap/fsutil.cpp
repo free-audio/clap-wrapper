@@ -14,6 +14,7 @@
 #include <windows.h>
 #include <shlobj.h>
 #include <sstream>
+#include "detail/os/osutil_windows.h"
 #endif
 
 #if MAC
@@ -293,35 +294,18 @@ Library::Library()
 #if STATICALLY_LINKED_CLAP_ENTRY
   _pluginEntry = &clap_entry;
   _selfcontained = true;
-  fs::path path = os::getPluginPath();
+  auto const path = os::getPluginPath();
   setupPluginsFromPluginEntry(path.u8string().c_str());
   return;
 #endif
 
 #if WIN
-  fs::path modulename;
   HMODULE selfmodule;
   if (GetModuleHandleExW(
           GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
           (LPCWSTR)ffeomwe, &selfmodule))
   {
-    DWORD bufferSize = MAX_PATH;
-    std::wstring buffer(bufferSize, L'\0');
-
-    DWORD length = GetModuleFileNameW(selfmodule, buffer.data(), bufferSize);
-
-    while (length == bufferSize && GetLastError() == ERROR_INSUFFICIENT_BUFFER)
-    {
-      bufferSize *= 2;
-      buffer.resize(bufferSize);
-      length = GetModuleFileNameW(selfmodule, buffer.data(), bufferSize);
-    }
-    buffer.resize(length);
-    modulename = std::move(buffer);
-  }
-  if (selfmodule)
-  {
-    if (this->getEntryFunction(selfmodule, modulename.u8string().c_str()))
+    if (this->getEntryFunction(selfmodule, getModulePath(selfmodule).u8string().c_str()))
     {
       _selfcontained = true;
     }

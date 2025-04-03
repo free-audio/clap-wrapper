@@ -40,29 +40,38 @@ class WindowsHelper
 static Steinberg::ModuleInitializer createMessageWindow([] { gWindowsHelper.init(); });
 static Steinberg::ModuleTerminator dropMessageWindow([] { gWindowsHelper.terminate(); });
 
-fs::path getPluginPath()
+fs::path getModulePath(HMODULE mod)
 {
   fs::path modulePath{};
+  DWORD bufferSize = 150;  // Start off with a reasonably large size
+  std::wstring buffer(bufferSize, L'\0');
+
+  DWORD length = GetModuleFileNameW(mod, buffer.data(), bufferSize);
+
+  constexpr size_t maxExtendedPath = 0x7FFF - 24;  // From Windows Implementation Library
+
+  while (length == bufferSize && GetLastError() == ERROR_INSUFFICIENT_BUFFER &&
+         bufferSize < maxExtendedPath)
+  {
+    bufferSize *= 2;
+    buffer.resize(bufferSize);
+    length = GetModuleFileNameW(mod, buffer.data(), bufferSize);
+  }
+  buffer.resize(length);
+  modulePath = std::move(buffer);
+  return modulePath;
+}
+
+fs::path getPluginPath()
+{
   HMODULE selfmodule;
   if (GetModuleHandleExW(
           GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
           (LPCWSTR)getPluginPath, &selfmodule))
   {
-    DWORD bufferSize = MAX_PATH;
-    std::wstring buffer(bufferSize, L'\0');
-
-    DWORD length = GetModuleFileNameW(selfmodule, buffer.data(), bufferSize);
-
-    while (length == bufferSize && GetLastError() == ERROR_INSUFFICIENT_BUFFER)
-    {
-      bufferSize *= 2;
-      buffer.resize(bufferSize);
-      length = GetModuleFileNameW(selfmodule, buffer.data(), bufferSize);
-    }
-    buffer.resize(length);
-    modulePath = std::move(buffer);
+    return getModulePath(selfmodule);
   }
-  return modulePath;
+  return {};
 }
 
 std::string getParentFolderName()
