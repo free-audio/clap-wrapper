@@ -1275,7 +1275,7 @@ bool Plugin::saveSettings()
 
   if (settingsPath.has_value())
   {
-    fs::path::create_directories(settingsPath.value() / plugin.plugin->desc->id);
+    fs::create_directories(settingsPath.value() / plugin.plugin->desc->id);
 
     settings.set<std::string>("audioApiName", sah->audioApiName);
     settings.set<double>("audioInputDeviceID", sah->audioInputDeviceID);
