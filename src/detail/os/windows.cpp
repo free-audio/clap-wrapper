@@ -14,6 +14,7 @@
 #include "public.sdk/source/main/moduleinit.h"
 #include "osutil.h"
 #include <fmt/xchar.h>
+#include "osutil_windows.h"
 
 // from dllmain.cpp of the VST3 SDK
 extern HINSTANCE ghInst;
@@ -40,28 +41,6 @@ class WindowsHelper
 static Steinberg::ModuleInitializer createMessageWindow([] { gWindowsHelper.init(); });
 static Steinberg::ModuleTerminator dropMessageWindow([] { gWindowsHelper.terminate(); });
 
-fs::path getModulePath(HMODULE mod)
-{
-  fs::path modulePath{};
-  DWORD bufferSize = 150;  // Start off with a reasonably large size
-  std::wstring buffer(bufferSize, L'\0');
-
-  DWORD length = GetModuleFileNameW(mod, buffer.data(), bufferSize);
-
-  constexpr size_t maxExtendedPath = 0x7FFF - 24;  // From Windows Implementation Library
-
-  while (length == bufferSize && GetLastError() == ERROR_INSUFFICIENT_BUFFER &&
-         bufferSize < maxExtendedPath)
-  {
-    bufferSize *= 2;
-    buffer.resize(bufferSize);
-    length = GetModuleFileNameW(mod, buffer.data(), bufferSize);
-  }
-  buffer.resize(length);
-  modulePath = std::move(buffer);
-  return modulePath;
-}
-
 fs::path getPluginPath()
 {
   HMODULE selfmodule;
@@ -69,7 +48,7 @@ fs::path getPluginPath()
           GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
           (LPCWSTR)getPluginPath, &selfmodule))
   {
-    return getModulePath(selfmodule);
+    return os::getModulePath(selfmodule);
   }
   return {};
 }
