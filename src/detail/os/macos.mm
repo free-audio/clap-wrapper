@@ -16,15 +16,10 @@
 #endif
 #include "osutil.h"
 #include <vector>
-#if MACOS_USE_STD_FILESYSTEM
-#include <filesystem>
-namespace fs = std::filesystem;
-#else
-#include "ghc/filesystem.hpp"
-namespace fs = ghc::filesystem;
-#endif
 #include <iostream>
 #include <dlfcn.h>
+
+#include "detail/os/fs.h"
 
 namespace os
 {
@@ -125,10 +120,10 @@ uint64_t getTickInMS()
   return (::clock() * 1000) / CLOCKS_PER_SEC;
 }
 
-fs::path getBundlePath()
+fs::path getPluginPath()
 {
   Dl_info info;
-  if (dladdr((void*)getBundlePath, &info))
+  if (dladdr((void*)getPluginPath, &info))
   {
     fs::path binaryPath = info.dli_fname;
     return binaryPath.parent_path().parent_path().parent_path();
@@ -137,19 +132,14 @@ fs::path getBundlePath()
   return {};
 }
 
-std::string getModulePath()
-{
-  return getBundlePath().string();
-}
-
 std::string getParentFolderName()
 {
-  return getBundlePath().parent_path().stem();
+  return getPluginPath().parent_path().stem();
 }
 
 std::string getBinaryName()
 {
-  return getBundlePath().stem();
+  return getPluginPath().stem();
 }
 
 }  // namespace os

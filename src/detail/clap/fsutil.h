@@ -10,19 +10,6 @@
 
 */
 
-#if MAC
-#if MACOS_USE_STD_FILESYSTEM
-#include <filesystem>
-namespace fs = std::filesystem;
-#else
-#include "ghc/filesystem.hpp"
-namespace fs = ghc::filesystem;
-#endif
-#else
-#include <filesystem>
-namespace fs = std::filesystem;
-#endif
-
 #include <vector>
 #include <functional>
 #include <clap/clap.h>
@@ -33,6 +20,7 @@ namespace fs = std::filesystem;
 #include "clapwrapper/vst3.h"
 #include "clapwrapper/auv2.h"
 #include "../ara/ara.h"
+#include "detail/os/fs.h"
 
 #if MAC
 #include <CoreFoundation/CoreFoundation.h>

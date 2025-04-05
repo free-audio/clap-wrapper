@@ -73,19 +73,19 @@ static Steinberg::ModuleTerminator dropMessageWindow([] { gLinuxHelper.terminate
 	}
 #endif
 
-std::string getModulePath()
+fs::path getPluginPath()
 {
   Dl_info info;
-  if (dladdr((void*)getModulePath, &info))
+  if (dladdr((void*)getPluginPath, &info))
   {
     return info.dli_fname;
   }
-  return std::string();
+  return {};
 }
 
 std::string getParentFolderName()
 {
-  std::filesystem::path n = getModulePath();
+  fs::path n = getPluginPath();
   if (n.has_parent_path())
   {
     auto p = n.parent_path();
@@ -95,17 +95,17 @@ std::string getParentFolderName()
     }
   }
 
-  return std::string();
+  return {};
 }
 
 std::string getBinaryName()
 {
-  std::filesystem::path n = getModulePath();
+  fs::path n = getPluginPath();
   if (n.has_filename())
   {
     return n.stem().u8string();
   }
-  return std::string();
+  return {};
 }
 
 #if 0

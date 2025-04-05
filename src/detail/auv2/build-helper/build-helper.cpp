@@ -5,14 +5,7 @@
 #include <sstream>
 
 #include "detail/clap/fsutil.h"
-
-#if MACOS_USE_STD_FILESYSTEM
-#include <filesystem>
-namespace fs = std::filesystem;
-#else
-#include "ghc/filesystem.hpp"
-namespace fs = ghc::filesystem;
-#endif
+#include "detail/os/fs.h"
 
 struct auInfo
 {

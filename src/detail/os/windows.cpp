@@ -13,7 +13,8 @@
 #include <tchar.h>
 #include "public.sdk/source/main/moduleinit.h"
 #include "osutil.h"
-#include <filesystem>
+#include <fmt/xchar.h>
+#include "osutil_windows.h"
 
 // from dllmain.cpp of the VST3 SDK
 extern HINSTANCE ghInst;
@@ -40,27 +41,21 @@ class WindowsHelper
 static Steinberg::ModuleInitializer createMessageWindow([] { gWindowsHelper.init(); });
 static Steinberg::ModuleTerminator dropMessageWindow([] { gWindowsHelper.terminate(); });
 
-static TCHAR* getModuleName()
+fs::path getPluginPath()
 {
-  static TCHAR modulename[2048];
   HMODULE selfmodule;
-  if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCTSTR)getModuleName, &selfmodule))
+  if (GetModuleHandleExW(
+          GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+          (LPCWSTR)getPluginPath, &selfmodule))
   {
-    /* auto size = */
-    GetModuleFileName(selfmodule, modulename, 2048);
+    return os::getModulePath(selfmodule);
   }
-  return modulename;
-}
-
-std::string getModulePath()
-{
-  std::filesystem::path path = getModuleName();
-  return path.u8string();
+  return {};
 }
 
 std::string getParentFolderName()
 {
-  std::filesystem::path n = getModuleName();
+  fs::path n = getPluginPath();
   if (n.has_parent_path())
   {
     auto p = n.parent_path();
@@ -75,7 +70,7 @@ std::string getParentFolderName()
 
 std::string getBinaryName()
 {
-  std::filesystem::path n = getModuleName();
+  fs::path n = getPluginPath();
   if (n.has_filename())
   {
     return n.stem().u8string();
@@ -95,32 +90,36 @@ LRESULT WindowsHelper::Wndproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
       return 1;
       break;
     default:
-      return ::DefWindowProc(hwnd, msg, wParam, lParam);
+      return DefWindowProc(hwnd, msg, wParam, lParam);
   }
+}
+
+static std::wstring helperClassName(HINSTANCE hinst)
+{
+  return fmt::format(L"clapwrapper{}", (void*)hinst);
 }
 
 void WindowsHelper::init()
 {
-  auto modulename = getModuleName();
-  WNDCLASSEX wc;
+  auto className = helperClassName(ghInst);
+  WNDCLASSEXW wc;
   memset(&wc, 0, sizeof(wc));
   wc.cbSize = sizeof(wc);
   wc.hInstance = ghInst;
   wc.lpfnWndProc = (WNDPROC)&Wndproc;
-  wc.lpszClassName = modulename;
-  /* auto a = */
-  RegisterClassEx(&wc);
+  wc.lpszClassName = className.c_str();
+  RegisterClassExW(&wc);
 
-  _msgWin = ::CreateWindowEx(0, modulename, NULL, 0, 0, 0, 0, 0, HWND_MESSAGE, 0, 0, 0);
-  ::SetWindowLongW(_msgWin, GWLP_WNDPROC, (LONG_PTR)&Wndproc);
-  _timer = ::SetTimer(_msgWin, 0, 20, NULL);
+  _msgWin = CreateWindowExW(0, className.c_str(), NULL, 0, 0, 0, 0, 0, HWND_MESSAGE, 0, 0, 0);
+  SetWindowLongW(_msgWin, GWLP_WNDPROC, (LONG_PTR)&Wndproc);
+  _timer = SetTimer(_msgWin, 0, 20, NULL);
 }
 
 void WindowsHelper::terminate()
 {
-  ::KillTimer(_msgWin, _timer);
-  ::DestroyWindow(_msgWin);
-  ::UnregisterClass(getModuleName(), ghInst);
+  KillTimer(_msgWin, _timer);
+  DestroyWindow(_msgWin);
+  UnregisterClassW(helperClassName(ghInst).c_str(), ghInst);
 }
 
 void WindowsHelper::executeDefered()
