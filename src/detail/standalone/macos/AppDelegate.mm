@@ -37,10 +37,8 @@
   }
 }
 
-- (void)applicationDidFinishLaunching:(NSNotification *)aNotification
+- (void)doSetup
 {
-  [NSApp activateIgnoringOtherApps:YES];
-
   // Insert code here to initialize your application
   const char *argv[2] = {OUTPUT_NAME, 0};
 
@@ -163,6 +161,16 @@
   };
 
   freeaudio::clap_wrapper::standalone::mainStartAudio();
+}
+
+- (void)applicationDidFinishLaunching:(NSNotification *)aNotification
+{
+  [NSApp activateIgnoringOtherApps:YES];
+  [NSTimer scheduledTimerWithTimeInterval:0.001
+                                   target:self
+                                 selector:@selector(doSetup)
+                                 userInfo:nil
+                                  repeats:NO];
 }
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender
