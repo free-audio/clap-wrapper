@@ -39,6 +39,8 @@
 
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification
 {
+  [NSApp activateIgnoringOtherApps:YES];
+
   // Insert code here to initialize your application
   const char *argv[2] = {OUTPUT_NAME, 0};
 
