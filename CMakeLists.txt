@@ -86,3 +86,5 @@ include(cmake/top_level_default.cmake)
 if (${CLAP_WRAPPER_BUILD_TESTS})
     add_subdirectory(tests)
 endif()
+
+add_subdirectory(cli)
