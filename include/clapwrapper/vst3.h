@@ -15,15 +15,21 @@
 #define CLAP_ABI
 #endif
 
-// the factory extension
-static const CLAP_CONSTEXPR char CLAP_PLUGIN_FACTORY_INFO_VST3[] = "clap.plugin-factory-info-as-vst3/0";
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 
-// the plugin extension
-static const CLAP_CONSTEXPR char CLAP_PLUGIN_AS_VST3[] = "clap.plugin-info-as-vst3/0";
+  // the factory extension
+  static const CLAP_CONSTEXPR char CLAP_PLUGIN_FACTORY_INFO_VST3[] =
+      "clap.plugin-factory-info-as-vst3/0";
 
-typedef uint8_t array_of_16_bytes[16];
+  // the plugin extension
+  static const CLAP_CONSTEXPR char CLAP_PLUGIN_AS_VST3[] = "clap.plugin-info-as-vst3/0";
 
-// clang-format off
+  typedef uint8_t array_of_16_bytes[16];
+
+  // clang-format off
 // COMPONENT allows you to provide the 4 uint32_t parts of the GUID and transforms them to the 16 byte array
 // To use this to port an existing VST3
 // 1. Run the vst3 validator
@@ -56,9 +62,9 @@ typedef uint8_t array_of_16_bytes[16];
 (uint8_t)((g4 & 0x000000FF)      ),    \
 }
 
-// clang-format on
+  // clang-format on
 
-/*
+  /*
   clap_plugin_as_vst3
 
   all members are optional when set to nullptr
@@ -67,14 +73,14 @@ typedef uint8_t array_of_16_bytes[16];
   this struct is being returned by the plugin in clap_plugin_factory_as_vst3_t::get_vst3_info()
 */
 
-typedef struct clap_plugin_info_as_vst3
-{
-  const char* vendor;                    // vendor
-  const array_of_16_bytes* componentId;  // compatibility GUID
-  const char* features;                  // feature string for SubCategories
-} clap_plugin_info_as_vst3_t;
+  typedef struct clap_plugin_info_as_vst3
+  {
+    const char* vendor;                    // vendor
+    const array_of_16_bytes* componentId;  // compatibility GUID
+    const char* features;                  // feature string for SubCategories
+  } clap_plugin_info_as_vst3_t;
 
-/*
+  /*
   clap_plugin_factory_as_vst3
 
   all members are optional and can be set to nullptr
@@ -83,42 +89,47 @@ typedef struct clap_plugin_info_as_vst3
   retrieved when asking for factory CLAP_PLUGIN_FACTORY_INFO_VST3 by clap_entry::get_factory()
 */
 
-typedef struct clap_plugin_factory_as_vst3
-{
-  // optional values for the Steinberg::PFactoryInfo structure
-  const char* vendor;  // if not nullptr, the vendor string in the
-  const char* vendor_url;
-  const char* email_contact;
+  typedef struct clap_plugin_factory_as_vst3
+  {
+    // optional values for the Steinberg::PFactoryInfo structure
+    const char* vendor;  // if not nullptr, the vendor string in the
+    const char* vendor_url;
+    const char* email_contact;
 
-  // retrieve additional information for the Steinberg::PClassInfo2 struct by pointer to clap_plugin_as_vst3
-  // returns nullptr if no additional information is provided or can be a nullptr itself
-  const clap_plugin_info_as_vst3_t*(CLAP_ABI* get_vst3_info)(const clap_plugin_factory_as_vst3* factory,
-                                                             uint32_t index);
-} clap_plugin_factory_as_vst3_t;
+    // retrieve additional information for the Steinberg::PClassInfo2 struct by pointer to clap_plugin_as_vst3
+    // returns nullptr if no additional information is provided or can be a nullptr itself
+    const clap_plugin_info_as_vst3_t*(CLAP_ABI* get_vst3_info)(
+        const clap_plugin_factory_as_vst3* factory, uint32_t index);
+  } clap_plugin_factory_as_vst3_t;
 
-enum clap_supported_note_expressions
-{
-  AS_VST3_NOTE_EXPRESSION_VOLUME = 1 << 0,
-  AS_VST3_NOTE_EXPRESSION_PAN = 1 << 1,
-  AS_VST3_NOTE_EXPRESSION_TUNING = 1 << 2,
-  AS_VST3_NOTE_EXPRESSION_VIBRATO = 1 << 3,
-  AS_VST3_NOTE_EXPRESSION_EXPRESSION = 1 << 4,
-  AS_VST3_NOTE_EXPRESSION_BRIGHTNESS = 1 << 5,
-  AS_VST3_NOTE_EXPRESSION_PRESSURE = 1 << 6,
+  enum clap_supported_note_expressions
+  {
+    AS_VST3_NOTE_EXPRESSION_VOLUME = 1 << 0,
+    AS_VST3_NOTE_EXPRESSION_PAN = 1 << 1,
+    AS_VST3_NOTE_EXPRESSION_TUNING = 1 << 2,
+    AS_VST3_NOTE_EXPRESSION_VIBRATO = 1 << 3,
+    AS_VST3_NOTE_EXPRESSION_EXPRESSION = 1 << 4,
+    AS_VST3_NOTE_EXPRESSION_BRIGHTNESS = 1 << 5,
+    AS_VST3_NOTE_EXPRESSION_PRESSURE = 1 << 6,
 
-  AS_VST3_NOTE_EXPRESSION_ALL = (1 << 7) - 1  // just the and of the above
+    AS_VST3_NOTE_EXPRESSION_ALL = (1 << 7) - 1  // just the and of the above
 
-};
+  };
 
-/*
+  /*
   retrieve additional information for the plugin itself, if note expressions are being supported and if there
   is a limit in MIDI channels (to reduce the offered controllers etc. in the VST3 host)
 
   This extension is optionally returned by the plugin when asked for extension CLAP_PLUGIN_AS_VST3
 */
-typedef struct clap_plugin_as_vst3
-{
-  uint32_t(CLAP_ABI* getNumMIDIChannels)(const clap_plugin* plugin, uint32_t note_port);  // return 1-16
-  uint32_t(CLAP_ABI* supportedNoteExpressions)(
-      const clap_plugin* plugin);  // returns a bitmap of clap_supported_note_expressions
-} clap_plugin_as_vst3_t;
+  typedef struct clap_plugin_as_vst3
+  {
+    uint32_t(CLAP_ABI* getNumMIDIChannels)(const clap_plugin* plugin,
+                                           uint32_t note_port);  // return 1-16
+    uint32_t(CLAP_ABI* supportedNoteExpressions)(
+        const clap_plugin* plugin);  // returns a bitmap of clap_supported_note_expressions
+  } clap_plugin_as_vst3_t;
+
+#ifdef __cplusplus
+}
+#endif
