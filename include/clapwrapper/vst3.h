@@ -15,6 +15,11 @@
 #define CLAP_ABI
 #endif
 
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // the factory extension
 static const CLAP_CONSTEXPR char CLAP_PLUGIN_FACTORY_INFO_VST3[] = "clap.plugin-factory-info-as-vst3/0";
 
@@ -122,3 +127,8 @@ typedef struct clap_plugin_as_vst3
   uint32_t(CLAP_ABI* supportedNoteExpressions)(
       const clap_plugin* plugin);  // returns a bitmap of clap_supported_note_expressions
 } clap_plugin_as_vst3_t;
+
+
+#ifdef __cplusplus
+}
+#endif

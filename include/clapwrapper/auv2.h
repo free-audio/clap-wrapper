@@ -3,6 +3,11 @@
 #include "clap/private/macros.h"
 #include <cstdint>
 
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 static const CLAP_CONSTEXPR char CLAP_PLUGIN_FACTORY_INFO_AUV2[] =
     "clap.plugin-factory-info-as-auv2.draft0";
 
@@ -24,3 +29,8 @@ typedef struct clap_plugin_factory_as_auv2
   bool(CLAP_ABI *get_auv2_info)(const clap_plugin_factory_as_auv2 *factory, uint32_t index,
                                 clap_plugin_info_as_auv2_t *info);
 } clap_plugin_factory_as_auv2_t;
+
+
+#ifdef __cplusplus
+}
+#endif
