@@ -159,13 +159,13 @@ function(target_add_vst3_wrapper)
 
         add_custom_command(TARGET ${V3_TARGET} PRE_BUILD
                 WORKING_DIRECTORY ${v3root}
-                COMMAND ${CMAKE_COMMAND} -E make_directory "${v3root_dor}${V3_OUTPUT_NAME}.vst3/Contents/x86_64-linux"
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${v3root_dor}${V3_OUTPUT_NAME}.vst3/Contents/${CMAKE_SYSTEM_PROCESSOR}-linux"
                 )
         set_target_properties(${V3_TARGET} PROPERTIES
                 LIBRARY_OUTPUT_NAME ${V3_OUTPUT_NAME}
-                LIBRARY_OUTPUT_DIRECTORY "${v3root}/${v3root_dor}${V3_OUTPUT_NAME}.vst3/Contents/x86_64-linux"
-                LIBRARY_OUTPUT_DIRECTORY_DEBUG "${v3root}/${v3root_d}/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-linux"
-                LIBRARY_OUTPUT_DIRECTORY_RELEASE "${v3root}/${v3root_r}/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-linux"
+                LIBRARY_OUTPUT_DIRECTORY "${v3root}/${v3root_dor}${V3_OUTPUT_NAME}.vst3/Contents/${CMAKE_SYSTEM_PROCESSOR}-linux"
+                LIBRARY_OUTPUT_DIRECTORY_DEBUG "${v3root}/${v3root_d}/${V3_OUTPUT_NAME}.vst3/Contents/${CMAKE_SYSTEM_PROCESSOR}-linux"
+                LIBRARY_OUTPUT_DIRECTORY_RELEASE "${v3root}/${v3root_r}/${V3_OUTPUT_NAME}.vst3/Contents/${CMAKE_SYSTEM_PROCESSOR}-linux"
                 SUFFIX ".so" PREFIX "")
     else()
         if (NOT ${V3_WINDOWS_FOLDER_VST3})
@@ -195,13 +195,13 @@ function(target_add_vst3_wrapper)
 
             add_custom_command(TARGET ${V3_TARGET} PRE_BUILD
                     WORKING_DIRECTORY ${v3root}
-                    COMMAND ${CMAKE_COMMAND} -E make_directory "${v3root_dor}${V3_OUTPUT_NAME}.vst3/Contents/x86_64-win"
+                    COMMAND ${CMAKE_COMMAND} -E make_directory "${v3root_dor}${V3_OUTPUT_NAME}.vst3/Contents/${CMAKE_SYSTEM_PROCESSOR}-win"
                     )
             set_target_properties(${V3_TARGET} PROPERTIES
                     LIBRARY_OUTPUT_NAME ${V3_OUTPUT_NAME}
-                    LIBRARY_OUTPUT_DIRECTORY "${v3root}/${v3root_dor}${V3_OUTPUT_NAME}.vst3/Contents/x86_64-win"
-                    LIBRARY_OUTPUT_DIRECTORY_DEBUG "${v3root}/${v3root_d}/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-win"
-                    LIBRARY_OUTPUT_DIRECTORY_RELEASE "${v3root}/${v3root_r}/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-win"
+                    LIBRARY_OUTPUT_DIRECTORY "${v3root}/${v3root_dor}${V3_OUTPUT_NAME}.vst3/Contents/${CMAKE_SYSTEM_PROCESSOR}-win"
+                    LIBRARY_OUTPUT_DIRECTORY_DEBUG "${v3root}/${v3root_d}/${V3_OUTPUT_NAME}.vst3/Contents/${CMAKE_SYSTEM_PROCESSOR}-win"
+                    LIBRARY_OUTPUT_DIRECTORY_RELEASE "${v3root}/${v3root_r}/${V3_OUTPUT_NAME}.vst3/Contents/${CMAKE_SYSTEM_PROCESSOR}-win"
                     SUFFIX ".vst3")
         endif()
     endif()
