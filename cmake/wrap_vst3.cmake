@@ -142,6 +142,8 @@ function(target_add_vst3_wrapper)
         endif()
 
     elseif(UNIX)
+        message(STATUS "clap-wrapper: Building the VST3 Bundle Folder using the CMAKE_SYSTEM_PROCESSOR variable: (${CMAKE_SYSTEM_PROCESSOR})")
+
         target_link_libraries(${V3_TARGET} PUBLIC "-ldl")
         target_link_libraries(${V3_TARGET} PRIVATE "-Wl,--no-undefined")
 
