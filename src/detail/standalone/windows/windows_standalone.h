@@ -21,7 +21,7 @@
 #include <winrt/windows.foundation.h>
 #include <winrt/windows.data.json.h>
 
-#define FMT_HEADER_ONLY
+#define FMT_HEADER_ONLY 1
 #include <fmt/format.h>
 #include <fmt/xchar.h>
 
