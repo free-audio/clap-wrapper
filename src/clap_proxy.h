@@ -121,7 +121,7 @@ struct ClapPluginExtensions
 class Raise
 {
  public:
-  Raise(std::atomic<uint32_t>& counter) : ctx(counter)
+  Raise(uint32_t& counter) : ctx(counter)
   {
     ++ctx;
   }
@@ -131,7 +131,7 @@ class Raise
   }
 
  private:
-  std::atomic<uint32_t>& ctx;
+  uint32_t& ctx;
 };
 
 /// <summary>
@@ -257,8 +257,6 @@ class Plugin
   clap_host_t _host;  // the host_t structure for the proxy
   IHost* _parentHost = nullptr;
   const std::thread::id _main_thread_id = std::this_thread::get_id();
-  std::atomic<uint32_t> _audio_thread_override = 0;
-  std::atomic<uint32_t> _main_thread_override = 0;
 
   AudioSetup _audioSetup;
 };
