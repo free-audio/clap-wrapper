@@ -1105,19 +1105,16 @@ void WrapAsAUV2::onIdle()
         AUEventListenerNotify(NULL, NULL, &myEvent);
       }
       break;
-      case queueEvent::type::triggerUICall:
-      {
-        // if there is still a plugin
-        if (_plugin)
-        {
-          // also make sure the plugin knows this is the main thread
-          auto guarantee_mainthread = _plugin->AlwaysMainThread();
+    }
+  }
 
-          // and give the plugin some UI time...
-          _plugin->_plugin->on_main_thread(_plugin->_plugin);
-        }
-      }
-      break;
+  if (_requestUICallback)
+  {
+    _requestUICallback = false;
+    if (_plugin)
+    {
+      auto guarantee_mainthread = _plugin->AlwaysMainThread();
+      _plugin->_plugin->on_main_thread(_plugin->_plugin);
     }
   }
 }
