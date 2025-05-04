@@ -26,6 +26,8 @@
 #include <public.sdk/source/vst/vstnoteexpressiontypes.h>
 #include <pluginterfaces/vst/ivstcontextmenu.h>
 
+#include <presonus-plugin-extensions/ipslgainreduction.h>
+
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif
@@ -115,6 +117,7 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
                    public Steinberg::Vst::IContextMenuTarget,
                    public ARA::IPlugInEntryPoint,
                    public ARA::IPlugInEntryPoint2,
+                   public Presonus::IGainReductionInfo,
                    public Clap::IHost,
                    public Clap::IAutomation,
                    public os::IPlugObject
@@ -130,6 +133,7 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
     , Steinberg::Vst::INoteExpressionController()
     , ARA::IPlugInEntryPoint()
     , ARA::IPlugInEntryPoint2()
+    , Presonus::IGainReductionInfo()
     , _library(lib)
     , _libraryIndex(number)
     , _creationcontext(context)
@@ -225,6 +229,9 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
       ARADocumentControllerRef documentControllerRef, ARAPlugInInstanceRoleFlags knownRoles,
       ARAPlugInInstanceRoleFlags assignedRoles) override;
 
+  //----from Presonus::GainReduction---------------------------
+  double PLUGIN_API getGainReductionValueInDb() override;
+
   //---Interface--------------------------------------------------------------------------
   OBJ_METHODS(ClapAsVst3, SingleComponentEffect)
   DEFINE_INTERFACES
@@ -256,6 +263,13 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
     if (_plugin->_ext._ara)
     {
       DEF_INTERFACE(IPlugInEntryPoint2)
+    }
+  }
+  if (::Steinberg::FUnknownPrivate::iidEqual(iid, Presonus::IGainReductionInfo::iid))
+  {
+    if (_plugin->_ext._gainreduc)
+    {
+      DEF_INTERFACE(Presonus::IGainReductionInfo);
     }
   }
 
