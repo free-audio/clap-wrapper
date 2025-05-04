@@ -27,7 +27,6 @@
 #include "detail/clap/fsutil.h"
 #include <clap/ext/draft/gain-adjustment-metering.h>
 
-
 namespace Clap
 {
 class Plugin;
@@ -115,7 +114,7 @@ struct ClapPluginExtensions
   const clap_plugin_timer_support_t* _timer = nullptr;
   const clap_plugin_context_menu_t* _contextmenu = nullptr;
   const clap_ara_plugin_extension_t* _ara = nullptr;
-  const clap_plugin_gain_adjustment_metering_t* _gainreduc = nullptr; 
+  const clap_plugin_gain_adjustment_metering_t* _gainreduc = nullptr;
 #if LIN
   const clap_plugin_posix_fd_support* _posixfd = nullptr;
 #endif
