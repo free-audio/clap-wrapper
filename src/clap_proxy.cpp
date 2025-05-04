@@ -220,6 +220,8 @@ void Plugin::connectClap(const clap_plugin_t* clap)
     getExtension(_plugin, _ext._contextmenu, CLAP_EXT_CONTEXT_MENU_COMPAT);
   }
 
+  getExtension(_plugin, _ext._gainreduc, CLAP_EXT_GAIN_ADJUSTMENT_METERING);
+
 #if LIN
   getExtension(_plugin, _ext._posixfd, CLAP_EXT_POSIX_FD_SUPPORT);
 #endif

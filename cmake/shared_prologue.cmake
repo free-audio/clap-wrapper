@@ -179,6 +179,7 @@ function(guarantee_clap_wrapper_shared)
         message(STATUS "clap-wrapper: using included fmt library since no fmt-header-only available")
         target_include_directories(clap-wrapper-shared-detail PUBLIC libs/fmt)
     endif()
+
     target_include_directories(clap-wrapper-shared-detail PUBLIC src)
 
     if (APPLE)

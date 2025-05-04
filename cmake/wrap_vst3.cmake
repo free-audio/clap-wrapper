@@ -31,6 +31,10 @@ function(private_add_vst3_wrapper_sources)
             )
 
     target_include_directories(${V3_TARGET}-clap-wrapper-vst3-lib PRIVATE "${sd}/include")
+
+    # psl
+    target_include_directories(${V3_TARGET}-clap-wrapper-vst3-lib PUBLIC "${sd}/libs/psl")
+
 endfunction(private_add_vst3_wrapper_sources)
 
 # define libraries
