@@ -13,6 +13,7 @@ function(target_add_clap_configuration)
             OUTPUT_NAME
             BUNDLE_IDENTIFIER
             BUNDLE_VERSION
+            RESOURCE_DIRECTORY
     )
     cmake_parse_arguments(TCLP "" "${oneValueArgs}" "" ${ARGN} )
 
@@ -35,6 +36,10 @@ function(target_add_clap_configuration)
         set(TCLP_BUNDLE_VERSION "0.1")
     endif()
 
+    if (NOT DEFINED TCLP_RESOURCE_DIRECTORY)
+        set(TCLP_RESOURCE_DIRECTORY "")
+    endif()
+
     if(APPLE)
         set_target_properties(${TCLP_TARGET} PROPERTIES
                 BUNDLE True
@@ -46,6 +51,13 @@ function(target_add_clap_configuration)
                 MACOSX_BUNDLE_BUNDLE_VERSION "${TCLP_BUNDLE_VERSION}"
                 MACOSX_BUNDLE_SHORT_VERSION_STRING "${TCLP_BUNDLE_VERSION}"
         )
+
+        # Copy resource directory, if defined
+        if(NOT TCLP_RESOURCE_DIRECTORY STREQUAL "")
+            add_custom_command(TARGET ${TCLP_TARGET} POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_directory "${TCLP_RESOURCE_DIRECTORY}" "$<TARGET_FILE_DIR:${TCLP_TARGET}>/../Resources"
+            )
+        endif()
 
         macos_bundle_flag(TARGET ${TCLP_TARGET})
 
