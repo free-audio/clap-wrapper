@@ -722,8 +722,8 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
           this->_uiconn._window = x;
           this->_uiconn._canary = y;
         };
-        _uiconn._createWindow = [this] {  this->_uiIsOpened = true; };
-        _uiconn._destroyWindow = [this] {  this->_uiIsOpened = false; };
+        _uiconn._createWindow = [this] { this->_uiIsOpened = true; };
+        _uiconn._destroyWindow = [this] { this->_uiIsOpened = false; };
         *static_cast<ui_connection*>(outData) = _uiconn;
         return noErr;
 
