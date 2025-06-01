@@ -22,12 +22,17 @@ static const AudioUnitPropertyID kAudioUnitProperty_ClapWrapper_UIConnection_id 
 namespace free_audio::auv2_wrapper
 {
 
+// this struct is set up from the plugin for the view.
+//
 typedef struct ui_connection
 {
   uint32_t identifier = kAudioUnitProperty_ClapWrapper_UIConnection_id;
-  Clap::Plugin *_plugin = nullptr;
-  clap_window_t *_window = nullptr;
-  std::function<void(clap_window_t *)> _registerWindow = nullptr;
+  Clap::Plugin *_plugin = nullptr;        // points to the plugin instance
+  clap_window_t *_window = nullptr;       // points to a window handle
+  uint32_t *_canary = nullptr;            // a canary in the Windows class
+  std::function<void(clap_window_t *, uint32_t*)> _registerWindow = nullptr;
+  std::function<void()> _createWindow = nullptr;
+  std::function<void()> _destroyWindow = nullptr;
 } ui_connection;
 
 }  // namespace free_audio::auv2_wrapper
