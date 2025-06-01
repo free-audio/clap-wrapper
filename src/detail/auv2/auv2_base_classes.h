@@ -218,8 +218,8 @@ bool MIDIOutput::addMIDI3Byte(const uint8_t* threebytes)
 class WrapAsAUV2 : public ausdk::AUBase,
                    public Clap::IHost,
                    public Clap::IAutomation,
-                   public os::IPlugObject,
-                   public Clap::AUv2::IMIDIOutputs
+                   public Clap::AUv2::IMIDIOutputs,
+                   public os::IPlugObject
 {
   using Base = ausdk::AUBase;
 
@@ -234,7 +234,9 @@ class WrapAsAUV2 : public ausdk::AUBase,
  private:
   AUV2_Type _autype;
 
+  // connection from plugin to view
   ui_connection _uiconn;
+  bool _uiIsOpened;
 
   bool initializeClapDesc();
 

@@ -19,6 +19,7 @@
 @interface CLAP_WRAPPER_COCOA_CLASS_NSVIEW : NSView
 {
   free_audio::auv2_wrapper::ui_connection ui;
+  uint32_t canary;
   CFRunLoopTimerRef idleTimer;
   float lastScale;
   NSSize underlyingUISize;
@@ -86,10 +87,13 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
   LOGINFO("[clap-wrapper] creating NSView");
 
   ui = *cont;
+  canary = 0xbeebbeeb;
+  
   if (ui._registerWindow)
   {
-    ui._registerWindow((clap_window_t *)self);
+    ui._registerWindow((clap_window_t *)self, &canary);
   }
+  ui._createWindow();
   ui._plugin->_ext._gui->create(ui._plugin->_plugin, CLAP_WINDOW_API_COCOA, false);
   auto gui = ui._plugin->_ext._gui;
 
@@ -150,9 +154,12 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
   {
     CFRunLoopTimerInvalidate(idleTimer);
   }
-  auto gui = ui._plugin->_ext._gui;
-  gui->destroy(ui._plugin->_plugin);
-
+  if ( canary )
+  {
+    auto gui = ui._plugin->_ext._gui;
+    gui->destroy(ui._plugin->_plugin);
+    ui._destroyWindow();
+  }
   [super dealloc];
 }
 - (void)setFrame:(NSRect)newSize
