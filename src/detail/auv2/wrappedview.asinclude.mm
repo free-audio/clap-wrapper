@@ -94,7 +94,6 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
     ui._registerWindow((clap_window_t *)self, &canary);
   }
   ui._createWindow();
-  ui._plugin->_ext._gui->create(ui._plugin->_plugin, CLAP_WINDOW_API_COCOA, false);
   auto gui = ui._plugin->_ext._gui;
 
   // actually, the host should send an appropriate size,
@@ -156,19 +155,23 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
   }
   if ( canary )
   {
-    auto gui = ui._plugin->_ext._gui;
-    gui->destroy(ui._plugin->_plugin);
     ui._destroyWindow();
+  }
+  else
+  {
+    LOGINFO("[clap-wrapper] plugin was already destroyed");
   }
   [super dealloc];
 }
 - (void)setFrame:(NSRect)newSize
 {
   [super setFrame:newSize];
-  auto gui = ui._plugin->_ext._gui;
-  gui->set_scale(ui._plugin->_plugin, 1.0);
-  gui->set_size(ui._plugin->_plugin, newSize.size.width, newSize.size.height);
-
+  if ( canary )
+  {
+    auto gui = ui._plugin->_ext._gui;
+    gui->set_scale(ui._plugin->_plugin, 1.0);
+    gui->set_size(ui._plugin->_plugin, newSize.size.width, newSize.size.height);
+  }
   // gui->show(ui._plugin->_plugin);
 }
 

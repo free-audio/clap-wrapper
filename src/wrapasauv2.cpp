@@ -145,14 +145,19 @@ WrapAsAUV2::~WrapAsAUV2()
 {
   if (_plugin)
   {
-    _os_attached.off();
-    _plugin->terminate();
-    _plugin.reset();
     if (_uiIsOpened && _uiconn._canary)
     {
       *_uiconn._canary = 0;       // notify the view
       _uiconn._canary = nullptr;  // disable the canary reference
+
+      // close destroy the gui ourselves
+      _plugin->_ext._gui->destroy(_plugin->_plugin);
+      _uiIsOpened = false;
     }
+
+    _os_attached.off();
+    _plugin->terminate();
+    _plugin.reset();
   }
   if (_current_program_name)
   {
@@ -722,8 +727,18 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
           this->_uiconn._window = x;
           this->_uiconn._canary = y;
         };
-        _uiconn._createWindow = [this] { this->_uiIsOpened = true; };
-        _uiconn._destroyWindow = [this] { this->_uiIsOpened = false; };
+        _uiconn._createWindow = [this]
+        {
+          this->_uiIsOpened = true;
+          _plugin->_ext._gui->create(_plugin->_plugin, CLAP_WINDOW_API_COCOA, false);
+        };
+        _uiconn._destroyWindow = [this]
+        {
+          // this must exist
+          _plugin->_ext._gui->destroy(_plugin->_plugin);
+
+          this->_uiIsOpened = false;
+        };
         *static_cast<ui_connection*>(outData) = _uiconn;
         return noErr;
 
