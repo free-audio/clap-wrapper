@@ -4,6 +4,9 @@
 //
 //  created by Paul Walker (baconpaul) and Timo Kaluza (defiantnerd)
 //
+//  this file needs some macros to be defined before being included
+//  the wrapper's build-helper creates an intermediate file for this.
+//  for more information, take a look into wrappedview.mm
 
 #include <objc/runtime.h>
 #import <CoreFoundation/CoreFoundation.h>
@@ -57,7 +60,6 @@
   return [[[CLAP_WRAPPER_COCOA_CLASS_NSVIEW alloc] initWithAUv2:&uiconn
                                                   preferredSize:inPreferredSize] autorelease];
   LOGINFO("[clap-wrapper] get ui View for AudioUnit");
-  // return nil;
 }
 
 - (unsigned int)interfaceVersion
@@ -68,8 +70,8 @@
 
 - (NSString *)description
 {
-  LOGINFO("[clap-wrapper] get description");
-  return [NSString stringWithUTF8String:"Wrap Window"];  // TODO: get name from plugin
+  LOGINFO("[clap-wrapper] get description: " CLAP_WRAPPER_EDITOR_NAME);
+  return [NSString stringWithUTF8String:CLAP_WRAPPER_EDITOR_NAME];  // TODO: get name from plugin
 }
 
 @end
@@ -146,6 +148,26 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
 {
   // auto gui = ui._plugin->_ext._gui;
 }
+- (void) viewDidMoveToWindow
+{
+  if ( [self window] == nil )
+  {
+    LOGINFO("[clap-wrapper] - view removed from a window");
+    if (idleTimer)
+    {
+      CFRunLoopTimerInvalidate(idleTimer);
+      idleTimer = 0;
+    }
+    if ( canary )
+    {
+      ui._destroyWindow();
+      
+      assert(canary == 0);
+    }
+  }
+  [super viewDidMoveToWindow];
+}
+
 - (void)dealloc
 {
   LOGINFO("[clap-wrapper] NS View dealloc");
@@ -155,11 +177,8 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
   }
   if ( canary )
   {
+    LOGINFO("[clap-wrapper] the host did not call viewDidMoveWindow with a nil window");
     ui._destroyWindow();
-  }
-  else
-  {
-    LOGINFO("[clap-wrapper] plugin was already destroyed");
   }
   [super dealloc];
 }

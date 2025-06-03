@@ -738,6 +738,10 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
           _plugin->_ext._gui->destroy(_plugin->_plugin);
 
           this->_uiIsOpened = false;
+          if (this->_uiconn._canary)
+          {
+            *(this->_uiconn._canary) = 0;
+          }
         };
         *static_cast<ui_connection*>(outData) = _uiconn;
         return noErr;
