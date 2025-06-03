@@ -71,7 +71,7 @@
 - (NSString *)description
 {
   LOGINFO("[clap-wrapper] get description: " CLAP_WRAPPER_EDITOR_NAME);
-  return [NSString stringWithUTF8String:CLAP_WRAPPER_EDITOR_NAME];  // TODO: get name from plugin
+  return [NSString stringWithUTF8String:CLAP_WRAPPER_EDITOR_NAME];
 }
 
 @end
