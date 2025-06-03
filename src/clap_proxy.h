@@ -182,7 +182,7 @@ class Plugin
   void stop_processing();
   void reset();
   // void process(const clap_process_t* data);
-  const clap_plugin_gui_t* getUI() const;
+  // const clap_plugin_gui_t* getUI() const;
 
   ClapPluginExtensions _ext;
   const clap_plugin_t* _plugin = nullptr;
