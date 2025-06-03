@@ -141,8 +141,14 @@ std::shared_ptr<Plugin> Plugin::createInstance(const clap_plugin_factory* factor
 {
   auto plug = std::shared_ptr<Plugin>(new Plugin(host));
   auto instance = factory->create_plugin(factory, plug->getClapHostInterface(), id.c_str());
-  plug->connectClap(instance);
-
+  if (instance)
+  {
+    plug->connectClap(instance);
+  }
+  else
+  {
+    plug.reset();
+  }
   return plug;
 }
 
@@ -162,8 +168,14 @@ std::shared_ptr<Plugin> Plugin::createInstance(Clap::Library& library, size_t in
     auto plug = std::shared_ptr<Plugin>(new Plugin(host));
     auto instance = library._pluginFactory->create_plugin(
         library._pluginFactory, plug->getClapHostInterface(), library.plugins[index]->id);
-    plug->connectClap(instance);
-
+    if (instance)
+    {
+      plug->connectClap(instance);
+    }
+    else
+    {
+      plug.reset();
+    }
     return plug;
   }
   return nullptr;

@@ -134,9 +134,19 @@ WrapAsAUV2::WrapAsAUV2(AUV2_Type type, const std::string& clapname, const std::s
 
       // pffffrzz();  // <- enable this to have a hook to attach a debugger
       _plugin = Clap::Plugin::createInstance(_library._pluginFactory, _desc->id, this);
-
-      _plugin->initialize();
-      _os_attached.on();
+      if (_plugin)
+      {
+        _plugin->initialize();
+        _os_attached.on();
+      }
+      else
+      {
+        std::cout << "[clap-wrapper] ERROR: the clap did not create an instance with id " << _desc->id
+                  << std::endl;
+        // this will exit in WrapAsAUV2::Initialize() with an error
+        // if this happens, the wrapper or the clap plugin has a real bug
+        _desc = nullptr;
+      }
     }
   }
 }
