@@ -461,11 +461,13 @@ int main(int argc, char **argv)
         cppf << "#define CLAP_WRAPPER_COCOA_CLASS " << on << std::endl;
         cppf << "#define CLAP_WRAPPER_TIMER_CALLBACK timerCallback_" << on << std::endl;
         cppf << "#define CLAP_WRAPPER_FILL_AUCV fillAUCV_" << on << std::endl;
+        cppf << "#define CLAP_WRAPPER_EDITOR_NAME \"" << u.name << " View\"" << std::endl;
         cppf << "#include \"detail/auv2/wrappedview.asinclude.mm\"" << std::endl;
         cppf << "#undef CLAP_WRAPPER_COCOA_CLASS_NSVIEW" << std::endl;
         cppf << "#undef CLAP_WRAPPER_COCOA_CLASS" << std::endl;
         cppf << "#undef CLAP_WRAPPER_TIMER_CALLBACK" << std::endl;
         cppf << "#undef CLAP_WRAPPER_FILL_AUCV" << std::endl;
+        cppf << "#undef CLAP_WRAPPER_EDITOR_NAME" << std::endl;
 
         if (u.explicitMode)
         {

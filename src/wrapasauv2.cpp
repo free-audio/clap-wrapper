@@ -121,6 +121,7 @@ WrapAsAUV2::WrapAsAUV2(AUV2_Type type, const std::string& clapname, const std::s
   , _os_attached([this] { os::attach(this); }, [this] { os::detach(this); })
 {
   (void)_autype;  // TODO: will be used for dynamic property adaption
+  _uiIsOpened = false;
   if (!_desc)
   {
     if (initializeClapDesc())
@@ -144,6 +145,16 @@ WrapAsAUV2::~WrapAsAUV2()
 {
   if (_plugin)
   {
+    if (_uiIsOpened && _uiconn._canary)
+    {
+      *_uiconn._canary = 0;       // notify the view
+      _uiconn._canary = nullptr;  // disable the canary reference
+
+      // close destroy the gui ourselves
+      _plugin->_ext._gui->destroy(_plugin->_plugin);
+      _uiIsOpened = false;
+    }
+
     _os_attached.off();
     _plugin->terminate();
     _plugin.reset();
@@ -553,6 +564,20 @@ void WrapAsAUV2::Cleanup()
 {
   LOGINFO("[clap-wrapper] Cleaning up Plugin");
   auto guarantee_mainthread = _plugin->AlwaysMainThread();
+  if (this->_uiIsOpened)
+  {
+    LOGINFO("[clap-wrapper] !! UI still open, destroying UI and disconnecting view");
+    if (_uiconn._canary)
+    {
+      *_uiconn._canary = 0;       // reset the canary
+      _uiconn._canary = nullptr;  // and disconnect it
+      if (_plugin->_plugin && _plugin->_ext._gui)
+      {
+        this->_uiconn._destroyWindow();
+        this->_plugin->_ext._gui->destroy(_plugin->_plugin);
+      }
+    }
+  }
   deactivateCLAP();
   Base::Cleanup();
 }
@@ -697,7 +722,27 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
       case kAudioUnitProperty_ClapWrapper_UIConnection_id:
         _uiconn._plugin = _plugin.get();
         _uiconn._window = nullptr;
-        _uiconn._registerWindow = [this](auto* x) { this->_uiconn._window = x; };
+        _uiconn._registerWindow = [this](auto* x, auto* y)
+        {
+          this->_uiconn._window = x;
+          this->_uiconn._canary = y;
+        };
+        _uiconn._createWindow = [this]
+        {
+          this->_uiIsOpened = true;
+          _plugin->_ext._gui->create(_plugin->_plugin, CLAP_WINDOW_API_COCOA, false);
+        };
+        _uiconn._destroyWindow = [this]
+        {
+          // this must exist
+          _plugin->_ext._gui->destroy(_plugin->_plugin);
+
+          this->_uiIsOpened = false;
+          if (this->_uiconn._canary)
+          {
+            *(this->_uiconn._canary) = 0;
+          }
+        };
         *static_cast<ui_connection*>(outData) = _uiconn;
         return noErr;
 

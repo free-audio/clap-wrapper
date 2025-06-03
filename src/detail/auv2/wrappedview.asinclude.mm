@@ -4,6 +4,9 @@
 //
 //  created by Paul Walker (baconpaul) and Timo Kaluza (defiantnerd)
 //
+//  this file needs some macros to be defined before being included
+//  the wrapper's build-helper creates an intermediate file for this.
+//  for more information, take a look into wrappedview.mm
 
 #include <objc/runtime.h>
 #import <CoreFoundation/CoreFoundation.h>
@@ -19,6 +22,7 @@
 @interface CLAP_WRAPPER_COCOA_CLASS_NSVIEW : NSView
 {
   free_audio::auv2_wrapper::ui_connection ui;
+  uint32_t canary;
   CFRunLoopTimerRef idleTimer;
   float lastScale;
   NSSize underlyingUISize;
@@ -56,7 +60,6 @@
   return [[[CLAP_WRAPPER_COCOA_CLASS_NSVIEW alloc] initWithAUv2:&uiconn
                                                   preferredSize:inPreferredSize] autorelease];
   LOGINFO("[clap-wrapper] get ui View for AudioUnit");
-  // return nil;
 }
 
 - (unsigned int)interfaceVersion
@@ -67,8 +70,8 @@
 
 - (NSString *)description
 {
-  LOGINFO("[clap-wrapper] get description");
-  return [NSString stringWithUTF8String:"Wrap Window"];  // TODO: get name from plugin
+  LOGINFO("[clap-wrapper] get description: " CLAP_WRAPPER_EDITOR_NAME);
+  return [NSString stringWithUTF8String:CLAP_WRAPPER_EDITOR_NAME];
 }
 
 @end
@@ -86,11 +89,13 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
   LOGINFO("[clap-wrapper] creating NSView");
 
   ui = *cont;
+  canary = 0xbeebbeeb;
+  
   if (ui._registerWindow)
   {
-    ui._registerWindow((clap_window_t *)self);
+    ui._registerWindow((clap_window_t *)self, &canary);
   }
-  ui._plugin->_ext._gui->create(ui._plugin->_plugin, CLAP_WINDOW_API_COCOA, false);
+  ui._createWindow();
   auto gui = ui._plugin->_ext._gui;
 
   // actually, the host should send an appropriate size,
@@ -143,6 +148,26 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
 {
   // auto gui = ui._plugin->_ext._gui;
 }
+- (void) viewDidMoveToWindow
+{
+  if ( [self window] == nil )
+  {
+    LOGINFO("[clap-wrapper] - view removed from a window");
+    if (idleTimer)
+    {
+      CFRunLoopTimerInvalidate(idleTimer);
+      idleTimer = 0;
+    }
+    if ( canary )
+    {
+      ui._destroyWindow();
+      
+      assert(canary == 0);
+    }
+  }
+  [super viewDidMoveToWindow];
+}
+
 - (void)dealloc
 {
   LOGINFO("[clap-wrapper] NS View dealloc");
@@ -150,18 +175,22 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
   {
     CFRunLoopTimerInvalidate(idleTimer);
   }
-  auto gui = ui._plugin->_ext._gui;
-  gui->destroy(ui._plugin->_plugin);
-
+  if ( canary )
+  {
+    LOGINFO("[clap-wrapper] the host did not call viewDidMoveWindow with a nil window");
+    ui._destroyWindow();
+  }
   [super dealloc];
 }
 - (void)setFrame:(NSRect)newSize
 {
   [super setFrame:newSize];
-  auto gui = ui._plugin->_ext._gui;
-  gui->set_scale(ui._plugin->_plugin, 1.0);
-  gui->set_size(ui._plugin->_plugin, newSize.size.width, newSize.size.height);
-
+  if ( canary )
+  {
+    auto gui = ui._plugin->_ext._gui;
+    gui->set_scale(ui._plugin->_plugin, 1.0);
+    gui->set_size(ui._plugin->_plugin, newSize.size.width, newSize.size.height);
+  }
   // gui->show(ui._plugin->_plugin);
 }
 

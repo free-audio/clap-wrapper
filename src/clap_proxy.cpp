@@ -352,6 +352,7 @@ void Plugin::reset()
 //  _plugin->process(_plugin, data);
 //}
 
+/*
 const clap_plugin_gui_t* Plugin::getUI() const
 {
   if (_ext._gui)
@@ -363,6 +364,7 @@ const clap_plugin_gui_t* Plugin::getUI() const
   }
   return nullptr;
 }
+*/
 
 void Plugin::mark_dirty()
 {
