@@ -207,7 +207,6 @@ void StandaloneHost::clapProcess(void *pOutput, const void *pInput, uint32_t fra
     memcpy(midi.data, ck.dat, sizeof(ck.dat));
     pushInputEvent(&(midi.header));
   }
-  
 
   clapPlugin->_plugin->process(clapPlugin->_plugin, &process);
 
