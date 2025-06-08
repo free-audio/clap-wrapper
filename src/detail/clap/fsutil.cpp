@@ -195,6 +195,20 @@ bool Library::load(const fs::path &path)
       _handle = nullptr;
     }
   }
+  else
+  {
+    auto err = ::GetLastError();
+    if (err == ERROR_BAD_EXE_FORMAT)
+    {
+      OutputDebugStringA("This is not a CLAP plugin or has a wrong binary format\n");
+    }
+    else
+    {
+      OutputDebugStringA("Unable to load CLAP plugin via LoadLibrary\n");
+    }
+    FreeLibrary(_handle);
+    _pluginEntry = nullptr;
+  }
 
   return _handle != nullptr;
 #endif
