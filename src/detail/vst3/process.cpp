@@ -206,7 +206,7 @@ void ProcessAdapter::process(Steinberg::Vst::ProcessData& data)
         ((_vstdata->processContext->state & Vst::ProcessContext::kTimeSigValid)
              ? CLAP_TRANSPORT_HAS_TIME_SIGNATURE
              : 0)
-      
+
         // the rest of the flags has no meaning to CLAP
         // kSystemTimeValid = 1 << 8,		///< systemTime contains valid information
         // kContTimeValid = 1 << 17,	///< continousTimeSamples contains valid information

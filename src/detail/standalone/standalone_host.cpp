@@ -112,7 +112,7 @@ void StandaloneHost::clapProcess(void *pOutput, const void *pInput, uint32_t fra
   auto f = (float *)pOutput;
 
   clap_process process;
-  process.transport = nullptr;            // this is a freefloating host
+  process.transport = nullptr;  // this is a freefloating host
   process.in_events = &inputEvents;
   process.out_events = &outputEvents;
   process.frames_count = frameCount;

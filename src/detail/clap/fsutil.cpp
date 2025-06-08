@@ -195,6 +195,11 @@ bool Library::load(const fs::path &path)
       _handle = nullptr;
     }
   }
+  else
+  {
+    auto err = ::GetLastError();
+    OutputDebugString("ups");
+  }
 
   return _handle != nullptr;
 #endif
