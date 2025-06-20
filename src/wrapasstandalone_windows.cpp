@@ -1,6 +1,7 @@
 #include "detail/standalone/windows/windows_standalone.h"
 
-int main(int argc, char** argv)
+int WINAPI wWinMain(::HINSTANCE /* hInstance */, ::HINSTANCE /* hPrevInstance */, ::PWSTR /* pCmdLine */,
+                    int /* nCmdShow */)
 {
   auto coUninitialize{wil::CoInitializeEx(COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE)};
 
@@ -33,7 +34,19 @@ int main(int argc, char** argv)
     return 3;
   }
 
-  freeaudio::clap_wrapper::standalone::windows_standalone::Plugin plugin{entry, argc, argv};
+  auto args{freeaudio::clap_wrapper::standalone::windows_standalone::getArgs()};
+
+  std::vector<char*> argv;
+
+  for (auto i = 0; i < args.size(); i++)
+  {
+    argv.emplace_back(args[i].data());
+  }
+
+  auto clapPlugin{freeaudio::clap_wrapper::standalone::mainCreatePlugin(entry, PLUGIN_ID, PLUGIN_INDEX,
+                                                                        argv.size(), argv.data())};
+
+  freeaudio::clap_wrapper::standalone::windows_standalone::Plugin plugin{clapPlugin};
 
   return freeaudio::clap_wrapper::standalone::windows_standalone::run();
 }
