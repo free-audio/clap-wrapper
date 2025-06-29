@@ -652,6 +652,7 @@ ARAPlugInExtensionInstancePtr PLUGIN_API ClapAsVst3::bindToDocumentControllerWit
 
 static Vst::SpeakerArrangement speakerArrFromPortType(const char* port_type)
 {
+  if (!port_type) return Vst::SpeakerArr::kEmpty;
   static const std::pair<const char*, Vst::SpeakerArrangement> arrangementmap[] = {
       {CLAP_PORT_MONO, Vst::SpeakerArr::kMono},
       {CLAP_PORT_STEREO, Vst::SpeakerArr::kStereo},
