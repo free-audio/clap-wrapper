@@ -42,6 +42,7 @@ function(make_clapfirst_plugins)
             WINDOWS_FOLDER_VST3 # True for a filder, false for single file (default)
 
             ASSET_OUTPUT_DIRECTORY
+            RESOURCE_DIRECTORY # Entire directory to be copied into a bundle/folder's resources
 
             AUV2_MANUFACTURER_NAME # The AUV2 info. If absent we will probe the CLAP for the
             AUV2_MANUFACTURER_CODE # auv2 extension
@@ -64,6 +65,10 @@ function(make_clapfirst_plugins)
 
     if (NOT DEFINED C1ST_WINDOWS_FOLDER_VST3)
         set(C1ST_WINDOWS_FOLDER_VST3 FALSE)
+    endif()
+
+    if (NOT DEFINED C1ST_RESOURCE_DIRECTORY)
+        set(C1ST_RESOURCE_DIRECTORY "")
     endif()
 
     if (NOT DEFINED C1ST_PLUGIN_FORMATS)
@@ -122,6 +127,7 @@ function(make_clapfirst_plugins)
                 OUTPUT_NAME ${C1ST_OUTPUT_NAME}
                 BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFIER}.clap"
                 BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
+                RESOURCE_DIRECTORY "${C1ST_RESOURCE_DIRECTORY}"
         )
         if (DEFINED C1ST_ASSET_OUTPUT_DIRECTORY)
             if (NOT WIN32)
@@ -158,6 +164,7 @@ function(make_clapfirst_plugins)
                 BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
                 ASSET_OUTPUT_DIRECTORY "${vod}"
                 WINDOWS_FOLDER_VST3 ${C1ST_WINDOWS_FOLDER_VST3}
+                RESOURCE_DIRECTORY "${C1ST_RESOURCE_DIRECTORY}"
         )
 
         add_dependencies(${ALL_TARGET} ${VST3_TARGET})
@@ -175,6 +182,7 @@ function(make_clapfirst_plugins)
                     OUTPUT_NAME "${C1ST_OUTPUT_NAME}"
                     BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFER}.auv2"
                     BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
+                    RESOURCE_DIRECTORY "${C1ST_RESOURCE_DIRECTORY}"
 
                     MANUFACTURER_NAME "${C1ST_AUV2_MANUFACTURER_NAME}"
                     MANUFACTURER_CODE "${C1ST_AUV2_MANUFACTURER_CODE}"
@@ -187,6 +195,7 @@ function(make_clapfirst_plugins)
                     OUTPUT_NAME "${C1ST_OUTPUT_NAME}"
                     BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFER}.auv2"
                     BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
+                    RESOURCE_DIRECTORY "${C1ST_RESOURCE_DIRECTORY}"
 
                     CLAP_TARGET_FOR_CONFIG "${CLAP_TARGET}"
             )
@@ -207,9 +216,10 @@ function(make_clapfirst_plugins)
         target_link_libraries(${WCLAP_TARGET} PRIVATE ${C1ST_IMPL_TARGET})
         target_add_wclap_configuration(TARGET ${WCLAP_TARGET}
                 OUTPUT_NAME ${C1ST_OUTPUT_NAME}
+                RESOURCE_DIRECTORY "${C1ST_RESOURCE_DIRECTORY}"
         )
         if (DEFINED C1ST_ASSET_OUTPUT_DIRECTORY)
-	    # set the RUNTIME path because module.wasm are built as binaries (dynamic libraries for WASM aren't well-defined)
+            # set the RUNTIME path because module.wasm are built as binaries (dynamic libraries for WASM aren't well-defined)
             if (NOT WIN32)
                 set_target_properties(${WCLAP_TARGET} PROPERTIES
                         RUNTIME_OUTPUT_DIRECTORY ${C1ST_ASSET_OUTPUT_DIRECTORY}/${C1ST_OUTPUT_NAME}.wclap)
@@ -219,10 +229,10 @@ function(make_clapfirst_plugins)
             endif()
         endif()
 
-	# Emscripten flags
+        # Emscripten flags
         set_target_properties(${WCLAP_TARGET} PROPERTIES
-		COMPILE_FLAGS "-msimd128" # TODO: add this to the static library as well?
-        	LINK_FLAGS    "-msimd128 -sSTANDALONE_WASM --no-entry -s EXPORTED_FUNCTIONS=_clap_entry,_malloc -s INITIAL_MEMORY=512kb -s ALLOW_MEMORY_GROWTH=1 -s ALLOW_TABLE_GROWTH=1 -s PURE_WASI --export-table"
+                COMPILE_FLAGS "-msimd128" # TODO: add this to the static library as well?
+                LINK_FLAGS    "-msimd128 -sSTANDALONE_WASM --no-entry -s EXPORTED_FUNCTIONS=_clap_entry,_malloc -s INITIAL_MEMORY=512kb -s ALLOW_MEMORY_GROWTH=1 -s ALLOW_TABLE_GROWTH=1 -s PURE_WASI --export-table"
         )
 
         add_dependencies(${ALL_TARGET} ${WCLAP_TARGET})
@@ -255,6 +265,7 @@ function(make_clapfirst_plugins)
                         PLUGIN_ID "${clapid}"
                         MACOS_ICON "${C1ST_STANDALONE_MACOS_ICON}"
                         WINDOWS_ICON "${C1ST_STANDALONE_WINDOWS_ICON}"
+                        RESOURCE_DIRECTORY "${C1ST_RESOURCE_DIRECTORY}"
                 )
                 if (DEFINED C1ST_ASSET_OUTPUT_DIRECTORY)
                     if (NOT WIN32)

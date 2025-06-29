@@ -5,6 +5,7 @@ function(target_add_auv2_wrapper)
             OUTPUT_NAME
             BUNDLE_IDENTIFIER
             BUNDLE_VERSION
+            RESOURCE_DIRECTORY
 
             MANUFACTURER_NAME
             MANUFACTURER_CODE
@@ -61,6 +62,10 @@ function(target_add_auv2_wrapper)
         message(WARNING "clap-wrapper: bundle version not defined. Chosing ${PROJECT_VERSION}")
         set(AUV2_BUNDLE_VERSION ${PROJECT_VERSION})
     endif ()
+
+    if (NOT DEFINED AUV2_RESOURCE_DIRECTORY)
+        set(AUV2_RESOURCE_DIRECTORY "")
+    endif()
 
     # We need a build helper which ejects our config code for info-plist and entry points
     set(bhtg ${AUV2_TARGET}-build-helper)
@@ -248,6 +253,11 @@ function(target_add_auv2_wrapper)
     macos_include_clap_in_bundle(TARGET ${AUV2_TARGET}
             MACOS_EMBEDDED_CLAP_LOCATION ${AUV2_MACOSX_EMBEDDED_CLAP_LOCATION})
     macos_bundle_flag(TARGET ${AUV2_TARGET})
+
+    # Copy resource directory, if defined
+    if(NOT AUV2_RESOURCE_DIRECTORY STREQUAL "")
+        message(WARNING "RESOURCE_DIRECTORY defined, but not (yet) supported for AUV2")
+    endif()
 
     if (${CLAP_WRAPPER_COPY_AFTER_BUILD})
         target_copy_after_build(TARGET ${AUV2_TARGET} FLAVOR auv2)
