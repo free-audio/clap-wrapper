@@ -141,8 +141,14 @@ std::shared_ptr<Plugin> Plugin::createInstance(const clap_plugin_factory* factor
 {
   auto plug = std::shared_ptr<Plugin>(new Plugin(host));
   auto instance = factory->create_plugin(factory, plug->getClapHostInterface(), id.c_str());
-  plug->connectClap(instance);
-
+  if (instance)
+  {
+    plug->connectClap(instance);
+  }
+  else
+  {
+    plug.reset();
+  }
   return plug;
 }
 
@@ -162,8 +168,14 @@ std::shared_ptr<Plugin> Plugin::createInstance(Clap::Library& library, size_t in
     auto plug = std::shared_ptr<Plugin>(new Plugin(host));
     auto instance = library._pluginFactory->create_plugin(
         library._pluginFactory, plug->getClapHostInterface(), library.plugins[index]->id);
-    plug->connectClap(instance);
-
+    if (instance)
+    {
+      plug->connectClap(instance);
+    }
+    else
+    {
+      plug.reset();
+    }
     return plug;
   }
   return nullptr;
@@ -219,6 +231,8 @@ void Plugin::connectClap(const clap_plugin_t* clap)
   {
     getExtension(_plugin, _ext._contextmenu, CLAP_EXT_CONTEXT_MENU_COMPAT);
   }
+
+  getExtension(_plugin, _ext._gainreduc, CLAP_EXT_GAIN_ADJUSTMENT_METERING);
 
 #if LIN
   getExtension(_plugin, _ext._posixfd, CLAP_EXT_POSIX_FD_SUPPORT);
@@ -350,6 +364,7 @@ void Plugin::reset()
 //  _plugin->process(_plugin, data);
 //}
 
+/*
 const clap_plugin_gui_t* Plugin::getUI() const
 {
   if (_ext._gui)
@@ -361,6 +376,7 @@ const clap_plugin_gui_t* Plugin::getUI() const
   }
   return nullptr;
 }
+*/
 
 void Plugin::mark_dirty()
 {
@@ -449,9 +465,12 @@ void Plugin::log(clap_log_severity severity, const char* msg)
 #endif
 }
 
+static thread_local uint32_t g_main_thread_override = 0;
+static thread_local uint32_t g_audio_thread_override = 0;
+
 bool Plugin::is_main_thread() const
 {
-  if (this->_main_thread_override > 0)
+  if (g_main_thread_override > 0)
   {
     return true;
   }
@@ -460,7 +479,7 @@ bool Plugin::is_main_thread() const
 
 bool Plugin::is_audio_thread() const
 {
-  if (this->_audio_thread_override > 0)
+  if (g_audio_thread_override > 0)
   {
     return true;
   }
@@ -469,12 +488,12 @@ bool Plugin::is_audio_thread() const
 
 CLAP_NODISCARD Raise Plugin::AlwaysAudioThread()
 {
-  return Raise(this->_audio_thread_override);
+  return Raise(g_audio_thread_override);
 }
 
 CLAP_NODISCARD Raise Plugin::AlwaysMainThread()
 {
-  return Raise(this->_main_thread_override);
+  return Raise(g_main_thread_override);
 }
 
 void Plugin::param_rescan(clap_param_rescan_flags flags)

@@ -25,6 +25,7 @@
 
 DEF_CLASS_IID(ARA::IPlugInEntryPoint)
 DEF_CLASS_IID(ARA::IPlugInEntryPoint2)
+DEF_CLASS_IID(Presonus::IGainReductionInfo)
 
 #if 0
 --- 8< ---
@@ -651,6 +652,7 @@ ARAPlugInExtensionInstancePtr PLUGIN_API ClapAsVst3::bindToDocumentControllerWit
 
 static Vst::SpeakerArrangement speakerArrFromPortType(const char* port_type)
 {
+  if (!port_type) return Vst::SpeakerArr::kEmpty;
   static const std::pair<const char*, Vst::SpeakerArrangement> arrangementmap[] = {
       {CLAP_PORT_MONO, Vst::SpeakerArr::kMono},
       {CLAP_PORT_STEREO, Vst::SpeakerArr::kStereo},
@@ -1665,4 +1667,14 @@ tresult ClapAsVst3::getBusInfo(Vst::MediaType type, Vst::BusDirection dir, int32
     }
   }
   return SingleComponentEffect::getBusInfo(type, dir, index, bus);
+}
+
+double PLUGIN_API ClapAsVst3::getGainReductionValueInDb()
+{
+  auto* gr = _plugin->_ext._gainreduc;
+  if (gr)
+  {
+    return gr->get(_plugin->_plugin);
+  }
+  return 0.0;
 }

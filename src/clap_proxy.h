@@ -25,6 +25,7 @@
 #endif
 
 #include "detail/clap/fsutil.h"
+#include <clap/ext/draft/gain-adjustment-metering.h>
 
 namespace Clap
 {
@@ -113,6 +114,7 @@ struct ClapPluginExtensions
   const clap_plugin_timer_support_t* _timer = nullptr;
   const clap_plugin_context_menu_t* _contextmenu = nullptr;
   const clap_ara_plugin_extension_t* _ara = nullptr;
+  const clap_plugin_gain_adjustment_metering_t* _gainreduc = nullptr;
 #if LIN
   const clap_plugin_posix_fd_support* _posixfd = nullptr;
 #endif
@@ -121,7 +123,7 @@ struct ClapPluginExtensions
 class Raise
 {
  public:
-  Raise(std::atomic<uint32_t>& counter) : ctx(counter)
+  Raise(uint32_t& counter) : ctx(counter)
   {
     ++ctx;
   }
@@ -131,7 +133,7 @@ class Raise
   }
 
  private:
-  std::atomic<uint32_t>& ctx;
+  uint32_t& ctx;
 };
 
 /// <summary>
@@ -180,7 +182,7 @@ class Plugin
   void stop_processing();
   void reset();
   // void process(const clap_process_t* data);
-  const clap_plugin_gui_t* getUI() const;
+  // const clap_plugin_gui_t* getUI() const;
 
   ClapPluginExtensions _ext;
   const clap_plugin_t* _plugin = nullptr;
@@ -257,8 +259,6 @@ class Plugin
   clap_host_t _host;  // the host_t structure for the proxy
   IHost* _parentHost = nullptr;
   const std::thread::id _main_thread_id = std::this_thread::get_id();
-  std::atomic<uint32_t> _audio_thread_override = 0;
-  std::atomic<uint32_t> _main_thread_override = 0;
 
   AudioSetup _audioSetup;
 };

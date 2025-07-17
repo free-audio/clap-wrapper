@@ -31,6 +31,10 @@ function(private_add_vst3_wrapper_sources)
             )
 
     target_include_directories(${V3_TARGET}-clap-wrapper-vst3-lib PRIVATE "${sd}/include")
+
+    # psl
+    target_include_directories(${V3_TARGET}-clap-wrapper-vst3-lib PUBLIC "${sd}/libs/psl")
+
 endfunction(private_add_vst3_wrapper_sources)
 
 # define libraries
@@ -160,6 +164,8 @@ function(target_add_vst3_wrapper)
         endif()
 
     elseif(UNIX)
+        message(STATUS "clap-wrapper: Building the VST3 Bundle Folder using the CMAKE_SYSTEM_PROCESSOR variable: (${CMAKE_SYSTEM_PROCESSOR})")
+
         target_link_libraries(${V3_TARGET} PUBLIC "-ldl")
         target_link_libraries(${V3_TARGET} PRIVATE "-Wl,--no-undefined")
 
@@ -177,13 +183,13 @@ function(target_add_vst3_wrapper)
 
         add_custom_command(TARGET ${V3_TARGET} PRE_BUILD
                 WORKING_DIRECTORY ${v3root}
-                COMMAND ${CMAKE_COMMAND} -E make_directory "${v3root_dor}${V3_OUTPUT_NAME}.vst3/Contents/x86_64-linux"
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${v3root_dor}${V3_OUTPUT_NAME}.vst3/Contents/${CMAKE_SYSTEM_PROCESSOR}-linux"
                 )
         set_target_properties(${V3_TARGET} PROPERTIES
                 LIBRARY_OUTPUT_NAME ${V3_OUTPUT_NAME}
-                LIBRARY_OUTPUT_DIRECTORY "${v3root}/${v3root_dor}${V3_OUTPUT_NAME}.vst3/Contents/x86_64-linux"
-                LIBRARY_OUTPUT_DIRECTORY_DEBUG "${v3root}/${v3root_d}/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-linux"
-                LIBRARY_OUTPUT_DIRECTORY_RELEASE "${v3root}/${v3root_r}/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-linux"
+                LIBRARY_OUTPUT_DIRECTORY "${v3root}/${v3root_dor}${V3_OUTPUT_NAME}.vst3/Contents/${CMAKE_SYSTEM_PROCESSOR}-linux"
+                LIBRARY_OUTPUT_DIRECTORY_DEBUG "${v3root}/${v3root_d}/${V3_OUTPUT_NAME}.vst3/Contents/${CMAKE_SYSTEM_PROCESSOR}-linux"
+                LIBRARY_OUTPUT_DIRECTORY_RELEASE "${v3root}/${v3root_r}/${V3_OUTPUT_NAME}.vst3/Contents/${CMAKE_SYSTEM_PROCESSOR}-linux"
                 SUFFIX ".so" PREFIX "")
         # Copy resource directory, if defined
         if(NOT TCLP_RESOURCE_DIRECTORY STREQUAL "")
@@ -206,7 +212,17 @@ function(target_add_vst3_wrapper)
                 message(WARNING "RESOURCE_DIRECTORY set, but WINDOWS_FOLDER_VST3=FALSE")
             endif()
         else()
-            message(STATUS "clap-wrapper: Building VST3 Bundle Folder")
+            message(STATUS "clap-wrapper: Building the VST3 Bundle Folder using the CMAKE_SYSTEM_PROCESSOR variable: (${CMAKE_SYSTEM_PROCESSOR})")
+
+            # Check against the list of supported targets found here:
+            # https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical+Documentation/Locations+Format/Plugin+Format.html#for-the-windows-platform
+            if(NOT CMAKE_SYSTEM_PROCESSOR STREQUAL "x86"
+                    AND NOT CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64"
+                    AND NOT CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64ec"
+                    AND NOT CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64"
+                    AND NOT CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64x")
+                message(WARNING "clap-wrapper: The architecture (${CMAKE_SYSTEM_PROCESSOR}) is not officially suported by VST3. This may cause issues when loading the resulting plug-in")
+            endif()
 
             if ("${V3_ASSET_OUTPUT_DIRECTORY}" STREQUAL "")
                 set(v3root "${CMAKE_BINARY_DIR}")
@@ -222,13 +238,13 @@ function(target_add_vst3_wrapper)
 
             add_custom_command(TARGET ${V3_TARGET} PRE_BUILD
                     WORKING_DIRECTORY ${v3root}
-                    COMMAND ${CMAKE_COMMAND} -E make_directory "${v3root_dor}${V3_OUTPUT_NAME}.vst3/Contents/x86_64-win"
+                    COMMAND ${CMAKE_COMMAND} -E make_directory "${v3root_dor}${V3_OUTPUT_NAME}.vst3/Contents/${CMAKE_SYSTEM_PROCESSOR}-win"
                     )
             set_target_properties(${V3_TARGET} PROPERTIES
                     LIBRARY_OUTPUT_NAME ${V3_OUTPUT_NAME}
-                    LIBRARY_OUTPUT_DIRECTORY "${v3root}/${v3root_dor}${V3_OUTPUT_NAME}.vst3/Contents/x86_64-win"
-                    LIBRARY_OUTPUT_DIRECTORY_DEBUG "${v3root}/${v3root_d}/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-win"
-                    LIBRARY_OUTPUT_DIRECTORY_RELEASE "${v3root}/${v3root_r}/${V3_OUTPUT_NAME}.vst3/Contents/x86_64-win"
+                    LIBRARY_OUTPUT_DIRECTORY "${v3root}/${v3root_dor}${V3_OUTPUT_NAME}.vst3/Contents/${CMAKE_SYSTEM_PROCESSOR}-win"
+                    LIBRARY_OUTPUT_DIRECTORY_DEBUG "${v3root}/${v3root_d}/${V3_OUTPUT_NAME}.vst3/Contents/${CMAKE_SYSTEM_PROCESSOR}-win"
+                    LIBRARY_OUTPUT_DIRECTORY_RELEASE "${v3root}/${v3root_r}/${V3_OUTPUT_NAME}.vst3/Contents/${CMAKE_SYSTEM_PROCESSOR}-win"
                     SUFFIX ".vst3")
 
             # Copy resource directory, if defined

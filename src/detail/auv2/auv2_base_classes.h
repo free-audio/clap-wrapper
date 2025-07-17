@@ -47,7 +47,6 @@ class queueEvent
     editstart,
     editvalue,
     editend,
-    triggerUICall,
   } type_t;
   type_t _type;
   union
@@ -55,15 +54,6 @@ class queueEvent
     clap_id _id;
     clap_event_param_value_t _value;
   } _data;
-};
-
-class TriggerUICallback : public queueEvent
-{
- public:
-  TriggerUICallback() : queueEvent()
-  {
-    this->_type = type::triggerUICall;
-  }
 };
 
 class BeginEvent : public queueEvent
@@ -228,8 +218,8 @@ bool MIDIOutput::addMIDI3Byte(const uint8_t* threebytes)
 class WrapAsAUV2 : public ausdk::AUBase,
                    public Clap::IHost,
                    public Clap::IAutomation,
-                   public os::IPlugObject,
-                   public Clap::AUv2::IMIDIOutputs
+                   public Clap::AUv2::IMIDIOutputs,
+                   public os::IPlugObject
 {
   using Base = ausdk::AUBase;
 
@@ -244,7 +234,9 @@ class WrapAsAUV2 : public ausdk::AUBase,
  private:
   AUV2_Type _autype;
 
+  // connection from plugin to view
   ui_connection _uiconn;
+  bool _uiIsOpened;
 
   bool initializeClapDesc();
 
@@ -372,7 +364,7 @@ class WrapAsAUV2 : public ausdk::AUBase,
   }
   void request_callback() override
   {
-    _queueToUI.push(TriggerUICallback());
+    _requestUICallback = true;
   }
 
   void setupWrapperSpecifics(const clap_plugin_t* plugin)
@@ -559,6 +551,8 @@ class WrapAsAUV2 : public ausdk::AUBase,
 
   // ------------- for the MIDI output
   AUMIDIOutputCallbackStruct _midioutput_hostcallback = {nullptr, nullptr};
+
+  std::atomic_bool _requestUICallback = false;
 
   // the queue from audiothread to UI thread
   ClapWrapper::detail::shared::fixedqueue<queueEvent, 8192> _queueToUI;
