@@ -14,6 +14,7 @@
 #include <clap/clap.h>
 #include <functional>
 #include <thread>
+#include <atomic>
 
 using namespace Steinberg;
 
