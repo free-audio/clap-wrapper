@@ -9,6 +9,7 @@
 #include "detail/vst3/process.h"
 #include "detail/vst3/parameter.h"
 #include "detail/clap/fsutil.h"
+#include <atomic>
 #include <locale>
 #include <sstream>
 
@@ -1290,6 +1291,12 @@ void ClapAsVst3::onIdle()
   {
     _requestUICallback = false;
     _plugin->_plugin->on_main_thread(_plugin->_plugin);
+  }
+
+  if (_wrappedview->needs_resize_from_main_thread)
+  {
+    _wrappedview->request_resize(_wrappedview->requested_width, _wrappedview->requested_height);
+    _wrappedview->needs_resize_from_main_thread = false;
   }
 
 #if LIN

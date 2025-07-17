@@ -1,6 +1,7 @@
 #include "plugview.h"
 #include <clap/clap.h>
 #include <cassert>
+#include <thread>
 #include <iostream>
 
 WrappedView::WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui,
@@ -103,6 +104,8 @@ tresult PLUGIN_API WrappedView::isPlatformTypeSupported(FIDString type)
 
 tresult PLUGIN_API WrappedView::attached(void* parent, FIDString /*type*/)
 {
+  _main_thread_id = std::this_thread::get_id();
+
 #if WIN
   _window = {CLAP_WINDOW_API_WIN32, {parent}};
 #endif
@@ -263,11 +266,21 @@ bool WrappedView::request_resize(uint32_t width, uint32_t height)
   _rect.right = _rect.left + (int32)width;
   _rect.bottom = _rect.top + (int32)height;
 
+  if (_main_thread_id != std::this_thread::get_id())
+  {
+    requested_width = width;
+    requested_height = height;
+    // call request_resize again from ClapAsVst3::onIdle()
+    needs_resize_from_main_thread = true;
+    return true;
+  }
+
   if (_plugFrame && !_plugFrame->resizeView(this, &_rect))
   {
     _rect = oldrect;
     return false;
   }
+
   return true;
 }
 tresult WrappedView::setContentScaleFactor(IPlugViewContentScaleSupport::ScaleFactor factor)

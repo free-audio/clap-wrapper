@@ -13,6 +13,7 @@
 #include <pluginterfaces/gui/iplugviewcontentscalesupport.h>
 #include <clap/clap.h>
 #include <functional>
+#include <thread>
 
 using namespace Steinberg;
 
@@ -94,6 +95,11 @@ class WrappedView : public Steinberg::IPlugView,
   // wrapper needed interfaces
   bool request_resize(uint32_t width, uint32_t height);
 
+  // processed in ClapAsVst3::onIdle()
+  std::atomic_bool needs_resize_from_main_thread = {false};
+  uint32_t requested_width = 0;
+  uint32_t requested_height = 0;
+
  private:
   void ensure_ui();
   void drop_ui();
@@ -107,6 +113,7 @@ class WrappedView : public Steinberg::IPlugView,
   ViewRect _rect = {0, 0, 0, 0};
   bool _created = false;
   bool _attached = false;
+  std::thread::id _main_thread_id{};
 
 #if LIN
  public:
