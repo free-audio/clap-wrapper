@@ -67,7 +67,7 @@ jobs:
             install_ninja: false
             run_aptget: false
             name: Windows 64bit C++20 MSVC
-            build_standalone: FALSE
+            build_standalone: TRUE
 
           - os: windows-latest
             cmakeargs: -GNinja -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc
