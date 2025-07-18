@@ -158,7 +158,7 @@ function(target_add_standalone_wrapper)
                 )
         endif()
 
-        target_link_libraries(${SA_TARGET} PRIVATE base-sdk-wil ComCtl32.Lib)
+        target_link_libraries(${SA_TARGET} PRIVATE base-sdk-wil ComCtl32.Lib RuntimeObject.Lib)
 
     elseif(UNIX)
         target_sources(${SA_TARGET} PRIVATE
