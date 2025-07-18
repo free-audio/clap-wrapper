@@ -62,6 +62,24 @@ jobs:
             name: Windows 64bit MSVC
 
           - os: windows-latest
+            cmakeargs: -A x64 -T ClangCL  -G"Visual Studio 17 2022"
+            install_ninja: false
+            run_aptget: false
+            name: Windows 64bit VS ClangCL
+
+          - os: windows-latest
+            cmakeargs: -A arm64ec
+            install_ninja: false
+            run_aptget: false
+            name: Windows arm64ec MSVC
+
+          - os: windows-latest
+            cmakeargs: -A arm64
+            install_ninja: false
+            run_aptget: false
+            name: Windows arm64 MSVC
+
+          - os: windows-latest
             cmakeargs: -A x64 -DCLAP_WRAPPER_CXX_STANDARD=20
             install_ninja: false
             run_aptget: false

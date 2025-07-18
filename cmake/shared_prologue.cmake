@@ -52,7 +52,9 @@ target_compile_options(clap-wrapper-compile-options-public INTERFACE -D${CLAP_WR
 if (APPLE)
     target_link_libraries(clap-wrapper-compile-options-public INTERFACE macos_filesystem_support)
 endif()
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND (NOT (CMAKE_CXX_COMPILER_FRONTEND_VARIANT MATCHES "MSVC")))
+    message(STATUS "clap-wrapper: using gcc/llvm-clang compile options")
+
     target_compile_options(clap-wrapper-compile-options INTERFACE -Wall -Wextra -Wno-unused-parameter -Wpedantic)
     if (WIN32)
         # CLang cant do werror on linux thanks to vst3 sdk
@@ -90,7 +92,8 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
 
 endif()
 
-if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC" OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT MATCHES "MSVC")
+    message(STATUS "clap-wrapper: using MSVC/CLangCL compile options")
     target_compile_options(clap-wrapper-compile-options-public INTERFACE /utf-8 /Zc:__cplusplus)
     if ("${CMAKE_CXX_STANDARD}" GREATER_EQUAL 20)
         message(STATUS "clap-wrapper: Turning off char8_t c++20 changes")
