@@ -60,21 +60,18 @@ jobs:
             install_ninja: false
             run_aptget: false
             name: Windows 64bit MSVC
-            build_standalone: TRUE
 
           - os: windows-latest
             cmakeargs: -A x64 -DCLAP_WRAPPER_CXX_STANDARD=20
             install_ninja: false
             run_aptget: false
             name: Windows 64bit C++20 MSVC
-            build_standalone: TRUE
 
           - os: windows-latest
             cmakeargs: -GNinja -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc
             install_ninja: true
             run_aptget: false
             name: Windows gcc/minGW
-            build_standalone: TRUE
 
           #- os: windows-latest
           #  cmakeargs: -GNinja -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang
@@ -87,63 +84,54 @@ jobs:
             install_ninja: false
             run_aptget: true
             name: Linux gcc12
-            build_standalone: TRUE
 
           - os: ubuntu-latest
             cmakeargs: -DCMAKE_CXX_COMPILER=g++-13 -DCMAKE_C_COMPILER=gcc-13
             install_ninja: false
             run_aptget: true
             name: Linux gcc13
-            build_standalone: TRUE
 
           - os: ubuntu-24.04
             cmakeargs: -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_C_COMPILER=gcc-14
             install_ninja: false
             run_aptget: true
             name: Linux ub-24 gcc14
-            build_standalone: TRUE
 
           - os: ubuntu-latest
             cmakeargs: -DCLAP_WRAPPER_CXX_STANDARD=20 -DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_C_COMPILER=gcc-12
             install_ninja: false
             run_aptget: true
             name: Linux gcc12 C++20
-            build_standalone: TRUE
 
           - os: ubuntu-latest
             cmakeargs: -DCLAP_WRAPPER_CXX_STANDARD=23 -DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_C_COMPILER=gcc-12
             install_ninja: false
             run_aptget: true
             name: Linux gcc12 C++23
-            build_standalone: TRUE
 
           - os: macos-latest
             cmakeargs: -GNinja
             install_ninja: true
             run_aptget: false
             name: MacOS Ninja
-            build_standalone: TRUE
 
           - os: macos-latest
             cmakeargs: -G"Xcode"
             install_ninja: false
             run_aptget: false
             name: MacOS Xcode
-            build_standalone: TRUE
 
           - os: macos-latest
             cmakeargs: -G"Ninja Multi-Config"  -DCLAP_WRAPPER_CXX_STANDARD=20
             install_ninja: true
             run_aptget: false
             name: MacOS Ninja Multi C++20
-            build_standalone: TRUE
 
           - os: macos-latest
             cmakeargs: -G"Unix Makefiles"
             install_ninja: false
             run_aptget: false
             name: MacOS Unix Makefiles
-            build_standalone: TRUE
 
     steps:
       - name: Checkout code
@@ -165,7 +153,7 @@ jobs:
 
       - name: Build project
         run: |
-          cmake -S . -B ./build ${{ matrix.cmakeargs }} -DCMAKE_BUILD_TYPE=Debug -DCLAP_WRAPPER_DOWNLOAD_DEPENDENCIES=TRUE -DCLAP_WRAPPER_BUILD_AUV2=TRUE  -DCLAP_WRAPPER_BUILD_STANDALONE=${{ matrix.build_standalone }} -DCLAP_WRAPPER_OUTPUT_NAME=downloadplug
+          cmake -S . -B ./build ${{ matrix.cmakeargs }} -DCMAKE_BUILD_TYPE=Debug -DCLAP_WRAPPER_DOWNLOAD_DEPENDENCIES=TRUE -DCLAP_WRAPPER_BUILD_AUV2=TRUE  -DCLAP_WRAPPER_BUILD_STANDALONE=TRUE -DCLAP_WRAPPER_OUTPUT_NAME=downloadplug
           cmake --build ./build --config Debug
 
       - name: Show Build Results
