@@ -545,12 +545,14 @@ OSStatus WrapAsAUV2::SetParameter(AudioUnitParameterID inID, AudioUnitScope inSc
 OSStatus WrapAsAUV2::CopyClumpName(AudioUnitScope inScope, UInt32 inClumpID, UInt32 inDesiredNameLength,
                                    CFStringRef* outClumpName)
 {
+  if (outClumpName == nullptr) return kAudioUnitErr_InvalidParameter;
   if (inScope == kAudioUnitScope_Global)
   {
     auto p = _clumps.getClump(inClumpID);
     if (p)
     {
-      *outClumpName = CFStringCreateWithCString(NULL, p, kCFStringEncodingUTF8);
+      auto const len = std::min(strlen(p), (size_t)inDesiredNameLength);
+      *outClumpName = CFStringCreateWithBytes(NULL, (const UInt8*)p, len, kCFStringEncodingUTF8, false);
       return noErr;
     }
   }
