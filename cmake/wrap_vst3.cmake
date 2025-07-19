@@ -49,6 +49,7 @@ function(target_add_vst3_wrapper)
             BUNDLE_VERSION
 
             WINDOWS_FOLDER_VST3
+            RESOURCE_DIRECTORY
 
             ASSET_OUTPUT_DIRECTORY
 
@@ -68,8 +69,16 @@ function(target_add_vst3_wrapper)
 
     message(STATUS "clap-wrapper: Adding VST3 Wrapper to target ${V3_TARGET} generating '${V3_OUTPUT_NAME}.vst3'")
 
+    if (NOT DEFINED V3_RESOURCE_DIRECTORY)
+        set(V3_RESOURCE_DIRECTORY "")
+    endif()
+
     if (NOT DEFINED V3_WINDOWS_FOLDER_VST3)
-        set(V3_WINDOWS_FOLDER_VST3 FALSE)
+        if(TCLP_RESOURCE_DIRECTORY STREQUAL "")
+            set(V3_WINDOWS_FOLDER_VST3 FALSE)
+        else()
+            set(V3_WINDOWS_FOLDER_VST3 TRUE)
+        endif()
     endif()
 
 
@@ -136,8 +145,17 @@ function(target_add_vst3_wrapper)
                 MACOSX_BUNDLE_INFO_PLIST ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/cmake/VST3_Info.plist.in
                 )
 
-        macos_include_clap_in_bundle(TARGET ${V3_TARGET}
-                MACOS_EMBEDDED_CLAP_LOCATION ${V3_MACOS_EMBEDDED_CLAP_LOCATION})
+        if ("${V3_MACOS_EMBEDDED_CLAP_LOCATION}" STREQUAL "")
+            # Copy resource directory, if defined
+            if(NOT V3_RESOURCE_DIRECTORY STREQUAL "")
+                add_custom_command(TARGET ${V3_TARGET} POST_BUILD
+                        COMMAND ${CMAKE_COMMAND} -E copy_directory "${V3_RESOURCE_DIRECTORY}" "$<TARGET_FILE_DIR:${V3_TARGET}>/../Resources"
+                )
+            endif()
+        else()
+            macos_include_clap_in_bundle(TARGET ${V3_TARGET}
+                    MACOS_EMBEDDED_CLAP_LOCATION ${V3_MACOS_EMBEDDED_CLAP_LOCATION})
+        endif()
         macos_bundle_flag(TARGET ${V3_TARGET})
 
         if (NOT "${V3_ASSET_OUTPUT_DIRECTORY}" STREQUAL "")
@@ -173,6 +191,10 @@ function(target_add_vst3_wrapper)
                 LIBRARY_OUTPUT_DIRECTORY_DEBUG "${v3root}/${v3root_d}/${V3_OUTPUT_NAME}.vst3/Contents/${CMAKE_SYSTEM_PROCESSOR}-linux"
                 LIBRARY_OUTPUT_DIRECTORY_RELEASE "${v3root}/${v3root_r}/${V3_OUTPUT_NAME}.vst3/Contents/${CMAKE_SYSTEM_PROCESSOR}-linux"
                 SUFFIX ".so" PREFIX "")
+        # Copy resource directory, if defined
+        if(NOT TCLP_RESOURCE_DIRECTORY STREQUAL "")
+            message(WARNING "RESOURCE_DIRECTORY defined, but not (yet) supported for Unix VST3s")
+        endif()
     else()
         if (NOT ${V3_WINDOWS_FOLDER_VST3})
             message(STATUS "clap-wrapper: Building VST3 Single File")
@@ -183,6 +205,11 @@ function(target_add_vst3_wrapper)
             if (NOT "${V3_ASSET_OUTPUT_DIRECTORY}" STREQUAL "")
                 set_target_properties(${VST3_TARGET} PROPERTIES
                         LIBRARY_OUTPUT_DIRECTORY "${V3_ASSET_OUTPUT_DIRECTORY}")
+            endif()
+
+            # Copy resource directory, if defined
+            if(NOT TCLP_RESOURCE_DIRECTORY STREQUAL "")
+                message(WARNING "RESOURCE_DIRECTORY set, but WINDOWS_FOLDER_VST3=FALSE")
             endif()
         else()
             message(STATUS "clap-wrapper: Building the VST3 Bundle Folder using the CMAKE_SYSTEM_PROCESSOR variable: (${CMAKE_SYSTEM_PROCESSOR})")
@@ -219,6 +246,12 @@ function(target_add_vst3_wrapper)
                     LIBRARY_OUTPUT_DIRECTORY_DEBUG "${v3root}/${v3root_d}/${V3_OUTPUT_NAME}.vst3/Contents/${CMAKE_SYSTEM_PROCESSOR}-win"
                     LIBRARY_OUTPUT_DIRECTORY_RELEASE "${v3root}/${v3root_r}/${V3_OUTPUT_NAME}.vst3/Contents/${CMAKE_SYSTEM_PROCESSOR}-win"
                     SUFFIX ".vst3")
+
+            # Copy resource directory, if defined
+            if(NOT TCLP_RESOURCE_DIRECTORY STREQUAL "")
+                message(WARNING "RESOURCE_DIRECTORY defined, but not (yet) supported for Windows VST3s")
+            endif()
+
         endif()
     endif()
 
