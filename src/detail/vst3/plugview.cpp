@@ -262,18 +262,15 @@ tresult PLUGIN_API WrappedView::checkSizeConstraint(ViewRect* rect)
 
 bool WrappedView::request_resize(uint32_t width, uint32_t height)
 {
+  if (_main_thread_id != std::this_thread::get_id())
+  {
+    resize_request = {width, height};
+    return true;
+  }
+
   auto oldrect = _rect;
   _rect.right = _rect.left + (int32)width;
   _rect.bottom = _rect.top + (int32)height;
-
-  if (_main_thread_id != std::this_thread::get_id())
-  {
-    requested_width = width;
-    requested_height = height;
-    // call request_resize again from ClapAsVst3::onIdle()
-    needs_resize_from_main_thread = true;
-    return true;
-  }
 
   if (_plugFrame && !_plugFrame->resizeView(this, &_rect))
   {

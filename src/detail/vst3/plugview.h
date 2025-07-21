@@ -97,9 +97,13 @@ class WrappedView : public Steinberg::IPlugView,
   bool request_resize(uint32_t width, uint32_t height);
 
   // processed in ClapAsVst3::onIdle()
-  std::atomic_bool needs_resize_from_main_thread = {false};
-  uint32_t requested_width = 0;
-  uint32_t requested_height = 0;
+  struct GuiResizeRequest
+  {
+    bool operator==(GuiResizeRequest const& other) const = default;
+    uint32_t w, h;
+  };
+  constexpr static GuiResizeRequest invalid_size = {(uint32_t)-1, (uint32_t)-1};
+  std::atomic<GuiResizeRequest> resize_request{invalid_size};
 
  private:
   void ensure_ui();

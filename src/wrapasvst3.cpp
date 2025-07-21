@@ -1293,10 +1293,13 @@ void ClapAsVst3::onIdle()
     _plugin->_plugin->on_main_thread(_plugin->_plugin);
   }
 
-  if (_wrappedview->needs_resize_from_main_thread)
+  if (_wrappedview)
   {
-    _wrappedview->request_resize(_wrappedview->requested_width, _wrappedview->requested_height);
-    _wrappedview->needs_resize_from_main_thread = false;
+    if (auto const size = _wrappedview->resize_request.exchange(WrappedView::invalid_size);
+        size != WrappedView::invalid_size)
+    {
+      _wrappedview->request_resize(size.w, size.h);
+    }
   }
 
 #if LIN
