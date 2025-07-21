@@ -99,7 +99,14 @@ class WrappedView : public Steinberg::IPlugView,
   // processed in ClapAsVst3::onIdle()
   struct GuiResizeRequest
   {
-    bool operator==(GuiResizeRequest const& other) const = default;
+    bool operator==(GuiResizeRequest const& other) const
+    {
+      return w == other.w && h == other.h;
+    }
+    bool operator!=(GuiResizeRequest const& other) const
+    {
+      return w != other.w || h != other.h;
+    }
     uint32_t w, h;
   };
   constexpr static GuiResizeRequest invalid_size = {(uint32_t)-1, (uint32_t)-1};
