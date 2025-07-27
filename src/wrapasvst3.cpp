@@ -129,7 +129,7 @@ tresult PLUGIN_API ClapAsVst3::initialize(FUnknown* context)
     {
       _plugin = Clap::Plugin::createInstance(*_library, _libraryIndex, this);
     }
-    result = (_plugin->initialize()) ? kResultOk : kResultFalse;
+    result = (_plugin && _plugin->initialize()) ? kResultOk : kResultFalse;
   }
 
   return result;
