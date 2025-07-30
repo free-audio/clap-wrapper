@@ -12,6 +12,10 @@
 #include <locale>
 #include <sstream>
 
+// we need this lock free since we can request a gui resize from any thread in CLAP
+static_assert(std::atomic<uint32_t>::is_always_lock_free,
+              "compiler must ensure that std::atomic<uint32_t> is lock free");
+
 #if WIN
 #include <tchar.h>
 #define S16(x) reinterpret_cast<const Steinberg::Vst::TChar*>(_T(x))
@@ -1106,6 +1110,16 @@ bool ClapAsVst3::gui_can_resize()
 
 bool ClapAsVst3::gui_request_resize(uint32_t width, uint32_t height)
 {
+  // UIs with 65kx65k resolution are not supported
+  if ((width > 0xffff) || (height > 0xffff)) return false;
+
+  if (_main_thread_id != std::this_thread::get_id())
+  {
+    uint32_t newSize = ((width & 0xffff) << 16) | (height & 0xffff);
+    _gui_resize_request.store(newSize);
+    return true;
+  }
+
   if (_wrappedview)
     return _wrappedview->request_resize(width, height);
   else
@@ -1290,6 +1304,16 @@ void ClapAsVst3::onIdle()
   {
     _requestUICallback = false;
     _plugin->_plugin->on_main_thread(_plugin->_plugin);
+  }
+
+  if (_wrappedview)
+  {
+    if (auto const size = _gui_resize_request.exchange(_gui_invalid_size); size != _gui_invalid_size)
+    {
+      auto w = (size >> 16) & 0xffff;
+      auto h = (size & 0xffff);
+      _wrappedview->request_resize(w, h);
+    }
   }
 
 #if LIN
