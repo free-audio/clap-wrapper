@@ -40,6 +40,8 @@
 #include "detail/vst3/aravst3.h"
 #include "detail/shared/spinlock.h"
 #include <mutex>
+#include <thread>
+#include <atomic>
 
 using namespace Steinberg;
 
@@ -385,6 +387,10 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
 
   std::atomic_bool _requestUICallback = false;
   bool _missedLatencyRequest = false;
+
+  std::thread::id _main_thread_id{};
+  static const uint32_t _gui_invalid_size = 0xffffffff;
+  std::atomic<uint32_t> _gui_resize_request = _gui_invalid_size;
 
   // the queue from audiothread to UI thread
   ClapWrapper::detail::shared::fixedqueue<queueEvent, 8192> _queueToUI;
