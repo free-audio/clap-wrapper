@@ -1111,7 +1111,7 @@ bool ClapAsVst3::gui_can_resize()
 bool ClapAsVst3::gui_request_resize(uint32_t width, uint32_t height)
 {
   // UIs with 65kx65k resolution are not supported
-  if ((width > 0xffff) && (height > 0xffff)) return false;
+  if ((width > 0xffff) || (height > 0xffff)) return false;
 
   if (_main_thread_id != std::this_thread::get_id())
   {
