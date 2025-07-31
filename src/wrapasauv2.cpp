@@ -365,11 +365,12 @@ void WrapAsAUV2::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
           {
             // creating the mapping object and insert it into the tree
             // this will also create Clumps if necessary
-            _parametertree[paraminfo.id] = std::make_unique<Clap::AUv2::Parameter>(paraminfo);
+            _parametertree[paraminfo.id] =
+                std::make_unique<Clap::AUv2::Parameter>(_plugin->_plugin, p, paraminfo);
           }
           else
           {
-            piter->second->resetInfo(paraminfo);
+            piter->second->updateInfo(_plugin->_plugin, p, paraminfo);
           }
           Globals()->SetParameter(paraminfo.id, result);
         }
@@ -443,57 +444,13 @@ OSStatus WrapAsAUV2::GetParameterInfo(AudioUnitScope inScope, AudioUnitParameter
   // const uint64_t stdflag = kAudioUnitParameterFlag_IsReadable | kAudioUnitParameterFlag_IsWritable;
   if (inScope == kAudioUnitScope_Global)
   {
-    AudioUnitParameterOptions flags = 0;
     auto pi = _parametertree.find(inParameterID);
     if (pi != _parametertree.end())
     {
       auto f = pi->second.get();
-      const auto info = f->info();
+      const auto& info = f->info();
 
-      flags |= kAudioUnitParameterFlag_Global;
-
-      if (!(info.flags & CLAP_PARAM_IS_AUTOMATABLE)) flags |= kAudioUnitParameterFlag_NonRealTime;
-      if (!(info.flags & CLAP_PARAM_IS_HIDDEN))
-      {
-        if (info.flags & CLAP_PARAM_IS_READONLY)
-          flags |= kAudioUnitParameterFlag_IsReadable;
-        else
-          flags |= kAudioUnitParameterFlag_IsReadable | kAudioUnitParameterFlag_IsWritable;
-      }
-      if (info.flags & CLAP_PARAM_IS_STEPPED)
-      {
-        if (info.max_value - info.min_value == 1)
-        {
-          flags |= kAudioUnitParameterUnit_Boolean;
-        }
-        // flags |= kAudioUnitParameterUnit_Indexed;  // probably need to add the lists then
-      }
-      if (info.max_value - info.min_value > 100)
-      {
-        flags |= kAudioUnitParameterFlag_IsHighResolution;
-      }
-
-      // checking if the parameter supports the conversion of its value to text
-
-      // we can't get the value since we are not in the audio thread
-      auto guarantee_mainthread = _plugin->AlwaysMainThread();
-      double value;
-      if (_plugin->_ext._params->get_value(_plugin->_plugin, info.id, &value))
-      {
-        char buf[200];
-        if (_plugin->_ext._params->value_to_text(_plugin->_plugin, info.id, value, buf, sizeof(buf)))
-        {
-          flags |= kAudioUnitParameterFlag_HasName;
-        }
-      }
-
-      /*
-       * The CFString() used from the param can reset which releases it. So add a ref count
-       * and ask the param to release it too
-       */
-      flags |= kAudioUnitParameterFlag_HasCFNameString | kAudioUnitParameterFlag_CFNameRelease;
-
-      outParameterInfo.flags = flags;
+      outParameterInfo.flags = f->AudioUnitFlags();
 
       // according to the documentation, the name field should be zeroed. In fact, AULab does display anything then.
       // strcpy(outParameterInfo.name, info.name);

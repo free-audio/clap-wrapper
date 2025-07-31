@@ -34,7 +34,8 @@ namespace Clap::AUv2
 class Parameter
 {
  public:
-  Parameter(clap_param_info_t& clap_param);
+  Parameter(const clap_plugin_t* plugin, const clap_plugin_params_t* clap_param_ext,
+            const clap_param_info_t& clap_param);
   ~Parameter();
   const clap_param_info_t& info() const
   {
@@ -44,12 +45,18 @@ class Parameter
   {
     return _cfstring;
   }
+  AudioUnitParameterOptions AudioUnitFlags() const
+  {
+    return _flags;
+  }
 
-  void resetInfo(const clap_param_info_t& i);
+  void updateInfo(const clap_plugin_t* plugin, const clap_plugin_params_t* clap_param_ext,
+                  const clap_param_info_t& i);
 
  private:
   clap_param_info_t _info;
-  CFStringRef _cfstring;
+  CFStringRef _cfstring = nullptr;
+  AudioUnitParameterOptions _flags;
 };
 
 }  // namespace Clap::AUv2
