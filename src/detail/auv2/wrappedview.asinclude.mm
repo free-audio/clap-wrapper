@@ -90,7 +90,7 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
 
   ui = *cont;
   canary = 0xbeebbeeb;
-  
+
   if (ui._registerWindow)
   {
     ui._registerWindow((clap_window_t *)self, &canary);
@@ -148,9 +148,9 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
 {
   // auto gui = ui._plugin->_ext._gui;
 }
-- (void) viewDidMoveToWindow
+- (void)viewDidMoveToWindow
 {
-  if ( [self window] == nil )
+  if ([self window] == nil)
   {
     LOGINFO("[clap-wrapper] - view removed from a window");
     if (idleTimer)
@@ -158,10 +158,10 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
       CFRunLoopTimerInvalidate(idleTimer);
       idleTimer = 0;
     }
-    if ( canary )
+    if (canary)
     {
       ui._destroyWindow();
-      
+
       assert(canary == 0);
     }
   }
@@ -175,7 +175,7 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
   {
     CFRunLoopTimerInvalidate(idleTimer);
   }
-  if ( canary )
+  if (canary)
   {
     LOGINFO("[clap-wrapper] the host did not call viewDidMoveWindow with a nil window");
     ui._destroyWindow();
@@ -185,7 +185,7 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
 - (void)setFrame:(NSRect)newSize
 {
   [super setFrame:newSize];
-  if ( canary )
+  if (canary)
   {
     auto gui = ui._plugin->_ext._gui;
     gui->set_scale(ui._plugin->_plugin, 1.0);

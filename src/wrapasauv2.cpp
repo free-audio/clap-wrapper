@@ -365,7 +365,8 @@ void WrapAsAUV2::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
           {
             // creating the mapping object and insert it into the tree
             // this will also create Clumps if necessary
-            _parametertree[paraminfo.id] = std::make_unique<Clap::AUv2::Parameter>(_plugin->_plugin, p, paraminfo);
+            _parametertree[paraminfo.id] =
+                std::make_unique<Clap::AUv2::Parameter>(_plugin->_plugin, p, paraminfo);
           }
           else
           {
@@ -443,7 +444,6 @@ OSStatus WrapAsAUV2::GetParameterInfo(AudioUnitScope inScope, AudioUnitParameter
   // const uint64_t stdflag = kAudioUnitParameterFlag_IsReadable | kAudioUnitParameterFlag_IsWritable;
   if (inScope == kAudioUnitScope_Global)
   {
-    
     auto pi = _parametertree.find(inParameterID);
     if (pi != _parametertree.end())
     {
