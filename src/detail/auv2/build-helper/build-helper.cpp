@@ -93,6 +93,16 @@ struct auInfo
   }
 };
 
+bool contains(const char* const* array, const char* target) {
+  if (!array || !target) return false;
+  for (auto p = array; *p != nullptr; ++p) {
+    if (strcmp(*p, target) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname, std::string &manu,
                         std::string &manuName, std::vector<auInfo> &units, std::string &type)
 {
@@ -146,16 +156,24 @@ bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname
     u.manunm = manuName;
 
     if (type.empty()) {
-      auto f = clapPlug->features[0];
-      if (f == nullptr || strcmp(f, CLAP_PLUGIN_FEATURE_INSTRUMENT) == 0)
+      auto f = clapPlug->features;
+      if (!f || f[0] == nullptr)
       {
         u.type = "aumu";
       }
-      else if (strcmp(f, CLAP_PLUGIN_FEATURE_AUDIO_EFFECT) == 0)
+      else if (contains(f, CLAP_PLUGIN_FEATURE_INSTRUMENT) && contains(f, CLAP_PLUGIN_FEATURE_AUDIO_EFFECT))
+      {
+        u.type = "aumf";
+      }
+      else if (contains(f, CLAP_PLUGIN_FEATURE_INSTRUMENT))
+      {
+        u.type = "aumu";
+      }
+      else if (contains(f, CLAP_PLUGIN_FEATURE_AUDIO_EFFECT))
       {
         u.type = "aufx";
       }
-      else if (strcmp(f, CLAP_PLUGIN_FEATURE_NOTE_EFFECT) == 0)
+      else if (contains(f, CLAP_PLUGIN_FEATURE_NOTE_EFFECT))
       {
         u.type = "aumi";
       }
