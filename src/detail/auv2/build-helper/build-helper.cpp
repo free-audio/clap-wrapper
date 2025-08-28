@@ -94,7 +94,7 @@ struct auInfo
 };
 
 bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname, std::string &manu,
-                        std::string &manuName, std::vector<auInfo> &units)
+                        std::string &manuName, std::vector<auInfo> &units, std::string &type)
 {
   Clap::Library loader;
   if (!loader.load(clapfile))
@@ -145,23 +145,27 @@ bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname
     u.manu = manu;
     u.manunm = manuName;
 
-    auto f = clapPlug->features[0];
-    if (f == nullptr || strcmp(f, CLAP_PLUGIN_FEATURE_INSTRUMENT) == 0)
-    {
-      u.type = "aumu";
-    }
-    else if (strcmp(f, CLAP_PLUGIN_FEATURE_AUDIO_EFFECT) == 0)
-    {
-      u.type = "aufx";
-    }
-    else if (strcmp(f, CLAP_PLUGIN_FEATURE_NOTE_EFFECT) == 0)
-    {
-      u.type = "aumi";
-    }
-    else
-    {
-      std::cout << "[WARNING] can't determine instrument type. Using aumu" << std::endl;
-      u.type = "aumu";
+    if (type.empty()) {
+      auto f = clapPlug->features[0];
+      if (f == nullptr || strcmp(f, CLAP_PLUGIN_FEATURE_INSTRUMENT) == 0)
+      {
+        u.type = "aumu";
+      }
+      else if (strcmp(f, CLAP_PLUGIN_FEATURE_AUDIO_EFFECT) == 0)
+      {
+        u.type = "aufx";
+      }
+      else if (strcmp(f, CLAP_PLUGIN_FEATURE_NOTE_EFFECT) == 0)
+      {
+        u.type = "aumi";
+      }
+      else
+      {
+        std::cout << "[WARNING] can't determine instrument type. Using aumu" << std::endl;
+        u.type = "aumu";
+      }
+    } else {
+      u.type = type;
     }
 
     auto fp = clapPlug->features;
@@ -249,6 +253,7 @@ int main(int argc, char **argv)
     auto bundlev = std::string(argv[idx++]);
     auto mcode = (idx < argc) ? std::string(argv[idx++]) : std::string();
     auto mname = (idx < argc) ? std::string(argv[idx++]) : std::string();
+    auto type = (idx < argc) ? std::string(argv[idx++]) : std::string();
 
     try
     {
@@ -274,7 +279,7 @@ int main(int argc, char **argv)
     std::cout << "  - building information from CLAP directly\n"
               << "  - source clap: '" << clapfile << "'" << std::endl;
 
-    if (!buildUnitsFromClap(clapfile, clapname, mcode, mname, units))
+    if (!buildUnitsFromClap(clapfile, clapname, mcode, mname, units, type))
     {
       std::cout << "[ERROR] Can't build units from CLAP" << std::endl;
       return 4;

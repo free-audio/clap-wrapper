@@ -88,7 +88,6 @@ function(target_add_auv2_wrapper)
         get_property(ton TARGET ${clpt} PROPERTY LIBRARY_OUTPUT_NAME)
         set(AUV2_OUTPUT_NAME "${ton}")
         set(AUV2_SUBTYPE_CODE "Fooo")
-        set(AUV2_INSTRUMENT_TYPE "aumu")
 
         add_dependencies(${AUV2_TARGET} ${clpt})
         add_dependencies(${bhtg} ${clpt})
@@ -107,7 +106,6 @@ function(target_add_auv2_wrapper)
     elseif (DEFINED AUV2_MACOSX_EMBEDDED_CLAP_LOCATION)
         message(STATUS "clap-wrapper: building auv2 based on clap ${AUV2_MACOSX_EMBEDDED_CLAP_LOCATION}")
         set(AUV2_SUBTYPE_CODE "----")
-        set(AUV2_INSTRUMENT_TYPE "aumu")
 
         add_custom_command(
                 TARGET ${bhtg}
@@ -118,7 +116,7 @@ function(target_add_auv2_wrapper)
                 COMMAND $<TARGET_FILE:${bhtg}> --fromclap
                 "${AUV2_OUTPUT_NAME}"
                 "${AUV2_MACOSX_EMBEDDED_CLAP_LOCATION}" "${AUV2_BUNDLE_VERSION}"
-                "${AUV2_MANUFACTURER_CODE}" "${AUV2_MANUFACTURER_NAME}"
+                "${AUV2_MANUFACTURER_CODE}" "${AUV2_MANUFACTURER_NAME}" "${AUV2_INSTRUMENT_TYPE}"
         )
     else ()
         if (NOT DEFINED AUV2_OUTPUT_NAME)
