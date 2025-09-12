@@ -72,7 +72,10 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND (NOT (CMAKE_CXX_COMPILER_FRONTE
     endif()
     if ("${CMAKE_CXX_STANDARD}" GREATER_EQUAL 20)
         message(STATUS "clap-wrapper: Turning off char8_t c++20 changes")
-        target_compile_options(clap-wrapper-compile-options-public INTERFACE -fno-char8_t)
+        target_compile_options(clap-wrapper-compile-options-public INTERFACE
+                $<$<COMPILE_LANGUAGE:CXX>:-fno-char8_t>
+                $<$<COMPILE_LANGUAGE:OBJCXX>:-fno-char8_t>
+        )
     endif()
     if (${CLAP_WRAPPER_ENABLE_SANITIZER})
         message(STATUS "clap-wrapper: enabling sanitizer build")
