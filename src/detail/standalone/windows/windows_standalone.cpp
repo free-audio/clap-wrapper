@@ -958,6 +958,17 @@ Plugin::Plugin(const clap_plugin_entry* entry, int argc, char** argv)
                  {
                    plugin.plugin->on_main_thread(plugin.plugin);
                  }
+
+                 if (sah->restartRequested.exchange(false))
+                 {
+                   // manually set running to false to make clapProcess a no-op
+                   // while the plugin is being reactivated. otherwise,
+                   // stopping and starting the entire audio engine is probably
+                   // overkill.
+                   sah->running = false;
+                   sah->activatePlugin(sah->currentSampleRate, 1, sah->currentBufferSize * 2);
+                   sah->running = true;
+                 }
                }
 
                return 0;

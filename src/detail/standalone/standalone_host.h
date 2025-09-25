@@ -111,9 +111,10 @@ struct StandaloneHost : Clap::IHost
   {
     TRACE;
   }
+  std::atomic<bool> restartRequested{false};
   void restartPlugin() override
   {
-    TRACE;
+    restartRequested = true;
   }
   std::atomic<bool> callbackRequested{false};
   void request_callback() override
