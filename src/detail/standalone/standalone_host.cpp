@@ -103,13 +103,15 @@ void StandaloneHost::setupMIDIBusses(const clap_plugin_t *plugin,
 
 void StandaloneHost::clapProcess(void *pOutput, const void *pInput, uint32_t frameCount)
 {
+  ClapWrapper::detail::shared::SpinLockGuard processLockGuard(processLock);
+  auto f = (float *)pOutput;
+  
   if (!running)
   {
+    memset(f, 0, frameCount * 2 * sizeof(float));
     finishedRunning = true;
     return;
   }
-
-  auto f = (float *)pOutput;
 
   clap_process process;
   process.transport = nullptr;  // this is a freefloating host
