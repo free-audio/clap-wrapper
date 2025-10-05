@@ -108,7 +108,7 @@ void StandaloneHost::clapProcess(void *pOutput, const void *pInput, uint32_t fra
   
   if (!running)
   {
-    memset(f, 0, frameCount * 2 * sizeof(float));
+    memset(f, 0, frameCount * currentOutputChannels * sizeof(float));
     finishedRunning = true;
     return;
   }
