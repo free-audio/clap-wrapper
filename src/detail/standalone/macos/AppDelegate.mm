@@ -46,7 +46,8 @@
       ClapWrapper::detail::shared::SpinLockGuard g(standaloneHost->processLock);
       standaloneHost->running = false;
     }
-    standaloneHost->activatePlugin(sah->currentSampleRate, 1, sah->currentBufferSize * 2);
+    standaloneHost->activatePlugin(standaloneHost->currentSampleRate, 1,
+                                   standaloneHost->currentBufferSize * 2);
     standaloneHost->running = true;
   }
 }

@@ -966,8 +966,8 @@ Plugin::Plugin(const clap_plugin_entry* entry, int argc, char** argv)
                    // stopping and starting the entire audio engine is probably
                    // overkill.
                    {
-                    ClapWrapper::detail::shared::SpinLockGuard g(sah->processLock);
-                    sah->running = false;
+                     ClapWrapper::detail::shared::SpinLockGuard g(sah->processLock);
+                     sah->running = false;
                    }
                    sah->activatePlugin(sah->currentSampleRate, 1, sah->currentBufferSize * 2);
                    sah->running = true;

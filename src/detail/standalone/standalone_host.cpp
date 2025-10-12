@@ -105,7 +105,7 @@ void StandaloneHost::clapProcess(void *pOutput, const void *pInput, uint32_t fra
 {
   ClapWrapper::detail::shared::SpinLockGuard processLockGuard(processLock);
   auto f = (float *)pOutput;
-  
+
   if (!running)
   {
     memset(f, 0, frameCount * currentOutputChannels * sizeof(float));
