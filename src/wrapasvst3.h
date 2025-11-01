@@ -386,6 +386,7 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   ClapWrapper::detail::shared::SpinLock _processOrFlushLock;
 
   std::atomic_bool _requestUICallback = false;
+  std::atomic_bool _requestRestart = false;
   bool _missedLatencyRequest = false;
 
   std::thread::id _main_thread_id{};
