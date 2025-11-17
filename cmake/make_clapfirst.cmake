@@ -229,10 +229,11 @@ function(make_clapfirst_plugins)
             endif()
         endif()
 
-	# Emscripten flags
-	target_compile_options(${C1ST_IMPL_TARGET} PUBLIC -msimd128 --no-entry)
-	target_compile_options(${WCLAP_TARGET} PUBLIC -msimd128 --no-entry)
-	target_link_options(${WCLAP_TARGET} PUBLIC -msimd128 -sSTANDALONE_WASM --no-entry -sEXPORTED_FUNCTIONS=_clap_entry,_malloc -sINITIAL_MEMORY=512kb -sALLOW_MEMORY_GROWTH=1 -sALLOW_TABLE_GROWTH=1 -sPURE_WASI --export-table)
+        # Emscripten flags
+        set_target_properties(${WCLAP_TARGET} PROPERTIES
+                COMPILE_FLAGS "-msimd128" # TODO: add this to the static library as well?
+                LINK_FLAGS    "-msimd128 -sSTANDALONE_WASM --no-entry -s EXPORTED_FUNCTIONS=_clap_entry,_malloc -s INITIAL_MEMORY=512kb -s ALLOW_MEMORY_GROWTH=1 -s ALLOW_TABLE_GROWTH=1 -s PURE_WASI --export-table"
+        )
 
         add_dependencies(${ALL_TARGET} ${WCLAP_TARGET})
     endif()
