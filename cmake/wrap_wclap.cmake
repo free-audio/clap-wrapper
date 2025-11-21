@@ -8,7 +8,7 @@ function(target_add_wclap_configuration)
     )
     cmake_parse_arguments(TCLP "" "${oneValueArgs}" "" ${ARGN} )
 
-    if (NOT EMSCRIPTEN AND (NOT ${CMAKE_SYSTEM_PROCESSOR} STREQUAL "wasm32") AND (NOT ${CMAKE_SYSTEM_PROCESSOR} STREQUAL "wasm64"))
+    if (NOT ANY_WASM_TOOLCHAIN)
         message(FATAL_ERROR "Do not call this outside the Emscripten/WASI toolchain")
     endif()
 

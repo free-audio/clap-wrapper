@@ -10,6 +10,10 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set(EMSCRIPTEN 1)
 endif()
 
+if (EMSCRIPTEN OR (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "wasm32") OR (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "wasm64"))
+    set(ANY_WASM_TOOLCHAIN 1)
+endif()
+
 if (EMSCRIPTEN)
     set(CLAP_WRAPPER_PLATFORM "EMS" CACHE STRING "Clap Wrapper Platform: Emscripten")
 elseif (APPLE)
