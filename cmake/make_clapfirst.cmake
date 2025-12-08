@@ -236,7 +236,7 @@ function(make_clapfirst_plugins)
         else()
             target_compile_options(${C1ST_IMPL_TARGET} PUBLIC -msimd128 -fno-exceptions)
             target_compile_options(${WCLAP_TARGET} PUBLIC -msimd128 -fno-exceptions)
-            target_link_options(${WCLAP_TARGET} PUBLIC -mexec-model=reactor -Wl,--max-memory=4294967296,--export-table,--growable-table,--export=malloc,--export=clap_entry)
+            target_link_options(${WCLAP_TARGET} PUBLIC -mexec-model=reactor -Wl,--max-memory=2147483648,--export-table,--growable-table,--export=malloc,--export=clap_entry)
         endif()
 
         add_dependencies(${ALL_TARGET} ${WCLAP_TARGET})
