@@ -35,6 +35,18 @@ static gboolean onResize(GtkWidget *wid, GdkEventConfigure *event, gpointer user
   return g->resizePlugin(wid, event->width, event->height);
 }
 
+static gboolean onDeleteEvent(GtkWidget *wid, GdkEventConfigure *event, gpointer user_data)
+{
+  auto g = (GtkGui *)user_data;
+  auto gui = g->plugin->_ext._gui;
+  if (gui)
+  {
+    gui->destroy(g->plugin->_plugin);
+  }
+  g_application_quit(G_APPLICATION(g->app));
+  return false;
+}
+
 bool GtkGui::resizePlugin(GtkWidget *wid, uint32_t w, uint32_t h)
 {
   if (plugin->_ext._gui)
@@ -102,6 +114,7 @@ void GtkGui::setupPlugin(_GtkApplication *app)
     gtk_box_pack_start(GTK_BOX(vbox), frame, TRUE, TRUE, 0);
 
     g_signal_connect(window, "configure-event", G_CALLBACK(onResize), this);
+    g_signal_connect(window, "delete-event", G_CALLBACK(onDeleteEvent), this);
 
     gtk_widget_show_all(window);
 
