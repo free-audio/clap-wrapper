@@ -216,12 +216,17 @@ function(target_add_vst3_wrapper)
 
             # Check against the list of supported targets found here:
             # https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical+Documentation/Locations+Format/Plugin+Format.html#for-the-windows-platform
-            if(NOT CMAKE_SYSTEM_PROCESSOR STREQUAL "x86"
-                    AND NOT CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64"
-                    AND NOT CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64ec"
-                    AND NOT CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64"
-                    AND NOT CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64x")
+            if (CMAKE_SYSTEM_PROCESSOR STREQUAL "AMD64")
+                set(v3arch "x86_64")  
+            elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "IA64")
+                set(v3arch "x86_64")
+            elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86")
+                set(v3arch "x86")
+            elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "ARM64")
+                set(v3arch "arm64")
+            else()
                 message(WARNING "clap-wrapper: The architecture (${CMAKE_SYSTEM_PROCESSOR}) is not officially suported by VST3. This may cause issues when loading the resulting plug-in")
+                set(v3arch "${CMAKE_SYSTEM_PROCESSOR}")
             endif()
 
             if ("${V3_ASSET_OUTPUT_DIRECTORY}" STREQUAL "")
@@ -238,13 +243,13 @@ function(target_add_vst3_wrapper)
 
             add_custom_command(TARGET ${V3_TARGET} PRE_BUILD
                     WORKING_DIRECTORY ${v3root}
-                    COMMAND ${CMAKE_COMMAND} -E make_directory "${v3root_dor}${V3_OUTPUT_NAME}.vst3/Contents/${CMAKE_SYSTEM_PROCESSOR}-win"
+                    COMMAND ${CMAKE_COMMAND} -E make_directory "${v3root_dor}${V3_OUTPUT_NAME}.vst3/Contents/${v3arch}-win"
                     )
             set_target_properties(${V3_TARGET} PROPERTIES
                     LIBRARY_OUTPUT_NAME ${V3_OUTPUT_NAME}
-                    LIBRARY_OUTPUT_DIRECTORY "${v3root}/${v3root_dor}${V3_OUTPUT_NAME}.vst3/Contents/${CMAKE_SYSTEM_PROCESSOR}-win"
-                    LIBRARY_OUTPUT_DIRECTORY_DEBUG "${v3root}/${v3root_d}/${V3_OUTPUT_NAME}.vst3/Contents/${CMAKE_SYSTEM_PROCESSOR}-win"
-                    LIBRARY_OUTPUT_DIRECTORY_RELEASE "${v3root}/${v3root_r}/${V3_OUTPUT_NAME}.vst3/Contents/${CMAKE_SYSTEM_PROCESSOR}-win"
+                    LIBRARY_OUTPUT_DIRECTORY "${v3root}/${v3root_dor}${V3_OUTPUT_NAME}.vst3/Contents/${v3arch}-win"
+                    LIBRARY_OUTPUT_DIRECTORY_DEBUG "${v3root}/${v3root_d}/${V3_OUTPUT_NAME}.vst3/Contents/${v3arch}-win"
+                    LIBRARY_OUTPUT_DIRECTORY_RELEASE "${v3root}/${v3root_r}/${V3_OUTPUT_NAME}.vst3/Contents/${v3arch}-win"
                     SUFFIX ".vst3")
 
             # Copy resource directory, if defined

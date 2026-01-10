@@ -204,24 +204,33 @@ jobs:
             cmakeargs: -A x64
             install_ninja: false
             run_aptget: false
+            vst3_validator: ./vst3sdk/cmake-build/bin/Debug/validator
+            vst3_path: ./build/clap-first-distortion_assets/VST3/ClapFirst Bad Distortion.vst3
             name: ClapFirst Windows 64bit MSVC
 
           - os: ubuntu-latest
             cmakeargs: -DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_C_COMPILER=gcc-12
             install_ninja: false
             run_aptget: true
+            vst3_validator: ./vst3sdk/cmake-build/bin/validator
+            vst3_path: ./build/clap-first-distortion_assets/ClapFirst Bad Distortion.vst3
             name: ClapFirst Linux gcc12
 
           - os: ubuntu-24.04
             cmakeargs: -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_C_COMPILER=gcc-14
             install_ninja: false
             run_aptget: true
+            vst3_validator: ./vst3sdk/cmake-build/bin/validator
+            vst3_path: ./build/clap-first-distortion_assets/ClapFirst Bad Distortion.vst3
             name: ClapFirst Linux ub24 gcc14
 
           - os: macos-latest
             cmakeargs: -G"Xcode"
             install_ninja: false
             run_aptget: false
+            vst3_validator: ./vst3sdk/cmake-build/bin/validator
+            vst3_path: ./build/clap-first-distortion_assets/Debug/ClapFirst Bad Distortion.vst3
+            auv2_path: ./build/clap-first-distortion_assets/Debug/ClapFirst Bad Distortion.component
             name: ClapFirst MacOS Xcode
 
 
@@ -252,5 +261,35 @@ jobs:
         shell: bash
         run: |
           find build -name "ClapFirst*" -print
+
+      - name: Build VST3 validator
+        shell: bash
+        run: |
+          # checkout VST3 SDK (shallow clone), can we reuse one from the build step?
+          git clone --depth=1 https://github.com/steinbergmedia/vst3sdk
+          cd vst3sdk
+          git submodule update --init base
+          git submodule update --init cmake
+          git submodule update --init public.sdk
+          git submodule update --init pluginterfaces
+
+          # build the validator
+          cmake -DSMTG_ENABLE_VSTGUI_SUPPORT=OFF -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=OFF -DSMTG_ENABLE_VST3_HOSTING_EXAMPLES=OFF -B cmake-build
+          cmake --build cmake-build --target validator
+          cd ..
+
+      - name: Run VST3 validator
+        shell: bash
+        run: |
+          "${{ matrix.vst3_validator }}" "${{ matrix.vst3_path }}"
+
+      - name: Run auval
+        shell: bash
+        if: ${{ matrix.auv2_path }}
+        run: |
+          mkdir -p ~/Library/Audio/Plug-Ins/Components/
+          cp -R "${{ matrix.auv2_path }}" ~/Library/Audio/Plug-Ins/Components/
+          killall -9 AudioComponentRegistrar || true
+          auval -strict -v aufx BdDt FrAD
           
 
