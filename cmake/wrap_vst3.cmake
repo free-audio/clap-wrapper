@@ -217,10 +217,8 @@ function(target_add_vst3_wrapper)
             # Check against the list of supported targets found here:
             # https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical+Documentation/Locations+Format/Plugin+Format.html#for-the-windows-platform
             if (CMAKE_SYSTEM_PROCESSOR STREQUAL "AMD64")
-                set(v3arch "x86_64")  
-            elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "IA64")
                 set(v3arch "x86_64")
-            elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86")
+            elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "X86")
                 set(v3arch "x86")
             elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "ARM64")
                 set(v3arch "arm64")
