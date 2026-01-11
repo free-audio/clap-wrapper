@@ -232,7 +232,7 @@ jobs:
             install_ninja: true
             run_aptget: false
             run_validator: true
-            vst3_validator: build/validator-build/bin/validator
+            vst3_validator: build/validator-build/bin/Debug/validator
             vst3_path: ./build/clap-first-distortion_assets/Debug/ClapFirst Bad Distortion.vst3
             auv2_path: ./build/clap-first-distortion_assets/Debug/ClapFirst Bad Distortion.component
             name: ClapFirst MacOS Xcode
