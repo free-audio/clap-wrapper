@@ -4,13 +4,31 @@
 #include <pluginterfaces/vst/ivstevents.h>
 #include <pluginterfaces/vst/ivstnoteexpression.h>
 #include <public.sdk/source/vst/utility/stringconvert.h>
+
+// With 3.8.0 fstring is no longer up to snuff for wextra gcc so...
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wextra"
+#endif
+
 #include <base/source/fstring.h>
+
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
+
 #include "detail/vst3/state.h"
 #include "detail/vst3/process.h"
 #include "detail/vst3/parameter.h"
 #include "detail/clap/fsutil.h"
 #include <locale>
 #include <sstream>
+
+#if VST_VERSION <= 0x030706 // aka VST_3_7_6_VERSION
+namespace stringconv = VST3::StringConvert;
+#else
+namespace stringconv = Steinberg::Vst::StringConvert;
+#endif
 
 // we need this lock free since we can request a gui resize from any thread in CLAP
 static_assert(std::atomic<uint32_t>::is_always_lock_free,
@@ -786,7 +804,7 @@ Vst::UnitID ClapAsVst3::getOrCreateUnitInfo(const char* modulename)
     {
       Steinberg::Vst::String128 name;
       std::string u8name(path[i]);
-      if (VST3::StringConvert::convert(u8name, name))
+      if (stringconv::convert(u8name, name))
       {
         auto newid = static_cast<Steinberg::int32>(units.size());
         auto* newunit = new Vst::Unit(name, newid, id);  // a new unit without a program list
@@ -908,7 +926,7 @@ void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
     rootInfo.id = Vst::kRootUnitId;
     rootInfo.parentUnitId = Vst::kNoParentUnitId;
     rootInfo.programListId = Vst::kNoProgramListId;
-    VST3::StringConvert::convert(std::string("Root"), rootInfo.name);
+    stringconv::convert(std::string("Root"), rootInfo.name);
 
     auto rootUnit = new Vst::Unit(rootInfo);
     addUnit(rootUnit);
@@ -948,7 +966,7 @@ void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
 
       auto name = fmt::format("MIDI Channel {}", channel + 1);
 
-      VST3::StringConvert::convert(name, midiUnitInfo.name);
+      stringconv::convert(name, midiUnitInfo.name);
 
       for (int i = 0; i < Vst::ControllerNumbers::kCountCtrlNumber; ++i)
       {
@@ -986,7 +1004,7 @@ void ClapAsVst3::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
         {
           auto programname = fmt::format("Program {}", pc + 1);
 
-          programlist->addProgram(VST3::StringConvert::convert(programname).c_str());
+          programlist->addProgram(stringconv::convert(programname).c_str());
         }
         this->addProgramList(programlist);
 
@@ -1249,7 +1267,7 @@ const char* ClapAsVst3::host_get_name()
     Steinberg::Vst::String128 res;
     if (kResultOk == vst3HostApplication->getName(res))
     {
-      wrapper_hostname = VST3::StringConvert::convert(res);
+      wrapper_hostname = stringconv::convert(res);
       wrapper_hostname.append(" (CLAP-as-VST3)");
     }
   }
@@ -1525,7 +1543,7 @@ void ClapAsVst3::firePosixFDIsSet(int fd, clap_posix_fd_flags_t flags)
 void wrapper_context_menu_item::vst3_to_clap(clap_id action_id)
 {
   name = std::make_unique<std::string>();
-  *name = VST3::StringConvert::convert(vst3item.name);
+  *name = stringconv::convert(vst3item.name);
 
   if (vst3item.flags == vst3item.kIsGroupStart)
   {
