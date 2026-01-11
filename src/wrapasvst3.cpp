@@ -24,7 +24,7 @@
 #include <locale>
 #include <sstream>
 
-#if VST_VERSION <= 0x030706 // aka VST_3_7_6_VERSION
+#if VST_VERSION <= 0x030706  // aka VST_3_7_6_VERSION
 namespace stringconv = VST3::StringConvert;
 #else
 namespace stringconv = Steinberg::Vst::StringConvert;
