@@ -14,11 +14,24 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            name: Windows External SDK
+            name: Windows External SDK (VST3.7.7)
+            vst_ver: v3.7.7_build_19
           - os: macos-latest
-            name: Mac External SDK
+            name: Mac External SDK  (VST3.7.7)
+            vst_ver: v3.7.7_build_19
           - os: ubuntu-latest
-            name: Linux External SDK
+            name: Linux External SDK  (VST3.7.7)
+            vst_ver: v3.7.7_build_19
+
+          - os: windows-latest
+            name: Windows External SDK (VST3.8.0)
+            vst_ver: v3.8.0_build_66
+          - os: macos-latest
+            name: Mac External SDK  (VST3.8.0)
+            vst_ver: v3.8.0_build_66
+          - os: ubuntu-latest
+            name: Linux External SDK  (VST3.8.0)
+            vst_ver: v3.8.0_build_66
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -33,7 +46,7 @@ jobs:
           git clone https://github.com/steinbergmedia/vst3sdk
           cd vst3sdk
           # temporary workaround, switch to vst3 sdk 3.7.7
-          git switch --detach v3.7.7_build_19
+          git switch --detach ${{ matrix.vst_ver }}
           git submodule update --init --recursive
           cd ../..
 
