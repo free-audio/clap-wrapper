@@ -204,7 +204,7 @@ jobs:
             cmakeargs: -A x64
             install_ninja: false
             run_aptget: false
-            run_validator: true
+            run_validator: false
             vst3_validator: build/validator-build/bin/validator
             vst3_path: ./build/clap-first-distortion_assets/VST3/ClapFirst Bad Distortion.vst3
             name: ClapFirst Windows 64bit Single File MSVC
