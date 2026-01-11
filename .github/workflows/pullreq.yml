@@ -207,7 +207,17 @@ jobs:
             run_validator: true
             vst3_validator: build/validator-build/bin/validator
             vst3_path: ./build/clap-first-distortion_assets/VST3/ClapFirst Bad Distortion.vst3
-            name: ClapFirst Windows 64bit MSVC
+            name: ClapFirst Windows 64bit Single File MSVC
+
+
+          - os: windows-latest
+            cmakeargs: -A x64 -DEXAMPLE_USE_WINDOWS_FOLDER=TRUE
+            install_ninja: false
+            run_aptget: false
+            run_validator: true
+            vst3_validator: build/validator-build/bin/validator
+            vst3_path: ./build/clap-first-distortion_assets/VST3/ClapFirst Bad Distortion.vst3
+            name: ClapFirst Windows 64bit Folder MSVC
 
           - os: ubuntu-latest
             cmakeargs: -DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_C_COMPILER=gcc-12

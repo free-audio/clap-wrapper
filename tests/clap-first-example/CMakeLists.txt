@@ -9,6 +9,8 @@ project(clap-first-distortion)
 
 set(PRODUCT_NAME "ClapFirst Bad Distortion")
 
+option(EXAMPLE_USE_WINDOWS_FOLDER "Make windows folder for this example" FALSE)
+
 # Step one is to create a static 'impl' library which contains a static
 # implementation of clap_init, clap_deinit and clap_get_factor. Here those
 # are all in one cpp file, but a common idiom is to have an -entry-impl file
@@ -32,7 +34,7 @@ make_clapfirst_plugins(
         COPY_AFTER_BUILD FALSE
 
         # vst3 validator on windows needs this to be true to pass
-        WINDOWS_FOLDER_VST3 TRUE
+        WINDOWS_FOLDER_VST3 ${EXAMPLE_USE_WINDOWS_FOLDER}
 
         PLUGIN_FORMATS CLAP VST3 AUV2 WCLAP
 
