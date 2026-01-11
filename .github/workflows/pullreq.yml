@@ -205,7 +205,7 @@ jobs:
             install_ninja: false
             run_aptget: false
             run_validator: true
-            vst3_validator: build/validator-build/bin/Debug/validator
+            vst3_validator: build/validator-build/bin/validator
             vst3_path: ./build/clap-first-distortion_assets/VST3/ClapFirst Bad Distortion.vst3
             name: ClapFirst Windows 64bit MSVC
 
