@@ -197,6 +197,8 @@ function(guarantee_vst3sdk)
                         -DCMAKE_BUILD_TYPE=Debug
                         -GNinja
 
+                        -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+
                         -DSMTG_ADD_VSTGUI=OFF
                         -DSMTG_ADD_VST3_PLUGINS_SAMPLES=OFF
                         -DSMTG_ADD_VST3_HOSTING_SAMPLES=OFF

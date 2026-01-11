@@ -204,6 +204,7 @@ jobs:
             cmakeargs: -A x64
             install_ninja: false
             run_aptget: false
+            run_validator: true
             vst3_validator: build/validator-build/bin/Debug/validator
             vst3_path: ./build/clap-first-distortion_assets/VST3/ClapFirst Bad Distortion.vst3
             name: ClapFirst Windows 64bit MSVC
@@ -212,6 +213,7 @@ jobs:
             cmakeargs: -DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_C_COMPILER=gcc-12
             install_ninja: false
             run_aptget: true
+            run_validator: false
             vst3_validator: build/validator-build/bin/validator
             vst3_path: ./build/clap-first-distortion_assets/ClapFirst Bad Distortion.vst3
             name: ClapFirst Linux gcc12
@@ -220,14 +222,16 @@ jobs:
             cmakeargs: -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_C_COMPILER=gcc-14
             install_ninja: false
             run_aptget: true
+            run_validator: false
             vst3_validator: build/validator-build/bin/validator
             vst3_path: ./build/clap-first-distortion_assets/ClapFirst Bad Distortion.vst3
             name: ClapFirst Linux ub24 gcc14
 
-          - os: macos-latest$!
+          - os: macos-latest
             cmakeargs: -G"Xcode"
-            install_ninja: false
+            install_ninja: true
             run_aptget: false
+            run_validator: true
             vst3_validator: build/validator-build/bin/validator
             vst3_path: ./build/clap-first-distortion_assets/Debug/ClapFirst Bad Distortion.vst3
             auv2_path: ./build/clap-first-distortion_assets/Debug/ClapFirst Bad Distortion.component
