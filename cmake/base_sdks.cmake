@@ -186,6 +186,25 @@ function(guarantee_vst3sdk)
         # generates a cpp warning. Since we won't fix this do
         target_compile_options(base-sdk-vst3 PUBLIC -Wno-cpp)
     endif()
+
+
+    if (NOT TARGET vst3_validator)
+        add_custom_target(vst3_validator)
+        add_custom_command(TARGET vst3_validator
+                POST_BUILD
+                WORKING_DIRECTORY ${VST3_SDK_ROOT}
+                COMMAND ${CMAKE_COMMAND}
+                        -DCMAKE_BUILD_TYPE=Debug
+                        -GNinja
+                        -DSMTG_ENABLE_VSTGUI_SUPPORT=OFF
+                        -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=OFF
+                        -DSMTG_ENABLE_VST3_HOSTING_EXAMPLES=OFF
+                        -B ${CMAKE_BINARY_DIR}/validator-build
+
+                COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}/validator-build --config Debug --target validator
+        )
+    endif()
+
 endfunction(guarantee_vst3sdk)
 
 function(guarantee_auv2sdk)

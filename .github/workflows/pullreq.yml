@@ -204,7 +204,7 @@ jobs:
             cmakeargs: -A x64
             install_ninja: false
             run_aptget: false
-            vst3_validator: ./vst3sdk/cmake-build/bin/Debug/validator
+            vst3_validator: build/validator-build/bin/Debug/validator
             vst3_path: ./build/clap-first-distortion_assets/VST3/ClapFirst Bad Distortion.vst3
             name: ClapFirst Windows 64bit MSVC
 
@@ -212,7 +212,7 @@ jobs:
             cmakeargs: -DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_C_COMPILER=gcc-12
             install_ninja: false
             run_aptget: true
-            vst3_validator: ./vst3sdk/cmake-build/bin/validator
+            vst3_validator: build/validator-build/bin/validator
             vst3_path: ./build/clap-first-distortion_assets/ClapFirst Bad Distortion.vst3
             name: ClapFirst Linux gcc12
 
@@ -220,7 +220,7 @@ jobs:
             cmakeargs: -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_C_COMPILER=gcc-14
             install_ninja: false
             run_aptget: true
-            vst3_validator: ./vst3sdk/cmake-build/bin/validator
+            vst3_validator: build/validator-build/bin/validator
             vst3_path: ./build/clap-first-distortion_assets/ClapFirst Bad Distortion.vst3
             name: ClapFirst Linux ub24 gcc14
 
@@ -228,7 +228,7 @@ jobs:
             cmakeargs: -G"Xcode"
             install_ninja: false
             run_aptget: false
-            vst3_validator: ./vst3sdk/cmake-build/bin/validator
+            vst3_validator: build/validator-build/bin/validator
             vst3_path: ./build/clap-first-distortion_assets/Debug/ClapFirst Bad Distortion.vst3
             auv2_path: ./build/clap-first-distortion_assets/Debug/ClapFirst Bad Distortion.component
             name: ClapFirst MacOS Xcode
@@ -265,18 +265,7 @@ jobs:
       - name: Build VST3 validator
         shell: bash
         run: |
-          # checkout VST3 SDK (shallow clone), can we reuse one from the build step?
-          git clone --depth=1 https://github.com/steinbergmedia/vst3sdk
-          cd vst3sdk
-          git submodule update --init base
-          git submodule update --init cmake
-          git submodule update --init public.sdk
-          git submodule update --init pluginterfaces
-
-          # build the validator
-          cmake -DSMTG_ENABLE_VSTGUI_SUPPORT=OFF -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=OFF -DSMTG_ENABLE_VST3_HOSTING_EXAMPLES=OFF -B cmake-build
-          cmake --build cmake-build --target validator
-          cd ..
+          cmake --build ./build --config Debug --target vst3_validator
 
       - name: Run VST3 validator
         shell: bash
