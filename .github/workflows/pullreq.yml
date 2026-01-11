@@ -213,7 +213,7 @@ jobs:
             cmakeargs: -DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_C_COMPILER=gcc-12
             install_ninja: false
             run_aptget: true
-            run_validator: false
+            run_validator: true
             vst3_validator: build/validator-build/bin/validator
             vst3_path: ./build/clap-first-distortion_assets/ClapFirst Bad Distortion.vst3
             name: ClapFirst Linux gcc12
@@ -222,7 +222,7 @@ jobs:
             cmakeargs: -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_C_COMPILER=gcc-14
             install_ninja: false
             run_aptget: true
-            run_validator: false
+            run_validator: true
             vst3_validator: build/validator-build/bin/validator
             vst3_path: ./build/clap-first-distortion_assets/ClapFirst Bad Distortion.vst3
             name: ClapFirst Linux ub24 gcc14
