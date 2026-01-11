@@ -267,12 +267,14 @@ jobs:
           find build -name "ClapFirst*" -print
 
       - name: Build VST3 validator
+        if: ${{ matrix.run_validator}}
         shell: bash
         run: |
           cmake --build ./build --config Debug --target vst3_validator
 
       - name: Run VST3 validator
         shell: bash
+        if: ${{ matrix.run_validator}}
         run: |
           "${{ matrix.vst3_validator }}" "${{ matrix.vst3_path }}"
 
