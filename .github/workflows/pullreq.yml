@@ -224,7 +224,7 @@ jobs:
             vst3_path: ./build/clap-first-distortion_assets/ClapFirst Bad Distortion.vst3
             name: ClapFirst Linux ub24 gcc14
 
-          - os: macos-latest
+          - os: macos-latest$!
             cmakeargs: -G"Xcode"
             install_ninja: false
             run_aptget: false
