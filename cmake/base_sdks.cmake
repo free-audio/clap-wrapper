@@ -196,9 +196,15 @@ function(guarantee_vst3sdk)
                 COMMAND ${CMAKE_COMMAND}
                         -DCMAKE_BUILD_TYPE=Debug
                         -GNinja
+
+                        -DSMTG_ADD_VSTGUI=OFF
+                        -DSMTG_ADD_VST3_PLUGINS_SAMPLES=OFF
+                        -DSMTG_ADD_VST3_HOSTING_SAMPLES=OFF
+
                         -DSMTG_ENABLE_VSTGUI_SUPPORT=OFF
                         -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=OFF
                         -DSMTG_ENABLE_VST3_HOSTING_EXAMPLES=OFF
+
                         -B ${CMAKE_BINARY_DIR}/validator-build
 
                 COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}/validator-build --config Debug --target validator
