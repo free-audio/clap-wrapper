@@ -214,7 +214,7 @@ jobs:
             install_ninja: false
             run_aptget: true
             run_validator: true
-            vst3_validator: build/validator-build/bin/validator
+            vst3_validator: build/validator-build/bin/Debug/validator
             vst3_path: ./build/clap-first-distortion_assets/ClapFirst Bad Distortion.vst3
             name: ClapFirst Linux gcc12
 
@@ -223,7 +223,7 @@ jobs:
             install_ninja: false
             run_aptget: true
             run_validator: true
-            vst3_validator: build/validator-build/bin/validator
+            vst3_validator: build/validator-build/bin/Debug/validator
             vst3_path: ./build/clap-first-distortion_assets/ClapFirst Bad Distortion.vst3
             name: ClapFirst Linux ub24 gcc14
 
