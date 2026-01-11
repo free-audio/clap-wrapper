@@ -103,10 +103,10 @@ function(guarantee_vst3sdk)
         CPMAddPackage(
                 NAME "vst3sdk"
                 GITHUB_REPOSITORY "steinbergmedia/vst3sdk"
-                GIT_TAG "v3.7.6_build_18"
+                GIT_TAG "v3.8.0_build_66"
                 EXCLUDE_FROM_ALL TRUE
                 DOWNLOAD_ONLY TRUE
-                GIT_SUBMODULES base public.sdk pluginterfaces
+                GIT_SUBMODULES base public.sdk pluginterfaces cmake
                 SOURCE_DIR cpm/vst3sdk
         )
 
