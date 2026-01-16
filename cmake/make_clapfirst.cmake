@@ -72,7 +72,7 @@ function(make_clapfirst_plugins)
     endif()
 
     if (NOT DEFINED C1ST_PLUGIN_FORMATS)
-        message(STATUS "clap-wrapper: clapfrist no firmats given. Turning them all on")
+        message(STATUS "clap-wrapper: no formats given to clapfirst. Turning them all on")
         if (ANY_WASM_TOOLCHAIN)
             set(C1ST_PLUGIN_FORMATS WCLAP)
         else()
