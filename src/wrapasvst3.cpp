@@ -22,6 +22,7 @@
 #include "detail/vst3/process.h"
 #include "detail/vst3/parameter.h"
 #include "detail/clap/fsutil.h"
+#include "detail/shared/util.h"
 #include <locale>
 #include <sstream>
 
@@ -182,21 +183,31 @@ tresult PLUGIN_API ClapAsVst3::setActive(TBool state)
   if (state)
   {
     if (_active) return kResultFalse;
-    if (!_plugin->activate()) return kResultFalse;
-    _active = true;
-    _processAdapter = new Clap::ProcessAdapter();
 
-    auto supportsnoteexpression =
-        (_expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_PRESSURE);
+    for (auto i = 0U; i < audioInputs.size(); ++i)
+    {
+      _plugin->setBusActivation(true, i, audioInputs[i]->isActive());
+    }
+
+    for (auto i = 0U; i < audioOutputs.size(); ++i)
+    {
+      _plugin->setBusActivation(false, i, audioOutputs[i]->isActive());
+    }
+
+    if (!_plugin->activate()) return kResultFalse;
 
     _gesturedparameters.reserve(8192);
 
-    // the processAdapter needs to know a few things to intercommunicate between VST3 host and CLAP plugin.
+    _active = true;
+    _processAdapter = new Clap::ProcessAdapter();
     _processAdapter->setupProcessing(
         _plugin->_plugin, _plugin->_ext._params, this->audioInputs, this->audioOutputs,
         this->_largestBlocksize, this->eventInputs.size(), this->eventOutputs.size(), parameters,
-        componentHandler, this, _gesturedparameters, supportsnoteexpression,
+        componentHandler, this, _gesturedparameters,
+        _expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_PRESSURE,
         _expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_TUNING);
+
+    // do we need this still?
     updateAudioBusses();
 
     if (_missedLatencyRequest)
@@ -360,40 +371,67 @@ tresult PLUGIN_API ClapAsVst3::setBusArrangements(Vst::SpeakerArrangement *input
 
   auto raise = _plugin->AlwaysMainThread();
 
-  int32_t inc = _plugin->_ext._audioports->count(_plugin->_plugin, true);
-  int32_t ouc = _plugin->_ext._audioports->count(_plugin->_plugin, false);
-  if (inc != numIns || ouc != numOuts)
+  // if we have configurable-audio-ports, ask the plugin to set the requested arrangement
+  if (_plugin->_ext._configurable_audio_ports)
   {
-    return kResultFalse;
+    std::vector<clap_audio_port_configuration_request_t> requests;
+
+    for (int i = 0; i < numIns + numOuts; ++i)
+    {
+      clap_audio_port_configuration_request_t request;
+
+      request.is_input = i < numIns;
+      request.port_index = i < numIns ? i : (i - numIns);
+      auto arrangement = i < numIns ? inputs[i] : outputs[i - numIns];
+
+      switch (arrangement)
+      {
+        case Vst::SpeakerArr::kMono:
+          request.channel_count = 1;
+          request.port_type = CLAP_PORT_MONO;
+          request.port_details = nullptr;
+          break;
+        case Vst::SpeakerArr::kStereo:
+          request.channel_count = 2;
+          request.port_type = CLAP_PORT_STEREO;
+          request.port_details = nullptr;
+          break;
+        default:
+          request.channel_count = popcount64(arrangement);
+          request.port_type = nullptr;
+          request.port_details = nullptr;
+          break;
+      }
+
+      requests.push_back(request);
+    }
+
+    if (_plugin->_ext._configurable_audio_ports->apply_configuration(
+            _plugin->_plugin, requests.data(), static_cast<uint32_t>(requests.size())))
+    {
+      setupAudioBusses(_plugin->_plugin, _plugin->_ext._audioports);
+      return super::setBusArrangements(inputs, numIns, outputs, numOuts);
+    }
   }
 
-  for (int i = 0; i < numIns; ++i)
+  // otherwise we just make sure that the requested arrangements matches the current layout
   {
-    clap_audio_port_info_t info;
-    _plugin->_ext._audioports->get(_plugin->_plugin, i, true, &info);
-    Vst::SpeakerArrangement sa{0};
-    for (auto c = 0U; c < info.channel_count; ++c)
-    {
-      sa = (sa << 1) + 1;
-    }
-    if (inputs[i] != sa)
-    {
-      return kResultFalse;
-    }
-  }
+    int32_t inc = _plugin->_ext._audioports->count(_plugin->_plugin, true);
+    int32_t ouc = _plugin->_ext._audioports->count(_plugin->_plugin, false);
+    if (inc != numIns || ouc != numOuts) return kResultFalse;
 
-  for (int i = 0; i < numOuts; ++i)
-  {
-    clap_audio_port_info_t info;
-    _plugin->_ext._audioports->get(_plugin->_plugin, i, false, &info);
-    Vst::SpeakerArrangement sa{0};
-    for (auto c = 0U; c < info.channel_count; ++c)
+    for (int i = 0; i < numIns; ++i)
     {
-      sa = (sa << 1) + 1;
+      clap_audio_port_info_t info;
+      _plugin->_ext._audioports->get(_plugin->_plugin, i, true, &info);
+      if (popcount64(inputs[i]) != info.channel_count) return kResultFalse;
     }
-    if (outputs[i] != sa)
+
+    for (int i = 0; i < numOuts; ++i)
     {
-      return kResultFalse;
+      clap_audio_port_info_t info;
+      _plugin->_ext._audioports->get(_plugin->_plugin, i, false, &info);
+      if (popcount64(outputs[i]) != info.channel_count) return kResultFalse;
     }
   }
 
@@ -705,33 +743,42 @@ ARAPlugInExtensionInstancePtr PLUGIN_API ClapAsVst3::bindToDocumentControllerWit
   return nullptr;
 }
 
-static Vst::SpeakerArrangement speakerArrFromPortType(const char *port_type)
+// TODO: surround extension support
+static Vst::SpeakerArrangement speakerArrFromPortType(const char *port_type, uint32_t channel_count)
 {
-  if (!port_type) return Vst::SpeakerArr::kEmpty;
-  static const std::pair<const char *, Vst::SpeakerArrangement> arrangementmap[] = {
-      {CLAP_PORT_MONO, Vst::SpeakerArr::kMono},
-      {CLAP_PORT_STEREO, Vst::SpeakerArr::kStereo},
-      // {CLAP_PORT_AMBISONIC, Vst::SpeakerArr::kAmbi1stOrderACN} <- we need also CLAP_EXT_AMBISONIC
-      // {CLAP_PORT_SURROUND, Vst::SpeakerArr::kStereoSurround}, // add when CLAP_EXT_SURROUND is not draft anymore
-      // TODO: add more PortTypes to Speaker Arrangement
-      {nullptr, Vst::SpeakerArr::kEmpty}};
-
-  auto p = &arrangementmap[0];
-  while (p->first)
+  if (!port_type)
   {
-    if (!strcmp(port_type, p->first))
+    switch (channel_count)
     {
-      return p->second;
+      case 0:
+        return Vst::SpeakerArr::kEmpty;
+      case 1:
+        return Vst::SpeakerArr::kMono;
+      case 2:
+        return Vst::SpeakerArr::kStereo;
+      case 5:
+        return Vst::SpeakerArr::k50;
+      case 6:
+        return Vst::SpeakerArr::k51;
+      case 7:
+        return Vst::SpeakerArr::k70Cine;
+      case 8:
+        return Vst::SpeakerArr::k71Cine;
+      default:
+        return (1 << channel_count) - 1;  // bitmask with channel_count bits set
     }
-    ++p;
   }
+
+  if (!strcmp(port_type, CLAP_PORT_MONO)) return Vst::SpeakerArr::kMono;
+  if (!strcmp(port_type, CLAP_PORT_STEREO)) return Vst::SpeakerArr::kStereo;
 
   return Vst::SpeakerArr::kEmpty;
 }
 
 void ClapAsVst3::addAudioBusFrom(const clap_audio_port_info_t *info, bool is_input)
 {
-  auto spk = speakerArrFromPortType(info->port_type);
+  auto spk = speakerArrFromPortType(info->port_type, info->channel_count);
+
   auto bustype = Vst::BusTypes::kMain;  // actually, everything is main, except
   if (is_input && !(info->flags & CLAP_AUDIO_PORT_IS_MAIN))
   {
@@ -897,6 +944,9 @@ void ClapAsVst3::setupAudioBusses(const clap_plugin_t *plugin,
                                   const clap_plugin_audio_ports_t *audioports)
 {
   if (!audioports) return;
+
+  removeAudioBusses();
+
   auto numAudioInputs = audioports->count(plugin, true);
   auto numAudioOutputs = audioports->count(plugin, false);
 

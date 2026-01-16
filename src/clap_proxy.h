@@ -107,6 +107,7 @@ struct ClapPluginExtensions
   const clap_plugin_state_t *_state = nullptr;
   const clap_plugin_params_t *_params = nullptr;
   const clap_plugin_audio_ports_t *_audioports = nullptr;
+  const clap_plugin_audio_ports_activation_t *_audio_ports_activation = nullptr;
   const clap_plugin_configurable_audio_ports_t *_configurable_audio_ports = nullptr;
   const clap_plugin_gui_t *_gui = nullptr;
   const clap_plugin_note_ports_t *_noteports = nullptr;
@@ -171,6 +172,7 @@ class Plugin
   void schnick();
   bool initialize();
   void terminate();
+  void setBusActivation(bool isInput, uint32_t busIndex, bool active);
   void setSampleRate(double sampleRate);
   double getSampleRate() const
   {

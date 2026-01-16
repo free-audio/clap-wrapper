@@ -228,6 +228,7 @@ void Plugin::connectClap(const clap_plugin_t *clap)
   getExtension(_plugin, _ext._configurable_audio_ports, CLAP_EXT_CONFIGURABLE_AUDIO_PORTS);
   if (!_ext._configurable_audio_ports)
     getExtension(_plugin, _ext._configurable_audio_ports, CLAP_EXT_CONFIGURABLE_AUDIO_PORTS_COMPAT);
+  getExtension(_plugin, _ext._audio_ports_activation, CLAP_EXT_AUDIO_PORTS_ACTIVATION);
   getExtension(_plugin, _ext._noteports, CLAP_EXT_NOTE_PORTS);
   getExtension(_plugin, _ext._latency, CLAP_EXT_LATENCY);
   getExtension(_plugin, _ext._render, CLAP_EXT_RENDER);
@@ -321,6 +322,14 @@ void Plugin::setBlockSizes(uint32_t minFrames, uint32_t maxFrames)
 {
   _audioSetup.minFrames = minFrames;
   _audioSetup.maxFrames = maxFrames;
+}
+
+void Plugin::setBusActivation(bool isInput, uint32_t busIndex, bool active)
+{
+  if (_ext._audio_ports_activation)
+  {
+    _ext._audio_ports_activation->set_active(_plugin, isInput, busIndex, active, 32);
+  }
 }
 
 bool Plugin::load(const clap_istream_t *stream) const
@@ -526,22 +535,21 @@ void Plugin::param_request_flush()
 // [thread-safe]
 const void *Plugin::clapExtension(const clap_host * /*host*/, const char *extension)
 {
+  // TODO: add 'audio-ports' host-side extension
   if (!strcmp(extension, CLAP_EXT_LOG)) return &HostExt::log;
   if (!strcmp(extension, CLAP_EXT_PARAMS)) return &HostExt::params;
   if (!strcmp(extension, CLAP_EXT_TRACK_INFO)) return &HostExt::trackinfo;
   if (!strcmp(extension, CLAP_EXT_THREAD_CHECK)) return &HostExt::threadcheck;
   if (!strcmp(extension, CLAP_EXT_GUI)) return &HostExt::hostgui;
   if (!strcmp(extension, CLAP_EXT_TIMER_SUPPORT)) return &HostExt::hosttimer;
+  if (!strcmp(extension, CLAP_EXT_LATENCY)) return &HostExt::latency;
+  if (!strcmp(extension, CLAP_EXT_TAIL)) return &HostExt::tail;
+  if (!strcmp(extension, CLAP_EXT_STATE)) return &HostExt::state;
+  if (!strcmp(extension, CLAP_EXT_CONTEXT_MENU)) return &HostExt::context_menu;
+
 #if LIN
   if (!strcmp(extension, CLAP_EXT_POSIX_FD_SUPPORT)) return &HostExt::hostposixfd;
 #endif
-  if (!strcmp(extension, CLAP_EXT_LATENCY)) return &HostExt::latency;
-  if (!strcmp(extension, CLAP_EXT_TAIL))
-  {
-    return &HostExt::tail;
-  }
-  if (!strcmp(extension, CLAP_EXT_STATE)) return &HostExt::state;
-  if (!strcmp(extension, CLAP_EXT_CONTEXT_MENU)) return &HostExt::context_menu;
 
   return nullptr;
 }
