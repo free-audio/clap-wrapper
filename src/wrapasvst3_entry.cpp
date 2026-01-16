@@ -334,12 +334,14 @@ IPluginFactory* GetPluginFactoryEntryPoint()
             n.append(" (CLAP->VST3)");
 #endif
             auto plugname = n.c_str();  //  clapdescr->name;
+            auto plugversion = clapdescr->version;
+            if (plugversion == nullptr) plugversion = "";
             auto ptr = std::make_shared<CreationContext>();
             *ptr = {&gClapLibrary, (int)i,
                     PClassInfo2(lcid, PClassInfo::kManyInstances, kARAMainFactoryClass, plugname, 0,
                                 "", /* not used in this context */
                                 "", /* not used in this context */
-                                pluginversion, kVstVersionString)};
+                                plugversion, kVstVersionString)};
             gCreationContexts.push_back(ptr);
             gPluginFactory->registerClass(&gCreationContexts.back()->classinfo,
                                           ClapAsVst3::createInstance, gCreationContexts.back().get());
