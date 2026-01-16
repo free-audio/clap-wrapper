@@ -177,6 +177,10 @@ IPluginFactory* GetPluginFactoryEntryPoint()
     // TODO: extract the domain and prefix with info@
     auto* contact = "info@";
 
+    // NULL is allowed, but replace with empty string
+    if (!factoryvendor) factoryvendor = "Unspecified Vendor";
+    if (!vendor_url) vendor_url = "";
+
     // override for VST3 specifics
     if (gClapLibrary._pluginFactoryVst3Info)
     {
@@ -214,6 +218,8 @@ IPluginFactory* GetPluginFactoryEntryPoint()
       // get vendor -------------------------------------
       auto pluginvendor = clapdescr->vendor;
       if (pluginvendor == nullptr || *pluginvendor == 0) pluginvendor = "Unspecified Vendor";
+      auto pluginversion = clapdescr->version;
+      if (pluginversion == nullptr) pluginversion = "";
       if (vst3info && vst3info->vendor)
       {
         LOGDETAIL("  plugin supports extension '{}'", CLAP_PLUGIN_AS_VST3);
@@ -297,7 +303,7 @@ IPluginFactory* GetPluginFactoryEntryPoint()
               PClassInfo2(
                   lcid, PClassInfo::kManyInstances, kVstAudioEffectClass, plugname,
                   0 /* the only flag is usually Vst:kDistributable, but CLAPs aren't distributable */,
-                  features.c_str(), pluginvendor, clapdescr->version, kVstVersionString)};
+                  features.c_str(), pluginvendor, pluginversion, kVstVersionString)};
       gCreationContexts.push_back(ptr);
       gPluginFactory->registerClass(&gCreationContexts.back()->classinfo, ClapAsVst3::createInstance,
                                     gCreationContexts.back().get());
@@ -333,7 +339,7 @@ IPluginFactory* GetPluginFactoryEntryPoint()
                     PClassInfo2(lcid, PClassInfo::kManyInstances, kARAMainFactoryClass, plugname, 0,
                                 "", /* not used in this context */
                                 "", /* not used in this context */
-                                clapdescr->version, kVstVersionString)};
+                                pluginversion, kVstVersionString)};
             gCreationContexts.push_back(ptr);
             gPluginFactory->registerClass(&gCreationContexts.back()->classinfo,
                                           ClapAsVst3::createInstance, gCreationContexts.back().get());
