@@ -43,8 +43,8 @@ int WINAPI wWinMain(HINSTANCE /* hInstance */, HINSTANCE /* hPrevInstance */, PW
     argv.emplace_back(args[i].data());
   }
 
-  auto clapPlugin{freeaudio::clap_wrapper::standalone::mainCreatePlugin(entry, PLUGIN_ID, PLUGIN_INDEX,
-                                                                        static_cast<int>(argv.size()), argv.data())};
+  auto clapPlugin{freeaudio::clap_wrapper::standalone::mainCreatePlugin(
+      entry, PLUGIN_ID, PLUGIN_INDEX, static_cast<int>(argv.size()), argv.data())};
 
   freeaudio::clap_wrapper::standalone::windows_standalone::Plugin plugin{clapPlugin};
 
