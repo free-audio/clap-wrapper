@@ -607,11 +607,9 @@ void SystemMenu::populate(::HWND hwnd)
   }
 }
 
-Plugin::Plugin(const clap_plugin_entry* entry, int argc, char** argv)
+Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin)
 {
-  plugin.clap =
-      freeaudio::clap_wrapper::standalone::mainCreatePlugin(entry, PLUGIN_ID, PLUGIN_INDEX, argc, argv);
-
+  plugin.clap = clapPlugin;
   plugin.plugin = plugin.clap->_plugin;
   plugin.gui = plugin.clap->_ext._gui;
   plugin.state = plugin.clap->_ext._state;
