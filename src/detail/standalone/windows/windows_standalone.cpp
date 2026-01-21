@@ -2,6 +2,22 @@
 
 namespace freeaudio::clap_wrapper::standalone::windows_standalone
 {
+std::vector<std::string> getArgs()
+{
+  int argc{0};
+  wil::unique_hlocal_ptr<wchar_t*[]> buffer;
+  buffer.reset(::CommandLineToArgvW(::GetCommandLineW(), &argc));
+
+  std::vector<std::string> argv;
+
+  for (int i = 0; i < argc; i++)
+  {
+    argv.emplace_back(toUTF8(buffer[i]));
+  }
+
+  return argv;
+}
+
 ::HMODULE getInstance()
 {
   ::HMODULE module;
