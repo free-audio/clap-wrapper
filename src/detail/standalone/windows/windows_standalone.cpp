@@ -1059,10 +1059,10 @@ Plugin::Plugin(const clap_plugin_entry* entry, int argc, char** argv)
 
   if (loadSettings())
   {
-    initializeAudio();
+    initializeAudio(sah->audioApi);
     menu.item[1].fState = sah->audioInputUsed ? MFS_UNCHECKED : MFS_CHECKED;
     SetMenuItemInfoW(getSystemMenu(hwnd.get()), 1, FALSE, &menu.item[1]);
-    sah->setAudioApi(sah->audioApi);
+    // sah->setAudioApi(sah->audioApi);
   }
   else
   {
