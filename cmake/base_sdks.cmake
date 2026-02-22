@@ -269,13 +269,32 @@ function(guarantee_aaxsdk)
     if (TARGET base-sdk-aax)
         return()
     endif()
+
     if (NOT "${AAX_SDK_ROOT}" STREQUAL "")
         # Use the provided root
+    elseif(${CLAP_WRAPPER_DOWNLOAD_DEPENDENCIES})
+        guarantee_cpm()
+        CPMAddPackage(
+                NAME "aaxsdk"
+                GITHUB_REPOSITORY "audiosdk/aax"
+                GIT_TAG "2.8.1-slim"
+                # GIT_TAG "v3.7.6_build_18"
+                EXCLUDE_FROM_ALL TRUE
+                DOWNLOAD_ONLY TRUE
+                # GIT_SUBMODULES base public.sdk pluginterfaces cmake
+                SOURCE_DIR cpm/aaxsdk
+        )
+        set(AAX_SDK_ROOT "${CMAKE_CURRENT_BINARY_DIR}/cpm/aaxsdk")
+
     else()
         message(INFO "searching sdk")
         search_for_sdk_source(SDKDIR aax-sdk-2-8-1 RESULT AAX_SDK_ROOT)
     endif()
 
+    if ("${AAX_SDK_ROOT}" STREQUAL "")
+        message(FATAL_ERROR "There is no AAX SDK to be found. Please set AAX_SDK_ROOT appropriately or set CLAP_WRAPPER_DOWNLOAD_DEPENDENCIES=ON")
+    endif()
+    
     cmake_path(CONVERT "${AAX_SDK_ROOT}" TO_CMAKE_PATH_LIST AAX_SDK_ROOT)
     if(NOT EXISTS "${AAX_SDK_ROOT}/Interfaces/AAX.h")
         message(FATAL_ERROR "There is no AAX SDK at ${AAX_SDK_ROOT}. Please set AAX_SDK_ROOT appropriately ")
@@ -286,51 +305,29 @@ function(guarantee_aaxsdk)
     MESSAGE("AAX SDK identified, checking version...")
     # ------------------------------------------------------------------------------    
     set(INPUT_FILE "${AAX_SDK_ROOT}/Interfaces/AAX_Version.h")
+    file(STRINGS "${INPUT_FILE}" file_content)
+    message("READING ${INPUT_FILE}")
+    #message("Content is: \r\n${file_content}")
 
-    file(STRINGS ${INPUT_FILE} file_content REGEX "^#define\\s+AAX_SDK_VERSION\\s+.*") 
-    message("Content is: \r\n${file_content}")
+    foreach(line IN LISTS file_content)
+      # message(STATUS"Scanning: ${line}")
+      string(REGEX MATCH "#define[ \t]+AAX_SDK_CURRENT_REVISION[ \t]*\\( *([0-9]+) *\\)" _ "${line}")
+      if(CMAKE_MATCH_1)
+        set(AAX_SDK_REVISION "${CMAKE_MATCH_1}")
+      endif()
+      string(REGEX MATCH "#define[ \t]+AAX_SDK_VERSION[ \t]*\\( 0x*([0-9]+) *\\)" _ "${line}")
+      if(CMAKE_MATCH_1)
+        set(AAX_SDK_VERSION "${CMAKE_MATCH_1}")
+      endif()
+    endforeach()
 
-    # Überprüfe, ob eine Übereinstimmung gefunden wurde
-    if (file_content)
-        string(REGEX MATCH "0x([0-9A-Fa-f]+)" match ${file_content})
-        #string(REGEX MATCH "#define\\s+AAX_SDK_VERSION\\s+\\(\\s*0x([0-9A-Fa-f]+)\\s*\\)" match ${file_content})
-        message("${CMAKE_MATCH_1}")
-        if (match)
-            set(version_number "${CMAKE_MATCH_1}")
-            message(STATUS "AAX SDK Version determined: ${version_number}")
-        else()
-            message(STATUS "No AAX Version found.")
-        endif()
+    if (AAX_SDK_VERSION)
+        message(STATUS "AAX SDK Version determined: ${AAX_SDK_VERSION}")
     else()
         message(STATUS "No AAX Version found.")
     endif()
-
-
-    # ----------------------------------------------------------------------------
-    # read AAX_VERSION
-    file(STRINGS "${AAX_SDK_ROOT}/Interfaces/AAX_Version.h" file_content REGEX "^#define([ \\t]+)AAX_SDK_VERSION([ \\t]+).*")    
-
-    string(REGEX MATCH "0x([0-9A-Fa-f]+)" match "${file_content}")
-
-    if (match)
-      set(AAX_SDK_VERSION ${CMAKE_MATCH_1})
-    else()
-      message(FATAL_ERROR "Can not determine AAX SDK version")
-    endif()
-
-    # ----------------------------------------------------------------------------
-    # read AAX_VERSION
-    file(STRINGS "${AAX_SDK_ROOT}/Interfaces/AAX_Version.h" file_content REGEX "^#define([ \\t]+)AAX_SDK_CURRENT_REVISION([ \\t]+).*")    
-
-    string(REGEX MATCH "([0-9A-Fa-f]+)" match "${file_content}")
-
-    if (match)
-      set(AAX_SDK_VERSION ${CMAKE_MATCH_1})
-    else()
-      message(FATAL_ERROR "Can not determine AAX SDK revision")
-    endif()
-
-    message(STATUS "clap-wrapper: AAX version: ${AAX_SDK_VERSION}/{AAX_SDK_REVISION}; AAX Root ${AAX_SDK_ROOT}")
+   
+    message(STATUS "clap-wrapper: AAX version: ${AAX_SDK_VERSION}/${AAX_SDK_REVISION}; AAX Root ${AAX_SDK_ROOT}")
 
     add_library(base-sdk-aax STATIC)
     file(GLOB AAX_GLOB
