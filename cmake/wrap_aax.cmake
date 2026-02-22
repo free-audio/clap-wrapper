@@ -40,6 +40,7 @@ function(private_add_aax_wrapper_sources)
             )
 
     target_include_directories(${AX_TARGET}-clap-wrapper-aax-lib PRIVATE "${sd}/include")
+
 endfunction(private_add_aax_wrapper_sources)
 
 # define libraries
@@ -87,7 +88,11 @@ function(target_add_aax_wrapper)
             ${AAX_SDK_ROOT}/Interfaces/AAX_Exports.cpp
 
             )
-
+    # clap-wrapper-extensions are PUBLIC, so a clap linking the library can access the clap-wrapper-extensions
+    #target_link_libraries(${AX_TARGET} PUBLIC
+    #        clap-wrapper-compile-options-public
+    #        clap-wrapper-extensions
+    #        clap-wrapper-shared-detail)
 
     # Define the AAX plugin name and include the sources directly.
     # We need to individuate this target since it will be different

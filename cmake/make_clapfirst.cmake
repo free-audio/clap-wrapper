@@ -76,7 +76,7 @@ function(make_clapfirst_plugins)
         if (ANY_WASM_TOOLCHAIN)
             set(C1ST_PLUGIN_FORMATS WCLAP)
         else()
-            set(C1ST_PLUGIN_FORMATS CLAP VST3 AUV2)
+            set(C1ST_PLUGIN_FORMATS CLAP VST3 AUV2 AAX)
         endif()
     endif()
 
@@ -216,7 +216,7 @@ function(make_clapfirst_plugins)
     endif()
 
     ## ----------------------
-     if (${BUILDAAX} GREATER -1)
+     if (${BUILD_AAX} GREATER -1)
         message(STATUS "clap-wrapper: ClapFirst is making an AAX")
 
         set(AAX_TARGET ${C1ST_TARGET_NAME}_aax)
@@ -231,7 +231,7 @@ function(make_clapfirst_plugins)
                 set(vod "${C1ST_ASSET_OUTPUT_DIRECTORY}/AAX")
             endif()
         endif()
-        target_add_aax_wrapper(TARGET ${VST3_TARGET}
+        target_add_aax_wrapper(TARGET ${AAX_TARGET}
                 OUTPUT_NAME "${C1ST_OUTPUT_NAME}"
                 BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFER}.aaxplugin"
                 BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
@@ -240,7 +240,7 @@ function(make_clapfirst_plugins)
                 RESOURCE_DIRECTORY "${C1ST_RESOURCE_DIRECTORY}"
         )
 
-        add_dependencies(${ALL_TARGET} ${VST3_TARGET})
+        add_dependencies(${ALL_TARGET} ${AAX_TARGET})
     endif()
 
     if (${BUILD_WCLAP} GREATER -1)

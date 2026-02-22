@@ -1,5 +1,6 @@
 #pragma once
 
+#define WINDOWS_LEAN_AND_MEAN 1
 #include "fs.h"
 #include <windows.h>
 

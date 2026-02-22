@@ -1,7 +1,7 @@
 /*
     CLAP as AAX
 
-    Copyright (c) 2024 Timo Kaluza (defiantnerd)
+    Copyright (c) 2024-2026 Timo Kaluza (defiantnerd)
 
     This file is part of the clap-wrappers project which is released under MIT License.
     See file LICENSE or go to https://github.com/free-audio/clap-wrapper for full license details.

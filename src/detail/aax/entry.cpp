@@ -53,6 +53,8 @@ AAX_Result AAXShutdown(IACFUnknown* pUnkHost)
 // on Windows, we pass the iInstance and initialize our minimal os layer
 // in a combined plugin that exports all flavors sametime, this needs to be refactored and abstracted
 
+#include "detail/os/osutil_windows.h"
+
 HINSTANCE ghInst = 0;
 
 extern "C" BOOL WINAPI DllMain ( HINSTANCE iInstance, DWORD iSelector, LPVOID iReserved )
@@ -61,13 +63,13 @@ extern "C" BOOL WINAPI DllMain ( HINSTANCE iInstance, DWORD iSelector, LPVOID iR
 	{
 		if ( iSelector == DLL_PROCESS_ATTACH )
 		{
-			std::string ll("DllMain PROCESS_ATTACH: "); ll += os::getModulePath(); OutputDebugStringA(ll.c_str());
+			std::string ll("DllMain PROCESS_ATTACH: "); ll += os::getPluginPath().string(); OutputDebugStringA(ll.c_str());
 			ghInst = iInstance;
 			os::init();
 		}	
 		if (iSelector == DLL_PROCESS_DETACH)
 		{
-			std::string ll("DllMain PROCESS_DETACH: "); ll += os::getModulePath(); OutputDebugStringA(ll.c_str());
+			std::string ll("DllMain PROCESS_DETACH: "); ll += os::getPluginPath().string(); OutputDebugStringA(ll.c_str());
 			os::terminate();
 		}
 	}

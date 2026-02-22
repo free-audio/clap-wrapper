@@ -69,4 +69,10 @@ uint64_t getTickInMS();
 fs::path getPluginPath();
 std::string getParentFolderName();
 std::string getBinaryName();
+
+#if WIN32
+void init();
+void terminate();
+#endif
+
 }  // namespace os

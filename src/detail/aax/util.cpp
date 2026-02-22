@@ -1,6 +1,6 @@
 #include "util.h"
 
-#include "../shared/util.h"
+#include "detail/shared/util.h"
 
 #include <iostream>
 #include <string>

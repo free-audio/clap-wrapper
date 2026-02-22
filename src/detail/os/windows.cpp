@@ -1,4 +1,5 @@
 #define NOMINMAX 1
+#define WINDOWS_LEAN_AND_MEAN 1
 
 /*
     the windows helper
@@ -10,14 +11,25 @@
 */
 
 #include <windows.h>
-#include <tchar.h>
-#include "public.sdk/source/main/moduleinit.h"
 #include "osutil.h"
+#include <tchar.h>
+#include <filesystem>
+#include <vector>
+#include "fs.h"
+
+#ifdef CLAP_WRAPPER_BUILD_FOR_VST3
+
+#include "public.sdk/source/main/moduleinit.h"
+// from dllmain.cpp of the VST3 SDK
+extern HINSTANCE ghInst;
+#endif 
+
 #include <fmt/xchar.h>
 #include "osutil_windows.h"
 
-// from dllmain.cpp of the VST3 SDK
+#ifdef CLAP_WRAPPER_BUILD_FOR_AAX
 extern HINSTANCE ghInst;
+#endif
 
 namespace os
 {
@@ -38,8 +50,16 @@ class WindowsHelper
   std::vector<IPlugObject*> _plugs;
 } gWindowsHelper;
 
-static Steinberg::ModuleInitializer createMessageWindow([] { gWindowsHelper.init(); });
-static Steinberg::ModuleTerminator dropMessageWindow([] { gWindowsHelper.terminate(); });
+
+void init() { gWindowsHelper.init(); }
+void terminate() { gWindowsHelper.terminate(); }
+
+#ifdef CLAP_WRAPPER_BUILD_FOR_VST3
+static Steinberg::ModuleInitializer createMessageWindow([] { os::init(); });
+static Steinberg::ModuleTerminator dropMessageWindow([] { os::terminate(); });
+#endif
+
+
 
 fs::path getPluginPath()
 {
@@ -90,7 +110,7 @@ LRESULT WindowsHelper::Wndproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
       return 1;
       break;
     default:
-      return DefWindowProc(hwnd, msg, wParam, lParam);
+      return ::DefWindowProc(hwnd, msg, wParam, lParam);
   }
 }
 
