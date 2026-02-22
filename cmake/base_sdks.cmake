@@ -306,8 +306,6 @@ function(guarantee_aaxsdk)
     # ------------------------------------------------------------------------------    
     set(INPUT_FILE "${AAX_SDK_ROOT}/Interfaces/AAX_Version.h")
     file(STRINGS "${INPUT_FILE}" file_content)
-    message("READING ${INPUT_FILE}")
-    #message("Content is: \r\n${file_content}")
 
     foreach(line IN LISTS file_content)
       # message(STATUS"Scanning: ${line}")
@@ -330,19 +328,6 @@ function(guarantee_aaxsdk)
     message(STATUS "clap-wrapper: AAX version: ${AAX_SDK_VERSION}/${AAX_SDK_REVISION}; AAX Root ${AAX_SDK_ROOT}")
 
     add_library(base-sdk-aax STATIC)
-    file(GLOB AAX_GLOB
-            ${AAX_SDK_ROOT}//*.cpp
-#            ${AAX_SDK_ROOT}/base/thread/source/*.cpp
-#            ${AAX_SDK_ROOT}/public.sdk/source/common/*.cpp
-#            ${AAX_SDK_ROOT}/pluginterfaces/base/*.cpp
-            )
-#    if (UNIX AND NOT APPLE AND ${SDKVERSION} VERSION_LESS 3.7.9)
-#        # Sigh - VST3 SDK before 3.7.9 ships with non-working timer code
-#        get_filename_component(full_path_test_cpp ${VST3_SDK_ROOT}/base/source/timer.cpp ABSOLUTE)
-#        list(REMOVE_ITEM VST3_GLOB "${full_path_test_cpp}")
-#    endif()
-
-    target_sources(base-sdk-aax PRIVATE ${aax_GLOB})
 
     if (APPLE)
         target_sources(base-sdk-aax PRIVATE ${AAX_SDK_ROOT}/Libs/AAXLibrary/source/AAX_CAutoreleasePool.OSX.mm )
@@ -352,7 +337,7 @@ function(guarantee_aaxsdk)
     endif()
 
     target_sources(base-sdk-aax PRIVATE
-            ${AAX_GLOB}
+#            ${AAX_GLOB}
             ${AAX_SDK_ROOT}/Libs/AAXLibrary/source/AAX_CACFUnknown.cpp
             ${AAX_SDK_ROOT}/Libs/AAXLibrary/source/AAX_CChunkDataParser.cpp
             ${AAX_SDK_ROOT}/Libs/AAXLibrary/source/AAX_CEffectDirectData.cpp
@@ -396,6 +381,7 @@ function(guarantee_aaxsdk)
             ${AAX_SDK_ROOT}/Libs/AAXLibrary/source/AAX_VTransport.cpp
             ${AAX_SDK_ROOT}/Libs/AAXLibrary/source/AAX_VViewContainer.cpp
             )
+
     # The VST3 SDK doesn't compile with unity builds
     # set_target_properties(base-sdk-AAX PROPERTIES UNITY_BUILD FALSE) -- aax?
 
