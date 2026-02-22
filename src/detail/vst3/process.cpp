@@ -14,6 +14,13 @@ namespace Clap
 {
 using namespace Steinberg;
 
+ProcessAdapter::~ProcessAdapter()
+{
+  delete[] _silent_input;
+  delete[] _silent_output;
+  delete[] _input_ports;
+  delete[] _output_ports;
+}
 void ProcessAdapter::setupProcessing(const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params,
                                      Vst::BusList& audioinputs, Vst::BusList& audiooutputs,
                                      uint32_t numSamples, size_t /*numEventInputs*/,

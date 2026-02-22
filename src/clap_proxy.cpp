@@ -218,6 +218,9 @@ void Plugin::connectClap(const clap_plugin_t* clap)
   getExtension(_plugin, _ext._state, CLAP_EXT_STATE);
   getExtension(_plugin, _ext._params, CLAP_EXT_PARAMS);
   getExtension(_plugin, _ext._audioports, CLAP_EXT_AUDIO_PORTS);
+  getExtension(_plugin, _ext._configurable_audio_ports, CLAP_EXT_CONFIGURABLE_AUDIO_PORTS);
+  if (!_ext._configurable_audio_ports)
+    getExtension(_plugin, _ext._configurable_audio_ports, CLAP_EXT_CONFIGURABLE_AUDIO_PORTS_COMPAT);
   getExtension(_plugin, _ext._noteports, CLAP_EXT_NOTE_PORTS);
   getExtension(_plugin, _ext._latency, CLAP_EXT_LATENCY);
   getExtension(_plugin, _ext._render, CLAP_EXT_RENDER);

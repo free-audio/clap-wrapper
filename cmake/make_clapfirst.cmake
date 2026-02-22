@@ -50,7 +50,7 @@ function(make_clapfirst_plugins)
             AUV2_INSTRUMENT_TYPE
     )
     set(multiValueArgs
-            PLUGIN_FORMATS   # A list of plugin formats, "CLAP" "VST3" "AUV2"
+            PLUGIN_FORMATS   # A list of plugin formats, "CLAP" "VST3" "AUV2" "AAX"
             STANDALONE_CONFIGURATIONS # standalone configuration. This is a list of target names and clap ids
     )
     cmake_parse_arguments(C1ST "" "${oneValueArgs}" "${multiValueArgs}" ${ARGN} )
@@ -84,11 +84,13 @@ function(make_clapfirst_plugins)
         set(BUILD_CLAP -1)
         set(BUILD_VST3 -1)
         set(BUILD_AUV2 -1)
+        set(BUILD_AAX -1)
         list(FIND C1ST_PLUGIN_FORMATS "WCLAP" BUILD_WCLAP)
     else()
         list(FIND C1ST_PLUGIN_FORMATS "CLAP" BUILD_CLAP)
         list(FIND C1ST_PLUGIN_FORMATS "VST3" BUILD_VST3)
         list(FIND C1ST_PLUGIN_FORMATS "AUV2" BUILD_AUV2)
+        list(FIND C1ST_PLUGIN_FORMATS "AAX" BUILD_AAX)
         set(BUILD_WCLAP -1)
 
         if (${BUILD_CLAP} EQUAL -1)
@@ -211,6 +213,34 @@ function(make_clapfirst_plugins)
         endif()
 
         add_dependencies(${ALL_TARGET} ${AUV2_TARGET})
+    endif()
+
+    ## ----------------------
+     if (${BUILDAAX} GREATER -1)
+        message(STATUS "clap-wrapper: ClapFirst is making an AAX")
+
+        set(AAX_TARGET ${C1ST_TARGET_NAME}_aax)
+        add_library(${AAX_TARGET} MODULE)
+        target_sources(${AAX_TARGET} PRIVATE ${C1ST_ENTRY_SOURCE})
+        target_link_libraries(${AAX_TARGET} PRIVATE ${C1ST_IMPL_TARGET})
+        set(vod "")
+        if (DEFINED C1ST_ASSET_OUTPUT_DIRECTORY)
+            if (NOT WIN32)
+                set(vod "${C1ST_ASSET_OUTPUT_DIRECTORY}")
+            else ()
+                set(vod "${C1ST_ASSET_OUTPUT_DIRECTORY}/AAX")
+            endif()
+        endif()
+        target_add_aax_wrapper(TARGET ${VST3_TARGET}
+                OUTPUT_NAME "${C1ST_OUTPUT_NAME}"
+                BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFER}.aaxplugin"
+                BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
+                ASSET_OUTPUT_DIRECTORY "${vod}"
+                
+                RESOURCE_DIRECTORY "${C1ST_RESOURCE_DIRECTORY}"
+        )
+
+        add_dependencies(${ALL_TARGET} ${VST3_TARGET})
     endif()
 
     if (${BUILD_WCLAP} GREATER -1)
