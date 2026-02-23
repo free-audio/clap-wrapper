@@ -376,7 +376,7 @@ bool AAXProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
   {
     case CLAP_EVENT_NOTE_ON:
     {
-      auto nevt = reinterpret_cast<const clap_event_note*>(event);
+      // auto nevt = reinterpret_cast<const clap_event_note*>(event);
 
       /*
       Steinberg::Vst::Event oe{};
@@ -396,7 +396,7 @@ bool AAXProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
       return true;
     case CLAP_EVENT_NOTE_OFF:
     {
-      auto nevt = reinterpret_cast<const clap_event_note*>(event);
+      // auto nevt = reinterpret_cast<const clap_event_note*>(event);
       /*
       Steinberg::Vst::Event oe{};
       oe.type = Steinberg::Vst::Event::kNoteOffEvent;
