@@ -703,7 +703,7 @@ static Vst::SpeakerArrangement speakerArrFromPortType(const char* port_type)
 void ClapAsVst3::addAudioBusFrom(const clap_audio_port_info_t* info, bool is_input)
 {
   auto spk = speakerArrFromPortType(info->port_type);
-  auto bustype = Vst::BusTypes::kMain;    // actually, everything is main, except
+  auto bustype = Vst::BusTypes::kMain;  // actually, everything is main, except
   if (is_input && !(info->flags & CLAP_AUDIO_PORT_IS_MAIN))
   {
     // only inputs can be sidechains, everything that is not the MAIN bus is a sidechain
