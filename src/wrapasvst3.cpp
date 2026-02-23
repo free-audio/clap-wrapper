@@ -356,6 +356,8 @@ tresult PLUGIN_API ClapAsVst3::setBusArrangements(Vst::SpeakerArrangement* input
     return kResultFalse;
   }
 
+  auto raise = _plugin->AlwaysMainThread();
+
   int32_t inc = _plugin->_ext._audioports->count(_plugin->_plugin, true);
   int32_t ouc = _plugin->_ext._audioports->count(_plugin->_plugin, false);
   if (inc != numIns || ouc != numOuts)
@@ -473,6 +475,7 @@ tresult PLUGIN_API ClapAsVst3::getParamStringByValue(Vst::ParamID id, Vst::Param
   char outbuf[128];
   memset(outbuf, 0, sizeof(outbuf));
 
+  auto raise = _plugin->AlwaysMainThread();
   if (this->_plugin->_ext._params->value_to_text(_plugin->_plugin, param->id, val, outbuf, 127))
   {
     utf8_to_utf16l(outbuf, (uint16_t*)&string[0], str16BufferSize(Steinberg::Vst::String128));
@@ -494,6 +497,7 @@ tresult PLUGIN_API ClapAsVst3::getParamValueByString(Vst::ParamID id, Vst::TChar
   {
     return Steinberg::kResultFalse;
   }
+  auto raise = _plugin->AlwaysMainThread();
   if (this->_plugin->_ext._params->text_to_value(_plugin->_plugin, param->id, inbuf, &out))
   {
     valueNormalized = param->asVst3Value(out);
@@ -699,7 +703,13 @@ static Vst::SpeakerArrangement speakerArrFromPortType(const char* port_type)
 void ClapAsVst3::addAudioBusFrom(const clap_audio_port_info_t* info, bool is_input)
 {
   auto spk = speakerArrFromPortType(info->port_type);
-  auto bustype = (info->flags & CLAP_AUDIO_PORT_IS_MAIN) ? Vst::BusTypes::kMain : Vst::BusTypes::kAux;
+  auto bustype = Vst::BusTypes::kMain;    // actually, everything is main, except
+  if (is_input && !(info->flags & CLAP_AUDIO_PORT_IS_MAIN))
+  {
+    // only inputs can be sidechains, everything that is not the MAIN bus is a sidechain
+    bustype = Vst::BusTypes::kAux;
+  }
+
   // bool supports64bit = (info->flags & CLAP_AUDIO_PORT_SUPPORTS_64BITS);
   Steinberg::char16 name16[256];
   // str8tostr16 writes to position n to terminate, so don't overflow
@@ -1695,6 +1705,8 @@ tresult ClapAsVst3::getBusInfo(Vst::MediaType type, Vst::BusDirection dir, int32
   {
     if (type == Vst::kAudio)
     {
+      auto raise = _plugin->AlwaysMainThread();
+
       clap_audio_port_info_t info;
       if (_plugin->_ext._audioports->get(_plugin->_plugin, (uint32_t)index, (dir == Vst::kInput), &info))
       {
