@@ -518,7 +518,7 @@ AAX_Result GetEffectDescriptions(AAX_ICollection* outCollection)
 
           // build a bus setting ------------------
           configrequests_t requests;
-          bool standardconfig_is_mono_or_stereo = true;
+          // bool standardconfig_is_mono_or_stereo = true;
 
           if (ext_aud && ext_cap)
           {
@@ -557,7 +557,7 @@ AAX_Result GetEffectDescriptions(AAX_ICollection* outCollection)
               if (m.channel_count <= 2) continue;
 
               os::log("default configuration is not mono or stereo\n");
-              standardconfig_is_mono_or_stereo = false;
+              // standardconfig_is_mono_or_stereo = false;
               if (!strcmp(m.port_type, CLAP_PORT_SURROUND))
               {
                 standardconfig_is_surround = true;
@@ -718,6 +718,10 @@ AAX_Result ClapAsAAX::EffectInit()
 
           auto numInputs = AAX_STEM_FORMAT_CHANNEL_COUNT(stem_in);
           auto numOutputs = AAX_STEM_FORMAT_CHANNEL_COUNT(stem_out);
+
+          // TODO: this will be useful later
+          (void)numInputs;
+          (void)numOutputs;
         }
       }
       AAX_EStemFormat p;
@@ -867,6 +871,7 @@ AAX_Result ClapAsAAX::GetParameterNameOfLength(AAX_CParamID iParameterID, AAX_IS
                                                int32_t iNameLength) const
 {
   AAX_Result aResult = AAX_ERROR_INVALID_STRING_CONVERSION;
+  const uint32_t namelen = (uint32_t) iNameLength;
 
   auto n = this->_parameterMap.find(iParameterID);
   if (n != _parameterMap.end())
@@ -875,7 +880,7 @@ AAX_Result ClapAsAAX::GetParameterNameOfLength(AAX_CParamID iParameterID, AAX_IS
     const AAX_CString* result = &names.back();
     for (auto i = names.rbegin(); i != names.rend(); ++i)
     {
-      if (i->Length() > iNameLength)
+      if (i->Length() > namelen)
       {
         oName->Set(result->StdString().c_str());
         return AAX_SUCCESS;

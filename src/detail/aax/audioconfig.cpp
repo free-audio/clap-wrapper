@@ -76,16 +76,16 @@ std::vector<std::string> getAvailableBusConfigs(const char* pluginid)
         try {
           tmpplug->init(tmpplug);
 
-          auto ext_aud =
-              (clap_plugin_audio_ports*)(tmpplug->get_extension(tmpplug, CLAP_EXT_AUDIO_PORTS));
-          auto ext_cap = 
-            (clap_plugin_configurable_audio_ports_t*)(tmpplug->get_extension(tmpplug, CLAP_EXT_CONFIGURABLE_AUDIO_PORTS));
-          auto ext_sur = 
-            (clap_plugin_surround_t*)(tmpplug->get_extension(tmpplug, CLAP_EXT_SURROUND));
+          //auto ext_aud =
+          //    (clap_plugin_audio_ports*)(tmpplug->get_extension(tmpplug, CLAP_EXT_AUDIO_PORTS));
+          //auto ext_cap = 
+          //  (clap_plugin_configurable_audio_ports_t*)(tmpplug->get_extension(tmpplug, CLAP_EXT_CONFIGURABLE_AUDIO_PORTS));
+          //auto ext_sur = 
+          //  (clap_plugin_surround_t*)(tmpplug->get_extension(tmpplug, CLAP_EXT_SURROUND));
 
-          if (!ext_sur) {
-            // only standard audio bus
-        }
+          //if (!ext_sur) {
+          //  // only standard audio bus
+          // }
         }
         catch (...)
         {

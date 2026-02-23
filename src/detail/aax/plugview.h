@@ -31,7 +31,7 @@ class Wrapped_AAX_GUI : public AAX_CEffectGUI
   ClapAsAAX* _clap = nullptr;
   const clap_plugin_t* _plugin = nullptr;
   const clap_plugin_gui_t* _gui = nullptr;
-  clap_window_t _platformwindow = {nullptr, nullptr};
+  clap_window_t _platformwindow = { nullptr, { (void*) nullptr } };
   bool _created = false;
   bool _resizeInTimer = false;
 };
