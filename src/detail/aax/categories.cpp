@@ -8,6 +8,8 @@
 #include <algorithm>
 #include "../os/osutil.h"
 
+// clang-format off
+
 static const struct _translation
 {
   const char* clapattribute;
@@ -63,6 +65,7 @@ static const struct _translation
     /*{   CLAP_PLUGIN_FEATURE_ARA_SUPPORTED         , "OnlyARA" }, this is indicated by a missing factory in VST3 */
     /*{CLAP_PLUGIN_FEATURE_ARA_REQUIRED          , "OnlyARA"}, */
 
+// clang-format on
 
 /*
 *     clapCategoriesToAAX converts the strings from the CLAP attributes to the
@@ -74,13 +77,13 @@ static const struct _translation
 uint32_t clapCategoriesToAAX(const char* const* clap_categories)
 {
   // AAX_ePlugInCategory_WrappedPlugin = 0x00001000,	///<  All plug-ins wrapped by a thrid party wrapper (i.e. VST to RTAS wrapper), except for VI plug-ins which should be mapped to AAX_PlugInCategory_SWGenerators
-  uint32_t result = 0;    // we don't use AAX_ePlugInCategory_WrappedPlugin;
+  uint32_t result = 0;  // we don't use AAX_ePlugInCategory_WrappedPlugin;
   os::log("creating categories:");
   for (auto f = clap_categories; f && *f; ++f)
   {
-    auto it = std::find_if(std::begin(translationTable), std::end(translationTable),
-                           [&](const auto& entry)
-                           { return entry.clapattribute && !strcmp(entry.clapattribute, *f); });
+    auto it =
+        std::find_if(std::begin(translationTable), std::end(translationTable), [&](const auto& entry)
+                     { return entry.clapattribute && !strcmp(entry.clapattribute, *f); });
 
     if (it != std::end(translationTable))
     {

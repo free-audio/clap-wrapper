@@ -83,7 +83,7 @@ void AAXProcessAdapter::setupProcessing(const clap_plugin_t* plugin, double samp
   // setting up event communication structures
   _in_events = {this, input_events_size, input_events_get};
 
-  _out_events = { this, output_events_try_push };
+  _out_events = {this, output_events_try_push};
 
   auto numinputs = ext_audio->count(_plugin, true);
   auto numoutputs = ext_audio->count(_plugin, false);
@@ -201,7 +201,7 @@ void AAXProcessAdapter::process(SAAX_Wrapper_AlgorithmicContext* context)
 
   {
     clap_multi_event_t n;  // re-using the event, initializing everything we don't need twice
-    n.header = { sizeof(clap_multi_event_t), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, 0};
+    n.header = {sizeof(clap_multi_event_t), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, 0};
     // AAX can not distinct between all of this, so set all to wildcard
     n.param.note_id = -1;
     n.param.port_index = -1;
@@ -361,7 +361,8 @@ void AAXProcessAdapter::sortEventIndices()
             });
 }
 
-bool AAXProcessAdapter::output_events_try_push(const clap_output_events* list, const clap_event_header_t* event)
+bool AAXProcessAdapter::output_events_try_push(const clap_output_events* list,
+                                               const clap_event_header_t* event)
 {
   auto self = static_cast<AAXProcessAdapter*>(list->ctx);
   // mainly used for CLAP_EVENT_NOTE_CHOKE and CLAP_EVENT_NOTE_END
@@ -432,18 +433,18 @@ bool AAXProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
       return true;
       break;
     case CLAP_EVENT_PARAM_GESTURE_BEGIN:
-      {
-        auto ev = (clap_event_param_gesture*)event;
-        _automation->onBeginEdit(ev->param_id);
-      }
+    {
+      auto ev = (clap_event_param_gesture*)event;
+      _automation->onBeginEdit(ev->param_id);
+    }
       return true;
 
       break;
     case CLAP_EVENT_PARAM_GESTURE_END:
-      {
-        auto ev = (clap_event_param_gesture*)event;
-        _automation->onEndEdit(ev->param_id);
-      }
+    {
+      auto ev = (clap_event_param_gesture*)event;
+      _automation->onEndEdit(ev->param_id);
+    }
       return true;
       break;
 

@@ -6,6 +6,6 @@
 namespace CLAPAAX
 {
 
-  Clap::Library* guarantee_clap();
+Clap::Library* guarantee_clap();
 
 }

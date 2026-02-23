@@ -15,10 +15,10 @@ std::vector<std::string> getAvailableBusConfigs(const char* pluginid)
   static const clap_host_params_t micro_params = {
       [](const clap_host_t* host, clap_param_rescan_flags flags) -> void {},
       [](const clap_host_t* host, clap_id param_id, clap_param_clear_flags flags) -> void {},
-      [](const clap_host_t* host) -> void {} };
+      [](const clap_host_t* host) -> void {}};
   static const clap_host_audio_ports_t micro_audio_ports = {
       [](const clap_host_t* host, uint32_t flag) -> bool { return false; },
-      [](const clap_host_t* host, uint32_t flags) -> void {} };
+      [](const clap_host_t* host, uint32_t flags) -> void {}};
   clap_host_t microhost = {
       CLAP_VERSION,
       nullptr,
@@ -72,15 +72,16 @@ std::vector<std::string> getAvailableBusConfigs(const char* pluginid)
       {
         // create a temporary plugin instance ------------------
         auto* tmpplug =
-          factory->_pluginFactory->create_plugin(factory->_pluginFactory, &microhost, i->id);
-        try {
+            factory->_pluginFactory->create_plugin(factory->_pluginFactory, &microhost, i->id);
+        try
+        {
           tmpplug->init(tmpplug);
 
           //auto ext_aud =
           //    (clap_plugin_audio_ports*)(tmpplug->get_extension(tmpplug, CLAP_EXT_AUDIO_PORTS));
-          //auto ext_cap = 
+          //auto ext_cap =
           //  (clap_plugin_configurable_audio_ports_t*)(tmpplug->get_extension(tmpplug, CLAP_EXT_CONFIGURABLE_AUDIO_PORTS));
-          //auto ext_sur = 
+          //auto ext_sur =
           //  (clap_plugin_surround_t*)(tmpplug->get_extension(tmpplug, CLAP_EXT_SURROUND));
 
           //if (!ext_sur) {

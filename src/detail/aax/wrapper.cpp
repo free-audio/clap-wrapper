@@ -74,7 +74,8 @@ class ClapAsAAXRegistry
     std::lock_guard<std::mutex> lock(GetMutex());
     for (auto* inst : GetSet())
     {
-      if (inst == instance) {
+      if (inst == instance)
+      {
         return true;
       }
     }
@@ -358,6 +359,8 @@ static AAX_Result DescribeEffectFromClap(AAX_IEffectDescriptor* outDescriptor,
 #endif
   return err;
 }
+
+// TODO: we will change this in the future.
 namespace cfg
 {
 clap_audio_port_configuration_request mono_out[]{{false, 0, 1, CLAP_PORT_MONO, nullptr}};
@@ -386,16 +389,16 @@ const clap_audio_port_configuration_request stereo_in_out[]{
     // {false, 1, 2, CLAP_PORT_STEREO, nullptr},
 };
 
-const clap_audio_port_configuration_request in2_out2[]{
-    {true, 0, 2, "", nullptr},
-    {false, 0, 2, "", nullptr},
-};
-
-const clap_audio_port_configuration_request in2x2_out2[]{
-    {true, 0, 2, CLAP_PORT_STEREO, nullptr},
-    {true, 1, 2, CLAP_PORT_STEREO, nullptr},
-    {false, 0, 2, CLAP_PORT_STEREO, nullptr},
-};
+//const clap_audio_port_configuration_request in2_out2[]{
+//    {true, 0, 2, "", nullptr},
+//    {false, 0, 2, "", nullptr},
+//};
+//
+//const clap_audio_port_configuration_request in2x2_out2[]{
+//    {true, 0, 2, CLAP_PORT_STEREO, nullptr},
+//    {true, 1, 2, CLAP_PORT_STEREO, nullptr},
+//    {false, 0, 2, CLAP_PORT_STEREO, nullptr},
+//};
 
 struct request_t
 {
@@ -679,7 +682,7 @@ ClapAsAAX::~ClapAsAAX()
 {
   // Protools does not shut down properly and when just being closed by click on [X].
   // therefore we need to clean
-  
+
   this->stopProcessing();
   this->deactivatePlugin();
   ClapAsAAXRegistry::Unregister(this);
@@ -871,7 +874,7 @@ AAX_Result ClapAsAAX::GetParameterNameOfLength(AAX_CParamID iParameterID, AAX_IS
                                                int32_t iNameLength) const
 {
   AAX_Result aResult = AAX_ERROR_INVALID_STRING_CONVERSION;
-  const uint32_t namelen = (uint32_t) iNameLength;
+  const uint32_t namelen = (uint32_t)iNameLength;
 
   auto n = this->_parameterMap.find(iParameterID);
   if (n != _parameterMap.end())
@@ -894,18 +897,19 @@ AAX_Result ClapAsAAX::GetParameterNameOfLength(AAX_CParamID iParameterID, AAX_IS
 }
 
 AAX_Result ClapAsAAX::UpdateParameterNormalizedValue(AAX_CParamID iParameterID, double iValue,
-  AAX_EUpdateSource iSource)
+                                                     AAX_EUpdateSource iSource)
 {
   // this needs to be overridden. The default implementation just stores the value
   // locally, but we need to pass this into the stream
-  
+
   // and yeah, no timestamps for this, so we get the parameter and pass its ID, cookie and the new value
 
   auto p = _parameterMap.find(iParameterID);
   if (p == _parameterMap.end()) return AAX_ERROR_INVALID_PARAMETER_ID;
   auto* ptr = p->second.get();
 
-  _paramsToProcess.push({ ptr->_clap_param_info.id,ptr->asClapValue(iValue),ptr->_clap_param_info.cookie });
+  _paramsToProcess.push(
+      {ptr->_clap_param_info.id, ptr->asClapValue(iValue), ptr->_clap_param_info.cookie});
 
   // calling the base class makes sure that things like numParameterChanges are being updated
   return AAX_CEffectParameters::UpdateParameterNormalizedValue(iParameterID, iValue, iSource);
@@ -996,20 +1000,20 @@ AAX_Result ClapAsAAX::NotificationReceived(AAX_CTypeID inNotificationType,
   switch (inNotificationType)
   {
     case AAX_eNotificationEvent_SideChainBeingConnected:
-      
+
       break;
     case AAX_eNotificationEvent_SideChainBeingDisconnected:
       break;
     case AAX_eNotificationEvent_SignalLatencyChanged:
+    {
+      int32_t newLatency;
+      if (_aax_ctrl->GetSignalLatency(&newLatency) == AAX_SUCCESS)
       {
-        int32_t newLatency;
-        if (_aax_ctrl->GetSignalLatency(&newLatency) == AAX_SUCCESS)
-        {
-          // this is the external output latency, we can't to this yet
-          // TODO: set output latency 
-        }
+        // this is the external output latency, we can't to this yet
+        // TODO: set output latency
       }
-      break;
+    }
+    break;
     case AAX_eNotificationEvent_TrackNameChanged:
       break;
     case AAX_eNotificationEvent_PresetOpened:
@@ -1046,7 +1050,6 @@ void ClapAsAAX::setupAudioBusses(const clap_plugin_t* plugin,
 
 void ClapAsAAX::setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_note_ports_t* noteports)
 {
-  OutputDebugStringA("Plugin has MIDI\n");
   if (noteports->count(plugin, true) > 0)
   {
     clap_note_port_info_t info;
@@ -1077,7 +1080,7 @@ void ClapAsAAX::setupParameters(const clap_plugin_t* plugin, const clap_plugin_p
       if (info.module[0])
       {
         // ignore leading '/'
-        if ( info.module[0] == '/')
+        if (info.module[0] == '/')
           paramname = info.module + 1;
         else
           paramname = info.module;
@@ -1101,12 +1104,10 @@ void ClapAsAAX::setupParameters(const clap_plugin_t* plugin, const clap_plugin_p
       _parameterMap[id] = wrappedParam;
       _parameterMapCLAP[info.id] = wrappedParam;
 
-      auto p =
-          new AAX_CParameter<double>(_parameterMap[id]->_aax_identifier.c_str(), AAX_CString(paramname),
-                                     wrappedParam->asAAXValue( info.default_value ), 
-                                     AAX_CLinearTaperDelegate<double>(0, 1),
-                                     AAX_ClapParamDisplayDelegate(wrappedParam),
-                                     info.flags & CLAP_PARAM_IS_AUTOMATABLE);
+      auto p = new AAX_CParameter<double>(
+          _parameterMap[id]->_aax_identifier.c_str(), AAX_CString(paramname),
+          wrappedParam->asAAXValue(info.default_value), AAX_CLinearTaperDelegate<double>(0, 1),
+          AAX_ClapParamDisplayDelegate(wrappedParam), info.flags & CLAP_PARAM_IS_AUTOMATABLE);
       mParameterManager.AddParameter(p);
 
       // get the index and store it for fast retrieval
@@ -1118,7 +1119,6 @@ void ClapAsAAX::setupParameters(const clap_plugin_t* plugin, const clap_plugin_p
 
 void ClapAsAAX::param_rescan(clap_param_rescan_flags flags)
 {
-  
 }
 
 void ClapAsAAX::param_clear(clap_id param, clap_param_clear_flags flags)
@@ -1163,7 +1163,7 @@ bool ClapAsAAX::gui_request_hide()
 }
 
 void ClapAsAAX::latency_changed()
-{  
+{
   _aax_ctrl->SetSignalLatency(_plugin->_ext._latency->get(_plugin->_plugin));
 }
 
@@ -1251,8 +1251,6 @@ void ClapAsAAX::onIdle()
     auto fo = _plugin->AlwaysMainThread();
     _plugin->_plugin->on_main_thread(_plugin->_plugin);
   }
-
-
 }
 
 void ClapAsAAX::activatePlugin()
@@ -1260,15 +1258,13 @@ void ClapAsAAX::activatePlugin()
   if (!_activated)
   {
     _processAdapter = std::make_unique<AAXProcessAdapter>();
-    _processAdapter->setupProcessing(_plugin->_plugin, _plugin->getSampleRate(),
-                                     _plugin->_ext._params,
+    _processAdapter->setupProcessing(_plugin->_plugin, _plugin->getSampleRate(), _plugin->_ext._params,
                                      _plugin->_ext._audioports, this, _paramsToProcess,
-                                     _midi_first_portid,
-                                     _midi_prefer_mididialect);
+                                     _midi_first_portid, _midi_prefer_mididialect);
 
     _activated = true;
     _plugin->activate();
-    
+
     // pass latency when activated
     auto scope = _plugin->AlwaysMainThread();
     auto newlatency = _plugin->_ext._latency->get(_plugin->_plugin);
@@ -1277,7 +1273,6 @@ void ClapAsAAX::activatePlugin()
       _latency = newlatency;
       _aax_ctrl->SetSignalLatency(_latency);
     }
-    
   }
 }
 
@@ -1324,7 +1319,8 @@ void ClapAsAAX::onPerformEdit(const clap_event_param_value_t* value)
   if (p != _parameterMapCLAP.end())
   {
     auto* param = p->second.get();
-    mParameterManager.GetParameter(param->_paramAAXIndex)->SetNormalizedValue(param->asAAXValue(value->value));
+    mParameterManager.GetParameter(param->_paramAAXIndex)
+        ->SetNormalizedValue(param->asAAXValue(value->value));
   }
 }
 

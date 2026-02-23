@@ -6,7 +6,6 @@
 #include "AAX_IViewContainer.h"
 #include "AAX_CAutoreleasePool.h"
 
-
 AAX_IEffectGUI* AAX_CALLBACK Wrapped_AAX_GUI_Create(void)
 {
   return new Wrapped_AAX_GUI;
@@ -54,7 +53,7 @@ void Wrapped_AAX_GUI::CreateEffectView(void* inSystemWindow)
 
   auto params = this->GetEffectParameters();
   _clap = dynamic_cast<ClapAsAAX*>(params);
-  
+
   if (_clap)
   {
     // introduce this object to the associated wrapper instance
@@ -121,11 +120,10 @@ bool Wrapped_AAX_GUI::setWindowSize(uint32_t width, uint32_t height)
   auto* vc = GetViewContainer();
   if (vc)
   {
-    AAX_Point p((float)height, (float)width);       // yes, on AAX everything is upside down
+    AAX_Point p((float)height, (float)width);  // yes, on AAX everything is upside down
     return (vc->SetViewSize(p) == AAX_SUCCESS);
   }
   return false;
-  
 }
 
 AAX_Result Wrapped_AAX_GUI::TimerWakeup()
@@ -139,5 +137,5 @@ AAX_Result Wrapped_AAX_GUI::TimerWakeup()
       _resizeInTimer = !setWindowSize(size.horz, size.vert);
     }
   }
-  return AAX_CEffectGUI::TimerWakeup ();
+  return AAX_CEffectGUI::TimerWakeup();
 }

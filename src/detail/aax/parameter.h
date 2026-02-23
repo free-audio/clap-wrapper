@@ -19,10 +19,9 @@ class ClapAsAAX;
 
 typedef struct AAXWrappedParameterInfo
 {
-  AAXWrappedParameterInfo(const clap_plugin_t* plugin, const clap_param_info_t& ci, const std::string identifier)
-    : _plugin(plugin)
-    , _clap_param_info(ci)
-    , _aax_identifier(identifier)
+  AAXWrappedParameterInfo(const clap_plugin_t* plugin, const clap_param_info_t& ci,
+                          const std::string identifier)
+    : _plugin(plugin), _clap_param_info(ci), _aax_identifier(identifier)
   {
   }
   const clap_plugin_t* _plugin;
@@ -63,14 +62,15 @@ typedef struct AAXWrappedParameterInfo
 // the AAX_ClapParamDisplayDelegate will allow the translation between doubles and text values.
 class AAX_ClapParamDisplayDelegate : public AAX_IDisplayDelegate<double>
 {
-public:
-	//Virtual Overrides
+ public:
+  //Virtual Overrides
   AAX_ClapParamDisplayDelegate(std::shared_ptr<AAXWrappedParameterInfo_t> info);
-	AAX_ClapParamDisplayDelegate*	Clone() const AAX_OVERRIDE;
-	bool		ValueToString(double value, AAX_CString* valueString) const AAX_OVERRIDE;
-	bool		ValueToString(double value, int32_t maxNumChars, AAX_CString* valueString) const AAX_OVERRIDE;
-	bool		StringToValue(const AAX_CString& valueString, double* value) const AAX_OVERRIDE;
-protected:
+  AAX_ClapParamDisplayDelegate* Clone() const AAX_OVERRIDE;
+  bool ValueToString(double value, AAX_CString* valueString) const AAX_OVERRIDE;
+  bool ValueToString(double value, int32_t maxNumChars, AAX_CString* valueString) const AAX_OVERRIDE;
+  bool StringToValue(const AAX_CString& valueString, double* value) const AAX_OVERRIDE;
+
+ protected:
   std::shared_ptr<AAXWrappedParameterInfo_t> _info;
 };
 

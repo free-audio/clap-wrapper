@@ -22,7 +22,7 @@
 #include "public.sdk/source/main/moduleinit.h"
 // from dllmain.cpp of the VST3 SDK
 extern HINSTANCE ghInst;
-#endif 
+#endif
 
 #include <fmt/xchar.h>
 #include "osutil_windows.h"
@@ -50,16 +50,19 @@ class WindowsHelper
   std::vector<IPlugObject*> _plugs;
 } gWindowsHelper;
 
-
-void init() { gWindowsHelper.init(); }
-void terminate() { gWindowsHelper.terminate(); }
+void init()
+{
+  gWindowsHelper.init();
+}
+void terminate()
+{
+  gWindowsHelper.terminate();
+}
 
 #ifdef CLAP_WRAPPER_BUILD_FOR_VST3
 static Steinberg::ModuleInitializer createMessageWindow([] { os::init(); });
 static Steinberg::ModuleTerminator dropMessageWindow([] { os::terminate(); });
 #endif
-
-
 
 fs::path getPluginPath()
 {

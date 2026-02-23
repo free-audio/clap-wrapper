@@ -2,9 +2,9 @@
 #include "util.h"
 #include "wrapper.h"
 
-AAX_ClapParamDisplayDelegate::AAX_ClapParamDisplayDelegate(std::shared_ptr<AAXWrappedParameterInfo_t> info)
-  : AAX_IDisplayDelegate<double>()
-  ,_info(info)
+AAX_ClapParamDisplayDelegate::AAX_ClapParamDisplayDelegate(
+    std::shared_ptr<AAXWrappedParameterInfo_t> info)
+  : AAX_IDisplayDelegate<double>(), _info(info)
 {
   // yes, we have all we need
 }
@@ -12,7 +12,7 @@ AAX_ClapParamDisplayDelegate* AAX_ClapParamDisplayDelegate::Clone() const
 {
   return new AAX_ClapParamDisplayDelegate(*this);
 }
-bool		AAX_ClapParamDisplayDelegate::ValueToString(double value, AAX_CString* valueString) const
+bool AAX_ClapParamDisplayDelegate::ValueToString(double value, AAX_CString* valueString) const
 {
   auto i = _info.get();
   char buf[101];
@@ -24,7 +24,8 @@ bool		AAX_ClapParamDisplayDelegate::ValueToString(double value, AAX_CString* val
   return false;
 }
 
-bool		AAX_ClapParamDisplayDelegate::ValueToString(double value, int32_t maxNumChars, AAX_CString* valueString) const
+bool AAX_ClapParamDisplayDelegate::ValueToString(double value, int32_t maxNumChars,
+                                                 AAX_CString* valueString) const
 {
   auto i = _info.get();
   char buf[101];
@@ -37,12 +38,11 @@ bool		AAX_ClapParamDisplayDelegate::ValueToString(double value, int32_t maxNumCh
   }
   return false;
 }
-bool		AAX_ClapParamDisplayDelegate::StringToValue(const AAX_CString& valueString, double* value) const
+bool AAX_ClapParamDisplayDelegate::StringToValue(const AAX_CString& valueString, double* value) const
 {
   auto i = _info.get();
   return i->_ext_params->text_to_value(i->_plugin, i->_clap_param_info.id, valueString.Get(), value);
 }
-
 
 #if 0  // don't use that clutter
 #include "AAX_CBinaryTaperDelegate.h"

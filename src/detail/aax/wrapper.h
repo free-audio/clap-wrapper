@@ -67,13 +67,18 @@ class AAXProcessAdapter
     clap_event_note_expression_t noteexpression;
   } clap_multi_event_t;
 
-  clap_process_t _process;     // process_t for clap
+  clap_process_t _process;  // process_t for clap
 
   ~AAXProcessAdapter();
-  void applyBusSetting(const clap_plugin_t* plugin, const char* buslayout, const clap_plugin_configurable_audio_ports_t* ext);
-  void setupProcessing(const clap_plugin_t* plugin, double samplerate, const clap_plugin_params_t* ext_param, const clap_plugin_audio_ports* ext_audio,  Clap::IAutomation* automation, ParamChangeQueue& inqueue, uint32_t midiportid, bool preferMIDI);
+  void applyBusSetting(const clap_plugin_t* plugin, const char* buslayout,
+                       const clap_plugin_configurable_audio_ports_t* ext);
+  void setupProcessing(const clap_plugin_t* plugin, double samplerate,
+                       const clap_plugin_params_t* ext_param, const clap_plugin_audio_ports* ext_audio,
+                       Clap::IAutomation* automation, ParamChangeQueue& inqueue, uint32_t midiportid,
+                       bool preferMIDI);
   void process(SAAX_Wrapper_AlgorithmicContext* context);
   void flush();
+
  private:
   // the plugin
   const clap_plugin_t* _plugin = nullptr;
@@ -111,7 +116,8 @@ class AAXProcessAdapter
 
   void sortEventIndices();
 
-  static bool output_events_try_push(const struct clap_output_events* list, const clap_event_header_t* event);
+  static bool output_events_try_push(const struct clap_output_events* list,
+                                     const clap_event_header_t* event);
 
   bool enqueueOutputEvent(const clap_event_header_t* event);
   void addToActiveNotes(const clap_event_note* note);
@@ -120,7 +126,7 @@ class AAXProcessAdapter
   // the functions for the event list callback
   static uint32_t CLAP_ABI input_events_size(const struct clap_input_events* list);
   static const clap_event_header_t* CLAP_ABI input_events_get(const struct clap_input_events* list,
-    uint32_t index);
+                                                              uint32_t index);
 
   // MIDI
   uint32_t _midi_first_portid = 0;
@@ -165,7 +171,9 @@ class ClapAsAAX : public AAX_CEffectParameters,
   AAX_Result GetChunk(AAX_CTypeID iChunkID, AAX_SPlugInChunk* oChunk) const override;
   AAX_Result SetChunk(AAX_CTypeID iChunkID, const AAX_SPlugInChunk* iChunk) override;
 
-  AAX_Result NotificationReceived( /* AAX_ENotificationEvent */ AAX_CTypeID inNotificationType, const void* inNotificationData, uint32_t	inNotificationDataSize) override;
+  AAX_Result NotificationReceived(/* AAX_ENotificationEvent */ AAX_CTypeID inNotificationType,
+                                  const void* inNotificationData,
+                                  uint32_t inNotificationDataSize) override;
 
   //---Clap::IHost------------------------------------------------------------------------
 
@@ -219,8 +227,7 @@ class ClapAsAAX : public AAX_CEffectParameters,
 
   void process(SAAX_Wrapper_AlgorithmicContext* context);
 
-protected:
-
+ protected:
   Clap::Library* _library = nullptr;
   std::shared_ptr<Clap::Plugin> _plugin;
 
@@ -235,7 +242,7 @@ protected:
 
   Wrapped_AAX_GUI* _aax_view = nullptr;
 
-  AAX_IController* _aax_ctrl = nullptr;  
+  AAX_IController* _aax_ctrl = nullptr;
 
   mutable Clap::StateMemento _state;
 
