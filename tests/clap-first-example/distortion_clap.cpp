@@ -58,6 +58,30 @@ typedef struct
 
 static void clap1stDist_process_event(clap1st_distortion_plug *plug, const clap_event_header_t *hdr);
 
+////////////////////////////
+// clap_plugin_track_info //
+////////////////////////////
+
+static void clap1stDist_track_info_changed(const clap_plugin_t* plugin)
+{
+  auto* plug = (clap1st_distortion_plug*)plugin->plugin_data;
+  const clap_host_track_info_t* trackInfo =
+      (const clap_host_track_info_t*)plug->host->get_extension(plug->host, CLAP_EXT_TRACK_INFO);
+
+  clap_track_info_t info;
+  if (trackInfo && trackInfo->get(plug->host, &info))
+  {
+    fprintf(stderr, "  Track name: %s\n", info.name);
+    fprintf(stderr, "  Track color (R): %d\n", info.color.red);
+    fprintf(stderr, "  Track color (G): %d\n", info.color.green);
+    fprintf(stderr, "  Track color (B): %d\n", info.color.blue);
+  }
+}
+
+static const clap_plugin_track_info_t s_clap1stDist_track_info = {
+    clap1stDist_track_info_changed,
+};
+
 /////////////////////////////
 // clap_plugin_audio_ports //
 /////////////////////////////
@@ -454,6 +478,7 @@ static clap_process_status clap1stDist_process(const struct clap_plugin *plugin,
 
 static const void *clap1stDist_get_extension(const struct clap_plugin *plugin, const char *id)
 {
+  if (!strcmp(id, CLAP_EXT_TRACK_INFO)) return &s_clap1stDist_track_info;
   if (!strcmp(id, CLAP_EXT_AUDIO_PORTS)) return &s_clap1stDist_audio_ports;
   if (!strcmp(id, CLAP_EXT_PARAMS)) return &s_clap1stDist_params;
   if (!strcmp(id, CLAP_EXT_STATE)) return &s_clap1stDist_state;

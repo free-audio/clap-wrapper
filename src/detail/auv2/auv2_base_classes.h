@@ -468,6 +468,11 @@ class WrapAsAUV2 : public ausdk::AUBase,
     return _hostname.c_str();
   }
 
+  bool track_info_get(clap_track_info_t* info) override
+  {
+    return false;
+  }
+
   // --------------- IAutomation
   void onBeginEdit(clap_id id) override;
   void onPerformEdit(const clap_event_param_value_t* value) override;

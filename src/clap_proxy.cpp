@@ -134,6 +134,13 @@ static void tail_changed(const clap_host_t* host)
 
 const clap_host_tail tail = {tail_changed};
 
+static bool track_info_get(const clap_host_t* host, clap_track_info_t* info)
+{
+  return self(host)->track_info_get(info);
+}
+
+const clap_host_track_info trackinfo = {track_info_get};
+
 }  // namespace HostExt
 
 std::shared_ptr<Plugin> Plugin::createInstance(const clap_plugin_factory* factory, const std::string& id,
@@ -224,6 +231,7 @@ void Plugin::connectClap(const clap_plugin_t* clap)
   getExtension(_plugin, _ext._tail, CLAP_EXT_TAIL);
   getExtension(_plugin, _ext._gui, CLAP_EXT_GUI);
   getExtension(_plugin, _ext._timer, CLAP_EXT_TIMER_SUPPORT);
+  getExtension(_plugin, _ext._trackinfo, CLAP_EXT_TRACK_INFO);
   getExtension(_plugin, _ext._ara, CLAP_EXT_ARA_PLUGINEXTENSION);
 
   getExtension(_plugin, _ext._contextmenu, CLAP_EXT_CONTEXT_MENU);
@@ -516,6 +524,7 @@ const void* Plugin::clapExtension(const clap_host* /*host*/, const char* extensi
 {
   if (!strcmp(extension, CLAP_EXT_LOG)) return &HostExt::log;
   if (!strcmp(extension, CLAP_EXT_PARAMS)) return &HostExt::params;
+  if (!strcmp(extension, CLAP_EXT_TRACK_INFO)) return &HostExt::trackinfo;
   if (!strcmp(extension, CLAP_EXT_THREAD_CHECK)) return &HostExt::threadcheck;
   if (!strcmp(extension, CLAP_EXT_GUI)) return &HostExt::hostgui;
   if (!strcmp(extension, CLAP_EXT_TIMER_SUPPORT)) return &HostExt::hosttimer;

@@ -70,6 +70,7 @@ class IHost
   virtual bool register_timer(uint32_t period_ms, clap_id* timer_id) = 0;
   virtual bool unregister_timer(clap_id timer_id) = 0;
 
+  virtual bool track_info_get(clap_track_info_t* info) = 0;
   virtual const char* host_get_name() = 0;
 
   // context menu
@@ -112,6 +113,7 @@ struct ClapPluginExtensions
   const clap_plugin_render_t* _render = nullptr;
   const clap_plugin_tail_t* _tail = nullptr;
   const clap_plugin_timer_support_t* _timer = nullptr;
+  const clap_plugin_track_info_t* _trackinfo = nullptr;
   const clap_plugin_context_menu_t* _contextmenu = nullptr;
   const clap_ara_plugin_extension_t* _ara = nullptr;
   const clap_plugin_gain_adjustment_metering_t* _gainreduc = nullptr;
@@ -232,6 +234,11 @@ class Plugin
   }
   void closed(bool was_destroyed)
   {
+  }
+
+  bool track_info_get(clap_track_info_t* info)
+  {
+    return _parentHost->track_info_get(info);
   }
 
   // clap_timer support

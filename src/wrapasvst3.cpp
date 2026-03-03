@@ -3,6 +3,7 @@
 #include <pluginterfaces/base/ustring.h>
 #include <pluginterfaces/vst/ivstevents.h>
 #include <pluginterfaces/vst/ivstnoteexpression.h>
+#include <pluginterfaces/vst/ivstchannelcontextinfo.h>
 #include <public.sdk/source/vst/utility/stringconvert.h>
 
 // With 3.8.0 fstring is no longer up to snuff for wextra gcc so...
@@ -574,6 +575,33 @@ tresult PLUGIN_API ClapAsVst3::getMidiControllerAssignment(int32 busIndex, int16
     }
   }
   return kResultFalse;
+}
+
+//----from IInfoListener--------------------------------------
+tresult PLUGIN_API ClapAsVst3::setChannelContextInfos(Vst::IAttributeList* list /*in*/)
+{
+  if (!_plugin->_ext._trackinfo) return kResultFalse;
+  if (!_trackInfo) _trackInfo = std::make_unique<clap_track_info_t>();
+  _trackInfo->flags = 0;
+
+  int64_t color = 0;
+  if (list->getInt(Vst::ChannelContext::kChannelColorKey, color) == kResultOk)
+  {
+    _trackInfo->flags |= CLAP_TRACK_INFO_HAS_TRACK_COLOR;
+    _trackInfo->color = clap_color{
+        Vst::ChannelContext::GetAlpha((uint32_t)color), Vst::ChannelContext::GetRed((uint32_t)color),
+        Vst::ChannelContext::GetGreen((uint32_t)color), Vst::ChannelContext::GetBlue((uint32_t)color)};
+  }
+
+  Steinberg::Vst::TChar name[CLAP_NAME_SIZE];
+  if (list->getString(Vst::ChannelContext::kChannelNameKey, name, sizeof(name)) == kResultOk)
+  {
+    _trackInfo->flags |= CLAP_TRACK_INFO_HAS_TRACK_NAME;
+    Steinberg::String(name, CLAP_NAME_SIZE).copyTo8(_trackInfo->name, 0, CLAP_NAME_SIZE);
+  }
+
+  _plugin->_ext._trackinfo->changed(_plugin->_plugin);
+  return kResultOk;
 }
 
 #if 1
@@ -1195,6 +1223,18 @@ void ClapAsVst3::onPerformEdit(const clap_event_param_value_t* value)
 void ClapAsVst3::onEndEdit(clap_id id)
 {
   _queueToUI.push(endEvent(id));
+}
+
+// track-info
+bool ClapAsVst3::track_info_get(clap_track_info_t* info)
+{
+  if (_trackInfo)
+  {
+    *info = *_trackInfo;
+    return true;
+  }
+
+  return false;
 }
 
 // ext-timer

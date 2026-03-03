@@ -22,9 +22,11 @@
 
 #include <pluginterfaces/vst/ivstmidicontrollers.h>
 #include <pluginterfaces/vst/ivstnoteexpression.h>
+#include <pluginterfaces/vst/ivstchannelcontextinfo.h>
+#include <pluginterfaces/vst/ivstcontextmenu.h>
+#include <pluginterfaces/vst/ivstattributes.h>
 #include <public.sdk/source/vst/vstsinglecomponenteffect.h>
 #include <public.sdk/source/vst/vstnoteexpressiontypes.h>
-#include <pluginterfaces/vst/ivstcontextmenu.h>
 
 #include <presonus-plugin-extensions/ipslgainreduction.h>
 
@@ -117,6 +119,7 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
                    public Steinberg::Vst::IMidiMapping,
                    public Steinberg::Vst::INoteExpressionController,
                    public Steinberg::Vst::IContextMenuTarget,
+                   public Steinberg::Vst::ChannelContext::IInfoListener,
                    public ARA::IPlugInEntryPoint,
                    public ARA::IPlugInEntryPoint2,
                    public Presonus::IGainReductionInfo,
@@ -133,6 +136,7 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
     : super()
     , Steinberg::Vst::IMidiMapping()
     , Steinberg::Vst::INoteExpressionController()
+    , Steinberg::Vst::ChannelContext::IInfoListener()
     , ARA::IPlugInEntryPoint()
     , ARA::IPlugInEntryPoint2()
     , Presonus::IGainReductionInfo()
@@ -182,6 +186,9 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   tresult PLUGIN_API getMidiControllerAssignment(int32 busIndex, int16 channel,
                                                  Vst::CtrlNumber midiControllerNumber,
                                                  Vst::ParamID& id /*out*/) override;
+
+  //----from IInfoListener--------------------------------------
+  tresult PLUGIN_API setChannelContextInfos(Vst::IAttributeList* list /*in*/) override;
 
   //----from INoteExpressionController-------------------------
   /** Returns number of supported note change types for event bus index and channel. */
@@ -274,6 +281,13 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
       DEF_INTERFACE(Presonus::IGainReductionInfo);
     }
   }
+  if (::Steinberg::FUnknownPrivate::iidEqual(iid, Steinberg::Vst::ChannelContext::IInfoListener::iid))
+  {
+    if (_plugin->_ext._trackinfo)
+    {
+      DEF_INTERFACE(Steinberg::Vst::ChannelContext::IInfoListener);
+    }
+  }
 
   // add any other interfaces here:
   //if (::Steinberg::FUnknownPrivate::iidEqual(iid, IExampleSomething::iid))
@@ -322,6 +336,8 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   void restartPlugin() override;
 
   void request_callback() override;
+
+  bool track_info_get(clap_track_info_t* info) override;
 
   // clap_timer support
   bool register_timer(uint32_t period_ms, clap_id* timer_id) override;
@@ -374,6 +390,9 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   WrappedView* _wrappedview = nullptr;
 
   void* _creationcontext;  // context from the CLAP library
+
+  // track info
+  std::unique_ptr<clap_track_info_t> _trackInfo;
 
   // plugin state
   bool _active = false;

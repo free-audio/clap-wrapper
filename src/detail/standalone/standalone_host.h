@@ -184,6 +184,11 @@ struct StandaloneHost : Clap::IHost
 
   const char *host_get_name() override;
 
+  bool track_info_get(clap_track_info_t *info) override
+  {
+    return false;
+  }
+
   // context menu extension
   bool supportsContextMenu() const override
   {
