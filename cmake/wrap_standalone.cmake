@@ -1,4 +1,5 @@
 
+option(CLAP_WRAPPER_LINUX_STANDALONE_USES_GTK "Linux uses GTC vs simple X11" FALSE)
 function(target_add_standalone_wrapper)
     set(oneValueArgs
             TARGET
@@ -155,9 +156,15 @@ function(target_add_standalone_wrapper)
         target_sources(${SA_TARGET} PRIVATE
                 ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/wrapasstandalone.cpp)
 
-        find_package(PkgConfig REQUIRED)
-        pkg_check_modules(GTK gtkmm-3.0)
-        if (${GTK_FOUND})
+        set(TRY_GTK False)
+        if (${CLAP_WRAPPER_LINUX_STANDALONE_USES_GTK})
+            message(STATUS "clap-wrapper: Attempting to find gtkmm-3")
+            find_package(PkgConfig REQUIRED)
+            pkg_check_modules(GTK gtkmm-3.0)
+            set(TRY_GTK ${GTK_FOUND})
+        endif()
+
+        if (${TRY_GTK})
             message(STATUS "clap-wrapper: using gtkmm-3.0 for standalone")
             target_compile_options(${salib} PUBLIC ${GTK_CFLAGS})
             target_include_directories(${salib} PUBLIC ${GTK_INCLUDE_DIRS})
@@ -165,7 +172,10 @@ function(target_add_standalone_wrapper)
             target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_HAS_GTK3)
             target_sources(${salib} PRIVATE ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/linux/gtkutils.cpp)
         else()
-            message(WARNING "clap-wrapper: can't find gtkmm-3.0; no ui in standalone")
+            message(STATUS "clap-wrapper: Using Standalone X11 gui for CLAP Wrapper")
+            target_link_libraries(${salib} PUBLIC X11)
+            target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_X11)
+            target_sources(${salib} PRIVATE ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/linux/x11_gui.cpp)
         endif()
 
         set_target_properties(${SA_TARGET} PROPERTIES OUTPUT_NAME ${SA_OUTPUT_NAME})

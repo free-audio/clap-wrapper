@@ -7,13 +7,16 @@
 #if CLAP_WRAPPER_HAS_GTK3
 #include "detail/standalone/linux/gtkutils.h"
 #endif
+#if CLAP_WRAPPER_STANDALONE_X11
+#include "detail/standalone/linux/x11_gui.h"
+#endif
 #endif
 
 // For now just a simple main. In the future this will branch out to
 // an [NSApplicationMain ] and so on depending on platform
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
-  const clap_plugin_entry *entry{nullptr};
+  const clap_plugin_entry* entry{nullptr};
 #ifdef STATICALLY_LINKED_CLAP_ENTRY
   extern const clap_plugin_entry clap_entry;
   entry = &clap_entry;
@@ -26,7 +29,7 @@ int main(int argc, char **argv)
 
   auto lib = Clap::Library();
 
-  for (const auto &searchPaths : pts)
+  for (const auto& searchPaths : pts)
   {
     auto clapPath = searchPaths / (clapName + ".clap");
 
@@ -49,6 +52,11 @@ int main(int argc, char **argv)
   }
   gtkGui.initialize(freeaudio::clap_wrapper::standalone::getStandaloneHost());
 #endif
+#if CLAP_WRAPPER_STANDALONE_X11
+  freeaudio::clap_wrapper::standalone::linux_standalone::X11Gui x11Gui{};
+
+  x11Gui.initialize(freeaudio::clap_wrapper::standalone::getStandaloneHost());
+#endif
 #endif
 
   if (!entry)
@@ -61,7 +69,7 @@ int main(int argc, char **argv)
   int pindex{PLUGIN_INDEX};
 
   auto plugin =
-      freeaudio::clap_wrapper::standalone::mainCreatePlugin(entry, pid, pindex, 1, (char **)argv);
+      freeaudio::clap_wrapper::standalone::mainCreatePlugin(entry, pid, pindex, 1, (char**)argv);
   freeaudio::clap_wrapper::standalone::mainStartAudio();
 
 #if LIN
@@ -70,6 +78,10 @@ int main(int argc, char **argv)
   gtkGui.runloop(argc, argv);
   gtkGui.shutdown();
   gtkGui.setPlugin(nullptr);
+#elif CLAP_WRAPPER_STANDALONE_X11
+  x11Gui.setPlugin(plugin);
+  x11Gui.runloop();
+  x11Gui.shutdown();
 #else
   freeaudio::clap_wrapper::standalone::mainWait();
 #endif

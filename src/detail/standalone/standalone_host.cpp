@@ -7,6 +7,9 @@
 #if CLAP_WRAPPER_HAS_GTK3
 #include "detail/standalone/linux/gtkutils.h"
 #endif
+#if CLAP_WRAPPER_STANDALONE_X11
+#include "detail/standalone/linux/x11_gui.h"
+#endif
 #endif
 
 #if WIN
@@ -23,7 +26,7 @@ namespace freeaudio::clap_wrapper::standalone
 #if WIN && CLAP_WRAPPER_HAS_WIN32
 std::optional<fs::path> getStandaloneSettingsPath()
 {
-  wchar_t *buffer{nullptr};
+  wchar_t* buffer{nullptr};
 
   if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &buffer)))
   {
@@ -49,8 +52,8 @@ StandaloneHost::~StandaloneHost()
 {
 }
 
-void StandaloneHost::setupAudioBusses(const clap_plugin_t *plugin,
-                                      const clap_plugin_audio_ports_t *audioports)
+void StandaloneHost::setupAudioBusses(const clap_plugin_t* plugin,
+                                      const clap_plugin_audio_ports_t* audioports)
 {
   if (!audioports) return;
   numAudioInputs = audioports->count(plugin, true);
@@ -76,8 +79,8 @@ void StandaloneHost::setupAudioBusses(const clap_plugin_t *plugin,
   assert(totalOutputChannels + totalInputChannels < utilityBufferMaxChannels);
 }
 
-void StandaloneHost::setupMIDIBusses(const clap_plugin_t *plugin,
-                                     const clap_plugin_note_ports_t *noteports)
+void StandaloneHost::setupMIDIBusses(const clap_plugin_t* plugin,
+                                     const clap_plugin_note_ports_t* noteports)
 {
   auto numMIDIInPorts = noteports->count(plugin, true);
   if (numMIDIInPorts > 0)
@@ -101,10 +104,10 @@ void StandaloneHost::setupMIDIBusses(const clap_plugin_t *plugin,
   }
 }
 
-void StandaloneHost::clapProcess(void *pOutput, const void *pInput, uint32_t frameCount)
+void StandaloneHost::clapProcess(void* pOutput, const void* pInput, uint32_t frameCount)
 {
   ClapWrapper::detail::shared::SpinLockGuard processLockGuard(processLock);
-  auto f = (float *)pOutput;
+  auto f = (float*)pOutput;
 
   if (!running)
   {
@@ -130,7 +133,7 @@ void StandaloneHost::clapProcess(void *pOutput, const void *pInput, uint32_t fra
 
   process.audio_outputs_count = 1;
 
-  float *bufferChanPtr[utilityBufferMaxChannels]{};
+  float* bufferChanPtr[utilityBufferMaxChannels]{};
   clap_audio_buffer buffers[utilityBufferMaxChannels]{};  // probably twice as large
   size_t ptrIdx{0};
   size_t bufIdx{0};
@@ -184,7 +187,7 @@ void StandaloneHost::clapProcess(void *pOutput, const void *pInput, uint32_t fra
 
   if (mainInIdx >= 0 && pInput)
   {
-    auto *g = (const float *)pInput;
+    auto* g = (const float*)pInput;
     auto stride = currentInputChannels;
     auto chan2Off = (currentInputChannels > 1) ? 1 : 0;
 
@@ -239,18 +242,21 @@ bool StandaloneHost::gui_request_resize(uint32_t width, uint32_t height)
   return false;
 }
 
-const char *StandaloneHost::host_get_name()
+const char* StandaloneHost::host_get_name()
 {
   return "CLAP-Wrapper-As-Standalone";
 }
 
 #if LIN
 
-bool StandaloneHost::register_timer(uint32_t period_ms, clap_id *timer_id)
+bool StandaloneHost::register_timer(uint32_t period_ms, clap_id* timer_id)
 {
 #if LIN && CLAP_WRAPPER_HAS_GTK3
   assert(gtkGui);
   return gtkGui->register_timer(period_ms, timer_id);
+#elif LIN && CLAP_WRAPPER_STANDALONE_X11
+  assert(x11Gui);
+  return x11Gui->register_timer(period_ms, timer_id);
 #else
   return false;
 #endif
@@ -259,6 +265,9 @@ bool StandaloneHost::unregister_timer(clap_id timer_id)
 {
 #if LIN && CLAP_WRAPPER_HAS_GTK3
   return gtkGui->unregister_timer(timer_id);
+#elif LIN && CLAP_WRAPPER_STANDALONE_X11
+  assert(x11Gui);
+  return x11Gui->unregister_timer(timer_id);
 #else
   return false;
 #endif
@@ -268,6 +277,8 @@ bool StandaloneHost::register_fd(int fd, clap_posix_fd_flags_t flags)
 {
 #if LIN && CLAP_WRAPPER_HAS_GTK3
   return gtkGui->register_fd(fd, flags);
+#elif LIN && CLAP_WRAPPER_STANDALONE_X11
+  return x11Gui->register_fd(fd, flags);
 #else
   return false;
 #endif
@@ -280,13 +291,15 @@ bool StandaloneHost::unregister_fd(int fd)
 {
 #if LIN && CLAP_WRAPPER_HAS_GTK3
   return gtkGui->unregister_fd(fd);
+#elif LIN && CLAP_WRAPPER_STANDALONE_X11
+  return x11Gui->unregister_fd(fd);
 #else
   return false;
 #endif
 }
 
 #else
-bool StandaloneHost::register_timer(uint32_t period_ms, clap_id *timer_id)
+bool StandaloneHost::register_timer(uint32_t period_ms, clap_id* timer_id)
 {
   return false;
 }
@@ -296,19 +309,19 @@ bool StandaloneHost::unregister_timer(clap_id timer_id)
 }
 #endif
 
-static int64_t clapwrite(const clap_ostream *s, const void *buffer, uint64_t size)
+static int64_t clapwrite(const clap_ostream* s, const void* buffer, uint64_t size)
 {
-  auto ofs = static_cast<std::ofstream *>(s->ctx);
-  ofs->write((const char *)buffer, size);
+  auto ofs = static_cast<std::ofstream*>(s->ctx);
+  ofs->write((const char*)buffer, size);
   return size;
 }
 
-static int64_t clapread(const struct clap_istream *s, void *buffer, uint64_t size)
+static int64_t clapread(const struct clap_istream* s, void* buffer, uint64_t size)
 {
-  auto ifs = static_cast<std::ifstream *>(s->ctx);
+  auto ifs = static_cast<std::ifstream*>(s->ctx);
 
   // Oh this API is so terrible. I think this is right?
-  ifs->read(static_cast<char *>(buffer), size);
+  ifs->read(static_cast<char*>(buffer), size);
   if (ifs->rdstate() == std::ios::goodbit || ifs->rdstate() == std::ios::eofbit) return ifs->gcount();
 
   if (ifs->rdstate() & std::ios::eofbit) return ifs->gcount();
@@ -316,7 +329,7 @@ static int64_t clapread(const struct clap_istream *s, void *buffer, uint64_t siz
   return -1;
 }
 
-bool StandaloneHost::saveStandaloneAndPluginSettings(const fs::path &intoDir, const fs::path &withName)
+bool StandaloneHost::saveStandaloneAndPluginSettings(const fs::path& intoDir, const fs::path& withName)
 {
   // This should obviously be a more robust file format. What we
   // want is an envelope containing the standalone settings and then
@@ -342,8 +355,8 @@ bool StandaloneHost::saveStandaloneAndPluginSettings(const fs::path &intoDir, co
   return true;
 }
 
-bool StandaloneHost::tryLoadStandaloneAndPluginSettings(const fs::path &fromDir,
-                                                        const fs::path &withName)
+bool StandaloneHost::tryLoadStandaloneAndPluginSettings(const fs::path& fromDir,
+                                                        const fs::path& withName)
 {
   // see comment above on this file format being not just the
   // raw stream in the future
