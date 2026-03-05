@@ -35,16 +35,14 @@ void Parameter::updateInfo(const clap_plugin_t* plugin, const clap_plugin_params
   }
   if (info.flags & CLAP_PARAM_IS_STEPPED)
   {
-    if (info.max_value - info.min_value == 1)
-    {
+    if (info.max_value == 1 && info.min_value == 0)
       flags |= kAudioUnitParameterUnit_Boolean;
-    }
-    // flags |= kAudioUnitParameterUnit_Indexed;  // probably need to add the lists then
+    else
+      flags |= kAudioUnitParameterUnit_Indexed;
   }
-  if (info.max_value - info.min_value > 100)
-  {
-    flags |= kAudioUnitParameterFlag_IsHighResolution;
-  }
+
+  // we need this, otherwise hosts may quantize the parameter to 100 steps
+  flags |= kAudioUnitParameterFlag_IsHighResolution;
 
   // checking if the parameter supports the conversion of its value to text
 
