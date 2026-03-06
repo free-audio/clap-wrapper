@@ -274,6 +274,10 @@ function(guarantee_aaxsdk)
         return()
     endif()
 
+    if (WIN32 AND MINGW)
+        return()
+    endif()
+
     if (NOT "${AAX_SDK_ROOT}" STREQUAL "")
         # Use the provided root
     elseif(${CLAP_WRAPPER_DOWNLOAD_DEPENDENCIES})
