@@ -33,6 +33,7 @@
 
 // ----[AAX WRAPPER]----------------------------------------------------------------
 #include "process.h"
+#include "categories.h"
 #include "util.h"
 #include "clapwrapper/aax.h"
 #include "plugview.h"
@@ -94,8 +95,6 @@ class ClapAsAAXRegistry
     return mtx;
   }
 };
-
-uint32_t clapCategoriesToAAX(const char* const* clap_categories);  // categories.cpp
 
 int32_t AAX_CALLBACK
 AAXWrapper_inInstanceInitProc(const SAAX_Wrapper_AlgorithmicContext* inInstanceContextPtr,

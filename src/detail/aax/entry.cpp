@@ -1,11 +1,11 @@
 // AAX entry points - the base AAX SDK library we've built is missing the AAX_Init.cpp by purpose.
 //
 // this defines the DLL entry point that is actually provided by the AAX SDK in the AAX_Init.cpp
-// We need some hooks in there, so we redefine the function names and provide our own versions
-// but include the init code from the SDK
+// We need some hooks in there, so we redefine the function names to avoid symbol collisions and 
+// provide our own versions, but can include the init code from the SDK
 
 // ---------------8<-----------------
-// step one: define our function declarations
+// step one: define our function declarations so the actual symbols of the SDK are different and can be replaced
 #include "AAX.h"
 
 #define AAXStartup AAXStartup_Base
@@ -20,7 +20,7 @@
 // ---------------8<-----------------
 #include "factory.h"
 
-// now we can hook in and locate the CLAP library and its entry point
+// step 2: now we can hook in and locate the CLAP library and its entry point
 
 AAX_Result AAXRegisterPlugin(IACFUnknown* pUnkHost, IACFPluginDefinition** ppPluginDefinition)
 {

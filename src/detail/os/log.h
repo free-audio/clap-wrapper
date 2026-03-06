@@ -43,7 +43,7 @@ void log(fmt::string_view format_str, Args&&... args)
   fmt::memory_buffer buf;
   fmt::vformat_to(std::back_inserter(buf), format_str, fmt::make_format_args(args...));
   buf.push_back(0);
-  log((const char*)buf.data());
+  os::log((const char*)buf.data());
 }
 
 template <typename... Args>
@@ -54,7 +54,7 @@ void logWithLocation(const std::string& file, uint32_t line, const std::string f
   fmt::vformat_to(std::back_inserter(buf), "{}:{} ({}) ", fmt::make_format_args(file, line, func));
   fmt::vformat_to(std::back_inserter(buf), format_str, fmt::make_format_args(args...));
   buf.push_back(0);
-  log((const char*)buf.data());
+  os::log((const char*)buf.data());
 }
 }  // namespace os
 
