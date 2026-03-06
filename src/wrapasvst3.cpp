@@ -3,6 +3,7 @@
 #include <pluginterfaces/base/ustring.h>
 #include <pluginterfaces/vst/ivstevents.h>
 #include <pluginterfaces/vst/ivstnoteexpression.h>
+#include <pluginterfaces/vst/ivstchannelcontextinfo.h>
 #include <public.sdk/source/vst/utility/stringconvert.h>
 
 // With 3.8.0 fstring is no longer up to snuff for wextra gcc so...
@@ -356,6 +357,8 @@ tresult PLUGIN_API ClapAsVst3::setBusArrangements(Vst::SpeakerArrangement* input
     return kResultFalse;
   }
 
+  auto raise = _plugin->AlwaysMainThread();
+
   int32_t inc = _plugin->_ext._audioports->count(_plugin->_plugin, true);
   int32_t ouc = _plugin->_ext._audioports->count(_plugin->_plugin, false);
   if (inc != numIns || ouc != numOuts)
@@ -473,6 +476,7 @@ tresult PLUGIN_API ClapAsVst3::getParamStringByValue(Vst::ParamID id, Vst::Param
   char outbuf[128];
   memset(outbuf, 0, sizeof(outbuf));
 
+  auto raise = _plugin->AlwaysMainThread();
   if (this->_plugin->_ext._params->value_to_text(_plugin->_plugin, param->id, val, outbuf, 127))
   {
     utf8_to_utf16l(outbuf, (uint16_t*)&string[0], str16BufferSize(Steinberg::Vst::String128));
@@ -494,6 +498,7 @@ tresult PLUGIN_API ClapAsVst3::getParamValueByString(Vst::ParamID id, Vst::TChar
   {
     return Steinberg::kResultFalse;
   }
+  auto raise = _plugin->AlwaysMainThread();
   if (this->_plugin->_ext._params->text_to_value(_plugin->_plugin, param->id, inbuf, &out))
   {
     valueNormalized = param->asVst3Value(out);
@@ -574,6 +579,33 @@ tresult PLUGIN_API ClapAsVst3::getMidiControllerAssignment(int32 busIndex, int16
     }
   }
   return kResultFalse;
+}
+
+//----from IInfoListener--------------------------------------
+tresult PLUGIN_API ClapAsVst3::setChannelContextInfos(Vst::IAttributeList* list /*in*/)
+{
+  if (!_plugin->_ext._trackinfo) return kResultFalse;
+  if (!_trackInfo) _trackInfo = std::make_unique<clap_track_info_t>();
+  _trackInfo->flags = 0;
+
+  int64_t color = 0;
+  if (list->getInt(Vst::ChannelContext::kChannelColorKey, color) == kResultOk)
+  {
+    _trackInfo->flags |= CLAP_TRACK_INFO_HAS_TRACK_COLOR;
+    _trackInfo->color = clap_color{
+        Vst::ChannelContext::GetAlpha((uint32_t)color), Vst::ChannelContext::GetRed((uint32_t)color),
+        Vst::ChannelContext::GetGreen((uint32_t)color), Vst::ChannelContext::GetBlue((uint32_t)color)};
+  }
+
+  Steinberg::Vst::TChar name[CLAP_NAME_SIZE];
+  if (list->getString(Vst::ChannelContext::kChannelNameKey, name, sizeof(name)) == kResultOk)
+  {
+    _trackInfo->flags |= CLAP_TRACK_INFO_HAS_TRACK_NAME;
+    Steinberg::String(name, CLAP_NAME_SIZE).copyTo8(_trackInfo->name, 0, CLAP_NAME_SIZE);
+  }
+
+  _plugin->_ext._trackinfo->changed(_plugin->_plugin);
+  return kResultOk;
 }
 
 #if 1
@@ -699,7 +731,13 @@ static Vst::SpeakerArrangement speakerArrFromPortType(const char* port_type)
 void ClapAsVst3::addAudioBusFrom(const clap_audio_port_info_t* info, bool is_input)
 {
   auto spk = speakerArrFromPortType(info->port_type);
-  auto bustype = (info->flags & CLAP_AUDIO_PORT_IS_MAIN) ? Vst::BusTypes::kMain : Vst::BusTypes::kAux;
+  auto bustype = Vst::BusTypes::kMain;  // actually, everything is main, except
+  if (is_input && !(info->flags & CLAP_AUDIO_PORT_IS_MAIN))
+  {
+    // only inputs can be sidechains, everything that is not the MAIN bus is a sidechain
+    bustype = Vst::BusTypes::kAux;
+  }
+
   // bool supports64bit = (info->flags & CLAP_AUDIO_PORT_SUPPORTS_64BITS);
   Steinberg::char16 name16[256];
   // str8tostr16 writes to position n to terminate, so don't overflow
@@ -1195,6 +1233,18 @@ void ClapAsVst3::onPerformEdit(const clap_event_param_value_t* value)
 void ClapAsVst3::onEndEdit(clap_id id)
 {
   _queueToUI.push(endEvent(id));
+}
+
+// track-info
+bool ClapAsVst3::track_info_get(clap_track_info_t* info)
+{
+  if (_trackInfo)
+  {
+    *info = *_trackInfo;
+    return true;
+  }
+
+  return false;
 }
 
 // ext-timer
@@ -1695,14 +1745,24 @@ tresult ClapAsVst3::getBusInfo(Vst::MediaType type, Vst::BusDirection dir, int32
   {
     if (type == Vst::kAudio)
     {
+      auto raise = _plugin->AlwaysMainThread();
+
       clap_audio_port_info_t info;
       if (_plugin->_ext._audioports->get(_plugin->_plugin, (uint32_t)index, (dir == Vst::kInput), &info))
       {
         bus.mediaType = Vst::kAudio;
         bus.channelCount = info.channel_count;
         bus.direction = dir;
-        bus.busType = (info.flags & CLAP_AUDIO_PORT_IS_MAIN) ? Vst::kMain : Vst::kAux;
         bus.flags = Vst::BusInfo::kDefaultActive;
+
+        if (dir == Vst::BusDirections::kOutput)
+        {
+          bus.busType = Vst::kMain;  // outputs are always main
+        }
+        else
+        {
+          bus.busType = (info.flags & CLAP_AUDIO_PORT_IS_MAIN) ? Vst::kMain : Vst::kAux;
+        }
 
         utf8_to_utf16l(info.name, (uint16_t*)&bus.name[0], str16BufferSize(Steinberg::Vst::String128));
 

@@ -3,14 +3,9 @@
 #include <Windows.h>
 #include <ShlObj.h>
 
-#include <filesystem>
-#include <fstream>
 #include <functional>
-#include <limits>
-#include <limits>
 #include <memory>
 #include <optional>
-#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -35,6 +30,7 @@ using namespace winrt::Windows::Data::Json;
 
 namespace freeaudio::clap_wrapper::standalone::windows_standalone
 {
+std::vector<std::string> getArgs();
 ::HMODULE getInstance();
 ::HFONT getFontFromSystem(int name = DEFAULT_GUI_FONT);
 ::HFONT getScaledFontFromSystem(double scale);
@@ -372,7 +368,7 @@ struct Plugin final : public Window
     const clap_plugin_state_t* state;
   };
 
-  explicit Plugin(const clap_plugin_entry* entry, int argc, char** argv);
+  explicit Plugin(std::shared_ptr<Clap::Plugin> clapPlugin);
 
   std::optional<clap_gui_resize_hints> getResizeHints();
   void refreshLayout();
