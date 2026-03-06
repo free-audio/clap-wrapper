@@ -6,6 +6,40 @@ function (guarantee_cpm)
     endif()
 endfunction(guarantee_cpm)
 
+# this is a check if a platform can properly build AAX at all.
+# So this is either MacOS or Windows, but only with MSVC
+function(can_build_aax result)
+
+    set(${result} FALSE PARENT_SCOPE)
+
+    if (APPLE)
+        set(${result} TRUE PARENT_SCOPE)
+        return()
+    endif()
+
+    if (WIN32 AND NOT MINGW)
+        # Exclude ClangCL
+        if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
+            return()
+        endif()
+        # Exclude plain Clang on Windows
+        if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+            return()
+        endif()
+        # Exclude GCC on Windows (non-MinGW GCC edge case)
+        if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            return()
+        endif()
+
+        set(${result} TRUE PARENT_SCOPE)
+    endif()
+endfunction(can_build_aax)
+
+can_build_aax(CLAP_WRAPPER_CAN_BUILD_AAX)
+if (NOT PROJECT_IS_TOP_LEVEL)
+    set(CLAP_WRAPPER_CAN_BUILD_AAX TRUE PARENT_SCOPE)
+endif()
+
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set(EMSCRIPTEN 1)
 endif()
@@ -267,3 +301,4 @@ if(${CMAKE_SIZEOF_VOID_P} EQUAL 4)
     message(STATUS "clap-wrapper: configured as 32 bit build. Intentional?")
 endif()
 message(STATUS "clap-wrapper: source dir is ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}, platform is ${CLAP_WRAPPER_PLATFORM}")
+

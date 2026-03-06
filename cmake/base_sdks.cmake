@@ -270,11 +270,7 @@ function(guarantee_aaxsdk)
         return()
     endif()
 
-    if (NOT APPLE AND NOT WIN32)
-        return()
-    endif()
-
-    if (WIN32 AND MINGW)
+    if (NOT CLAP_WRAPPER_CAN_BUILD_AAX)
         return()
     endif()
 

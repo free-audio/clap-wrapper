@@ -9,7 +9,7 @@ if (PROJECT_IS_TOP_LEVEL)
 	string(MAKE_C_IDENTIFIER ${CLAP_WRAPPER_OUTPUT_NAME} pluginname)
 
 
-	if (APPLE OR (WIN32 AND NOT MINGW))
+	if (CLAP_WRAPPER_CAN_BUILD_AAX)
 		    # Link the actual plugin library
 			add_library(${pluginname}_as_aax MODULE)
 			target_add_aax_wrapper(
