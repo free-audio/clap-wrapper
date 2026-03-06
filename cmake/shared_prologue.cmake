@@ -18,12 +18,14 @@ function(can_build_aax result)
     endif()
 
     if (WIN32 AND NOT MINGW)
+        string(TOUPPER "${CMAKE_SYSTEM_PROCESSOR}" _processor)
+        string(TOUPPER "${CMAKE_GENERATOR_PLATFORM}" _platform)
+
         # Exclude Windows ARM
-        if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(ARM|ARM64|aarch64)$")
-            message("STATUS: clap-wrapper: ignoring Windows ARM")
+        if (_processor MATCHES "^(ARM|ARM64|AARCH64)$")
             return()
         endif()
-        if (MSVC AND CMAKE_GENERATOR_PLATFORM MATCHES "^(ARM|ARM64)$")
+        if (_platform MATCHES "^(ARM|ARM64|AARCH64)$")
             return()
         endif()
         # Exclude ClangCL
