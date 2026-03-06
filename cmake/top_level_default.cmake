@@ -12,12 +12,14 @@ if (PROJECT_IS_TOP_LEVEL)
 	add_library(${pluginname}_as_aax MODULE)
 	add_library(${pluginname}_as_vst3 MODULE)
 
-	target_add_aax_wrapper(
-			TARGET ${pluginname}_as_aax
-			OUTPUT_NAME "${CLAP_WRAPPER_OUTPUT_NAME}"
-			BUNDLE_IDENTIFIER "${CLAP_WRAPPER_BUNDLE_IDENTIFIER}"
-			BUNDLE_VERSION "${CLAP_WRAPPER_BUNDLE_VERSION}"
-	)
+	if (APPLE OR WIN32)
+			target_add_aax_wrapper(
+					TARGET ${pluginname}_as_aax
+					OUTPUT_NAME "${CLAP_WRAPPER_OUTPUT_NAME}"
+					BUNDLE_IDENTIFIER "${CLAP_WRAPPER_BUNDLE_IDENTIFIER}"
+					BUNDLE_VERSION "${CLAP_WRAPPER_BUNDLE_VERSION}"
+			)
+	endif()
 
 	target_add_vst3_wrapper(
 			TARGET ${pluginname}_as_vst3
