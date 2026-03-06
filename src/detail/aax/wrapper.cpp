@@ -585,7 +585,7 @@ AAX_Result GetEffectDescriptions(AAX_ICollection* outCollection)
               m.port_type = CLAP_PORT_MONO;
             }
 
-            if (ext_cap->can_apply_configuration(tmpplug, &requests[0], (uint32_t) requests.size()))
+            if (ext_cap->can_apply_configuration(tmpplug, &requests[0], (uint32_t)requests.size()))
             {
               configs.emplace_back(requests);
             }
@@ -597,7 +597,7 @@ AAX_Result GetEffectDescriptions(AAX_ICollection* outCollection)
               m.port_details = nullptr;
               m.port_type = CLAP_PORT_STEREO;
             }
-            if (ext_cap->can_apply_configuration(tmpplug, &requests[0], (uint32_t) requests.size()))
+            if (ext_cap->can_apply_configuration(tmpplug, &requests[0], (uint32_t)requests.size()))
             {
               configs.emplace_back(requests);
             }
@@ -970,7 +970,7 @@ AAX_Result ClapAsAAX::GetChunk(AAX_CTypeID iChunkID, AAX_SPlugInChunk* oChunk) c
   oChunk->fVersion = 1;
   memset(oChunk->fName, 0, 32);  //Just in case, lets make sure unused chars are null.
   memcpy(oChunk->fName, "clap-as-aax", 11);
-  oChunk->fSize = (int32_t) _state.size();
+  oChunk->fSize = (int32_t)_state.size();
   memcpy(oChunk->fData, _state.data(), _state.size());
 
   return AAX_SUCCESS;
