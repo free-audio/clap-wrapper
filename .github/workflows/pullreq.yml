@@ -43,6 +43,7 @@ jobs:
           mkdir deps
           cd deps
           git clone https://github.com/free-audio/clap
+          git clone https://github.com/audiosdk/aax
           git clone https://github.com/steinbergmedia/vst3sdk
           cd vst3sdk
           # temporary workaround, switch to vst3 sdk 3.7.7
