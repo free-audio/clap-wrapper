@@ -18,6 +18,10 @@ function(can_build_aax result)
     endif()
 
     if (WIN32 AND NOT MINGW)
+        # Exclude Windows ARM
+        if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(ARM|ARM64|aarch64)$")
+            return()
+        endif()
         # Exclude ClangCL
         if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
             return()
