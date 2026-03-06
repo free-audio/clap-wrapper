@@ -1,7 +1,7 @@
 // AAX entry points - the base AAX SDK library we've built is missing the AAX_Init.cpp by purpose.
 //
 // this defines the DLL entry point that is actually provided by the AAX SDK in the AAX_Init.cpp
-// We need some hooks in there, so we redefine the function names to avoid symbol collisions and 
+// We need some hooks in there, so we redefine the function names to avoid symbol collisions and
 // provide our own versions, but can include the init code from the SDK
 
 // ---------------8<-----------------

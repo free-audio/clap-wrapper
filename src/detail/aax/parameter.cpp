@@ -43,4 +43,3 @@ bool AAX_ClapParamDisplayDelegate::StringToValue(const AAX_CString& valueString,
   auto i = _info.get();
   return i->_ext_params->text_to_value(i->_plugin, i->_clap_param_info.id, valueString.Get(), value);
 }
-

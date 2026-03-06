@@ -81,8 +81,7 @@ uint32_t clapCategoriesToAAX(const char* const* clap_categories)
   os::log("creating categories:");
   for (auto f = clap_categories; f && *f; ++f)
   {
-    auto it =
-        std::find_if(std::begin(translationTable), std::end(translationTable), [&](const auto& entry)
+    auto it = std::find_if(std::begin(translationTable), std::end(translationTable), [&](const auto& entry)
                      { return entry.clapattribute && !strcmp(entry.clapattribute, *f); });
 
     if (it != std::end(translationTable))
