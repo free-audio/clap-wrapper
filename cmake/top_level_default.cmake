@@ -8,11 +8,10 @@ if (PROJECT_IS_TOP_LEVEL)
 
 	string(MAKE_C_IDENTIFIER ${CLAP_WRAPPER_OUTPUT_NAME} pluginname)
 
-	# Link the actual plugin library
-	add_library(${pluginname}_as_aax MODULE)
-	add_library(${pluginname}_as_vst3 MODULE)
 
 	if (APPLE OR WIN32)
+		    # Link the actual plugin library
+			add_library(${pluginname}_as_aax MODULE)
 			target_add_aax_wrapper(
 					TARGET ${pluginname}_as_aax
 					OUTPUT_NAME "${CLAP_WRAPPER_OUTPUT_NAME}"
@@ -21,6 +20,8 @@ if (PROJECT_IS_TOP_LEVEL)
 			)
 	endif()
 
+	# Link the actual plugin library
+	add_library(${pluginname}_as_vst3 MODULE)
 	target_add_vst3_wrapper(
 			TARGET ${pluginname}_as_vst3
 			OUTPUT_NAME "${CLAP_WRAPPER_OUTPUT_NAME}"
