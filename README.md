@@ -14,6 +14,7 @@ Currently the `clap-wrapper` supports projecting a CLAP into
 
 - VST3
 - Audio Unit v2 (AUv2)
+- AAX
 - A Simple Standalone
 
 The `clap-wrapper` also provides a variety of deployment,

@@ -17,8 +17,6 @@ function(private_add_aax_wrapper_sources)
    
     target_sources(${tg} PRIVATE
 
-           ${sd}/src/wrapasaax.h
-           ${sd}/src/wrapasaax.cpp
            ${sd}/src/detail/aax/entry.cpp
            ${sd}/src/detail/aax/factory.cpp
            ${sd}/src/detail/aax/factory.h
