@@ -1191,6 +1191,11 @@ bool ClapAsAAX::unregister_timer(clap_id timer_id)
   return false;
 }
 
+bool ClapAsAAX::track_info_get(clap_track_info_t* info)
+{
+  return false;
+}
+
 const char* ClapAsAAX::host_get_name()
 {
   AAX_IController* ctrl = Controller();

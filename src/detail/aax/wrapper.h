@@ -207,6 +207,7 @@ class ClapAsAAX : public AAX_CEffectParameters,
   bool register_timer(uint32_t period_ms, clap_id* timer_id) override;
   bool unregister_timer(clap_id timer_id) override;
 
+  bool track_info_get(clap_track_info_t* info) override;
   const char* host_get_name() override;
 
   bool supportsContextMenu() const override;

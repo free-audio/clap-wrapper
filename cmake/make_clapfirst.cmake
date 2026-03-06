@@ -216,7 +216,7 @@ function(make_clapfirst_plugins)
     endif()
 
     ## ----------------------
-     if (${BUILD_AAX} GREATER -1)
+     if ((WIN32 OR APPLE) AND ${BUILD_AAX} GREATER -1)
         message(STATUS "clap-wrapper: ClapFirst is making an AAX")
 
         set(AAX_TARGET ${C1ST_TARGET_NAME}_aax)
