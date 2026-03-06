@@ -292,10 +292,7 @@ function(guarantee_aaxsdk)
 
     else()
         message(INFO "searching sdk")
-        search_for_sdk_source(SDKDIR aax-sdk-2-8-1 RESULT AAX_SDK_ROOT)
-        if ("${AAX_SDK_ROOT}" STREQUAL "")
-            search_for_sdk_source(SDKDIR aax RESULT AAX_SDK_ROOT)
-        endif()
+        search_for_sdk_source(SDKDIR aax RESULT AAX_SDK_ROOT)
     endif()
 
     if ("${AAX_SDK_ROOT}" STREQUAL "")
