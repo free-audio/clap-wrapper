@@ -16,7 +16,6 @@ using namespace Steinberg;
 
 ProcessAdapter::~ProcessAdapter()
 {
-
 }
 void ProcessAdapter::setupProcessing(const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params,
                                      Vst::BusList& audioinputs, Vst::BusList& audiooutputs,
