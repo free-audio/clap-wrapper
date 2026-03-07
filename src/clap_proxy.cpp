@@ -15,26 +15,26 @@ namespace Clap
 {
 namespace HostExt
 {
-static Plugin* self(const clap_host_t* host)
+static Plugin *self(const clap_host_t *host)
 {
-  return static_cast<Plugin*>(host->host_data);
+  return static_cast<Plugin *>(host->host_data);
 }
 
-void host_log(const clap_host_t* host, clap_log_severity severity, const char* msg)
+void host_log(const clap_host_t *host, clap_log_severity severity, const char *msg)
 {
   self(host)->log(severity, msg);
 }
 
 clap_host_log_t log = {host_log};
 
-void rescan(const clap_host_t* host, clap_param_rescan_flags flags)
+void rescan(const clap_host_t *host, clap_param_rescan_flags flags)
 {
   self(host)->param_rescan(flags);
 }
 
 // Clears references to a parameter.
 // [main-thread]
-void clear(const clap_host_t* host, clap_id param_id, clap_param_clear_flags flags)
+void clear(const clap_host_t *host, clap_id param_id, clap_param_clear_flags flags)
 {
 }
 
@@ -48,43 +48,43 @@ void clear(const clap_host_t* host, clap_id param_id, clap_param_clear_flags fla
 //
 // This must not be called on the [audio-thread].
 // [thread-safe,!audio-thread]
-void request_flush(const clap_host_t* host)
+void request_flush(const clap_host_t *host)
 {
   self(host)->param_request_flush();
 }
 clap_host_params_t params = {rescan, clear, request_flush};
 
-bool is_main_thread(const clap_host_t* host)
+bool is_main_thread(const clap_host_t *host)
 {
   return self(host)->is_main_thread();
 }
 
 // Returns true if "this" thread is one of the audio threads.
 // [thread-safe]
-bool is_audio_thread(const clap_host_t* host)
+bool is_audio_thread(const clap_host_t *host)
 {
   return self(host)->is_audio_thread();
 }
 
 clap_host_thread_check_t threadcheck = {is_main_thread, is_audio_thread};
 
-static void resize_hints_changed(const clap_host_t* host)
+static void resize_hints_changed(const clap_host_t *host)
 {
   self(host)->resize_hints_changed();
 }
-static bool request_resize(const clap_host_t* host, uint32_t width, uint32_t height)
+static bool request_resize(const clap_host_t *host, uint32_t width, uint32_t height)
 {
   return self(host)->request_resize(width, height);
 }
-static bool request_show(const clap_host_t* host)
+static bool request_show(const clap_host_t *host)
 {
   return self(host)->request_show();
 }
-static bool request_hide(const clap_host_t* host)
+static bool request_hide(const clap_host_t *host)
 {
   return self(host)->request_hide();
 }
-static void closed(const clap_host_t* host, bool was_destroyed)
+static void closed(const clap_host_t *host, bool was_destroyed)
 {
   self(host)->closed(was_destroyed);
 }
@@ -92,49 +92,49 @@ static void closed(const clap_host_t* host, bool was_destroyed)
 const clap_host_gui hostgui = {resize_hints_changed, request_resize, request_show, request_hide, closed};
 
 const clap_host_timer_support hosttimer = {
-    /* register_timer */ [](const clap_host_t* host, uint32_t period_ms, clap_id* timer_id) -> bool
+    /* register_timer */ [](const clap_host_t *host, uint32_t period_ms, clap_id *timer_id) -> bool
     { return self(host)->register_timer(period_ms, timer_id); },
     /* unregister_timer */
-    [](const clap_host_t* host, clap_id timer_id) -> bool
+    [](const clap_host_t *host, clap_id timer_id) -> bool
     { return self(host)->unregister_timer(timer_id); }};
 
 #if LIN
 const clap_host_posix_fd_support hostposixfd = {
-    [](const clap_host_t* host, int fd, clap_posix_fd_flags_t flags) -> bool
+    [](const clap_host_t *host, int fd, clap_posix_fd_flags_t flags) -> bool
     { return self(host)->register_fd(fd, flags); },
-    [](const clap_host_t* host, int fd, clap_posix_fd_flags_t flags) -> bool
+    [](const clap_host_t *host, int fd, clap_posix_fd_flags_t flags) -> bool
     { return self(host)->modify_fd(fd, flags); },
-    [](const clap_host_t* host, int fd) -> bool { return self(host)->unregister_fd(fd); }};
+    [](const clap_host_t *host, int fd) -> bool { return self(host)->unregister_fd(fd); }};
 #endif
 
-const clap_host_latency latency = {[](const clap_host_t* host) -> void
+const clap_host_latency latency = {[](const clap_host_t *host) -> void
                                    { self(host)->latency_changed(); }};
 
-const clap_host_state_t state = {[](const clap_host_t* host) -> void { self(host)->mark_dirty(); }};
+const clap_host_state_t state = {[](const clap_host_t *host) -> void { self(host)->mark_dirty(); }};
 
 const clap_host_context_menu_t context_menu = {
     /* populate */
-    [](const clap_host_t* host, const clap_context_menu_target_t* target,
-       const clap_context_menu_builder_t* builder) -> bool
+    [](const clap_host_t *host, const clap_context_menu_target_t *target,
+       const clap_context_menu_builder_t *builder) -> bool
     { return self(host)->context_menu_populate(target, builder); },
     /* perform */
-    [](const clap_host_t* host, const clap_context_menu_target_t* target, clap_id action_id) -> bool
+    [](const clap_host_t *host, const clap_context_menu_target_t *target, clap_id action_id) -> bool
     { return self(host)->context_menu_perform(target, action_id); },
     /* can_popup */
-    [](const clap_host_t* host) -> bool { return self(host)->context_menu_can_popup(); },
+    [](const clap_host_t *host) -> bool { return self(host)->context_menu_can_popup(); },
     /* popup */
-    [](const clap_host_t* host, const clap_context_menu_target_t* target, int32_t screen_index,
+    [](const clap_host_t *host, const clap_context_menu_target_t *target, int32_t screen_index,
        int32_t x, int32_t y) -> bool
     { return self(host)->context_menu_popup(target, screen_index, x, y); }};
 
-static void tail_changed(const clap_host_t* host)
+static void tail_changed(const clap_host_t *host)
 {
   self(host)->tail_changed();
 }
 
 const clap_host_tail tail = {tail_changed};
 
-static bool track_info_get(const clap_host_t* host, clap_track_info_t* info)
+static bool track_info_get(const clap_host_t *host, clap_track_info_t *info)
 {
   return self(host)->track_info_get(info);
 }
@@ -143,8 +143,8 @@ const clap_host_track_info trackinfo = {track_info_get};
 
 }  // namespace HostExt
 
-std::shared_ptr<Plugin> Plugin::createInstance(const clap_plugin_factory* factory, const std::string& id,
-                                               Clap::IHost* host)
+std::shared_ptr<Plugin> Plugin::createInstance(const clap_plugin_factory *factory, const std::string &id,
+                                               Clap::IHost *host)
 {
   auto plug = std::shared_ptr<Plugin>(new Plugin(host));
   auto instance = factory->create_plugin(factory, plug->getClapHostInterface(), id.c_str());
@@ -159,8 +159,8 @@ std::shared_ptr<Plugin> Plugin::createInstance(const clap_plugin_factory* factor
   return plug;
 }
 
-std::shared_ptr<Plugin> Plugin::createInstance(const clap_plugin_factory* factory, size_t idx,
-                                               Clap::IHost* host)
+std::shared_ptr<Plugin> Plugin::createInstance(const clap_plugin_factory *factory, size_t idx,
+                                               Clap::IHost *host)
 {
   auto pc = factory->get_plugin_count(factory);
   if (idx >= pc) return nullptr;
@@ -168,7 +168,7 @@ std::shared_ptr<Plugin> Plugin::createInstance(const clap_plugin_factory* factor
   return createInstance(factory, desc->id, host);
 }
 
-std::shared_ptr<Plugin> Plugin::createInstance(Clap::Library& library, size_t index, IHost* host)
+std::shared_ptr<Plugin> Plugin::createInstance(Clap::Library &library, size_t index, IHost *host)
 {
   if (library.plugins.size() > index)
   {
@@ -188,7 +188,7 @@ std::shared_ptr<Plugin> Plugin::createInstance(Clap::Library& library, size_t in
   return nullptr;
 }
 
-Plugin::Plugin(IHost* host)
+Plugin::Plugin(IHost *host)
   : _host{CLAP_VERSION,
           this,
           host->host_get_name(),
@@ -204,12 +204,12 @@ Plugin::Plugin(IHost* host)
 }
 
 template <typename T>
-void getExtension(const clap_plugin_t* plugin, T& ref, const char* name)
+void getExtension(const clap_plugin_t *plugin, T &ref, const char *name)
 {
   ref = static_cast<T>(plugin->get_extension(plugin, name));
 }
 
-void Plugin::connectClap(const clap_plugin_t* clap)
+void Plugin::connectClap(const clap_plugin_t *clap)
 {
   _plugin = clap;
 
@@ -248,7 +248,7 @@ void Plugin::connectClap(const clap_plugin_t* clap)
 
   if (_ext._gui)
   {
-    const char* api;
+    const char *api;
 #if WIN
     api = CLAP_WINDOW_API_WIN32;
 #endif
@@ -319,7 +319,7 @@ void Plugin::setBlockSizes(uint32_t minFrames, uint32_t maxFrames)
   _audioSetup.maxFrames = maxFrames;
 }
 
-bool Plugin::load(const clap_istream_t* stream) const
+bool Plugin::load(const clap_istream_t *stream) const
 {
   if (_ext._state)
   {
@@ -328,7 +328,7 @@ bool Plugin::load(const clap_istream_t* stream) const
   return false;
 }
 
-bool Plugin::save(const clap_ostream_t* stream) const
+bool Plugin::save(const clap_ostream_t *stream) const
 {
   if (_ext._state)
   {
@@ -401,8 +401,8 @@ void Plugin::tail_changed()
   _parentHost->tail_changed();
 }
 
-bool Plugin::context_menu_populate(const clap_context_menu_target_t* target,
-                                   const clap_context_menu_builder_t* builder)
+bool Plugin::context_menu_populate(const clap_context_menu_target_t *target,
+                                   const clap_context_menu_builder_t *builder)
 {
   if (_parentHost->supportsContextMenu())
   {
@@ -413,7 +413,7 @@ bool Plugin::context_menu_populate(const clap_context_menu_target_t* target,
   return true;
 }
 
-bool Plugin::context_menu_perform(const clap_context_menu_target_t* target, clap_id action_id)
+bool Plugin::context_menu_perform(const clap_context_menu_target_t *target, clap_id action_id)
 {
   return this->_parentHost->context_menu_perform(target, action_id);
 }
@@ -423,13 +423,13 @@ bool Plugin::context_menu_can_popup()
   return this->_parentHost->supportsContextMenu();
 }
 
-bool Plugin::context_menu_popup(const clap_context_menu_target_t* target, int32_t screen_index,
+bool Plugin::context_menu_popup(const clap_context_menu_target_t *target, int32_t screen_index,
                                 int32_t x, int32_t y)
 {
   return this->_parentHost->context_menu_popup(target, screen_index, x, y);
 }
 
-void Plugin::log(clap_log_severity severity, const char* msg)
+void Plugin::log(clap_log_severity severity, const char *msg)
 {
   std::string n;
   switch (severity)
@@ -520,7 +520,7 @@ void Plugin::param_request_flush()
 
 // Query an extension.
 // [thread-safe]
-const void* Plugin::clapExtension(const clap_host* /*host*/, const char* extension)
+const void *Plugin::clapExtension(const clap_host * /*host*/, const char *extension)
 {
   if (!strcmp(extension, CLAP_EXT_LOG)) return &HostExt::log;
   if (!strcmp(extension, CLAP_EXT_PARAMS)) return &HostExt::params;
@@ -544,25 +544,25 @@ const void* Plugin::clapExtension(const clap_host* /*host*/, const char* extensi
 
 // Request the host to schedule a call to plugin->on_main_thread(plugin) on the main thread.
 // [thread-safe]
-void Plugin::clapRequestCallback(const clap_host* host)
+void Plugin::clapRequestCallback(const clap_host *host)
 {
-  auto self = static_cast<Plugin*>(host->host_data);
+  auto self = static_cast<Plugin *>(host->host_data);
   self->_parentHost->request_callback();
 }
 
 // Request the host to deactivate and then reactivate the plugin.
 // The operation may be delayed by the host.
 // [thread-safe]
-void Plugin::clapRequestRestart(const clap_host* host)
+void Plugin::clapRequestRestart(const clap_host *host)
 {
-  auto self = static_cast<Plugin*>(host->host_data);
+  auto self = static_cast<Plugin *>(host->host_data);
   self->_parentHost->restartPlugin();
 }
 
 // Request the host to activate and start processing the plugin.
 // This is useful if you have external IO and need to wake up the plugin from "sleep".
 // [thread-safe]
-void Plugin::clapRequestProcess(const clap_host* host)
+void Plugin::clapRequestProcess(const clap_host *host)
 {
   // right now, I don't know how to communicate this to the host
   // in VST3 you can't force processing...
@@ -572,7 +572,7 @@ void Plugin::clapRequestProcess(const clap_host* host)
 // The host may adjust the period if it is under a certain threshold.
 // 30 Hz should be allowed.
 // [main-thread]
-bool Plugin::register_timer(uint32_t period_ms, clap_id* timer_id)
+bool Plugin::register_timer(uint32_t period_ms, clap_id *timer_id)
 {
   return _parentHost->register_timer(period_ms, timer_id);
 }
@@ -581,16 +581,16 @@ bool Plugin::unregister_timer(clap_id timer_id)
   return _parentHost->unregister_timer(timer_id);
 }
 
-void StateMemento::setData(const uint8_t* data, size_t size)
+void StateMemento::setData(const uint8_t *data, size_t size)
 {
   _mem.clear();
   if (size > 0) _mem.insert(_mem.end(), &data[0], &data[size]);
   _readoffset = 0;
 }
 
-int64_t CLAP_ABI StateMemento::_read(const struct clap_istream* stream, void* buffer, uint64_t size)
+int64_t CLAP_ABI StateMemento::_read(const struct clap_istream *stream, void *buffer, uint64_t size)
 {
-  StateMemento* self = static_cast<StateMemento*>(stream->ctx);
+  StateMemento *self = static_cast<StateMemento *>(stream->ctx);
   auto realsize = size;
   uint64_t endpos = self->_readoffset + realsize;
   if (endpos >= self->_mem.size())
@@ -605,11 +605,11 @@ int64_t CLAP_ABI StateMemento::_read(const struct clap_istream* stream, void* bu
   return realsize;
 }
 
-int64_t CLAP_ABI StateMemento::_write(const struct clap_ostream* stream, const void* buffer,
+int64_t CLAP_ABI StateMemento::_write(const struct clap_ostream *stream, const void *buffer,
                                       uint64_t size)
 {
-  StateMemento* self = static_cast<StateMemento*>(stream->ctx);
-  auto* ptr = static_cast<const uint8_t*>(buffer);
+  StateMemento *self = static_cast<StateMemento *>(stream->ctx);
+  auto *ptr = static_cast<const uint8_t *>(buffer);
   self->_mem.insert(self->_mem.end(), &ptr[0], &ptr[size]);
   return size;
 }

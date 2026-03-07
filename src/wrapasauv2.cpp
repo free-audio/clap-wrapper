@@ -2,7 +2,7 @@
 #include "detail/auv2/process.h"
 #include <set>
 
-extern bool fillAudioUnitCocoaView(AudioUnitCocoaViewInfo* viewInfo, std::shared_ptr<Clap::Plugin>);
+extern bool fillAudioUnitCocoaView(AudioUnitCocoaViewInfo *viewInfo, std::shared_ptr<Clap::Plugin>);
 
 namespace free_audio::auv2_wrapper
 {
@@ -34,8 +34,8 @@ void pffffrzz()
   SInt32 nRes = 0;
   CFUserNotificationRef pDlg = NULL;
   CFStringRef b = CFStringCreateWithCString(NULL, buf, kCFStringEncodingASCII);
-  const void* keys[] = {kCFUserNotificationAlertHeaderKey, kCFUserNotificationAlertMessageKey};
-  const void* vals[] = {CFSTR("Test Foundation Message Box"), b};
+  const void *keys[] = {kCFUserNotificationAlertHeaderKey, kCFUserNotificationAlertMessageKey};
+  const void *vals[] = {CFSTR("Test Foundation Message Box"), b};
 
   CFDictionaryRef dict =
       CFDictionaryCreate(0, keys, vals, sizeof(keys) / sizeof(*keys), &kCFTypeDictionaryKeyCallBacks,
@@ -63,7 +63,7 @@ bool WrapAsAUV2::initializeClapDesc()
 
     auto csp = Clap::getValidCLAPSearchPaths();
     auto it = std::find_if(csp.begin(), csp.end(),
-                           [this](const auto& cs)
+                           [this](const auto &cs)
                            {
                              auto fp = cs / (_clapname + ".clap");
                              return fs::is_directory(fp) && _library.load(fp);
@@ -91,7 +91,7 @@ bool WrapAsAUV2::initializeClapDesc()
   }
   else
   {
-    for (auto* d : _library.plugins)
+    for (auto *d : _library.plugins)
     {
       if (strcmp(d->id, _clapid.c_str()) == 0)
       {
@@ -108,7 +108,7 @@ bool WrapAsAUV2::initializeClapDesc()
   return true;
 }
 
-WrapAsAUV2::WrapAsAUV2(AUV2_Type type, const std::string& clapname, const std::string& clapid, int idx,
+WrapAsAUV2::WrapAsAUV2(AUV2_Type type, const std::string &clapname, const std::string &clapid, int idx,
                        AudioComponentInstance ci)
   : Base{ci, 0, 0}  // these elements are set correctly in ::PostConstructor
   , Clap::IHost()
@@ -259,14 +259,14 @@ OSStatus WrapAsAUV2::Initialize()
   return noErr;
 }
 
-void WrapAsAUV2::setupWrapperSpecifics(const clap_plugin_t* plugin)
+void WrapAsAUV2::setupWrapperSpecifics(const clap_plugin_t *plugin)
 {
   // TODO: if there are AUv2 specific extensions, they can be retrieved here
   // _auv2_specifics = (clap_plugin_as_auv2_t*)plugin->get_extension(plugin, CLAP_PLUGIN_AS_AUV2);
 }
 
-void WrapAsAUV2::setupAudioBusses(const clap_plugin_t* plugin,
-                                  const clap_plugin_audio_ports_t* audioports)
+void WrapAsAUV2::setupAudioBusses(const clap_plugin_t *plugin,
+                                  const clap_plugin_audio_ports_t *audioports)
 {
   auto numAudioInputs = audioports->count(plugin, true);
   auto numAudioOutputs = audioports->count(plugin, false);
@@ -301,7 +301,7 @@ void WrapAsAUV2::setupAudioBusses(const clap_plugin_t* plugin,
 
 }  // called from initialize() to allow the setup of audio ports
 
-void WrapAsAUV2::setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_note_ports_t* noteports)
+void WrapAsAUV2::setupMIDIBusses(const clap_plugin_t *plugin, const clap_plugin_note_ports_t *noteports)
 {
   // TODO: figure out if MIDI is is preferred as CLAP or Notes
   if (!noteports) return;
@@ -341,13 +341,13 @@ void WrapAsAUV2::setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_
   }
 }
 
-void WrapAsAUV2::setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params)
+void WrapAsAUV2::setupParameters(const clap_plugin_t *plugin, const clap_plugin_params_t *params)
 {
   auto guarantee_mainthread = _plugin->AlwaysMainThread();
   // creating parameters.
 
   _clumps.reset();
-  auto* p = _plugin->_ext._params;
+  auto *p = _plugin->_ext._params;
   if (p)
   {
     uint32_t numparams = p->count(_plugin->_plugin);
@@ -379,8 +379,8 @@ void WrapAsAUV2::setupParameters(const clap_plugin_t* plugin, const clap_plugin_
   }
 }
 
-OSStatus WrapAsAUV2::GetParameterList(AudioUnitScope inScope, AudioUnitParameterID* outParameterList,
-                                      UInt32& outNumParameters)
+OSStatus WrapAsAUV2::GetParameterList(AudioUnitScope inScope, AudioUnitParameterID *outParameterList,
+                                      UInt32 &outNumParameters)
 {
   return AUBase::GetParameterList(inScope, outParameterList, outNumParameters);
 }
@@ -439,7 +439,7 @@ void WrapAsAUV2::param_rescan(clap_param_rescan_flags flags)
 
 // outParameterList may be a null pointer
 OSStatus WrapAsAUV2::GetParameterInfo(AudioUnitScope inScope, AudioUnitParameterID inParameterID,
-                                      AudioUnitParameterInfo& outParameterInfo)
+                                      AudioUnitParameterInfo &outParameterInfo)
 {
   // const uint64_t stdflag = kAudioUnitParameterFlag_IsReadable | kAudioUnitParameterFlag_IsWritable;
   if (inScope == kAudioUnitScope_Global)
@@ -448,7 +448,7 @@ OSStatus WrapAsAUV2::GetParameterInfo(AudioUnitScope inScope, AudioUnitParameter
     if (pi != _parametertree.end())
     {
       auto f = pi->second.get();
-      const auto& info = f->info();
+      const auto &info = f->info();
 
       outParameterInfo.flags = f->AudioUnitFlags();
 
@@ -487,7 +487,7 @@ OSStatus WrapAsAUV2::SetParameter(AudioUnitParameterID inID, AudioUnitScope inSc
       auto p = _parametertree.find(inID);
       if (p != _parametertree.end())
       {
-        auto& param = p->second.get()->info();
+        auto &param = p->second.get()->info();
         _processAdapter->addParameterEvent(param, inValue, inBufferOffsetInFrames);
       }
     }
@@ -496,7 +496,7 @@ OSStatus WrapAsAUV2::SetParameter(AudioUnitParameterID inID, AudioUnitScope inSc
 }
 
 OSStatus WrapAsAUV2::CopyClumpName(AudioUnitScope inScope, UInt32 inClumpID, UInt32 inDesiredNameLength,
-                                   CFStringRef* outClumpName)
+                                   CFStringRef *outClumpName)
 {
   if (outClumpName == nullptr) return kAudioUnitErr_InvalidParameter;
   if (inScope == kAudioUnitScope_Global)
@@ -505,7 +505,7 @@ OSStatus WrapAsAUV2::CopyClumpName(AudioUnitScope inScope, UInt32 inClumpID, UIn
     if (p)
     {
       auto const len = std::min(strlen(p), (size_t)inDesiredNameLength);
-      *outClumpName = CFStringCreateWithBytes(NULL, (const UInt8*)p, len, kCFStringEncodingUTF8, false);
+      *outClumpName = CFStringCreateWithBytes(NULL, (const UInt8 *)p, len, kCFStringEncodingUTF8, false);
       return noErr;
     }
   }
@@ -574,7 +574,7 @@ Float64 WrapAsAUV2::GetTailTime()
 }
 
 OSStatus WrapAsAUV2::GetPropertyInfo(AudioUnitPropertyID inID, AudioUnitScope inScope,
-                                     AudioUnitElement inElement, UInt32& outDataSize, bool& outWritable)
+                                     AudioUnitElement inElement, UInt32 &outDataSize, bool &outWritable)
 {
   if (inScope == kAudioUnitScope_Global)
   {
@@ -644,7 +644,7 @@ OSStatus WrapAsAUV2::GetPropertyInfo(AudioUnitPropertyID inID, AudioUnitScope in
 }
 
 OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScope,
-                                 AudioUnitElement inElement, void* outData)
+                                 AudioUnitElement inElement, void *outData)
 {
   if (inScope == kAudioUnitScope_Global)
   {
@@ -656,7 +656,7 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         auto guarantee_mainthread = _plugin->AlwaysMainThread();
 
         char buf[200];
-        auto p = (AudioUnitParameterStringFromValue*)(outData);
+        auto p = (AudioUnitParameterStringFromValue *)(outData);
         double value = *p->inValue;
         if (_plugin->_ext._params->value_to_text(_plugin->_plugin, p->inParamID, value, buf, 200))
         {
@@ -673,13 +673,13 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         }
         // For a MusicDevice that doesn't support separate instruments (ie. is mono-timbral)
         // then this call should return an instrument count of zero and noErr
-        *static_cast<UInt32*>(outData) = 0;
+        *static_cast<UInt32 *>(outData) = 0;
         if (_autype == AUV2_Type::aumu_musicdevice) return noErr;
         return kAudioUnitErr_InvalidProperty;
         // return  GetInstrumentCount(*static_cast<UInt32*>(outData));
 
       case kAudioUnitProperty_BypassEffect:
-        *static_cast<UInt32*>(outData) = (IsBypassEffect() ? 1 : 0);  // NOLINT
+        *static_cast<UInt32 *>(outData) = (IsBypassEffect() ? 1 : 0);  // NOLINT
         return noErr;
         //    case kAudioUnitProperty_InPlaceProcessing:
         //      *static_cast<UInt32*>(outData) = (mProcessesInPlace ? 1 : 0); // NOLINT
@@ -687,7 +687,7 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
       case kAudioUnitProperty_ClapWrapper_UIConnection_id:
         _uiconn._plugin = _plugin.get();
         _uiconn._window = nullptr;
-        _uiconn._registerWindow = [this](auto* x, auto* y)
+        _uiconn._registerWindow = [this](auto *x, auto *y)
         {
           this->_uiconn._window = x;
           this->_uiconn._canary = y;
@@ -708,7 +708,7 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
             *(this->_uiconn._canary) = 0;
           }
         };
-        *static_cast<ui_connection*>(outData) = _uiconn;
+        *static_cast<ui_connection *>(outData) = _uiconn;
         return noErr;
 
       case kAudioUnitProperty_CocoaUI:
@@ -717,14 +717,14 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         if (_plugin && _plugin->_ext._gui &&
             (_plugin->_ext._gui->is_api_supported(_plugin->_plugin, CLAP_WINDOW_API_COCOA, false)))
         {
-          fillAudioUnitCocoaView(((AudioUnitCocoaViewInfo*)outData), _plugin);
+          fillAudioUnitCocoaView(((AudioUnitCocoaViewInfo *)outData), _plugin);
           LOGINFO("[clap-wrapper] kAudioUnitProperty_CocoaUI complete");
           return noErr;  // sizeof(AudioUnitCocoaViewInfo);
         }
         else
         {
           LOGINFO("[clap-wrapper] Mysterious: kAudioUnitProperty_CocoaUI although now plugin ext");
-          fillAudioUnitCocoaView(((AudioUnitCocoaViewInfo*)outData), _plugin);
+          fillAudioUnitCocoaView(((AudioUnitCocoaViewInfo *)outData), _plugin);
           return noErr;
         }
         return kAudioUnitErr_InvalidProperty;
@@ -735,7 +735,7 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
           CFMutableArrayRef callbackArray =
               CFArrayCreateMutable(NULL, _midi_outports.size(), &kCFTypeArrayCallBacks);
 
-          for (const auto& portinfo : _midi_outports)
+          for (const auto &portinfo : _midi_outports)
           {
             CFStringRef str =
                 CFStringCreateWithCString(NULL, portinfo->_info.name, kCFStringEncodingUTF8);
@@ -744,7 +744,7 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
 
           CFArrayRef array = CFArrayCreateCopy(NULL, callbackArray);
 
-          *(CFArrayRef*)outData = array;
+          *(CFArrayRef *)outData = array;
 
           CFRelease(callbackArray);
 
@@ -761,7 +761,7 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
 #endif
       case kMusicDeviceProperty_SupportsStartStopNote:
         // TODO: change this when figured out how the NoteParamsControlValue actually do work.
-        *static_cast<UInt32*>(outData) = 1;
+        *static_cast<UInt32 *>(outData) = 1;
         return noErr;
         break;
       default:
@@ -771,7 +771,7 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
   return Base::GetProperty(inID, inScope, inElement, outData);
 }
 OSStatus WrapAsAUV2::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScope,
-                                 AudioUnitElement inElement, const void* inData, UInt32 inDataSize)
+                                 AudioUnitElement inElement, const void *inData, UInt32 inDataSize)
 {
   if (inScope == kAudioUnitScope_Global)
   {
@@ -784,7 +784,7 @@ OSStatus WrapAsAUV2::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
           return kAudioUnitErr_InvalidPropertyValue;
         }
 
-        const bool tempNewSetting = *static_cast<const UInt32*>(inData) != 0;
+        const bool tempNewSetting = *static_cast<const UInt32 *>(inData) != 0;
         // we're changing the state of bypass
         if (tempNewSetting != IsBypassEffect())
         {
@@ -811,7 +811,7 @@ OSStatus WrapAsAUV2::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
 
         if (inData)
         {
-          _midioutput_hostcallback = *static_cast<const AUMIDIOutputCallbackStruct*>(inData);
+          _midioutput_hostcallback = *static_cast<const AUMIDIOutputCallbackStruct *>(inData);
         }
         else
         {
@@ -825,7 +825,7 @@ OSStatus WrapAsAUV2::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
 
       case kMusicDeviceProperty_DualSchedulingMode:
       {
-        auto x = *static_cast<const UInt32*>(inData);
+        auto x = *static_cast<const UInt32 *>(inData);
         if (x > 0) LOGINFO("Host supports DualSchedulung Mode");
         _midi_dualscheduling_mode = (x != 0);
         return noErr;
@@ -835,7 +835,7 @@ OSStatus WrapAsAUV2::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
       case kMusicDeviceProperty_SupportsStartStopNote:
       {
         // TODO: we probably want to use start/stop note
-        auto x = *static_cast<const UInt32*>(inData);
+        auto x = *static_cast<const UInt32 *>(inData);
         (void)x;
         return noErr;
       }
@@ -853,14 +853,14 @@ OSStatus WrapAsAUV2::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
   return xxx;
 }
 
-OSStatus WrapAsAUV2::SetRenderNotification(AURenderCallback inProc, void* inRefCon)
+OSStatus WrapAsAUV2::SetRenderNotification(AURenderCallback inProc, void *inRefCon)
 {
   // activateCLAP();
 
   return Base::SetRenderNotification(inProc, inRefCon);
 }
 
-OSStatus WrapAsAUV2::RemoveRenderNotification(AURenderCallback inProc, void* inRefCon)
+OSStatus WrapAsAUV2::RemoveRenderNotification(AURenderCallback inProc, void *inRefCon)
 {
   // deactivateCLAP();
   return Base::RemoveRenderNotification(inProc, inRefCon);
@@ -876,7 +876,7 @@ void WrapAsAUV2::tail_changed()
   PropertyChanged(kAudioUnitProperty_TailTime, kAudioUnitScope_Global, 0);
 }
 
-void WrapAsAUV2::addAudioBusFrom(int bus, const clap_audio_port_info_t* info, bool is_input)
+void WrapAsAUV2::addAudioBusFrom(int bus, const clap_audio_port_info_t *info, bool is_input)
 {
   // add/set audio bus configuration from info to appropriate scope
   LOGINFO("[clap-wrapper]     - add bus {} : {}", bus, is_input ? "In" : "Out");
@@ -890,9 +890,9 @@ void WrapAsAUV2::addAudioBusFrom(int bus, const clap_audio_port_info_t* info, bo
   }
 }
 
-void WrapAsAUV2::addInputBus(int bus, const clap_audio_port_info_t* info)
+void WrapAsAUV2::addInputBus(int bus, const clap_audio_port_info_t *info)
 {
-  auto& busref = Input(bus);
+  auto &busref = Input(bus);
 
   CFStringRef busNameString = CFStringCreateWithCString(NULL, info->name, kCFStringEncodingUTF8);
   busref.SetName(busNameString);
@@ -902,9 +902,9 @@ void WrapAsAUV2::addInputBus(int bus, const clap_audio_port_info_t* info)
   sf.mChannelsPerFrame = info->channel_count;
   busref.SetStreamFormat(sf);
 }
-void WrapAsAUV2::addOutputBus(int bus, const clap_audio_port_info_t* info)
+void WrapAsAUV2::addOutputBus(int bus, const clap_audio_port_info_t *info)
 {
-  auto& busref = Output(bus);
+  auto &busref = Output(bus);
 
   CFStringRef busNameString = CFStringCreateWithCString(NULL, info->name, kCFStringEncodingUTF8);
   busref.SetName(busNameString);
@@ -947,7 +947,7 @@ void WrapAsAUV2::deactivateCLAP()
   _midioutput_hostcallback = {nullptr, nullptr};
 }
 
-OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags& inFlags, const AudioTimeStamp& inTimeStamp,
+OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags &inFlags, const AudioTimeStamp &inTimeStamp,
                             UInt32 inFrames)
 {
   assert(inFlags == 0);
@@ -991,7 +991,7 @@ OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags& inFlags, const AudioTime
     _processAdapter->process(data);
 
     {
-      for (auto& i : _midi_outports)
+      for (auto &i : _midi_outports)
       {
         if (i->hasEvents())
         {
@@ -1040,7 +1040,7 @@ void WrapAsAUV2::onBeginEdit(clap_id id)
 #endif
 }
 
-void WrapAsAUV2::onPerformEdit(const clap_event_param_value_t* value)
+void WrapAsAUV2::onPerformEdit(const clap_event_param_value_t *value)
 {
 #ifdef NOTIFYDIRECT
   Globals()->SetParameter(value->param_id, value->value);
@@ -1129,7 +1129,7 @@ void WrapAsAUV2::onIdle()
   }
 }
 
-OSStatus WrapAsAUV2::SaveState(CFPropertyListRef* ptPList)
+OSStatus WrapAsAUV2::SaveState(CFPropertyListRef *ptPList)
 {
   if (!ptPList) return kAudioUnitErr_InvalidParameter;
 
@@ -1150,14 +1150,14 @@ OSStatus WrapAsAUV2::SaveState(CFPropertyListRef* ptPList)
     auto err = ausdk::AUBase::SaveState(ptPList);
     if (err != noErr) return err;
 
-    CFDataRef tData = CFDataCreate(0, (UInt8*)chunk.data(), chunk.size());
+    CFDataRef tData = CFDataCreate(0, (UInt8 *)chunk.data(), chunk.size());
     CFMutableDictionaryRef dict = (CFMutableDictionaryRef)*ptPList;
 
     CFDictionarySetValue(dict, CFSTR("jucePluginState"), tData);
     CFRelease(tData);
     chunk.clear();
 #else
-    CFDataRef tData = CFDataCreate(0, (UInt8*)chunk.data(), chunk.size());
+    CFDataRef tData = CFDataCreate(0, (UInt8 *)chunk.data(), chunk.size());
     const AudioComponentDescription desc = GetComponentDescription();
 
     auto dict = ausdk::Owned<CFMutableDictionaryRef>::from_create(CFDictionaryCreateMutable(
@@ -1206,10 +1206,10 @@ OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
   CFDictionaryRef tDict = CFDictionaryRef(plist);
 
   // Find 'data' key
-  const void* pData = CFDictionaryGetValue(tDict, CFSTR(kAUPresetDataKey));
+  const void *pData = CFDictionaryGetValue(tDict, CFSTR(kAUPresetDataKey));
   if (!pData || CFGetTypeID(CFTypeRef(pData)) != CFDataGetTypeID()) return -1;
 
-    /*
+  /*
    * In the read side I fall through to default, whereas in the write
    * side I use an 'else' on the set of stream formats. This means
    * you at least try in case saved with an older wrapper version
@@ -1223,7 +1223,7 @@ OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
   CFDataRef juceData{nullptr};
   CFStringRef juceKey(
       CFStringCreateWithCString(kCFAllocatorDefault, "jucePluginState", kCFStringEncodingUTF8));
-  bool valuePresent = CFDictionaryGetValueIfPresent(tDict, juceKey, (const void**)&juceData);
+  bool valuePresent = CFDictionaryGetValueIfPresent(tDict, juceKey, (const void **)&juceData);
   CFRelease(juceKey);
   if (valuePresent && juceData)
   {
@@ -1232,7 +1232,7 @@ OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
     if (numBytes > 0)
     {
       Clap::StateMemento chunk;
-      UInt8* streamData = (UInt8*)(CFDataGetBytePtr(juceData));
+      UInt8 *streamData = (UInt8 *)(CFDataGetBytePtr(juceData));
 
       chunk.setData(streamData, numBytes);
       _plugin->_ext._state->load(_plugin->_plugin, chunk);
@@ -1241,7 +1241,7 @@ OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
   }
 #endif
 
-  const void* pName = CFDictionaryGetValue(tDict, CFSTR(kAUPresetNameKey));
+  const void *pName = CFDictionaryGetValue(tDict, CFSTR(kAUPresetNameKey));
   if (pName)
   {
     _current_program_name = CFStringCreateCopy(NULL, (CFStringRef)pName);
@@ -1253,7 +1253,7 @@ OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
   {
     // Get length and ptr
     const long lLen = CFDataGetLength(tData);
-    UInt8* pData = (UInt8*)(CFDataGetBytePtr(tData));
+    UInt8 *pData = (UInt8 *)(CFDataGetBytePtr(tData));
     if (lLen > 0 && pData)
     {
       Clap::StateMemento chunk;
@@ -1265,7 +1265,7 @@ OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
 }
 
 bool WrapAsAUV2::ValidFormat(AudioUnitScope inScope, AudioUnitElement inElement,
-                             const AudioStreamBasicDescription& inNewFormat)
+                             const AudioStreamBasicDescription &inNewFormat)
 {
   if (!_plugin->_ext._audioports)
   {
@@ -1318,8 +1318,8 @@ bool WrapAsAUV2::ValidFormat(AudioUnitScope inScope, AudioUnitElement inElement,
 }
 
 OSStatus WrapAsAUV2::ChangeStreamFormat(AudioUnitScope inScope, AudioUnitElement inElement,
-                                        const AudioStreamBasicDescription& inPrevFormat,
-                                        const AudioStreamBasicDescription& inNewFormat)
+                                        const AudioStreamBasicDescription &inPrevFormat,
+                                        const AudioStreamBasicDescription &inNewFormat)
 {
   // LOGINFO("ChangedStreamFormat called {} {}", inScope, inNewFormat.mChannelsPerFrame);
   auto res = ausdk::AUBase::ChangeStreamFormat(inScope, inElement, inPrevFormat, inNewFormat);
@@ -1327,7 +1327,7 @@ OSStatus WrapAsAUV2::ChangeStreamFormat(AudioUnitScope inScope, AudioUnitElement
   return res;
 }
 
-UInt32 WrapAsAUV2::SupportedNumChannels(const AUChannelInfo** outInfo)
+UInt32 WrapAsAUV2::SupportedNumChannels(const AUChannelInfo **outInfo)
 {
   if (cinfo.empty() && _plugin->_ext._audioports)
   {
@@ -1360,9 +1360,9 @@ UInt32 WrapAsAUV2::SupportedNumChannels(const AUChannelInfo** outInfo)
 
     cinfo.clear();
 
-    for (auto& iv : inSets)
+    for (auto &iv : inSets)
     {
-      for (auto& ov : outSets)
+      for (auto &ov : outSets)
       {
         cinfo.emplace_back();
         cinfo.back().inChannels = iv;
@@ -1431,13 +1431,13 @@ void WrapAsAUV2::PostConstructor()
 }
 
 UInt32 WrapAsAUV2::GetAudioChannelLayout(AudioUnitScope scope, AudioUnitElement element,
-                                         AudioChannelLayout* outLayoutPtr, bool& outWritable)
+                                         AudioChannelLayout *outLayoutPtr, bool &outWritable)
 {
   // TODO: This is never called so the layout is never found
   return Base::GetAudioChannelLayout(scope, element, outLayoutPtr, outWritable);
 }
 
-void WrapAsAUV2::send(const Clap::AUv2::clap_multi_event_t& event)
+void WrapAsAUV2::send(const Clap::AUv2::clap_multi_event_t &event)
 {
   // port index maps back to MIDI out
   auto type = event.header.type;
@@ -1446,7 +1446,7 @@ void WrapAsAUV2::send(const Clap::AUv2::clap_multi_event_t& event)
     case CLAP_EVENT_NOTE_ON:
     {
       auto portid = event.note.port_index;
-      for (auto& i : _midi_outports)
+      for (auto &i : _midi_outports)
       {
         if (i->_info.id == portid)
         {
@@ -1459,7 +1459,7 @@ void WrapAsAUV2::send(const Clap::AUv2::clap_multi_event_t& event)
     case CLAP_EVENT_NOTE_OFF:
     {
       auto portid = event.note.port_index;
-      for (auto& i : _midi_outports)
+      for (auto &i : _midi_outports)
       {
         if (i->_info.id == portid)
         {
@@ -1472,7 +1472,7 @@ void WrapAsAUV2::send(const Clap::AUv2::clap_multi_event_t& event)
     case CLAP_EVENT_MIDI:
     {
       auto portid = event.midi.port_index;
-      for (auto& i : _midi_outports)
+      for (auto &i : _midi_outports)
       {
         if (i->_info.id == portid)
         {

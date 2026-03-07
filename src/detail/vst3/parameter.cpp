@@ -14,8 +14,8 @@ static_assert(false, "the CLAP-as-VST3 wrapper requires at least CLAP 1.2.0");
 
 using namespace Steinberg;
 
-Vst3Parameter::Vst3Parameter(const Steinberg::Vst::ParameterInfo& vst3info,
-                             const clap_param_info_t* clapinfo)
+Vst3Parameter::Vst3Parameter(const Steinberg::Vst::ParameterInfo &vst3info,
+                             const clap_param_info_t *clapinfo)
   : Steinberg::Vst::Parameter(vst3info)
   , id(clapinfo->id)
   , cookie(clapinfo->cookie)
@@ -25,7 +25,7 @@ Vst3Parameter::Vst3Parameter(const Steinberg::Vst::ParameterInfo& vst3info,
   //
 }
 
-Vst3Parameter::Vst3Parameter(const Steinberg::Vst::ParameterInfo& vst3info, uint8_t /*bus*/,
+Vst3Parameter::Vst3Parameter(const Steinberg::Vst::ParameterInfo &vst3info, uint8_t /*bus*/,
                              uint8_t channel, uint8_t cc)
   : Steinberg::Vst::Parameter(vst3info)
   , id(vst3info.id)
@@ -60,9 +60,9 @@ bool Vst3Parameter::fromString(const Steinberg::Vst::TChar* string, Steinberg::V
 }
 #endif
 
-Vst3Parameter* Vst3Parameter::create(
-    const clap_param_info_t* info,
-    std::function<Steinberg::Vst::UnitID(const char* modulepath)> getUnitId)
+Vst3Parameter *Vst3Parameter::create(
+    const clap_param_info_t *info,
+    std::function<Steinberg::Vst::UnitID(const char *modulepath)> getUnitId)
 {
   Vst::ParameterInfo v;
 
@@ -93,10 +93,10 @@ Vst3Parameter* Vst3Parameter::create(
   }
 
   // str8ToStr16(v.title, fullname.c_str(), str16BufferSize(v.title));
-  utf8_to_utf16l(fullname.c_str(), (uint16_t*)(v.title), str16BufferSize(v.title));
+  utf8_to_utf16l(fullname.c_str(), (uint16_t *)(v.title), str16BufferSize(v.title));
   // TODO: string shrink algorithm shortening the string a bit
   // str8ToStr16(v.shortTitle, info->name, str16BufferSize(v.shortTitle));
-  utf8_to_utf16l(info->name, (uint16_t*)v.shortTitle, str16BufferSize(v.shortTitle));
+  utf8_to_utf16l(info->name, (uint16_t *)v.shortTitle, str16BufferSize(v.shortTitle));
   v.units[0] = 0;  // unfortunately, CLAP has no unit for parameter values
   v.unitId = unit;
 
@@ -136,7 +136,7 @@ Vst3Parameter* Vst3Parameter::create(
   return result;
 }
 
-Vst3Parameter* Vst3Parameter::create(uint8_t bus, uint8_t channel, uint8_t cc, Vst::ParamID id)
+Vst3Parameter *Vst3Parameter::create(uint8_t bus, uint8_t channel, uint8_t cc, Vst::ParamID id)
 {
   Vst::ParameterInfo v;
 
@@ -156,8 +156,8 @@ Vst3Parameter* Vst3Parameter::create(uint8_t bus, uint8_t channel, uint8_t cc, V
     fullname = "controller";
   }
 
-  utf8_to_utf16l(fullname.c_str(), (uint16_t*)(v.title), str16BufferSize(v.title));
-  utf8_to_utf16l(name, (uint16_t*)v.shortTitle, str16BufferSize(v.shortTitle));
+  utf8_to_utf16l(fullname.c_str(), (uint16_t *)(v.title), str16BufferSize(v.title));
+  utf8_to_utf16l(name, (uint16_t *)v.shortTitle, str16BufferSize(v.shortTitle));
 
   // str8ToStr16(v.title, fullname.c_str(), str16BufferSize(v.title));
   // TODO: string shrink algorithm shortening the string a bit

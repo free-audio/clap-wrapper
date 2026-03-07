@@ -43,17 +43,17 @@ class IHost
   virtual void request_callback() = 0;
 
   virtual void setupWrapperSpecifics(
-      const clap_plugin_t* plugin) = 0;  // called when a wrapper could scan for wrapper specific plugins
+      const clap_plugin_t *plugin) = 0;  // called when a wrapper could scan for wrapper specific plugins
 
   virtual void setupAudioBusses(
-      const clap_plugin_t* plugin,
-      const clap_plugin_audio_ports_t*
-          audioports) = 0;  // called from initialize() to allow the setup of audio ports
+      const clap_plugin_t *plugin,
+      const clap_plugin_audio_ports_t
+          *audioports) = 0;  // called from initialize() to allow the setup of audio ports
   virtual void setupMIDIBusses(
-      const clap_plugin_t* plugin,
-      const clap_plugin_note_ports_t*
-          noteports) = 0;  // called from initialize() to allow the setup of MIDI ports
-  virtual void setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params) = 0;
+      const clap_plugin_t *plugin,
+      const clap_plugin_note_ports_t
+          *noteports) = 0;  // called from initialize() to allow the setup of MIDI ports
+  virtual void setupParameters(const clap_plugin_t *plugin, const clap_plugin_params_t *params) = 0;
 
   virtual void param_rescan(clap_param_rescan_flags flags) = 0;  // ext_host_params
   virtual void param_clear(clap_id param, clap_param_clear_flags flags) = 0;
@@ -67,11 +67,11 @@ class IHost
   virtual bool gui_request_show() = 0;
   virtual bool gui_request_hide() = 0;
 
-  virtual bool register_timer(uint32_t period_ms, clap_id* timer_id) = 0;
+  virtual bool register_timer(uint32_t period_ms, clap_id *timer_id) = 0;
   virtual bool unregister_timer(clap_id timer_id) = 0;
 
-  virtual bool track_info_get(clap_track_info_t* info) = 0;
-  virtual const char* host_get_name() = 0;
+  virtual bool track_info_get(clap_track_info_t *info) = 0;
+  virtual const char *host_get_name() = 0;
 
   // context menu
 
@@ -79,11 +79,11 @@ class IHost
   // IHost provides default implementations.
 
   virtual bool supportsContextMenu() const = 0;
-  virtual bool context_menu_populate(const clap_context_menu_target_t* target,
-                                     const clap_context_menu_builder_t* builder) = 0;
-  virtual bool context_menu_perform(const clap_context_menu_target_t* target, clap_id action_id) = 0;
+  virtual bool context_menu_populate(const clap_context_menu_target_t *target,
+                                     const clap_context_menu_builder_t *builder) = 0;
+  virtual bool context_menu_perform(const clap_context_menu_target_t *target, clap_id action_id) = 0;
   virtual bool context_menu_can_popup() = 0;
-  virtual bool context_menu_popup(const clap_context_menu_target_t* target, int32_t screen_index,
+  virtual bool context_menu_popup(const clap_context_menu_target_t *target, int32_t screen_index,
                                   int32_t x, int32_t y) = 0;
 
 #if LIN
@@ -104,28 +104,28 @@ struct AudioSetup
 
 struct ClapPluginExtensions
 {
-  const clap_plugin_state_t* _state = nullptr;
-  const clap_plugin_params_t* _params = nullptr;
-  const clap_plugin_audio_ports_t* _audioports = nullptr;
-  const clap_plugin_gui_t* _gui = nullptr;
-  const clap_plugin_note_ports_t* _noteports = nullptr;
-  const clap_plugin_latency_t* _latency = nullptr;
-  const clap_plugin_render_t* _render = nullptr;
-  const clap_plugin_tail_t* _tail = nullptr;
-  const clap_plugin_timer_support_t* _timer = nullptr;
-  const clap_plugin_track_info_t* _trackinfo = nullptr;
-  const clap_plugin_context_menu_t* _contextmenu = nullptr;
-  const clap_ara_plugin_extension_t* _ara = nullptr;
-  const clap_plugin_gain_adjustment_metering_t* _gainreduc = nullptr;
+  const clap_plugin_state_t *_state = nullptr;
+  const clap_plugin_params_t *_params = nullptr;
+  const clap_plugin_audio_ports_t *_audioports = nullptr;
+  const clap_plugin_gui_t *_gui = nullptr;
+  const clap_plugin_note_ports_t *_noteports = nullptr;
+  const clap_plugin_latency_t *_latency = nullptr;
+  const clap_plugin_render_t *_render = nullptr;
+  const clap_plugin_tail_t *_tail = nullptr;
+  const clap_plugin_timer_support_t *_timer = nullptr;
+  const clap_plugin_track_info_t *_trackinfo = nullptr;
+  const clap_plugin_context_menu_t *_contextmenu = nullptr;
+  const clap_ara_plugin_extension_t *_ara = nullptr;
+  const clap_plugin_gain_adjustment_metering_t *_gainreduc = nullptr;
 #if LIN
-  const clap_plugin_posix_fd_support* _posixfd = nullptr;
+  const clap_plugin_posix_fd_support *_posixfd = nullptr;
 #endif
 };
 
 class Raise
 {
  public:
-  Raise(uint32_t& counter) : ctx(counter)
+  Raise(uint32_t &counter) : ctx(counter)
   {
     ++ctx;
   }
@@ -135,7 +135,7 @@ class Raise
   }
 
  private:
-  uint32_t& ctx;
+  uint32_t &ctx;
 };
 
 /// <summary>
@@ -145,25 +145,25 @@ class Raise
 class Plugin
 {
  public:
-  static std::shared_ptr<Plugin> createInstance(const clap_plugin_factory*, const std::string& id,
-                                                IHost* host);
-  static std::shared_ptr<Plugin> createInstance(const clap_plugin_factory*, size_t idx, IHost* host);
-  static std::shared_ptr<Plugin> createInstance(Clap::Library& library, size_t index, IHost* host);
+  static std::shared_ptr<Plugin> createInstance(const clap_plugin_factory *, const std::string &id,
+                                                IHost *host);
+  static std::shared_ptr<Plugin> createInstance(const clap_plugin_factory *, size_t idx, IHost *host);
+  static std::shared_ptr<Plugin> createInstance(Clap::Library &library, size_t index, IHost *host);
 
  protected:
   // only the Clap::Library is allowed to create instances
-  Plugin(IHost* host);
-  const clap_host_t* getClapHostInterface()
+  Plugin(IHost *host);
+  const clap_host_t *getClapHostInterface()
   {
     return &_host;
   }
-  void connectClap(const clap_plugin_t* clap);
+  void connectClap(const clap_plugin_t *clap);
 
  public:
-  Plugin(const Plugin&) = delete;
-  Plugin(Plugin&&) = delete;
-  Plugin& operator=(const Plugin&) = delete;
-  Plugin& operator=(Plugin&&) = delete;
+  Plugin(const Plugin &) = delete;
+  Plugin(Plugin &&) = delete;
+  Plugin &operator=(const Plugin &) = delete;
+  Plugin &operator=(Plugin &&) = delete;
   ~Plugin();
 
   void schnick();
@@ -176,8 +176,8 @@ class Plugin
   }
   void setBlockSizes(uint32_t minFrames, uint32_t maxFrames);
 
-  bool load(const clap_istream_t* stream) const;
-  bool save(const clap_ostream_t* stream) const;
+  bool load(const clap_istream_t *stream) const;
+  bool save(const clap_ostream_t *stream) const;
   bool activate() const;
   void deactivate() const;
   bool start_processing();
@@ -187,8 +187,8 @@ class Plugin
   // const clap_plugin_gui_t* getUI() const;
 
   ClapPluginExtensions _ext;
-  const clap_plugin_t* _plugin = nullptr;
-  void log(clap_log_severity severity, const char* msg);
+  const clap_plugin_t *_plugin = nullptr;
+  void log(clap_log_severity severity, const char *msg);
 
   // threadcheck
   bool is_main_thread() const;
@@ -209,11 +209,11 @@ class Plugin
   void tail_changed();
 
   // context_menu
-  bool context_menu_populate(const clap_context_menu_target_t* target,
-                             const clap_context_menu_builder_t* builder);
-  bool context_menu_perform(const clap_context_menu_target_t* target, clap_id action_id);
+  bool context_menu_populate(const clap_context_menu_target_t *target,
+                             const clap_context_menu_builder_t *builder);
+  bool context_menu_perform(const clap_context_menu_target_t *target, clap_id action_id);
   bool context_menu_can_popup();
-  bool context_menu_popup(const clap_context_menu_target_t* target, int32_t screen_index, int32_t x,
+  bool context_menu_popup(const clap_context_menu_target_t *target, int32_t screen_index, int32_t x,
                           int32_t y);
 
   // hostgui
@@ -236,13 +236,13 @@ class Plugin
   {
   }
 
-  bool track_info_get(clap_track_info_t* info)
+  bool track_info_get(clap_track_info_t *info)
   {
     return _parentHost->track_info_get(info);
   }
 
   // clap_timer support
-  bool register_timer(uint32_t period_ms, clap_id* timer_id);
+  bool register_timer(uint32_t period_ms, clap_id *timer_id);
   bool unregister_timer(clap_id timer_id);
 
 #if LIN
@@ -255,16 +255,16 @@ class Plugin
   CLAP_NODISCARD Raise AlwaysMainThread();
 
  private:
-  static const void* clapExtension(const clap_host* host, const char* extension);
-  static void clapRequestCallback(const clap_host* host);
-  static void clapRequestRestart(const clap_host* host);
-  static void clapRequestProcess(const clap_host* host);
+  static const void *clapExtension(const clap_host *host, const char *extension);
+  static void clapRequestCallback(const clap_host *host);
+  static void clapRequestRestart(const clap_host *host);
+  static void clapRequestProcess(const clap_host *host);
 
   //static bool clapIsMainThread(const clap_host* host);
   //static bool clapIsAudioThread(const clap_host* host);
 
   clap_host_t _host;  // the host_t structure for the proxy
-  IHost* _parentHost = nullptr;
+  IHost *_parentHost = nullptr;
   const std::thread::id _main_thread_id = std::this_thread::get_id();
 
   AudioSetup _audioSetup;
@@ -281,7 +281,7 @@ class StateMemento
   {
     _readoffset = 0;
   }
-  const uint8_t* data()
+  const uint8_t *data()
   {
     return _mem.data();
   }
@@ -289,20 +289,20 @@ class StateMemento
   {
     return _mem.size();
   }
-  void setData(const uint8_t* data, size_t size);
-  operator const clap_ostream_t*()
+  void setData(const uint8_t *data, size_t size);
+  operator const clap_ostream_t *()
   {
     return &_outstream;
   }
-  operator const clap_istream_t*()
+  operator const clap_istream_t *()
   {
     return &_instream;
   }
 
  private:
   uint64_t _readoffset = 0;
-  static int64_t CLAP_ABI _read(const struct clap_istream* stream, void* buffer, uint64_t size);
-  static int64_t CLAP_ABI _write(const struct clap_ostream* stream, const void* buffer, uint64_t size);
+  static int64_t CLAP_ABI _read(const struct clap_istream *stream, void *buffer, uint64_t size);
+  static int64_t CLAP_ABI _write(const struct clap_ostream *stream, const void *buffer, uint64_t size);
   clap_ostream_t _outstream = {this, _write};
   clap_istream_t _instream = {this, _read};
   std::vector<uint8_t> _mem;

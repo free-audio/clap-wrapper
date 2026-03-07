@@ -10,16 +10,16 @@ template <typename T, uint32_t Q>
 class fixedqueue
 {
  public:
-  inline void push(const T& val)
+  inline void push(const T &val)
   {
     push(&val);
   }
-  inline void push(const T* val)
+  inline void push(const T *val)
   {
     _elements[_head] = *val;
     _head = (_head + 1) & _wrapMask;
   }
-  inline bool pop(T& out)
+  inline bool pop(T &out)
   {
     if (_head == _tail)
     {

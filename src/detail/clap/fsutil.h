@@ -38,15 +38,15 @@ class Library
  public:
   Library();
   ~Library();
-  bool load(const fs::path&);
+  bool load(const fs::path &);
 
-  const clap_plugin_entry_t* _pluginEntry = nullptr;
-  const clap_plugin_factory_t* _pluginFactory = nullptr;
-  const clap_plugin_factory_as_vst3* _pluginFactoryVst3Info = nullptr;
-  const clap_plugin_factory_as_auv2* _pluginFactoryAUv2Info = nullptr;
-  const clap_ara_factory_t* _pluginFactoryARAInfo = nullptr;
-  std::vector<const clap_plugin_descriptor_t*> plugins;
-  const clap_plugin_info_as_vst3_t* get_vst3_info(uint32_t index) const;
+  const clap_plugin_entry_t *_pluginEntry = nullptr;
+  const clap_plugin_factory_t *_pluginFactory = nullptr;
+  const clap_plugin_factory_as_vst3 *_pluginFactoryVst3Info = nullptr;
+  const clap_plugin_factory_as_auv2 *_pluginFactoryAUv2Info = nullptr;
+  const clap_ara_factory_t *_pluginFactoryARAInfo = nullptr;
+  std::vector<const clap_plugin_descriptor_t *> plugins;
+  const clap_plugin_info_as_vst3_t *get_vst3_info(uint32_t index) const;
 
 #if MAC
   CFBundleRef getBundleRef()
@@ -76,15 +76,15 @@ class Library
 #endif
 
 #if LIN
-  void* _handle{nullptr};
+  void *_handle{nullptr};
 #endif
 
 #if WIN
   HMODULE _handle = 0;
-  bool getEntryFunction(HMODULE handle, const char* path);
+  bool getEntryFunction(HMODULE handle, const char *path);
 #endif
 
-  void setupPluginsFromPluginEntry(const char* p);
+  void setupPluginsFromPluginEntry(const char *p);
   bool _selfcontained = false;
 };
 

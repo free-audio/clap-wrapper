@@ -12,7 +12,7 @@ struct sha1hash
   uint8_t bytes[20];
 };
 
-struct sha1hash sha1(const char* text, size_t len);
+struct sha1hash sha1(const char *text, size_t len);
 
 typedef struct uuid_object_
 {
@@ -24,6 +24,6 @@ typedef struct uuid_object_
   uint8_t node[6];
 } uuid_object;
 
-uuid_object create_sha1_guid_from_name(const char* name, size_t namelen);
+uuid_object create_sha1_guid_from_name(const char *name, size_t namelen);
 
 }  // namespace Crypto

@@ -39,10 +39,10 @@ ProcessAdapter::~ProcessAdapter()
   }
 }
 
-void ProcessAdapter::setupProcessing(ausdk::AUScope& audioInputs, ausdk::AUScope& audioOutputs,
-                                     const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params,
-                                     Clap::IAutomation* automationInterface, ParameterTree* parameters,
-                                     IMIDIOutputs* midiouts, uint32_t numMaxSamples,
+void ProcessAdapter::setupProcessing(ausdk::AUScope &audioInputs, ausdk::AUScope &audioOutputs,
+                                     const clap_plugin_t *plugin, const clap_plugin_params_t *ext_params,
+                                     Clap::IAutomation *automationInterface, ParameterTree *parameters,
+                                     IMIDIOutputs *midiouts, uint32_t numMaxSamples,
                                      uint32_t preferredMIDIDialect)
 {
   _plugin = plugin;
@@ -80,14 +80,14 @@ void ProcessAdapter::setupProcessing(ausdk::AUScope& audioInputs, ausdk::AUScope
     _input_ports = new clap_audio_buffer_t[_numInputs];
     for (auto i = 0U; i < _numInputs; ++i)
     {
-      clap_audio_buffer_t& bus = _input_ports[i];
-      auto& info = static_cast<ausdk::AUInputElement&>(*_audioInputScope->SafeGetElement(i));
+      clap_audio_buffer_t &bus = _input_ports[i];
+      auto &info = static_cast<ausdk::AUInputElement &>(*_audioInputScope->SafeGetElement(i));
       {
         bus.channel_count = info.NumberChannels();
         bus.constant_mask = 0;
         bus.latency = 0;
         bus.data64 = nullptr;
-        bus.data32 = new float*[info.NumberChannels()];
+        bus.data32 = new float *[info.NumberChannels()];
       }
     }
     _processData.audio_inputs = _input_ports;
@@ -106,15 +106,15 @@ void ProcessAdapter::setupProcessing(ausdk::AUScope& audioInputs, ausdk::AUScope
     _output_ports = new clap_audio_buffer_t[_numOutputs];
     for (auto i = 0U; i < _numOutputs; ++i)
     {
-      clap_audio_buffer_t& bus = _output_ports[i];
+      clap_audio_buffer_t &bus = _output_ports[i];
 
-      auto& info = static_cast<ausdk::AUOutputElement&>(*_audioOutputScope->SafeGetElement(i));
+      auto &info = static_cast<ausdk::AUOutputElement &>(*_audioOutputScope->SafeGetElement(i));
       {
         bus.channel_count = info.NumberChannels();
         bus.constant_mask = 0;
         bus.latency = 0;
         bus.data64 = nullptr;
-        bus.data32 = new float*[info.NumberChannels()];
+        bus.data32 = new float *[info.NumberChannels()];
       }
     }
     _processData.audio_outputs = _output_ports;
@@ -162,7 +162,7 @@ void ProcessAdapter::sortEventIndices()
   // if they have the same timestamp, the index must be preserved
 
   std::sort(_eventindices.begin(), _eventindices.end(),
-            [&](size_t const& a, size_t const& b)
+            [&](size_t const &a, size_t const &b)
             {
               auto t1 = _events[a].header.time;
               auto t2 = _events[b].header.time;
@@ -170,7 +170,7 @@ void ProcessAdapter::sortEventIndices()
             });
 }
 
-void ProcessAdapter::process(ProcessData& data)
+void ProcessAdapter::process(ProcessData &data)
 {
   sortEventIndices();
   _processData.frames_count = data.numSamples;
@@ -215,16 +215,16 @@ void ProcessAdapter::process(ProcessData& data)
   {
     for (uint32_t i = 0; i < _numInputs; ++i)
     {
-      auto& m = static_cast<ausdk::AUInputElement&>(*_audioInputScope->SafeGetElement(i));
+      auto &m = static_cast<ausdk::AUInputElement &>(*_audioInputScope->SafeGetElement(i));
       if (m.PullInput(data.flags, data.timestamp, i, data.numSamples) == noErr)
       {
-        AudioBufferList& myInBuffers = m.GetBufferList();
+        AudioBufferList &myInBuffers = m.GetBufferList();
         auto num = myInBuffers.mNumberBuffers;
         this->_input_ports[i].channel_count = num;
         for (uint32_t j = 0; j < num; ++j)
         {
           assert(myInBuffers.mBuffers[j].mNumberChannels == 1);
-          this->_input_ports[i].data32[j] = (float*)myInBuffers.mBuffers[j].mData;
+          this->_input_ports[i].data32[j] = (float *)myInBuffers.mBuffers[j].mData;
         }
         // _input_ports[0].data32 = myInBuffers[0].mData;
       }
@@ -257,14 +257,14 @@ void ProcessAdapter::process(ProcessData& data)
   // output handling
   for (uint32_t i = 0; i < _numOutputs; i++)
   {
-    auto& m = static_cast<ausdk::AUOutputElement&>(*_audioOutputScope->SafeGetElement(i));
-    AudioBufferList& myOutBuffers = m.PrepareBuffer(data.numSamples);
+    auto &m = static_cast<ausdk::AUOutputElement &>(*_audioOutputScope->SafeGetElement(i));
+    AudioBufferList &myOutBuffers = m.PrepareBuffer(data.numSamples);
     auto num = myOutBuffers.mNumberBuffers;
     this->_output_ports[i].channel_count = num;
     for (uint32_t j = 0; j < num; ++j)
     {
       assert(myOutBuffers.mBuffers[j].mNumberChannels == 1);
-      this->_output_ports[i].data32[j] = (float*)myOutBuffers.mBuffers[j].mData;
+      this->_output_ports[i].data32[j] = (float *)myOutBuffers.mBuffers[j].mData;
     }
   }
 #endif
@@ -278,9 +278,9 @@ void ProcessAdapter::process(ProcessData& data)
   _eventindices.clear();
 }
 
-uint32_t ProcessAdapter::input_events_size(const struct clap_input_events* list)
+uint32_t ProcessAdapter::input_events_size(const struct clap_input_events *list)
 {
-  auto self = static_cast<ProcessAdapter*>(list->ctx);
+  auto self = static_cast<ProcessAdapter *>(list->ctx);
   auto k = (uint32_t)self->_events.size();
   return k;
   // return self->_vstdata->inputEvents->getEventCount();
@@ -288,10 +288,10 @@ uint32_t ProcessAdapter::input_events_size(const struct clap_input_events* list)
 
 // returns the pointer to an event in the list. The index accessed is not the position in the event list itself
 // since all events indices were sorted by timestamp
-const clap_event_header_t* ProcessAdapter::input_events_get(const struct clap_input_events* list,
+const clap_event_header_t *ProcessAdapter::input_events_get(const struct clap_input_events *list,
                                                             uint32_t index)
 {
-  auto self = static_cast<ProcessAdapter*>(list->ctx);
+  auto self = static_cast<ProcessAdapter *>(list->ctx);
   if (self->_events.size() > index)
   {
     // we can safely return the note.header also for other event types
@@ -302,16 +302,16 @@ const clap_event_header_t* ProcessAdapter::input_events_get(const struct clap_in
   return nullptr;
 }
 
-bool ProcessAdapter::output_events_try_push(const struct clap_output_events* list,
-                                            const clap_event_header_t* event)
+bool ProcessAdapter::output_events_try_push(const struct clap_output_events *list,
+                                            const clap_event_header_t *event)
 {
-  auto self = static_cast<ProcessAdapter*>(list->ctx);
+  auto self = static_cast<ProcessAdapter *>(list->ctx);
   // mainly used for CLAP_EVENT_NOTE_CHOKE and CLAP_EVENT_NOTE_END
   // but also for parameter changes
   return self->enqueueOutputEvent(event);
 }
 
-bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
+bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t *event)
 {
 #if 0
   clap_multi_event e;
@@ -325,13 +325,13 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
     case CLAP_EVENT_NOTE_OFF:
     case CLAP_EVENT_MIDI:
     {
-      auto nevt = reinterpret_cast<const clap_multi_event_t*>(event);
+      auto nevt = reinterpret_cast<const clap_multi_event_t *>(event);
       _midiouts->send(*nevt);
       return true;
     }
     case CLAP_EVENT_NOTE_END:
     case CLAP_EVENT_NOTE_CHOKE:
-      removeFromActiveNotes((const clap_event_note*)(event));
+      removeFromActiveNotes((const clap_event_note *)(event));
       return true;
       break;
     case CLAP_EVENT_NOTE_EXPRESSION:
@@ -339,7 +339,7 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
       break;
     case CLAP_EVENT_PARAM_VALUE:
     {
-      auto ev = (clap_event_param_value*)event;
+      auto ev = (clap_event_param_value *)event;
       _automation->onPerformEdit(ev);
 
       // auto param = this->_gesturedParameters
@@ -388,7 +388,7 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
       break;
     case CLAP_EVENT_PARAM_GESTURE_BEGIN:
     {
-      auto ev = (clap_event_param_gesture*)event;
+      auto ev = (clap_event_param_gesture *)event;
       auto param = _parameters->find(ev->param_id);
       if (param != _parameters->end())
       {
@@ -401,7 +401,7 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
       break;
     case CLAP_EVENT_PARAM_GESTURE_END:
     {
-      auto ev = (clap_event_param_gesture*)event;
+      auto ev = (clap_event_param_gesture *)event;
       auto n = std::remove(_gesturedParameters.begin(), _gesturedParameters.end(), ev->param_id);
       if (n != _gesturedParameters.end())
       {
@@ -422,9 +422,9 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
   return false;
 }
 
-void ProcessAdapter::addToActiveNotes(const clap_event_note* note)
+void ProcessAdapter::addToActiveNotes(const clap_event_note *note)
 {
-  for (auto& i : _activeNotes)
+  for (auto &i : _activeNotes)
   {
     if (!i.used)
     {
@@ -439,9 +439,9 @@ void ProcessAdapter::addToActiveNotes(const clap_event_note* note)
   _activeNotes.emplace_back(ActiveNote{true, note->note_id, note->port_index, note->channel, note->key});
 }
 
-void ProcessAdapter::removeFromActiveNotes(const clap_event_note* note)
+void ProcessAdapter::removeFromActiveNotes(const clap_event_note *note)
 {
-  for (auto& i : _activeNotes)
+  for (auto &i : _activeNotes)
   {
     if (i.used && i.port_index == note->port_index && i.channel == note->channel &&
         i.note_id == note->note_id)
@@ -565,7 +565,7 @@ void ProcessAdapter::addMIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData
   }
 }
 
-void ProcessAdapter::addParameterEvent(const clap_param_info_t& info, double value,
+void ProcessAdapter::addParameterEvent(const clap_param_info_t &info, double value,
                                        uint32_t inOffsetSampleFrame)
 {
   clap_multi_event n;

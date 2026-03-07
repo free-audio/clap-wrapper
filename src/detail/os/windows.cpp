@@ -27,15 +27,15 @@ class WindowsHelper
  public:
   void init();
   void terminate();
-  void attach(IPlugObject* plugobject);
-  void detach(IPlugObject* plugobject);
+  void attach(IPlugObject *plugobject);
+  void detach(IPlugObject *plugobject);
 
  private:
   void executeDefered();
   static LRESULT Wndproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
   HWND _msgWin = 0;
   UINT_PTR _timer = 0;
-  std::vector<IPlugObject*> _plugs;
+  std::vector<IPlugObject *> _plugs;
 } gWindowsHelper;
 
 static Steinberg::ModuleInitializer createMessageWindow([] { gWindowsHelper.init(); });
@@ -96,7 +96,7 @@ LRESULT WindowsHelper::Wndproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 
 static std::wstring helperClassName(HINSTANCE hinst)
 {
-  return fmt::format(L"clapwrapper{}", (void*)hinst);
+  return fmt::format(L"clapwrapper{}", (void *)hinst);
 }
 
 void WindowsHelper::init()
@@ -124,30 +124,30 @@ void WindowsHelper::terminate()
 
 void WindowsHelper::executeDefered()
 {
-  for (auto&& p : _plugs)
+  for (auto &&p : _plugs)
   {
     if (p) p->onIdle();
   }
 }
 
-void WindowsHelper::attach(IPlugObject* plugobject)
+void WindowsHelper::attach(IPlugObject *plugobject)
 {
   _plugs.push_back(plugobject);
 }
 
-void WindowsHelper::detach(IPlugObject* plugobject)
+void WindowsHelper::detach(IPlugObject *plugobject)
 {
   _plugs.erase(std::remove(_plugs.begin(), _plugs.end(), plugobject), _plugs.end());
 }
 
 // [UI Thread]
-void attach(IPlugObject* plugobject)
+void attach(IPlugObject *plugobject)
 {
   gWindowsHelper.attach(plugobject);
 }
 
 // [UI Thread]
-void detach(IPlugObject* plugobject)
+void detach(IPlugObject *plugobject)
 {
   gWindowsHelper.detach(plugobject);
 }

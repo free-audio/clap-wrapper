@@ -21,12 +21,12 @@ class LinuxHelper
  public:
   void init();
   void terminate();
-  void attach(IPlugObject* plugobject);
-  void detach(IPlugObject* plugobject);
+  void attach(IPlugObject *plugobject);
+  void detach(IPlugObject *plugobject);
 
  private:
   void executeDefered();
-  std::vector<IPlugObject*> _plugs;
+  std::vector<IPlugObject *> _plugs;
 } gLinuxHelper;
 
 #if 0
@@ -76,7 +76,7 @@ static Steinberg::ModuleTerminator dropMessageWindow([] { gLinuxHelper.terminate
 fs::path getPluginPath()
 {
   Dl_info info;
-  if (dladdr((void*)getPluginPath, &info))
+  if (dladdr((void *)getPluginPath, &info))
   {
     return info.dli_fname;
   }
@@ -164,12 +164,12 @@ void LinuxHelper::executeDefered()
     if (p) p->onIdle();
   }
 }
-void LinuxHelper::attach(IPlugObject* plugobject)
+void LinuxHelper::attach(IPlugObject *plugobject)
 {
   _plugs.push_back(plugobject);
 }
 
-void LinuxHelper::detach(IPlugObject* plugobject)
+void LinuxHelper::detach(IPlugObject *plugobject)
 {
   _plugs.erase(std::remove(_plugs.begin(), _plugs.end(), plugobject), _plugs.end());
 }
@@ -179,13 +179,13 @@ void LinuxHelper::detach(IPlugObject* plugobject)
 namespace os
 {
 // [UI Thread]
-void attach(IPlugObject* plugobject)
+void attach(IPlugObject *plugobject)
 {
   gLinuxHelper.attach(plugobject);
 }
 
 // [UI Thread]
-void detach(IPlugObject* plugobject)
+void detach(IPlugObject *plugobject)
 {
   gLinuxHelper.detach(plugobject);
 }

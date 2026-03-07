@@ -14,9 +14,9 @@
 
 // For now just a simple main. In the future this will branch out to
 // an [NSApplicationMain ] and so on depending on platform
-int main(int argc, char** argv)
+int main(int argc, char **argv)
 {
-  const clap_plugin_entry* entry{nullptr};
+  const clap_plugin_entry *entry{nullptr};
 #ifdef STATICALLY_LINKED_CLAP_ENTRY
   extern const clap_plugin_entry clap_entry;
   entry = &clap_entry;
@@ -29,7 +29,7 @@ int main(int argc, char** argv)
 
   auto lib = Clap::Library();
 
-  for (const auto& searchPaths : pts)
+  for (const auto &searchPaths : pts)
   {
     auto clapPath = searchPaths / (clapName + ".clap");
 
@@ -69,7 +69,7 @@ int main(int argc, char** argv)
   int pindex{PLUGIN_INDEX};
 
   auto plugin =
-      freeaudio::clap_wrapper::standalone::mainCreatePlugin(entry, pid, pindex, 1, (char**)argv);
+      freeaudio::clap_wrapper::standalone::mainCreatePlugin(entry, pid, pindex, 1, (char **)argv);
   freeaudio::clap_wrapper::standalone::mainStartAudio();
 
 #if LIN

@@ -14,13 +14,13 @@ namespace Clap
 {
 using namespace Steinberg;
 
-void ProcessAdapter::setupProcessing(const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params,
-                                     Vst::BusList& audioinputs, Vst::BusList& audiooutputs,
+void ProcessAdapter::setupProcessing(const clap_plugin_t *plugin, const clap_plugin_params_t *ext_params,
+                                     Vst::BusList &audioinputs, Vst::BusList &audiooutputs,
                                      uint32_t numSamples, size_t /*numEventInputs*/,
                                      size_t /*numEventOutputs*/,
-                                     Steinberg::Vst::ParameterContainer& params,
-                                     Steinberg::Vst::IComponentHandler* componenthandler,
-                                     IAutomation* automation, bool enablePolyPressure,
+                                     Steinberg::Vst::ParameterContainer &params,
+                                     Steinberg::Vst::IComponentHandler *componenthandler,
+                                     IAutomation *automation, bool enablePolyPressure,
                                      bool supportsTuningNoteExpression)
 {
   _plugin = plugin;
@@ -49,7 +49,7 @@ void ProcessAdapter::setupProcessing(const clap_plugin_t* plugin, const clap_plu
     _input_ports = std::make_unique<clap_audio_buffer_t[]>(numInputs);
     for (auto i = 0U; i < numInputs; ++i)
     {
-      clap_audio_buffer_t& bus = _input_ports[i];
+      clap_audio_buffer_t &bus = _input_ports[i];
       Vst::BusInfo info;
       if (_audioinputs->at(i)->getInfo(info))
       {
@@ -75,7 +75,7 @@ void ProcessAdapter::setupProcessing(const clap_plugin_t* plugin, const clap_plu
     _output_ports = std::make_unique<clap_audio_buffer_t[]>(numOutputs);
     for (auto i = 0U; i < numOutputs; ++i)
     {
-      clap_audio_buffer_t& bus = _output_ports[i];
+      clap_audio_buffer_t &bus = _output_ports[i];
       Vst::BusInfo info;
       if (_audiooutputs->at(i)->getInfo(info))
       {
@@ -167,7 +167,7 @@ void ProcessAdapter::flush()
 }
 
 // this converts the ProcessContext data from VST to CLAP
-void ProcessAdapter::process(Steinberg::Vst::ProcessData& data)
+void ProcessAdapter::process(Steinberg::Vst::ProcessData &data)
 {
   // remember the ProcessData pointer during process
   _vstdata = &data;
@@ -293,7 +293,7 @@ void ProcessAdapter::process(Steinberg::Vst::ProcessData& data)
         continue;
       }
 
-      auto param = (Vst3Parameter*)parameters->getParameter(paramid);
+      auto param = (Vst3Parameter *)parameters->getParameter(paramid);
       if (param)
       {
         if (param->isMidi)
@@ -438,23 +438,23 @@ void ProcessAdapter::process(Steinberg::Vst::ProcessData& data)
   _vstdata = nullptr;
 }
 
-void ProcessAdapter::processOutputParams(Steinberg::Vst::ProcessData& data)
+void ProcessAdapter::processOutputParams(Steinberg::Vst::ProcessData &data)
 {
 }
 
-uint32_t ProcessAdapter::input_events_size(const struct clap_input_events* list)
+uint32_t ProcessAdapter::input_events_size(const struct clap_input_events *list)
 {
-  auto self = static_cast<ProcessAdapter*>(list->ctx);
+  auto self = static_cast<ProcessAdapter *>(list->ctx);
   return (uint32_t)self->_events.size();
   // return self->_vstdata->inputEvents->getEventCount();
 }
 
 // returns the pointer to an event in the list. The index accessed is not the position in the event list itself
 // since all events indices were sorted by timestamp
-const clap_event_header_t* ProcessAdapter::input_events_get(const struct clap_input_events* list,
+const clap_event_header_t *ProcessAdapter::input_events_get(const struct clap_input_events *list,
                                                             uint32_t index)
 {
-  auto self = static_cast<ProcessAdapter*>(list->ctx);
+  auto self = static_cast<ProcessAdapter *>(list->ctx);
   if (self->_events.size() > index)
   {
     // we can safely return the note.header also for other event types
@@ -465,10 +465,10 @@ const clap_event_header_t* ProcessAdapter::input_events_get(const struct clap_in
   return nullptr;
 }
 
-bool ProcessAdapter::output_events_try_push(const struct clap_output_events* list,
-                                            const clap_event_header_t* event)
+bool ProcessAdapter::output_events_try_push(const struct clap_output_events *list,
+                                            const clap_event_header_t *event)
 {
-  auto self = static_cast<ProcessAdapter*>(list->ctx);
+  auto self = static_cast<ProcessAdapter *>(list->ctx);
   // mainly used for CLAP_EVENT_NOTE_CHOKE and CLAP_EVENT_NOTE_END
   // but also for parameter changes
   return self->enqueueOutputEvent(event);
@@ -483,7 +483,7 @@ void ProcessAdapter::sortEventIndices()
   // if they have the same timestamp, the index must be preserved
 
   std::sort(_eventindices.begin(), _eventindices.end(),
-            [&](size_t const& a, size_t const& b)
+            [&](size_t const &a, size_t const &b)
             {
               auto t1 = _events[a].header.time;
               auto t2 = _events[b].header.time;
@@ -491,7 +491,7 @@ void ProcessAdapter::sortEventIndices()
             });
 }
 
-void ProcessAdapter::processInputEvents(Steinberg::Vst::IEventList* eventlist)
+void ProcessAdapter::processInputEvents(Steinberg::Vst::IEventList *eventlist)
 {
   if (eventlist)
   {
@@ -590,7 +590,7 @@ void ProcessAdapter::processInputEvents(Steinberg::Vst::IEventList* eventlist)
           n.noteexpression.header.time = vstevent.sampleOffset;
           n.noteexpression.header.size = sizeof(clap_event_note_expression);
           n.noteexpression.note_id = vstevent.polyPressure.noteId;
-          for (auto& i : _activeNotes)
+          for (auto &i : _activeNotes)
           {
             if (i.used && i.note_id == vstevent.polyPressure.noteId)
             {
@@ -616,7 +616,7 @@ void ProcessAdapter::processInputEvents(Steinberg::Vst::IEventList* eventlist)
           n.midi.port_index = 0;
           n.midi.data[0] = 0xA0 + vstevent.polyPressure.channel;
           int key{-1};
-          for (auto& i : _activeNotes)
+          for (auto &i : _activeNotes)
           {
             if (i.used && i.note_id == vstevent.polyPressure.noteId)
             {
@@ -643,7 +643,7 @@ void ProcessAdapter::processInputEvents(Steinberg::Vst::IEventList* eventlist)
           n.noteexpression.header.time = vstevent.sampleOffset;
           n.noteexpression.header.size = sizeof(clap_event_note_expression);
           n.noteexpression.note_id = vstevent.noteExpressionValue.noteId;
-          for (auto& i : _activeNotes)
+          for (auto &i : _activeNotes)
           {
             if (i.used && i.note_id == vstevent.noteExpressionValue.noteId)
             {
@@ -686,13 +686,13 @@ void ProcessAdapter::processInputEvents(Steinberg::Vst::IEventList* eventlist)
   }
 }
 
-bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
+bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t *event)
 {
   switch (event->type)
   {
     case CLAP_EVENT_NOTE_ON:
     {
-      auto nevt = reinterpret_cast<const clap_event_note*>(event);
+      auto nevt = reinterpret_cast<const clap_event_note *>(event);
 
       Steinberg::Vst::Event oe{};
       oe.type = Steinberg::Vst::Event::kNoteOnEvent;
@@ -710,7 +710,7 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
       return true;
     case CLAP_EVENT_NOTE_OFF:
     {
-      auto nevt = reinterpret_cast<const clap_event_note*>(event);
+      auto nevt = reinterpret_cast<const clap_event_note *>(event);
 
       Steinberg::Vst::Event oe{};
       oe.type = Steinberg::Vst::Event::kNoteOffEvent;
@@ -728,7 +728,7 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
       return true;
     case CLAP_EVENT_NOTE_END:
     case CLAP_EVENT_NOTE_CHOKE:
-      removeFromActiveNotes((const clap_event_note*)(event));
+      removeFromActiveNotes((const clap_event_note *)(event));
       return true;
       break;
     case CLAP_EVENT_NOTE_EXPRESSION:
@@ -736,8 +736,8 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
       break;
     case CLAP_EVENT_PARAM_VALUE:
     {
-      auto ev = (clap_event_param_value*)event;
-      auto param = (Vst3Parameter*)this->parameters->getParameter(ev->param_id & 0x7FFFFFFF);
+      auto ev = (clap_event_param_value *)event;
+      auto param = (Vst3Parameter *)this->parameters->getParameter(ev->param_id & 0x7FFFFFFF);
       if (param)
       {
         auto param_id = param->getInfo().id;
@@ -780,8 +780,8 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
       break;
     case CLAP_EVENT_PARAM_GESTURE_BEGIN:
     {
-      auto ev = (clap_event_param_gesture*)event;
-      auto param = (Vst3Parameter*)this->parameters->getParameter(ev->param_id & 0x7FFFFFFF);
+      auto ev = (clap_event_param_gesture *)event;
+      auto param = (Vst3Parameter *)this->parameters->getParameter(ev->param_id & 0x7FFFFFFF);
       _gesturedParameters.push_back(param->getInfo().id);
       if (_automation) _automation->onBeginEdit(param->getInfo().id);
     }
@@ -790,8 +790,8 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
       break;
     case CLAP_EVENT_PARAM_GESTURE_END:
     {
-      auto ev = (clap_event_param_gesture*)event;
-      auto param = (Vst3Parameter*)this->parameters->getParameter(ev->param_id & 0x7FFFFFFF);
+      auto ev = (clap_event_param_gesture *)event;
+      auto param = (Vst3Parameter *)this->parameters->getParameter(ev->param_id & 0x7FFFFFFF);
 
       auto n = std::remove(_gesturedParameters.begin(), _gesturedParameters.end(), param->getInfo().id);
       if (n != _gesturedParameters.end())
@@ -814,9 +814,9 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
   return false;
 }
 
-void ProcessAdapter::addToActiveNotes(const clap_event_note* note)
+void ProcessAdapter::addToActiveNotes(const clap_event_note *note)
 {
-  for (auto& i : _activeNotes)
+  for (auto &i : _activeNotes)
   {
     if (!i.used)
     {
@@ -831,9 +831,9 @@ void ProcessAdapter::addToActiveNotes(const clap_event_note* note)
   _activeNotes.emplace_back(ActiveNote{true, note->note_id, note->port_index, note->channel, note->key});
 }
 
-void ProcessAdapter::removeFromActiveNotes(const clap_event_note* note)
+void ProcessAdapter::removeFromActiveNotes(const clap_event_note *note)
 {
-  for (auto& i : _activeNotes)
+  for (auto &i : _activeNotes)
   {
     if (i.used && i.port_index == note->port_index && i.channel == note->channel &&
         i.note_id == note->note_id)

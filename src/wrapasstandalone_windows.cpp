@@ -5,7 +5,7 @@ int WINAPI wWinMain(HINSTANCE /* hInstance */, HINSTANCE /* hPrevInstance */, PW
 {
   auto coUninitialize{wil::CoInitializeEx(COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE)};
 
-  const clap_plugin_entry* entry{nullptr};
+  const clap_plugin_entry *entry{nullptr};
 #ifdef STATICALLY_LINKED_CLAP_ENTRY
   extern const clap_plugin_entry clap_entry;
   entry = &clap_entry;
@@ -15,7 +15,7 @@ int WINAPI wWinMain(HINSTANCE /* hInstance */, HINSTANCE /* hPrevInstance */, PW
 
   auto lib{Clap::Library()};
 
-  for (const auto& searchPaths : Clap::getValidCLAPSearchPaths())
+  for (const auto &searchPaths : Clap::getValidCLAPSearchPaths())
   {
     auto clapPath{searchPaths / (clapName + ".clap")};
 
@@ -36,7 +36,7 @@ int WINAPI wWinMain(HINSTANCE /* hInstance */, HINSTANCE /* hPrevInstance */, PW
 
   auto args{freeaudio::clap_wrapper::standalone::windows_standalone::getArgs()};
 
-  std::vector<char*> argv;
+  std::vector<char *> argv;
 
   for (auto i = 0; i < args.size(); i++)
   {

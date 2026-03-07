@@ -64,18 +64,18 @@ using namespace Steinberg::Vst;
 
 struct CreationContext
 {
-  Clap::Library* lib = nullptr;
+  Clap::Library *lib = nullptr;
   int index = 0;
   PClassInfo2 classinfo;
 };
 
-bool findPlugin(Clap::Library& lib, const std::string& pluginfilename)
+bool findPlugin(Clap::Library &lib, const std::string &pluginfilename)
 {
   auto parentfolder = os::getParentFolderName();
   auto paths = Clap::getValidCLAPSearchPaths();
 
   // Strategy 1: look for a clap with the same name as this binary
-  for (auto& i : paths)
+  for (auto &i : paths)
   {
     if (!fs::exists(i)) continue;
     // try to find it the CLAP folder immediately
@@ -102,7 +102,7 @@ bool findPlugin(Clap::Library& lib, const std::string& pluginfilename)
     }
 
     // Strategy 3: enumerate folders in CLAP folder and try to locate the plugin in any sub folder (only one level)
-    for (const auto& subdir : fs::directory_iterator(i))
+    for (const auto &subdir : fs::directory_iterator(i))
     {
       auto k3 = i / subdir / pluginfilename;
       LOGDETAIL("scanning for binary: {}", k3.u8string().c_str());
@@ -119,7 +119,7 @@ bool findPlugin(Clap::Library& lib, const std::string& pluginfilename)
   return false;
 }
 
-IPluginFactory* GetPluginFactoryEntryPoint()
+IPluginFactory *GetPluginFactoryEntryPoint()
 {
 #if _DEBUG
   // MessageBoxA(NULL,"halt","me",MB_OK); // <- enable this on Windows to get a debug attachment to vstscanner.exe (subprocess of cbse)
@@ -172,10 +172,10 @@ IPluginFactory* GetPluginFactoryEntryPoint()
   if (!gPluginFactory)
   {
     // we need at least one plugin to obtain vendor/name etc.
-    auto* factoryvendor = gClapLibrary.plugins[0]->vendor;
-    auto* vendor_url = gClapLibrary.plugins[0]->url;
+    auto *factoryvendor = gClapLibrary.plugins[0]->vendor;
+    auto *vendor_url = gClapLibrary.plugins[0]->url;
     // TODO: extract the domain and prefix with info@
-    auto* contact = "info@";
+    auto *contact = "info@";
 
     // NULL is allowed, but replace with empty string
     if (!factoryvendor) factoryvendor = "Unspecified Vendor";
@@ -185,7 +185,7 @@ IPluginFactory* GetPluginFactoryEntryPoint()
     if (gClapLibrary._pluginFactoryVst3Info)
     {
       LOGDETAIL("detected extension `{}`", CLAP_PLUGIN_FACTORY_INFO_VST3);
-      auto& v3 = gClapLibrary._pluginFactoryVst3Info;
+      auto &v3 = gClapLibrary._pluginFactoryVst3Info;
       if (v3->vendor) factoryvendor = v3->vendor;
       if (v3->vendor_url) vendor_url = v3->vendor_url;
       if (v3->email_contact) contact = v3->email_contact;
@@ -203,7 +203,7 @@ IPluginFactory* GetPluginFactoryEntryPoint()
     LOGDETAIL("number of plugins in factory: {}", numPlugins);
     for (int ctr = 0; ctr < numPlugins; ++ctr)
     {
-      auto& clapdescr = gClapLibrary.plugins[ctr];
+      auto &clapdescr = gClapLibrary.plugins[ctr];
       auto vst3info = gClapLibrary.get_vst3_info(ctr);
 
       LOGDETAIL("  plugin #{}: '{}'", ctr, clapdescr->name);
@@ -283,9 +283,9 @@ IPluginFactory* GetPluginFactoryEntryPoint()
 
 #if CLAP_WRAPPER_LOGLEVEL > 1
       {
-        const auto* v = reinterpret_cast<const uint8_t*>(&g);
+        const auto *v = reinterpret_cast<const uint8_t *>(&g);
         char x[sizeof(g) * 2 + 8];
-        char* o = x;
+        char *o = x;
         constexpr char hexchar[] = "0123456789ABCDEF";
         for (auto i = 0U; i < sizeof(g); i++)
         {
@@ -320,7 +320,7 @@ IPluginFactory* GetPluginFactoryEntryPoint()
         LOGDETAIL("number of ARA plugins: {}", numPlugins);
         for (int ctr = 0; ctr < numPlugins; ++ctr)
         {
-          auto& clapdescr = gClapLibrary.plugins[ctr];
+          auto &clapdescr = gClapLibrary.plugins[ctr];
           if (!strcmp(clapdescr->id, matching_plugin))
           {
             std::string extended_id(matching_plugin);
@@ -390,9 +390,9 @@ DEF_CLASS_IID(ARA::IMainFactory)
     creates an Instance from the creationContext.
     actually, there is always a valid entrypoint, otherwise no factory would have been provided.
 */
-FUnknown* ClapAsVst3::createInstance(void* context)
+FUnknown *ClapAsVst3::createInstance(void *context)
 {
-  auto ctx = static_cast<CreationContext*>(context);
+  auto ctx = static_cast<CreationContext *>(context);
 
   if (!strcmp(ctx->classinfo.category, kVstAudioEffectClass))
   {
@@ -400,7 +400,7 @@ FUnknown* ClapAsVst3::createInstance(void* context)
     if (ctx->lib->hasEntryPoint())
     {
       // MessageBoxA(NULL, "create ClapAsVst3", "create", MB_OK);
-      return (IAudioProcessor*)new ClapAsVst3(ctx->lib, ctx->index, context);
+      return (IAudioProcessor *)new ClapAsVst3(ctx->lib, ctx->index, context);
     }
   }
 
@@ -410,7 +410,7 @@ FUnknown* ClapAsVst3::createInstance(void* context)
     if (ctx->lib->hasEntryPoint())
     {
       const auto ara_factory = ctx->lib->_pluginFactoryARAInfo;
-      return static_cast<FUnknown*>(new ARAMainFactory(
+      return static_cast<FUnknown *>(new ARAMainFactory(
           ara_factory->get_ara_factory(ara_factory, ctx->index), Steinberg::FUID(ctx->classinfo.cid)));
     }
   }

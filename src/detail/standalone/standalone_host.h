@@ -59,19 +59,19 @@ struct StandaloneHost : Clap::IHost
   }
   virtual ~StandaloneHost();
 
-  static bool oe_try_push(const struct clap_output_events* oe, const clap_event_header_t* evt)
+  static bool oe_try_push(const struct clap_output_events *oe, const clap_event_header_t *evt)
   {
     return true;
   }
 
-  static uint32_t ie_getsize(const struct clap_input_events* ie)
+  static uint32_t ie_getsize(const struct clap_input_events *ie)
   {
-    auto sh = (StandaloneHost*)ie->ctx;
+    auto sh = (StandaloneHost *)ie->ctx;
     return sh->inputEventSize();
   }
-  static const clap_event_header_t* ie_get(const struct clap_input_events* ie, uint32_t idx)
+  static const clap_event_header_t *ie_get(const struct clap_input_events *ie, uint32_t idx)
   {
-    auto sh = (StandaloneHost*)ie->ctx;
+    auto sh = (StandaloneHost *)ie->ctx;
     return sh->inputEvent(idx);
   }
 
@@ -85,7 +85,7 @@ struct StandaloneHost : Clap::IHost
   {
     currInput = 0;
   }
-  bool pushInputEvent(clap_event_header_t* event)
+  bool pushInputEvent(clap_event_header_t *event)
   {
     if (event->size > eventSize)
     {
@@ -95,7 +95,7 @@ struct StandaloneHost : Clap::IHost
     {
       return false;
     }
-    memcpy((void*)(eventQueue + currInput * eventSize), (const void*)event, event->size);
+    memcpy((void *)(eventQueue + currInput * eventSize), (const void *)event, event->size);
     currInput++;
     return true;
   }
@@ -103,9 +103,9 @@ struct StandaloneHost : Clap::IHost
   {
     return currInput;
   }
-  const clap_event_header_t* inputEvent(uint32_t idx)
+  const clap_event_header_t *inputEvent(uint32_t idx)
   {
-    return (const clap_event_header_t*)(eventQueue + idx * eventSize);
+    return (const clap_event_header_t *)(eventQueue + idx * eventSize);
   }
 
   std::shared_ptr<Clap::Plugin> clapPlugin;
@@ -128,26 +128,26 @@ struct StandaloneHost : Clap::IHost
   {
     callbackRequested = true;
   }
-  void setupWrapperSpecifics(const clap_plugin_t* plugin) override
+  void setupWrapperSpecifics(const clap_plugin_t *plugin) override
   {
     TRACE;
   }
 
-  bool saveStandaloneAndPluginSettings(const fs::path& intoDir, const fs::path& withName);
-  bool tryLoadStandaloneAndPluginSettings(const fs::path& fromDir, const fs::path& withName);
+  bool saveStandaloneAndPluginSettings(const fs::path &intoDir, const fs::path &withName);
+  bool tryLoadStandaloneAndPluginSettings(const fs::path &fromDir, const fs::path &withName);
 
   uint32_t numAudioInputs{0}, numAudioOutputs{0};
   std::vector<uint32_t> inputChannelByBus;
   std::vector<uint32_t> outputChannelByBus;
   uint32_t mainInput{0}, mainOutput{0};
   uint32_t totalInputChannels{0}, totalOutputChannels{0};
-  void setupAudioBusses(const clap_plugin_t* plugin,
-                        const clap_plugin_audio_ports_t* audioports) override;
+  void setupAudioBusses(const clap_plugin_t *plugin,
+                        const clap_plugin_audio_ports_t *audioports) override;
 
   bool hasMIDIInput{false}, hasClapNoteInput{false}, createsMidiOutput{false};
-  void setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_note_ports_t* noteports) override;
+  void setupMIDIBusses(const clap_plugin_t *plugin, const clap_plugin_note_ports_t *noteports) override;
 
-  void setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params) override
+  void setupParameters(const clap_plugin_t *plugin, const clap_plugin_params_t *params) override
   {
     TRACE;
   }
@@ -181,20 +181,20 @@ struct StandaloneHost : Clap::IHost
 
 #if LIN
 #if CLAP_WRAPPER_HAS_GTK3
-  freeaudio::clap_wrapper::standalone::linux_standalone::GtkGui* gtkGui{nullptr};
+  freeaudio::clap_wrapper::standalone::linux_standalone::GtkGui *gtkGui{nullptr};
 #endif
 #if CLAP_WRAPPER_STANDALONE_X11
-  freeaudio::clap_wrapper::standalone::linux_standalone::X11Gui* x11Gui{nullptr};
+  freeaudio::clap_wrapper::standalone::linux_standalone::X11Gui *x11Gui{nullptr};
 #endif
 
 #endif
 
-  bool register_timer(uint32_t period_ms, clap_id* timer_id) override;
+  bool register_timer(uint32_t period_ms, clap_id *timer_id) override;
   bool unregister_timer(clap_id timer_id) override;
 
-  const char* host_get_name() override;
+  const char *host_get_name() override;
 
-  bool track_info_get(clap_track_info_t* info) override
+  bool track_info_get(clap_track_info_t *info) override
   {
     return false;
   }
@@ -204,12 +204,12 @@ struct StandaloneHost : Clap::IHost
   {
     return false;
   }
-  bool context_menu_populate(const clap_context_menu_target_t* target,
-                             const clap_context_menu_builder_t* builder) override
+  bool context_menu_populate(const clap_context_menu_target_t *target,
+                             const clap_context_menu_builder_t *builder) override
   {
     return false;
   }
-  bool context_menu_perform(const clap_context_menu_target_t* target, clap_id action_id) override
+  bool context_menu_perform(const clap_context_menu_target_t *target, clap_id action_id) override
   {
     return false;
   }
@@ -217,7 +217,7 @@ struct StandaloneHost : Clap::IHost
   {
     return false;
   }
-  bool context_menu_popup(const clap_context_menu_target_t* target, int32_t screen_index, int32_t x,
+  bool context_menu_popup(const clap_context_menu_target_t *target, int32_t screen_index, int32_t x,
                           int32_t y) override
   {
     return false;
@@ -254,15 +254,15 @@ struct StandaloneHost : Clap::IHost
   std::vector<uint32_t> currentMidiPorts;
   void startMIDIThread();
   void stopMIDIThread();
-  void processMIDIEvents(double deltatime, std::vector<unsigned char>* message);
-  static void midiCallback(double deltatime, std::vector<unsigned char>* message, void* userData);
+  void processMIDIEvents(double deltatime, std::vector<unsigned char> *message);
+  static void midiCallback(double deltatime, std::vector<unsigned char> *message, void *userData);
 
   // in standalone_host.cpp
-  void clapProcess(void* pOutput, const void* pInoput, uint32_t frameCount);
+  void clapProcess(void *pOutput, const void *pInoput, uint32_t frameCount);
 
   // Actual audio IO In standalone_host_audio.cpp
   std::unique_ptr<RtAudio> rtaDac;
-  std::function<void(const std::string&)> displayAudioError{nullptr};
+  std::function<void(const std::string &)> displayAudioError{nullptr};
   RtAudio::Api audioApi{RtAudio::Api::UNSPECIFIED};
   std::string audioApiName{RtAudio::getApiName(RtAudio::Api::UNSPECIFIED)};
   std::string audioApiDisplayName{RtAudio::getApiDisplayName(RtAudio::Api::UNSPECIFIED)};

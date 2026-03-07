@@ -15,12 +15,12 @@ class Sha1
   {
     reset();
   }
-  Sha1(const unsigned char* message_array, size_t length)
+  Sha1(const unsigned char *message_array, size_t length)
   {
     reset();
     input(message_array, length);
   }
-  void input(const unsigned char* message_array, size_t length);
+  void input(const unsigned char *message_array, size_t length);
   struct sha1hash hash();
 
  private:
@@ -61,7 +61,7 @@ void Sha1::reset()
   _corrupted = false;
 }
 
-void Sha1::input(const unsigned char* message_array, size_t length)
+void Sha1::input(const unsigned char *message_array, size_t length)
 {
   if (length == 0)
   {
@@ -277,9 +277,9 @@ struct sha1hash Sha1::hash()
   return r;
 }
 
-struct sha1hash sha1(const char* text, size_t len)
+struct sha1hash sha1(const char *text, size_t len)
 {
-  Sha1 x((const unsigned char*)(text), len);
+  Sha1 x((const unsigned char *)(text), len);
   return x.hash();
 }
 
@@ -308,7 +308,7 @@ uuid_object NameSpace_DNS = {/* 6ba7b810-9dad-11d1-80b4-00c04fd430c8 */
                              0x6ba7b810, 0x9dad, 0x11d1,
                              0x80,       0xb4,   {0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8}};
 
-uuid_object create_sha1_guid_from_name(const char* name, size_t namelen)
+uuid_object create_sha1_guid_from_name(const char *name, size_t namelen)
 {
   uuid_object uuid;
 
@@ -323,8 +323,8 @@ uuid_object create_sha1_guid_from_name(const char* name, size_t namelen)
   net_nsid.time_hi_and_version = swapOrder16(net_nsid.time_hi_and_version);
 
   Sha1 c;
-  c.input((const uint8_t*)&net_nsid, sizeof(net_nsid));
-  c.input((const uint8_t*)name, namelen);
+  c.input((const uint8_t *)&net_nsid, sizeof(net_nsid));
+  c.input((const uint8_t *)name, namelen);
   auto hash = c.hash();
 
   /* convert UUID to local byte order */

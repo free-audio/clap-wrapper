@@ -12,18 +12,18 @@ namespace freeaudio::clap_wrapper::standalone::linux_standalone
 {
 struct X11Gui
 {
-  void initialize(freeaudio::clap_wrapper::standalone::StandaloneHost*);
+  void initialize(freeaudio::clap_wrapper::standalone::StandaloneHost *);
   void setPlugin(std::shared_ptr<Clap::Plugin>);
   void runloop();
   void shutdown();
 
-  bool register_timer(int period_ms, clap_id* tid);
+  bool register_timer(int period_ms, clap_id *tid);
   bool unregister_timer(clap_id tid);
 
   bool register_fd(int fd, clap_posix_fd_flags_t flags);
   bool unregister_fd(int fd);
 
-  Display* display{nullptr};
+  Display *display{nullptr};
   Window window{0};
   Atom wmDeleteMessage{0};
 

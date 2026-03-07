@@ -28,15 +28,15 @@
 #include <functional>
 #include <cmath>
 
-void utf8_to_utf16l(const char* utf8string, uint16_t* target, size_t targetsize);
+void utf8_to_utf16l(const char *utf8string, uint16_t *target, size_t targetsize);
 
 class Vst3Parameter : public Steinberg::Vst::Parameter
 {
   using super = Steinberg::Vst::Parameter;
 
  protected:
-  Vst3Parameter(const Steinberg::Vst::ParameterInfo& vst3info, const clap_param_info_t* clapinfo);
-  Vst3Parameter(const Steinberg::Vst::ParameterInfo& vst3info, uint8_t bus, uint8_t channel, uint8_t cc);
+  Vst3Parameter(const Steinberg::Vst::ParameterInfo &vst3info, const clap_param_info_t *clapinfo);
+  Vst3Parameter(const Steinberg::Vst::ParameterInfo &vst3info, uint8_t bus, uint8_t channel, uint8_t cc);
 
  public:
   virtual ~Vst3Parameter();
@@ -67,21 +67,21 @@ class Vst3Parameter : public Steinberg::Vst::Parameter
   }
   inline double asVst3Value(double clapvalue) const
   {
-    auto& info = this->getInfo();
+    auto &info = this->getInfo();
     if (info.stepCount > 0)
     {
       return floor(clapvalue - min_value) / float(info.stepCount);
     }
     return (clapvalue - min_value) / (max_value - min_value);
   }
-  static Vst3Parameter* create(const clap_param_info_t* info,
-                               std::function<Steinberg::Vst::UnitID(const char* modulepath)> getUnitId);
-  static Vst3Parameter* create(uint8_t bus, uint8_t channel, uint8_t cc, Steinberg::Vst::ParamID id);
+  static Vst3Parameter *create(const clap_param_info_t *info,
+                               std::function<Steinberg::Vst::UnitID(const char *modulepath)> getUnitId);
+  static Vst3Parameter *create(uint8_t bus, uint8_t channel, uint8_t cc, Steinberg::Vst::ParamID id);
   // copies from the clap_param_info_t
   uint32_t param_index_for_clap_get_info = 0;
   clap_id id = 0;
 
-  void* cookie = nullptr;
+  void *cookie = nullptr;
   double min_value;  // minimum plain value
   double max_value;  // maximum plain value
   // or it was MIDI

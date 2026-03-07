@@ -34,10 +34,10 @@ namespace Clap::AUv2
 class Parameter
 {
  public:
-  Parameter(const clap_plugin_t* plugin, const clap_plugin_params_t* clap_param_ext,
-            const clap_param_info_t& clap_param);
+  Parameter(const clap_plugin_t *plugin, const clap_plugin_params_t *clap_param_ext,
+            const clap_param_info_t &clap_param);
   ~Parameter();
-  const clap_param_info_t& info() const
+  const clap_param_info_t &info() const
   {
     return _info;
   }
@@ -50,8 +50,8 @@ class Parameter
     return _flags;
   }
 
-  void updateInfo(const clap_plugin_t* plugin, const clap_plugin_params_t* clap_param_ext,
-                  const clap_param_info_t& i);
+  void updateInfo(const clap_plugin_t *plugin, const clap_plugin_params_t *clap_param_ext,
+                  const clap_param_info_t &i);
 
  private:
   clap_param_info_t _info;
