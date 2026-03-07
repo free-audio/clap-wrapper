@@ -132,7 +132,7 @@ Vst3Parameter* Vst3Parameter::create(
     v.stepCount = 0;
 
   auto result = new Vst3Parameter(v, info);
-  result->addRef();  // ParameterContainer doesn't add the ref -> but we don't have copies
+  //result->addRef();  // ParameterContainer doesn't add the ref -> but we don't have copies
   return result;
 }
 
@@ -184,6 +184,6 @@ Vst3Parameter* Vst3Parameter::create(uint8_t bus, uint8_t channel, uint8_t cc, V
   }
 
   auto result = new Vst3Parameter(v, bus, channel, cc);
-  result->addRef();  // ParameterContainer doesn't add the ref -> but we don't have copies
+  //result->addRef();  // ParameterContainer doesn't add the ref -> but we don't have copies
   return result;
 }

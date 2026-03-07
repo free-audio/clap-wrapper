@@ -21,6 +21,7 @@
 # CLAP_WRAPPER_DOWNLOAD_DEPENDENCIES if set will download the needed SDKs using CPM from github
 # CLAP_WRAPPER_COPY_AFTER_BUILD if included mac and lin will copy to ~/... (lin t/k)
 
+
 cmake_minimum_required(VERSION 3.21)
 cmake_policy(SET CMP0091 NEW)
 cmake_policy(SET CMP0149 NEW)

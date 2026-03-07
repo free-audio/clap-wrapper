@@ -460,11 +460,7 @@ OSStatus WrapAsAUV2::GetParameterInfo(AudioUnitScope inScope, AudioUnitParameter
       outParameterInfo.cfNameString = f->CFString();
       outParameterInfo.minValue = info.min_value;
       outParameterInfo.maxValue = info.max_value;
-      outParameterInfo.defaultValue = info.min_value;
-      if (info.min_value < 0.0)
-      {
-        outParameterInfo.defaultValue = 0.0;
-      }
+      outParameterInfo.defaultValue = info.default_value;
 
       // adding the clump information
       if (info.module[0] != 0)
