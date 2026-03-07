@@ -21,6 +21,7 @@ target_add_clap_configuration(TARGET ${PROJECT_NAME}_clap
 )
 
 add_library(${PROJECT_NAME}_auv2 MODULE)
+add_dependencies(${PROJECT_NAME}_auv2 ${PROJECT_NAME}_clap)
 
 target_add_auv2_wrapper(
         TARGET ${PROJECT_NAME}_auv2
@@ -28,6 +29,5 @@ target_add_auv2_wrapper(
         BUNDLE_IDENTIFIER "${PROJECT_NAME}.auv2"
         BUNDLE_VERSION "1.0"
 
-        CLAP_TARGET_FOR_CONFIG "${PROJECT_NAME}_clap"
         MACOS_EMBEDDED_CLAP_LOCATION "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}_clap>"
 )
