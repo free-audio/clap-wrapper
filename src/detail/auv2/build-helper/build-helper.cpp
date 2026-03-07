@@ -38,7 +38,7 @@ struct auInfo
     return sum();
   }
 
-  void writePListFragment(std::ostream &of, int idx) const
+  void writePListFragment(std::ostream& of, int idx) const
   {
     if (!clapid.empty())
     {
@@ -93,8 +93,9 @@ struct auInfo
   }
 };
 
-bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname, std::string &manu,
-                        std::string &manuName, std::vector<auInfo> &units)
+bool buildUnitsFromClap(const std::string& clapfile, const std::string& clapname, std::string manu,
+                        std::string manuName, std::string itype, std::string subt,
+                        std::vector<auInfo>& units)
 {
   Clap::Library loader;
   if (!loader.load(clapfile))
@@ -118,8 +119,13 @@ bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname
     std::cout << "  - using factory manufacturer '" << manuName << "' (" << manu << ")" << std::endl;
   }
 
-  static const char *encoder = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-";
-  for (const auto *clapPlug : loader.plugins)
+  if (!itype.empty() && !subt.empty() && loader.plugins.size() > 1)
+  {
+    std::cout << "[ERROR] Multi-plugin claps must speciy itype and subtype via extension" << std::endl;
+  }
+
+  static const char* encoder = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-";
+  for (const auto* clapPlug : loader.plugins)
   {
     auto u = auInfo();
     bool doExport = true;
@@ -141,12 +147,16 @@ bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname
       idHash = idHash >> 9;  // mix it up a bit
     }
 
-    u.subt = stH;
+    u.subt = subt.empty() ? stH : subt;
     u.manu = manu;
     u.manunm = manuName;
 
     auto f = clapPlug->features[0];
-    if (f == nullptr || strcmp(f, CLAP_PLUGIN_FEATURE_INSTRUMENT) == 0)
+    if (!itype.empty())
+    {
+      u.type = itype;
+    }
+    else if (f == nullptr || strcmp(f, CLAP_PLUGIN_FEATURE_INSTRUMENT) == 0)
     {
       u.type = "aumu";
     }
@@ -203,7 +213,7 @@ bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname
   return true;
 }
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
   if (argc < 2) return 1;
 
@@ -247,8 +257,21 @@ int main(int argc, char **argv)
     auto clapname = std::string(argv[idx++]);
     auto clapfile = std::string(argv[idx++]);
     auto bundlev = std::string(argv[idx++]);
-    auto mcode = (idx < argc) ? std::string(argv[idx++]) : std::string();
-    auto mname = (idx < argc) ? std::string(argv[idx++]) : std::string();
+
+    auto nerr = [](const auto& a)
+    {
+      if (a == "errr")
+        return std::string();
+      else
+        return a;
+    };
+
+    auto mcode = nerr((idx < argc) ? std::string(argv[idx++]) : std::string());
+    auto mname = nerr((idx < argc) ? std::string(argv[idx++]) : std::string());
+    ;
+
+    auto itype = nerr((idx < argc) ? std::string(argv[idx++]) : std::string());
+    auto isubt = nerr((idx < argc) ? std::string(argv[idx++]) : std::string());
 
     try
     {
@@ -265,7 +288,7 @@ int main(int argc, char **argv)
         clapfile = p.u8string();
       }
     }
-    catch (const fs::filesystem_error &e)
+    catch (const fs::filesystem_error& e)
     {
       std::cout << "[ERROR] cant get path " << e.what() << std::endl;
       return 3;
@@ -274,7 +297,7 @@ int main(int argc, char **argv)
     std::cout << "  - building information from CLAP directly\n"
               << "  - source clap: '" << clapfile << "'" << std::endl;
 
-    if (!buildUnitsFromClap(clapfile, clapname, mcode, mname, units))
+    if (!buildUnitsFromClap(clapfile, clapname, mcode, mname, itype, isubt, units))
     {
       std::cout << "[ERROR] Can't build units from CLAP" << std::endl;
       return 4;
@@ -286,7 +309,7 @@ int main(int argc, char **argv)
       return 5;
     }
 
-    for (auto &u : units)
+    for (auto& u : units)
     {
       u.bundlevers = bundlev;
     }
@@ -316,7 +339,7 @@ int main(int argc, char **argv)
 
   of << "    <key>AudioComponents</key>\n    <array>\n";
   int idx{0};
-  for (const auto &u : units)
+  for (const auto& u : units)
   {
     std::cout << "    + " << u.name << " (" << u.type << "/" << u.subt << ") by " << u.manunm << " ("
               << u.manu << ")" << std::endl;
@@ -340,7 +363,7 @@ int main(int argc, char **argv)
     cppf << "#include \"detail/auv2/auv2_base_classes.h\"\n\n";
 
     idx = 0;
-    for (const auto &u : units)
+    for (const auto& u : units)
     {
       auto on = u.factoryBase + std::to_string(idx);
 
@@ -430,7 +453,7 @@ int main(int argc, char **argv)
                "std::shared_ptr<Clap::Plugin> _plugin) {\n";
 
     idx = 0;
-    for (const auto &u : units)
+    for (const auto& u : units)
     {
       std::string strcid;
 
@@ -443,7 +466,7 @@ int main(int argc, char **argv)
         strcid = u.clapid;
       }
 
-      for (auto &c : strcid)
+      for (auto& c : strcid)
       {
         if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'A') || (c >= '0' && c <= '9'))
         {

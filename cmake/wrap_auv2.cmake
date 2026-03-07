@@ -99,8 +99,21 @@ function(target_add_auv2_wrapper)
         message(STATUS "clap-wrapper: building auv2 based on target ${AUV2_CLAP_TARGET_FOR_CONFIG}")
         get_property(ton TARGET ${clpt} PROPERTY LIBRARY_OUTPUT_NAME)
         set(AUV2_OUTPUT_NAME "${ton}")
-        set(AUV2_SUBTYPE_CODE "Fooo")
-        set(AUV2_INSTRUMENT_TYPE "aumu")
+
+        if (NOT DEFINED AUV2_MANUFACTURER_CODE)
+            set(AUV2_MANUFACTURER_CODE "errr")
+        endif()
+        if (NOT DEFINED AUV2_MANUFACTURER_NAME)
+            set(AUV2_MANUFACTURER_CODE "errr")
+        endif()
+
+        if (NOT DEFINED AUV2_SUBTYPE_CODE)
+            # this value indicates not set to the helper
+            set(AUV2_SUBTYPE_CODE "errr")
+        endif()
+        if (NOT DEFINED AUV2_INSTRUMENT_TYPE)
+            set(AUV2_INSTRUMENT_TYPE "errr")
+        endif()
 
         add_dependencies(${AUV2_TARGET} ${clpt})
         add_dependencies(${bhtg} ${clpt})
@@ -115,11 +128,24 @@ function(target_add_auv2_wrapper)
                 "${AUV2_OUTPUT_NAME}"
                 "$<TARGET_FILE:${clpt}>" "${AUV2_BUNDLE_VERSION}"
                 "${AUV2_MANUFACTURER_CODE}" "${AUV2_MANUFACTURER_NAME}"
+                "${AUV2_INSTRUMENT_TYPE}" "${AUV2_SUBTYPE_CODE}"
         )
     elseif (NOT ${PREF} AND DEFINED AUV2_MACOSX_EMBEDDED_CLAP_LOCATION)
         message(STATUS "clap-wrapper: building auv2 based on clap ${AUV2_MACOSX_EMBEDDED_CLAP_LOCATION}")
-        set(AUV2_SUBTYPE_CODE "----")
-        set(AUV2_INSTRUMENT_TYPE "aumu")
+
+        if (NOT DEFINED AUV2_MANUFACTURER_CODE)
+            set(AUV2_MANUFACTURER_CODE "errr")
+        endif()
+        if (NOT DEFINED AUV2_MANUFACTURER_NAME)
+            set(AUV2_MANUFACTURER_CODE "errr")
+        endif()
+
+        if (NOT DEFINED AUV2_SUBTYPE_CODE)
+            set(AUV2_SUBTYPE_CODE "errr")
+        endif()
+        if (NOT DEFINED AUV2_INSTRUMENT_TYPE)
+            set(AUV2_INSTRUMENT_TYPE "errr")
+        endif()
 
         add_custom_command(
                 TARGET ${bhtg}
@@ -131,6 +157,7 @@ function(target_add_auv2_wrapper)
                 "${AUV2_OUTPUT_NAME}"
                 "${AUV2_MACOSX_EMBEDDED_CLAP_LOCATION}" "${AUV2_BUNDLE_VERSION}"
                 "${AUV2_MANUFACTURER_CODE}" "${AUV2_MANUFACTURER_NAME}"
+                "${AUV2_INSTRUMENT_TYPE}" "${AUV2_SUBTYPE_CODE}"
         )
     else ()
         message(STATUS "clap-wrapper: using cmake configuration for auv2")
