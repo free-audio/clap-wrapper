@@ -29,5 +29,13 @@ target_add_auv2_wrapper(
         BUNDLE_IDENTIFIER "${PROJECT_NAME}.auv2"
         BUNDLE_VERSION "1.0"
 
+        # This allows CMake to override the auv2 extension configuration
+        PREFER_CMAKE_AUV2_CONFIGURATION TRUE
+
+        MANUFACTURER_NAME "Free Audio"
+        MANUFACTURER_CODE "FRaD"
+        SUBTYPE_CODE "qqsd"
+        INSTRUMENT_TYPE "ffqq" # this is not a valid code, just here to test
+
         MACOS_EMBEDDED_CLAP_LOCATION "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}_clap>"
 )

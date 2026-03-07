@@ -14,6 +14,8 @@ function(target_add_auv2_wrapper)
 
             CLAP_TARGET_FOR_CONFIG
 
+            PREFER_CMAKE_AUV2_CONFIGURATION
+
             # AUV2 uses a CFDictionary to store state so
             # we need to choose what keys to populate it with.
             # The wrapper by default uses the key choices from
@@ -87,7 +89,12 @@ function(target_add_auv2_wrapper)
 
     add_dependencies(${AUV2_TARGET} ${bhtg})
 
-    if (DEFINED AUV2_CLAP_TARGET_FOR_CONFIG)
+    set(PREF FALSE)
+    if (DEFINED AUV2_PREFER_CMAKE_AUV2_CONFIGURATION )
+        set(PREF ${AUV2_PREFER_CMAKE_AUV2_CONFIGURATION})
+    endif()
+
+    if (NOT ${PREF} AND DEFINED AUV2_CLAP_TARGET_FOR_CONFIG)
         set(clpt ${AUV2_CLAP_TARGET_FOR_CONFIG})
         message(STATUS "clap-wrapper: building auv2 based on target ${AUV2_CLAP_TARGET_FOR_CONFIG}")
         get_property(ton TARGET ${clpt} PROPERTY LIBRARY_OUTPUT_NAME)
@@ -109,7 +116,7 @@ function(target_add_auv2_wrapper)
                 "$<TARGET_FILE:${clpt}>" "${AUV2_BUNDLE_VERSION}"
                 "${AUV2_MANUFACTURER_CODE}" "${AUV2_MANUFACTURER_NAME}"
         )
-    elseif (DEFINED AUV2_MACOSX_EMBEDDED_CLAP_LOCATION)
+    elseif (NOT ${PREF} AND DEFINED AUV2_MACOSX_EMBEDDED_CLAP_LOCATION)
         message(STATUS "clap-wrapper: building auv2 based on clap ${AUV2_MACOSX_EMBEDDED_CLAP_LOCATION}")
         set(AUV2_SUBTYPE_CODE "----")
         set(AUV2_INSTRUMENT_TYPE "aumu")
@@ -126,6 +133,7 @@ function(target_add_auv2_wrapper)
                 "${AUV2_MANUFACTURER_CODE}" "${AUV2_MANUFACTURER_NAME}"
         )
     else ()
+        message(STATUS "clap-wrapper: using cmake configuration for auv2")
         if (NOT DEFINED AUV2_OUTPUT_NAME)
             message(FATAL_ERROR "clap-wrapper: target_add_auv2_wrapper requires an output name")
         endif ()
