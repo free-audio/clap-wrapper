@@ -116,14 +116,14 @@ class ProcessAdapter
   };
   std::vector<ActiveNote> _activeNotes;
 
-  clap_audio_buffer_t* _input_ports = nullptr;
-  clap_audio_buffer_t* _output_ports = nullptr;
+  std::unique_ptr<clap_audio_buffer_t[]> _input_ports;
+  std::unique_ptr<clap_audio_buffer_t[]> _output_ports;
   clap_event_transport_t _transport = {};
   clap_input_events_t _in_events = {};
   clap_output_events_t _out_events = {};
 
-  float* _silent_input = nullptr;
-  float* _silent_output = nullptr;
+  std::unique_ptr<float[]> _silent_input;
+  std::unique_ptr<float[]> _silent_output;
 
   clap_process_t _processData = {-1, 0, &_transport, nullptr, nullptr, 0, 0, &_in_events, &_out_events};
 

@@ -34,23 +34,18 @@ void ProcessAdapter::setupProcessing(const clap_plugin_t *plugin, const clap_plu
 
   if (numSamples > 0)
   {
-    delete[] _silent_input;
-    _silent_input = new float[numSamples];
-
-    delete[] _silent_output;
-    _silent_output = new float[numSamples];
+    _silent_input = std::make_unique<float[]>(numSamples);
+    _silent_output = std::make_unique<float[]>(numSamples);
   }
 
   auto numInputs = (uint32_t)_audioinputs->size();
   auto numOutputs = (uint32_t)_audiooutputs->size();
 
   _processData.audio_inputs_count = numInputs;
-  delete[] _input_ports;
-  _input_ports = nullptr;
 
   if (numInputs > 0)
   {
-    _input_ports = new clap_audio_buffer_t[numInputs];
+    _input_ports = std::make_unique<clap_audio_buffer_t[]>(numInputs);
     for (auto i = 0U; i < numInputs; ++i)
     {
       clap_audio_buffer_t &bus = _input_ports[i];
@@ -64,20 +59,19 @@ void ProcessAdapter::setupProcessing(const clap_plugin_t *plugin, const clap_plu
         bus.data32 = nullptr;
       }
     }
-    _processData.audio_inputs = _input_ports;
+    _processData.audio_inputs = _input_ports.get();
   }
   else
   {
+    _input_ports = nullptr;
     _processData.audio_inputs = nullptr;
   }
 
   _processData.audio_outputs_count = numOutputs;
-  delete[] _output_ports;
-  _output_ports = nullptr;
 
   if (numOutputs > 0)
   {
-    _output_ports = new clap_audio_buffer_t[numOutputs];
+    _output_ports = std::make_unique<clap_audio_buffer_t[]>(numOutputs);
     for (auto i = 0U; i < numOutputs; ++i)
     {
       clap_audio_buffer_t &bus = _output_ports[i];
@@ -91,10 +85,11 @@ void ProcessAdapter::setupProcessing(const clap_plugin_t *plugin, const clap_plu
         bus.data32 = nullptr;
       }
     }
-    _processData.audio_outputs = _output_ports;
+    _processData.audio_outputs = _output_ports.get();
   }
   else
   {
+    _output_ports = nullptr;
     _processData.audio_outputs = nullptr;
   }
 
