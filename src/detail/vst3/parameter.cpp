@@ -131,9 +131,7 @@ Vst3Parameter *Vst3Parameter::create(
   else
     v.stepCount = 0;
 
-  auto result = new Vst3Parameter(v, info);
-  result->addRef();  // ParameterContainer doesn't add the ref -> but we don't have copies
-  return result;
+  return new Vst3Parameter(v, info);
 }
 
 Vst3Parameter *Vst3Parameter::create(uint8_t bus, uint8_t channel, uint8_t cc, Vst::ParamID id)
@@ -183,7 +181,5 @@ Vst3Parameter *Vst3Parameter::create(uint8_t bus, uint8_t channel, uint8_t cc, V
     v.stepCount = 16383;
   }
 
-  auto result = new Vst3Parameter(v, bus, channel, cc);
-  result->addRef();  // ParameterContainer doesn't add the ref -> but we don't have copies
-  return result;
+  return new Vst3Parameter(v, bus, channel, cc);
 }
