@@ -347,14 +347,33 @@ void WrapAsAUV2::setupParameters(const clap_plugin_t *plugin, const clap_plugin_
   // creating parameters.
 
   _clumps.reset();
+  _orderedParameterList.clear();
+  _paramOrderingProvided = false;
   auto *p = _plugin->_ext._params;
   if (p)
   {
     uint32_t numparams = p->count(_plugin->_plugin);
+
+    // If the plugin provides a custom AUv2 param ordering, build an indirection array.
+    // order[i] is the CLAP param index to use for AUv2 position i.
+    std::vector<size_t> orderingStorage;
+    const size_t *ordering = nullptr;
+    auto *paramOrdering = _plugin->_ext._auv2_param_ordering;
+    if (paramOrdering)
+    {
+      orderingStorage.resize(numparams);
+      if (paramOrdering->get_param_order(_plugin->_plugin, orderingStorage.data(), numparams))
+      {
+        ordering = orderingStorage.data();
+        _paramOrderingProvided = true;
+      }
+    }
+
     clap_param_info_t paraminfo;
     for (uint32_t i = 0; i < numparams; ++i)
     {
-      if (p->get_info(_plugin->_plugin, i, &paraminfo))
+      uint32_t clapIndex = ordering ? static_cast<uint32_t>(ordering[i]) : i;
+      if (p->get_info(_plugin->_plugin, clapIndex, &paraminfo))
       {
         double result;
         if (p->get_value(_plugin->_plugin, paraminfo.id, &result))
@@ -373,6 +392,7 @@ void WrapAsAUV2::setupParameters(const clap_plugin_t *plugin, const clap_plugin_
             piter->second->updateInfo(_plugin->_plugin, p, paraminfo);
           }
           Globals()->SetParameter(paraminfo.id, result);
+          _orderedParameterList.push_back(static_cast<AudioUnitParameterID>(paraminfo.id));
         }
       }
     }
@@ -382,7 +402,17 @@ void WrapAsAUV2::setupParameters(const clap_plugin_t *plugin, const clap_plugin_
 OSStatus WrapAsAUV2::GetParameterList(AudioUnitScope inScope, AudioUnitParameterID *outParameterList,
                                       UInt32 &outNumParameters)
 {
-  return AUBase::GetParameterList(inScope, outParameterList, outNumParameters);
+  if (inScope != kAudioUnitScope_Global || !_paramOrderingProvided)
+  {
+    return AUBase::GetParameterList(inScope, outParameterList, outNumParameters);
+  }
+
+  outNumParameters = static_cast<UInt32>(_orderedParameterList.size());
+  if (outParameterList)
+  {
+    for (UInt32 i = 0; i < outNumParameters; ++i) outParameterList[i] = _orderedParameterList[i];
+  }
+  return noErr;
 }
 
 void WrapAsAUV2::param_rescan(clap_param_rescan_flags flags)

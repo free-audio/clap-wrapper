@@ -550,6 +550,8 @@ class WrapAsAUV2 : public ausdk::AUBase,
   bool _midi_dualscheduling_mode = false;
 #endif
   std::map<uint32_t, std::unique_ptr<Clap::AUv2::Parameter>> _parametertree;
+  std::vector<AudioUnitParameterID> _orderedParameterList;
+  bool _paramOrderingProvided{false};
   Clumps _clumps;
 
   CFStringRef _current_program_name = 0;

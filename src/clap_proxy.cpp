@@ -241,6 +241,7 @@ void Plugin::connectClap(const clap_plugin_t *clap)
   }
 
   getExtension(_plugin, _ext._gainreduc, CLAP_EXT_GAIN_ADJUSTMENT_METERING);
+  getExtension(_plugin, _ext._auv2_param_ordering, CLAP_PLUGIN_AUV2_PARAM_ORDERING);
 
 #if LIN
   getExtension(_plugin, _ext._posixfd, CLAP_EXT_POSIX_FD_SUPPORT);

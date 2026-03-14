@@ -117,6 +117,7 @@ struct ClapPluginExtensions
   const clap_plugin_context_menu_t *_contextmenu = nullptr;
   const clap_ara_plugin_extension_t *_ara = nullptr;
   const clap_plugin_gain_adjustment_metering_t *_gainreduc = nullptr;
+  const clap_plugin_auv2_param_ordering_t *_auv2_param_ordering = nullptr;
 #if LIN
   const clap_plugin_posix_fd_support *_posixfd = nullptr;
 #endif
