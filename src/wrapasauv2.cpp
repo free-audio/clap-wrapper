@@ -1,6 +1,8 @@
 #include "generated_entrypoints.hxx"
 #include "detail/auv2/process.h"
 #include <set>
+#include <limits>
+#include <cassert>
 
 extern bool fillAudioUnitCocoaView(AudioUnitCocoaViewInfo *viewInfo, std::shared_ptr<Clap::Plugin>);
 
@@ -361,11 +363,45 @@ void WrapAsAUV2::setupParameters(const clap_plugin_t *plugin, const clap_plugin_
     auto *paramOrdering = _plugin->_ext._auv2_param_ordering;
     if (paramOrdering)
     {
-      orderingStorage.resize(numparams);
+      // Pre-fill with an out-of-range sentinel so we can detect untouched slots.
+      orderingStorage.assign(numparams, std::numeric_limits<size_t>::max());
       if (paramOrdering->get_param_order(_plugin->_plugin, orderingStorage.data(), numparams))
       {
-        ordering = orderingStorage.data();
-        _paramOrderingProvided = true;
+        // Sanity-check: every index 0..numparams-1 must appear exactly once.
+        std::set<size_t> seen;
+        bool orderingValid = true;
+        for (size_t i = 0; i < numparams; ++i)
+        {
+          size_t idx = orderingStorage[i];
+          if (idx >= numparams)
+          {
+            std::cout << "CLAP_PLUGIN_AUV2_PARAM_ORDERING: index " << idx << " at position " << i
+                      << " is out of range [0, " << numparams << ")" << std::endl;
+            orderingValid = false;
+          }
+          else if (!seen.insert(idx).second)
+          {
+            std::cout << "CLAP_PLUGIN_AUV2_PARAM_ORDERING: index " << idx << " appears more than once"
+                      << std::endl;
+            orderingValid = false;
+          }
+        }
+        // Check for any indices that were never used (implies a duplicate stole their slot).
+        for (size_t i = 0; i < numparams; ++i)
+        {
+          if (seen.find(i) == seen.end())
+          {
+            std::cout << "CLAP_PLUGIN_AUV2_PARAM_ORDERING: index " << i << " was never provided"
+                      << std::endl;
+            orderingValid = false;
+          }
+        }
+        assert(orderingValid);
+        if (orderingValid)
+        {
+          ordering = orderingStorage.data();
+          _paramOrderingProvided = true;
+        }
       }
     }
 
