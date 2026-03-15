@@ -35,11 +35,19 @@ extern "C"
   // clap_plugin_auv2_param_ordering extension allows you to provide an ordering for your params
   // by mapping the get_param_info index (0..num-params) to a different ordering.
   //
-  // The default behavior absent this extension is to sort by parameter id, which is clap param id.
+  // The result of this will be used such that `auv2_index = ordering[clap_index]`. So in a five
+  // parameter case, if you want clap index 0 to appear at auv2 position 3, and clap index 3 to appear
+  // at auv2 position 0, you would return `3 1 2 0 4`
+  //
+  // The default behavior absent this extension is to sort by auv2 parameter id, which is clap param id.
   // So if you use a strategy where you go from not adopting this to adopting this when you add params,
   // make sure your old version param subset retains the param id ordering.
   //
-  // For instance, a good impementation if your parameters have a 'version' increasint parameter could be
+  // The clap wrapper will check if your ordering is complete and valid, and if not, generate errors
+  // to stdout and, in a debug build, fail an assertion. Running in auval while developing this
+  // method with a debug build enabled is helpful.
+  //
+  // A reasonable implementation if your parameters have a 'version' increasing parameter could be
   //
   // static bool CLAP_ABI auv2_get_param_order(const clap_plugin_t *plugin, size_t *order,
   //   size_t param_count) noexcept
@@ -67,8 +75,8 @@ extern "C"
   typedef struct clap_plugin_auv2_param_ordering
   {
     // given an empty input array order of size param_count, populate it with the index ordering.
-    // return true if succesful. if succesful, the order array will contain each inded 0...param_count-1
-    // once and only once
+    // return true if successful. if successful, the order array will contain each index 0...param_count-1
+    // once and only once and the param at auv2_index will be the clap param at ordering[clap_index].
     bool(CLAP_ABI *get_param_order)(const clap_plugin_t *plugin, size_t *order, size_t param_count);
   } clap_plugin_auv2_param_ordering_t;
 
