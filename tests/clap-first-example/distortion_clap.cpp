@@ -62,11 +62,11 @@ static void clap1stDist_process_event(clap1st_distortion_plug *plug, const clap_
 // clap_plugin_track_info //
 ////////////////////////////
 
-static void clap1stDist_track_info_changed(const clap_plugin_t* plugin)
+static void clap1stDist_track_info_changed(const clap_plugin_t *plugin)
 {
-  auto* plug = (clap1st_distortion_plug*)plugin->plugin_data;
-  const clap_host_track_info_t* trackInfo =
-      (const clap_host_track_info_t*)plug->host->get_extension(plug->host, CLAP_EXT_TRACK_INFO);
+  auto *plug = (clap1st_distortion_plug *)plugin->plugin_data;
+  const clap_host_track_info_t *trackInfo =
+      (const clap_host_track_info_t *)plug->host->get_extension(plug->host, CLAP_EXT_TRACK_INFO);
 
   clap_track_info_t info;
   if (trackInfo && trackInfo->get(plug->host, &info))
@@ -298,8 +298,9 @@ bool clap1stDist_state_load(const clap_plugin_t *plugin, const clap_istream_t *s
   memcpy(&plug->mix, buffer + 8, sizeof(float));
   memcpy(&plug->mode, buffer + 12, sizeof(int32_t));
 
-  const clap_host_t* clapHost = plug->host;
-  const clap_host_params_t * p = (const clap_host_params_t *)(clapHost->get_extension(clapHost, CLAP_EXT_PARAMS));
+  const clap_host_t *clapHost = plug->host;
+  const clap_host_params_t *p =
+      (const clap_host_params_t *)(clapHost->get_extension(clapHost, CLAP_EXT_PARAMS));
   if (p)
   {
     p->rescan(clapHost, CLAP_PARAM_RESCAN_VALUES);

@@ -15,7 +15,7 @@
 
 namespace freeaudio::clap_wrapper::standalone::linux_standalone
 {
-void X11Gui::initialize(freeaudio::clap_wrapper::standalone::StandaloneHost* sah)
+void X11Gui::initialize(freeaudio::clap_wrapper::standalone::StandaloneHost *sah)
 {
   display = XOpenDisplay(nullptr);
   sah->x11Gui = this;
@@ -165,7 +165,7 @@ void X11Gui::shutdown()
 
 int X11Gui::nextTimerId{2112};
 
-bool X11Gui::register_timer(int period_ms, clap_id* tid)
+bool X11Gui::register_timer(int period_ms, clap_id *tid)
 {
   int tfd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC);
   struct itimerspec ts;
@@ -257,7 +257,7 @@ bool X11Gui::resetSizeTo(int w, int h)
   if (!display || window == 0) return false;
   XResizeWindow(display, window, w, h);
 
-  XSizeHints* hints = XAllocSizeHints();
+  XSizeHints *hints = XAllocSizeHints();
   hints->flags = PMinSize | PMaxSize;
   hints->min_width = w;
   hints->max_width = w;

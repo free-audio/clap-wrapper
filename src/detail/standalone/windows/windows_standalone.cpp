@@ -5,7 +5,7 @@ namespace freeaudio::clap_wrapper::standalone::windows_standalone
 std::vector<std::string> getArgs()
 {
   int argc{0};
-  wil::unique_hlocal_ptr<wchar_t*[]> buffer;
+  wil::unique_hlocal_ptr<wchar_t *[]> buffer;
   buffer.reset(::CommandLineToArgvW(::GetCommandLineW(), &argc));
 
   std::vector<std::string> argv;
@@ -143,13 +143,13 @@ std::string getLastError()
   return formatMessage(::GetLastError());
 }
 
-void log(const std::string& message)
+void log(const std::string &message)
 {
   ::OutputDebugStringW(toUTF16(message).c_str());
   ::OutputDebugStringW(L"\n");
 }
 
-void log(const std::wstring& message)
+void log(const std::wstring &message)
 {
   ::OutputDebugStringW(message.c_str());
   ::OutputDebugStringW(L"\n");
@@ -204,27 +204,27 @@ bool MessageHandler::contains(::UINT msg)
   return map.find(message.msg)->second({message.hwnd, message.msg, message.wparam, message.lparam});
 }
 
-void MessageHandler::box(const std::string& message)
+void MessageHandler::box(const std::string &message)
 {
   ::MessageBoxW(nullptr, toUTF16(message).c_str(), nullptr, MB_OK | MB_ICONASTERISK);
 }
 
-void MessageHandler::box(const std::wstring& message)
+void MessageHandler::box(const std::wstring &message)
 {
   ::MessageBoxW(nullptr, message.c_str(), nullptr, MB_OK | MB_ICONASTERISK);
 }
 
-void MessageHandler::error(const std::string& message)
+void MessageHandler::error(const std::string &message)
 {
   ::MessageBoxW(nullptr, toUTF16(message).c_str(), nullptr, MB_OK | MB_ICONHAND);
 }
 
-void MessageHandler::error(const std::wstring& message)
+void MessageHandler::error(const std::wstring &message)
 {
   ::MessageBoxW(nullptr, message.c_str(), nullptr, MB_OK | MB_ICONHAND);
 }
 
-void Window::create(const std::string& title)
+void Window::create(const std::string &title)
 {
   std::wstring className{L"Window"};
 
@@ -238,7 +238,7 @@ void Window::create(const std::string& title)
   windowClass.style = 0;
   windowClass.lpfnWndProc = procedure;
   windowClass.cbClsExtra = 0;
-  windowClass.cbWndExtra = sizeof(void*);
+  windowClass.cbWndExtra = sizeof(void *);
   windowClass.hInstance = instance;
   windowClass.hIcon = resourceIcon ? resourceIcon : systemIcon;
   windowClass.hCursor = systemCursor;
@@ -261,9 +261,9 @@ void Window::create(const std::string& title)
 {
   if (msg == WM_NCCREATE)
   {
-    auto create{reinterpret_cast<::CREATESTRUCTW*>(lparam)};
+    auto create{reinterpret_cast<::CREATESTRUCTW *>(lparam)};
 
-    if (auto self{static_cast<Window*>(create->lpCreateParams)}; self)
+    if (auto self{static_cast<Window *>(create->lpCreateParams)}; self)
     {
       ::SetWindowLongPtrW(hwnd, 0, reinterpret_cast<::LONG_PTR>(self));
       self->hwnd.reset(hwnd);
@@ -272,7 +272,7 @@ void Window::create(const std::string& title)
     }
   }
 
-  if (auto self{reinterpret_cast<Window*>(::GetWindowLongPtrW(hwnd, 0))}; self)
+  if (auto self{reinterpret_cast<Window *>(::GetWindowLongPtrW(hwnd, 0))}; self)
   {
     if (msg == WM_NCDESTROY)
     {
@@ -443,7 +443,7 @@ void Control::refreshFont(double scale)
   message.send(hwnd.get(), WM_SETFONT, font.get(), TRUE);
 }
 
-void ComboBox::create(const std::string& name, uintptr_t id, ::HWND parentHwnd)
+void ComboBox::create(const std::string &name, uintptr_t id, ::HWND parentHwnd)
 {
   hwnd.reset(::CreateWindowExW(0, WC_COMBOBOXW, toUTF16(name).c_str(),
                                WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST, 0, 0, 0, 0, parentHwnd,
@@ -459,7 +459,7 @@ void ComboBox::reset()
   message.send(hwnd.get(), CB_RESETCONTENT, 0, 0);
 }
 
-void ComboBox::add(const std::string& string)
+void ComboBox::add(const std::string &string)
 {
   message.send(hwnd.get(), CB_ADDSTRING, 0, toUTF16(string).c_str());
 }
@@ -469,7 +469,7 @@ bool ComboBox::set(int index)
   return message.send(hwnd.get(), CB_SETCURSEL, index, 0) != CB_ERR ? true : false;
 }
 
-bool ComboBox::set(const std::string& searchString)
+bool ComboBox::set(const std::string &searchString)
 {
   return message.send(hwnd.get(), CB_SELECTSTRING, -1, toUTF16(searchString).c_str()) != CB_ERR ? true
                                                                                                 : false;
@@ -488,7 +488,7 @@ bool ComboBox::set(const std::string& searchString)
 ::LRESULT CALLBACK ComboBox::procedure(::HWND hwnd, ::UINT msg, ::WPARAM wparam, ::LPARAM lparam,
                                        ::UINT_PTR id, ::DWORD_PTR data)
 {
-  if (auto self{reinterpret_cast<ComboBox*>(data)}; self)
+  if (auto self{reinterpret_cast<ComboBox *>(data)}; self)
   {
     if (msg == WM_WINDOWPOSCHANGED)
     {
@@ -504,7 +504,7 @@ bool ComboBox::set(const std::string& searchString)
   return ::DefSubclassProc(hwnd, msg, wparam, lparam);
 }
 
-void ListBox::create(const std::string& name, uintptr_t id, ::HWND parentHwnd)
+void ListBox::create(const std::string &name, uintptr_t id, ::HWND parentHwnd)
 {
   hwnd.reset(::CreateWindowExW(0, WC_LISTBOXW, toUTF16(name).c_str(),
                                WS_CHILD | WS_VISIBLE | LBS_MULTIPLESEL | LBS_NOTIFY, 0, 0, 0, 0,
@@ -520,7 +520,7 @@ void ListBox::reset()
   message.send(hwnd.get(), LB_RESETCONTENT, 0, 0);
 }
 
-void ListBox::add(const std::string& string)
+void ListBox::add(const std::string &string)
 {
   message.send(hwnd.get(), LB_ADDSTRING, 0, toUTF16(string).c_str());
 }
@@ -530,7 +530,7 @@ bool ListBox::set(int index)
   return message.send(hwnd.get(), LB_SETCURSEL, index, 0) != CB_ERR ? true : false;
 }
 
-bool ListBox::set(const std::string& searchString)
+bool ListBox::set(const std::string &searchString)
 {
   return message.send(hwnd.get(), LB_SELECTSTRING, -1, toUTF16(searchString).c_str()) != CB_ERR ? true
                                                                                                 : false;
@@ -541,7 +541,7 @@ bool ListBox::set(const std::string& searchString)
   return message.send(hwnd.get(), LB_GETCURSEL, 0, 0);
 }
 
-::LRESULT ListBox::getItems(std::vector<int>& buffer)
+::LRESULT ListBox::getItems(std::vector<int> &buffer)
 {
   buffer.resize(getItemsCount());
   return message.send(hwnd.get(), LB_GETSELITEMS, getItemsCount(), buffer.data());
@@ -560,7 +560,7 @@ bool ListBox::set(const std::string& searchString)
 ::LRESULT CALLBACK ListBox::procedure(::HWND hwnd, ::UINT msg, ::WPARAM wparam, ::LPARAM lparam,
                                       ::UINT_PTR id, ::DWORD_PTR data)
 {
-  if (auto self{reinterpret_cast<ComboBox*>(data)}; self)
+  if (auto self{reinterpret_cast<ComboBox *>(data)}; self)
   {
     if (msg == WM_WINDOWPOSCHANGED)
     {
@@ -576,13 +576,13 @@ bool ListBox::set(const std::string& searchString)
   return ::DefSubclassProc(hwnd, msg, wparam, lparam);
 }
 
-void SystemMenu::add(std::wstring& name, ::UINT id)
+void SystemMenu::add(std::wstring &name, ::UINT id)
 {
   item.emplace_back(::MENUITEMINFOW{sizeof(::MENUITEMINFOW), MIIM_STRING | MIIM_ID, 0, 0, id, nullptr,
                                     nullptr, nullptr, 0, name.data(), 0, nullptr});
 }
 
-void SystemMenu::addToggle(std::wstring& name, ::UINT id, bool checked)
+void SystemMenu::addToggle(std::wstring &name, ::UINT id, bool checked)
 {
   item.emplace_back(::MENUITEMINFOW{sizeof(::MENUITEMINFOW),
                                     MIIM_STRING | MIIM_ID | MIIM_CHECKMARKS | MIIM_STATE, 0,
@@ -768,7 +768,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin)
                      {
                        sah->saveStandaloneAndPluginSettings(saveFile.parent_path(), saveFile.filename());
                      }
-                     catch (const fs::filesystem_error& e)
+                     catch (const fs::filesystem_error &e)
                      {
                        message.error("Unable to save state: {}", e.what());
                      }
@@ -802,7 +802,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin)
                                                                  saveFile.filename());
                        }
                      }
-                     catch (const fs::filesystem_error& e)
+                     catch (const fs::filesystem_error &e)
                      {
                        message.error("Unable to load state: {}", e.what());
                      }
@@ -826,7 +826,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin)
                          sah->tryLoadStandaloneAndPluginSettings(loadPath, "defaults.clapwrapper");
                        }
                      }
-                     catch (const fs::filesystem_error& e)
+                     catch (const fs::filesystem_error &e)
                      {
                        message.error("Unable to reset state: {}", e.what());
                      }
@@ -926,7 +926,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin)
             std::vector<int> ports;
             settings.midiIn.getItems(ports);
 
-            for (auto& midiIn : sah->midiIns)
+            for (auto &midiIn : sah->midiIns)
             {
               midiIn.reset();
             }
@@ -945,7 +945,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin)
                   sah->midiIns.push_back(std::move(midiIn));
                   sah->currentMidiPorts.push_back(port);
                 }
-                catch (RtMidiError& error)
+                catch (RtMidiError &error)
                 {
                   log("{}", error.getMessage());
                 };
@@ -1112,7 +1112,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin)
 
       adjustSize(pluginSize.width, pluginSize.height);
 
-      clap_window clapWindow{CLAP_WINDOW_API_WIN32, static_cast<void*>(hwnd.get())};
+      clap_window clapWindow{CLAP_WINDOW_API_WIN32, static_cast<void *>(hwnd.get())};
       plugin.gui->set_parent(plugin.plugin, &clapWindow);
     }
     else
@@ -1140,7 +1140,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin)
   startMIDI();
   refreshMIDIInputs();
 
-  sah->displayAudioError = [this](auto& errorText)
+  sah->displayAudioError = [this](auto &errorText)
   { message.error("Unable to configure audio: {}", errorText); };
 
   refreshApis();
@@ -1224,7 +1224,7 @@ void Plugin::refreshApis()
 {
   settings.api.reset();
 
-  for (auto& api : sah->getCompiledApi())
+  for (auto &api : sah->getCompiledApi())
   {
     settings.api.add(sah->rtaDac->getApiDisplayName(api));
   }
@@ -1234,7 +1234,7 @@ void Plugin::refreshOutputs()
 {
   settings.output.reset();
 
-  for (auto& device : sah->getOutputAudioDevices())
+  for (auto &device : sah->getOutputAudioDevices())
   {
     settings.output.add(device.name);
   }
@@ -1244,7 +1244,7 @@ void Plugin::refreshInputs()
 {
   settings.input.reset();
 
-  for (auto& device : sah->getInputAudioDevices())
+  for (auto &device : sah->getInputAudioDevices())
   {
     settings.input.add(device.name);
   }

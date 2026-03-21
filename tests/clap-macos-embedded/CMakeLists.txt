@@ -30,7 +30,7 @@ target_add_auv2_wrapper(
         BUNDLE_VERSION "1.0"
 
         # This allows CMake to override the auv2 extension configuration
-        PREFER_CMAKE_AUV2_CONFIGURATION TRUE
+        # PREFER_CMAKE_AUV2_CONFIGURATION TRUE
 
         MANUFACTURER_NAME "Free Audio"
         MANUFACTURER_CODE "FRaD"

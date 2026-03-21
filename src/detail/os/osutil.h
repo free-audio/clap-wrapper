@@ -61,8 +61,8 @@ class IPlugObject
   {
   }
 };
-void attach(IPlugObject* plugobject);
-void detach(IPlugObject* plugobject);
+void attach(IPlugObject *plugobject);
+void detach(IPlugObject *plugobject);
 uint64_t getTickInMS();
 
 // Used for clap_plugin_entry.init(). Path to DSO (Linux, Windows), or the bundle (macOS).

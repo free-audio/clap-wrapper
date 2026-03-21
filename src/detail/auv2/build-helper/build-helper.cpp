@@ -93,8 +93,9 @@ struct auInfo
   }
 };
 
-bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname, std::string &manu,
-                        std::string &manuName, std::vector<auInfo> &units)
+bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname, std::string manu,
+                        std::string manuName, std::string itype, std::string subt,
+                        std::vector<auInfo> &units)
 {
   Clap::Library loader;
   if (!loader.load(clapfile))
@@ -116,6 +117,11 @@ bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname
     manu = loader._pluginFactoryAUv2Info->manufacturer_code;
     manuName = loader._pluginFactoryAUv2Info->manufacturer_name;
     std::cout << "  - using factory manufacturer '" << manuName << "' (" << manu << ")" << std::endl;
+  }
+
+  if (!itype.empty() && !subt.empty() && loader.plugins.size() > 1)
+  {
+    std::cout << "[ERROR] Multi-plugin claps must speciy itype and subtype via extension" << std::endl;
   }
 
   static const char *encoder = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-";
@@ -141,12 +147,16 @@ bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname
       idHash = idHash >> 9;  // mix it up a bit
     }
 
-    u.subt = stH;
+    u.subt = subt.empty() ? stH : subt;
     u.manu = manu;
     u.manunm = manuName;
 
     auto f = clapPlug->features[0];
-    if (f == nullptr || strcmp(f, CLAP_PLUGIN_FEATURE_INSTRUMENT) == 0)
+    if (!itype.empty())
+    {
+      u.type = itype;
+    }
+    else if (f == nullptr || strcmp(f, CLAP_PLUGIN_FEATURE_INSTRUMENT) == 0)
     {
       u.type = "aumu";
     }
@@ -247,8 +257,21 @@ int main(int argc, char **argv)
     auto clapname = std::string(argv[idx++]);
     auto clapfile = std::string(argv[idx++]);
     auto bundlev = std::string(argv[idx++]);
-    auto mcode = (idx < argc) ? std::string(argv[idx++]) : std::string();
-    auto mname = (idx < argc) ? std::string(argv[idx++]) : std::string();
+
+    auto nerr = [](const auto &a)
+    {
+      if (a == "errr")
+        return std::string();
+      else
+        return a;
+    };
+
+    auto mcode = nerr((idx < argc) ? std::string(argv[idx++]) : std::string());
+    auto mname = nerr((idx < argc) ? std::string(argv[idx++]) : std::string());
+    ;
+
+    auto itype = nerr((idx < argc) ? std::string(argv[idx++]) : std::string());
+    auto isubt = nerr((idx < argc) ? std::string(argv[idx++]) : std::string());
 
     try
     {
@@ -274,7 +297,7 @@ int main(int argc, char **argv)
     std::cout << "  - building information from CLAP directly\n"
               << "  - source clap: '" << clapfile << "'" << std::endl;
 
-    if (!buildUnitsFromClap(clapfile, clapname, mcode, mname, units))
+    if (!buildUnitsFromClap(clapfile, clapname, mcode, mname, itype, isubt, units))
     {
       std::cout << "[ERROR] Can't build units from CLAP" << std::endl;
       return 4;

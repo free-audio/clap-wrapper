@@ -46,18 +46,18 @@ std::string toUTF8(std::wstring_view utf16);
 std::string formatMessage(::HRESULT errorCode);
 std::string getLastError();
 
-void log(const std::string& message);
-void log(const std::wstring& message);
+void log(const std::string &message);
+void log(const std::wstring &message);
 
 template <typename... Args>
-void log(const fmt::format_string<Args...> fmt, Args&&... args)
+void log(const fmt::format_string<Args...> fmt, Args &&...args)
 {
   ::OutputDebugStringW(toUTF16(fmt::vformat(fmt.get(), fmt::make_format_args(args...))).c_str());
   ::OutputDebugStringW(L"\n");
 }
 
 template <typename... Args>
-void log(const fmt::wformat_string<Args...> fmt, Args&&... args)
+void log(const fmt::wformat_string<Args...> fmt, Args &&...args)
 {
   ::OutputDebugStringW(fmt::vformat(fmt.get(), fmt::make_wformat_args(args...)).c_str());
   ::OutputDebugStringW(L"\n");
@@ -89,35 +89,35 @@ struct MessageHandler
     return ::SendMessageW(hwnd, msg, (::WPARAM)wparam, (::LPARAM)lparam);
   }
 
-  void box(const std::string& message);
-  void box(const std::wstring& message);
+  void box(const std::string &message);
+  void box(const std::wstring &message);
 
-  void error(const std::string& errorMessage);
-  void error(const std::wstring& errorMessage);
+  void error(const std::string &errorMessage);
+  void error(const std::wstring &errorMessage);
 
   template <typename... Args>
-  void box(const fmt::format_string<Args...> fmt, Args&&... args)
+  void box(const fmt::format_string<Args...> fmt, Args &&...args)
   {
     ::MessageBoxW(nullptr, toUTF16(fmt::vformat(fmt.get(), fmt::make_format_args(args...))).c_str(),
                   nullptr, MB_OK | MB_ICONASTERISK);
   }
 
   template <typename... Args>
-  void box(const fmt::wformat_string<Args...> fmt, Args&&... args)
+  void box(const fmt::wformat_string<Args...> fmt, Args &&...args)
   {
     ::MessageBoxW(nullptr, fmt::vformat(fmt.get(), fmt::make_wformat_args(args...)).c_str(), nullptr,
                   MB_OK | MB_ICONASTERISK);
   }
 
   template <typename... Args>
-  void error(const fmt::format_string<Args...> fmt, Args&&... args)
+  void error(const fmt::format_string<Args...> fmt, Args &&...args)
   {
     ::MessageBoxW(nullptr, toUTF16(fmt::vformat(fmt.get(), fmt::make_format_args(args...))).c_str(),
                   nullptr, MB_OK | MB_ICONHAND);
   }
 
   template <typename... Args>
-  void error(const fmt::wformat_string<Args...> fmt, Args&&... args)
+  void error(const fmt::wformat_string<Args...> fmt, Args &&...args)
   {
     ::MessageBoxW(nullptr, fmt::vformat(fmt.get(), fmt::make_wformat_args(args...)).c_str(), nullptr,
                   MB_OK | MB_ICONHAND);
@@ -137,7 +137,7 @@ struct Position
 
 struct Window
 {
-  void create(const std::string& title);
+  void create(const std::string &title);
 
   static ::LRESULT CALLBACK procedure(::HWND hwnd, ::UINT msg, ::WPARAM wparam, ::LPARAM lparam);
 
@@ -187,12 +187,12 @@ struct Control
 
 struct ComboBox final : public Control
 {
-  void create(const std::string& name, uintptr_t id, ::HWND parentHwnd);
+  void create(const std::string &name, uintptr_t id, ::HWND parentHwnd);
   void reset();
-  void add(const std::string& string);
+  void add(const std::string &string);
 
   bool set(int index);
-  bool set(const std::string& searchString);
+  bool set(const std::string &searchString);
   ::LRESULT get();
   ::LRESULT getItemHeight();
 
@@ -202,14 +202,14 @@ struct ComboBox final : public Control
 
 struct ListBox final : public Control
 {
-  void create(const std::string& name, uintptr_t id, ::HWND parentHwnd);
+  void create(const std::string &name, uintptr_t id, ::HWND parentHwnd);
   void reset();
-  void add(const std::string& string);
+  void add(const std::string &string);
 
   bool set(int index);
-  bool set(const std::string& searchString);
+  bool set(const std::string &searchString);
   ::LRESULT get();
-  ::LRESULT getItems(std::vector<int>& buffer);
+  ::LRESULT getItems(std::vector<int> &buffer);
   ::LRESULT getItemsCount();
   ::LRESULT getItemHeight();
 
@@ -219,8 +219,8 @@ struct ListBox final : public Control
 
 struct SystemMenu
 {
-  void add(std::wstring& name, ::UINT id);
-  void addToggle(std::wstring& name, ::UINT id, bool checked = false);
+  void add(std::wstring &name, ::UINT id);
+  void addToggle(std::wstring &name, ::UINT id, bool checked = false);
   void addSeparator();
   void populate(::HWND hwnd);
 
@@ -363,9 +363,9 @@ struct Plugin final : public Window
   struct ClapPlugin
   {
     std::shared_ptr<Clap::Plugin> clap;
-    const clap_plugin_t* plugin;
-    const clap_plugin_gui_t* gui;
-    const clap_plugin_state_t* state;
+    const clap_plugin_t *plugin;
+    const clap_plugin_gui_t *gui;
+    const clap_plugin_state_t *state;
   };
 
   explicit Plugin(std::shared_ptr<Clap::Plugin> clapPlugin);
@@ -388,7 +388,7 @@ struct Plugin final : public Window
   void initializeAudio(RtAudio::Api api = RtAudio::Api::WINDOWS_WASAPI);
   void startAudio();
 
-  freeaudio::clap_wrapper::standalone::StandaloneHost* sah{
+  freeaudio::clap_wrapper::standalone::StandaloneHost *sah{
       freeaudio::clap_wrapper::standalone::getStandaloneHost()};
 
   std::vector<::COMDLG_FILTERSPEC> fileTypes{{L"clapwrapper", L"*.clapwrapper"}};

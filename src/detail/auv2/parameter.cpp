@@ -4,14 +4,14 @@
 namespace Clap::AUv2
 {
 
-Parameter::Parameter(const clap_plugin_t* plugin, const clap_plugin_params_t* clap_param_ext,
-                     const clap_param_info_t& clap_param)
+Parameter::Parameter(const clap_plugin_t *plugin, const clap_plugin_params_t *clap_param_ext,
+                     const clap_param_info_t &clap_param)
 {
   updateInfo(plugin, clap_param_ext, clap_param);
 }
 
-void Parameter::updateInfo(const clap_plugin_t* plugin, const clap_plugin_params_t* clap_param_ext,
-                           const clap_param_info_t& i)
+void Parameter::updateInfo(const clap_plugin_t *plugin, const clap_plugin_params_t *clap_param_ext,
+                           const clap_param_info_t &i)
 {
   if (_cfstring)
   {
@@ -20,7 +20,7 @@ void Parameter::updateInfo(const clap_plugin_t* plugin, const clap_plugin_params
   _info = i;
   _cfstring = CFStringCreateWithCString(NULL, _info.name, kCFStringEncodingUTF8);
 
-  const auto& info = _info;
+  const auto &info = _info;
   AudioUnitParameterOptions flags = 0;
 
   flags |= kAudioUnitParameterFlag_Global;

@@ -38,10 +38,10 @@ using ParameterTree = std::map<uint32_t, std::unique_ptr<Clap::AUv2::Parameter>>
 
 struct ProcessData
 {
-  AudioUnitRenderActionFlags& flags;
-  const AudioTimeStamp& timestamp;
+  AudioUnitRenderActionFlags &flags;
+  const AudioTimeStamp &timestamp;
   uint32_t numSamples = 0;
-  void* audioUnit = nullptr;
+  void *audioUnit = nullptr;
 
   // -------------
   bool _AUtransportValid;  // true if:
@@ -83,48 +83,48 @@ typedef union clap_multi_event
 class IMIDIOutputs
 {
  public:
-  virtual ~IMIDIOutputs(){};
-  virtual void send(const clap_multi_event_t& event) = 0;
+  virtual ~IMIDIOutputs() {};
+  virtual void send(const clap_multi_event_t &event) = 0;
 };
 
 class ProcessAdapter
 {
  public:
-  void setupProcessing(ausdk::AUScope& audioInputs, ausdk::AUScope& audioOutputs,
-                       const clap_plugin_t* plugin, const clap_plugin_params_t* ext_params,
-                       Clap::IAutomation* automationInterface, ParameterTree* parameters,
-                       IMIDIOutputs* midiouts, uint32_t numMaxSamples, uint32_t preferredMIDIDialect);
+  void setupProcessing(ausdk::AUScope &audioInputs, ausdk::AUScope &audioOutputs,
+                       const clap_plugin_t *plugin, const clap_plugin_params_t *ext_params,
+                       Clap::IAutomation *automationInterface, ParameterTree *parameters,
+                       IMIDIOutputs *midiouts, uint32_t numMaxSamples, uint32_t preferredMIDIDialect);
 
-  void process(ProcessData& data);  // AU Data
+  void process(ProcessData &data);  // AU Data
   void flush();
 
   // interface for AUv2 wrapper:
   void addMIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData2, UInt32 inOffsetSampleFrame);
-  void addParameterEvent(const clap_param_info_t& info, double value, uint32_t inOffsetSampleFrame);
+  void addParameterEvent(const clap_param_info_t &info, double value, uint32_t inOffsetSampleFrame);
   // void startNote()
   ~ProcessAdapter();
 
  private:
   // necessary C callbacks:
-  static uint32_t input_events_size(const struct clap_input_events* list);
-  static const clap_event_header_t* input_events_get(const struct clap_input_events* list,
+  static uint32_t input_events_size(const struct clap_input_events *list);
+  static const clap_event_header_t *input_events_get(const struct clap_input_events *list,
                                                      uint32_t index);
 
-  static bool output_events_try_push(const struct clap_output_events* list,
-                                     const clap_event_header_t* event);
+  static bool output_events_try_push(const struct clap_output_events *list,
+                                     const clap_event_header_t *event);
 
   void sortEventIndices();
 
-  bool enqueueOutputEvent(const clap_event_header_t* event);
+  bool enqueueOutputEvent(const clap_event_header_t *event);
 
   void processOutputEvents();
 
-  void addToActiveNotes(const clap_event_note* note);
-  void removeFromActiveNotes(const clap_event_note* note);
+  void addToActiveNotes(const clap_event_note *note);
+  void removeFromActiveNotes(const clap_event_note *note);
 
   // the plugin
-  const clap_plugin_t* _plugin = nullptr;
-  const clap_plugin_params_t* _ext_params = nullptr;
+  const clap_plugin_t *_plugin = nullptr;
+  const clap_plugin_params_t *_ext_params = nullptr;
 
   // for automation gestures
   std::vector<clap_id> _gesturedParameters;
@@ -143,14 +143,14 @@ class ProcessAdapter
   uint32_t _numInputs = 0;
   uint32_t _numOutputs = 0;
 
-  clap_audio_buffer_t* _input_ports = nullptr;
-  clap_audio_buffer_t* _output_ports = nullptr;
+  clap_audio_buffer_t *_input_ports = nullptr;
+  clap_audio_buffer_t *_output_ports = nullptr;
   clap_event_transport_t _transport = {};
   clap_input_events_t _in_events = {};
   clap_output_events_t _out_events = {};
 
-  float* _silent_input = nullptr;
-  float* _silent_output = nullptr;
+  float *_silent_input = nullptr;
+  float *_silent_output = nullptr;
 
   clap_process_t _processData = {-1, 0, &_transport, nullptr, nullptr, 0, 0, &_in_events, &_out_events};
 
@@ -161,13 +161,13 @@ class ProcessAdapter
 
   uint32_t _preferred_midi_dialect = CLAP_NOTE_DIALECT_CLAP;
 
-  Clap::IAutomation* _automation = nullptr;
-  ParameterTree* _parameters = nullptr;
+  Clap::IAutomation *_automation = nullptr;
+  ParameterTree *_parameters = nullptr;
 
-  IMIDIOutputs* _midiouts = nullptr;
+  IMIDIOutputs *_midiouts = nullptr;
 
   // AU Process Data?
-  ausdk::AUScope* _audioInputScope = nullptr;
-  ausdk::AUScope* _audioOutputScope = nullptr;
+  ausdk::AUScope *_audioInputScope = nullptr;
+  ausdk::AUScope *_audioOutputScope = nullptr;
 };
 }  // namespace Clap::AUv2

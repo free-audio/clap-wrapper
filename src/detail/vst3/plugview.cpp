@@ -3,7 +3,7 @@
 #include <cassert>
 #include <iostream>
 
-WrappedView::WrappedView(const clap_plugin_t* plugin, const clap_plugin_gui_t* gui,
+WrappedView::WrappedView(const clap_plugin_t *plugin, const clap_plugin_gui_t *gui,
                          std::function<void()> onReleaseAdditionalReferences,
                          std::function<void(bool)> onDestroy, std::function<void()> onRunLoopAvailable)
   : IPlugView()
@@ -25,7 +25,7 @@ void WrappedView::ensure_ui()
 {
   if (!_created)
   {
-    const char* api{nullptr};
+    const char *api{nullptr};
 #if MAC
     api = CLAP_WINDOW_API_COCOA;
 #endif
@@ -79,13 +79,13 @@ tresult PLUGIN_API WrappedView::isPlatformTypeSupported(FIDString type)
 {
   static struct vst3_and_clap_match_types_t
   {
-    const char* VST3;
-    const char* CLAP;
+    const char *VST3;
+    const char *CLAP;
   } platformTypeMatches[] = {{kPlatformTypeHWND, CLAP_WINDOW_API_WIN32},
                              {kPlatformTypeNSView, CLAP_WINDOW_API_COCOA},
                              {kPlatformTypeX11EmbedWindowID, CLAP_WINDOW_API_X11},
                              {nullptr, nullptr}};
-  auto* n = platformTypeMatches;
+  auto *n = platformTypeMatches;
   while (n->VST3 && n->CLAP)
   {
     if (!strcmp(type, n->VST3))
@@ -101,7 +101,7 @@ tresult PLUGIN_API WrappedView::isPlatformTypeSupported(FIDString type)
   return kResultFalse;
 }
 
-tresult PLUGIN_API WrappedView::attached(void* parent, FIDString /*type*/)
+tresult PLUGIN_API WrappedView::attached(void *parent, FIDString /*type*/)
 {
 #if WIN
   _window = {CLAP_WINDOW_API_WIN32, {parent}};
@@ -156,7 +156,7 @@ tresult PLUGIN_API WrappedView::onKeyUp(char16 /*key*/, int16 /*keyCode*/, int16
   return kResultFalse;
 }
 
-tresult PLUGIN_API WrappedView::getSize(ViewRect* size)
+tresult PLUGIN_API WrappedView::getSize(ViewRect *size)
 {
   ensure_ui();
   if (size)
@@ -174,7 +174,7 @@ tresult PLUGIN_API WrappedView::getSize(ViewRect* size)
   return kInvalidArgument;
 }
 
-tresult PLUGIN_API WrappedView::onSize(ViewRect* newSize)
+tresult PLUGIN_API WrappedView::onSize(ViewRect *newSize)
 {
   // TODO: discussion took place if this call should be ignored completely
   // since it seems not to match the CLAP UI scheme.
@@ -217,7 +217,7 @@ tresult PLUGIN_API WrappedView::onFocus(TBool state)
   return kResultOk;
 }
 
-tresult PLUGIN_API WrappedView::setFrame(IPlugFrame* frame)
+tresult PLUGIN_API WrappedView::setFrame(IPlugFrame *frame)
 {
   releaseAdditionalReferences();
 
@@ -226,7 +226,7 @@ tresult PLUGIN_API WrappedView::setFrame(IPlugFrame* frame)
 #if LIN
   if (_plugFrame)
   {
-    if (_plugFrame->queryInterface(Steinberg::Linux::IRunLoop::iid, (void**)&_runLoop) ==
+    if (_plugFrame->queryInterface(Steinberg::Linux::IRunLoop::iid, (void **)&_runLoop) ==
             Steinberg::kResultOk &&
         _onRunLoopAvailable)
     {
@@ -243,7 +243,7 @@ tresult PLUGIN_API WrappedView::canResize()
   return _extgui->can_resize(_plugin) ? kResultOk : kResultFalse;
 }
 
-tresult PLUGIN_API WrappedView::checkSizeConstraint(ViewRect* rect)
+tresult PLUGIN_API WrappedView::checkSizeConstraint(ViewRect *rect)
 {
   ensure_ui();
   uint32_t w = rect->getWidth();

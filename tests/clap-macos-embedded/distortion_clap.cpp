@@ -16,7 +16,7 @@
 #include "distortion_clap_entry.h"
 #include "clapwrapper/auv2.h"
 
-static const char* features[] = {CLAP_PLUGIN_FEATURE_AUDIO_EFFECT, CLAP_PLUGIN_FEATURE_STEREO,
+static const char *features[] = {CLAP_PLUGIN_FEATURE_AUDIO_EFFECT, CLAP_PLUGIN_FEATURE_STEREO,
                                  CLAP_PLUGIN_FEATURE_DISTORTION, nullptr};
 
 static const clap_plugin_descriptor_t s_clap1stDist_desc = {
@@ -48,26 +48,26 @@ enum ParamIds
 typedef struct
 {
   clap_plugin_t plugin;
-  const clap_host_t* host;
-  const clap_host_log_t* hostLog;
-  const clap_host_params_t* hostParams;
+  const clap_host_t *host;
+  const clap_host_log_t *hostLog;
+  const clap_host_params_t *hostParams;
 
   float drive;
   float mix;
   int32_t mode;
 } clap1st_distortion_plug;
 
-static void clap1stDist_process_event(clap1st_distortion_plug* plug, const clap_event_header_t* hdr);
+static void clap1stDist_process_event(clap1st_distortion_plug *plug, const clap_event_header_t *hdr);
 
 ////////////////////////////
 // clap_plugin_track_info //
 ////////////////////////////
 
-static void clap1stDist_track_info_changed(const clap_plugin_t* plugin)
+static void clap1stDist_track_info_changed(const clap_plugin_t *plugin)
 {
-  auto* plug = (clap1st_distortion_plug*)plugin->plugin_data;
-  const clap_host_track_info_t* trackInfo =
-      (const clap_host_track_info_t*)plug->host->get_extension(plug->host, CLAP_EXT_TRACK_INFO);
+  auto *plug = (clap1st_distortion_plug *)plugin->plugin_data;
+  const clap_host_track_info_t *trackInfo =
+      (const clap_host_track_info_t *)plug->host->get_extension(plug->host, CLAP_EXT_TRACK_INFO);
 
   clap_track_info_t info;
   if (trackInfo && trackInfo->get(plug->host, &info))
@@ -87,14 +87,14 @@ static const clap_plugin_track_info_t s_clap1stDist_track_info = {
 // clap_plugin_audio_ports //
 /////////////////////////////
 
-static uint32_t clap1stDist_audio_ports_count(const clap_plugin_t* plugin, bool is_input)
+static uint32_t clap1stDist_audio_ports_count(const clap_plugin_t *plugin, bool is_input)
 {
   auto generateAWarningOnPurpose = 1.f;
   return 1;
 }
 
-static bool clap1stDist_audio_ports_get(const clap_plugin_t* plugin, uint32_t index, bool is_input,
-                                        clap_audio_port_info_t* info)
+static bool clap1stDist_audio_ports_get(const clap_plugin_t *plugin, uint32_t index, bool is_input,
+                                        clap_audio_port_info_t *info)
 {
   if (index > 0) return false;
   info->id = 0;
@@ -118,12 +118,12 @@ static const clap_plugin_audio_ports_t s_clap1stDist_audio_ports = {
 // clap_porams //
 //////////////////
 
-uint32_t clap1stDist_param_count(const clap_plugin_t* plugin)
+uint32_t clap1stDist_param_count(const clap_plugin_t *plugin)
 {
   return 3;
 }
-bool clap1stDist_param_get_info(const clap_plugin_t* plugin, uint32_t param_index,
-                                clap_param_info_t* param_info)
+bool clap1stDist_param_get_info(const clap_plugin_t *plugin, uint32_t param_index,
+                                clap_param_info_t *param_info)
 {
   switch (param_index)
   {
@@ -162,9 +162,9 @@ bool clap1stDist_param_get_info(const clap_plugin_t* plugin, uint32_t param_inde
   }
   return true;
 }
-bool clap1stDist_param_get_value(const clap_plugin_t* plugin, clap_id param_id, double* value)
+bool clap1stDist_param_get_value(const clap_plugin_t *plugin, clap_id param_id, double *value)
 {
-  auto* plug = (clap1st_distortion_plug*)plugin->plugin_data;
+  auto *plug = (clap1st_distortion_plug *)plugin->plugin_data;
 
   switch (param_id)
   {
@@ -186,10 +186,10 @@ bool clap1stDist_param_get_value(const clap_plugin_t* plugin, clap_id param_id, 
 
   return false;
 }
-bool clap1stDist_param_value_to_text(const clap_plugin_t* plugin, clap_id param_id, double value,
-                                     char* display, uint32_t size)
+bool clap1stDist_param_value_to_text(const clap_plugin_t *plugin, clap_id param_id, double value,
+                                     char *display, uint32_t size)
 {
-  auto* plug = (clap1st_distortion_plug*)plugin->plugin_data;
+  auto *plug = (clap1st_distortion_plug *)plugin->plugin_data;
 
   switch (param_id)
   {
@@ -220,22 +220,22 @@ bool clap1stDist_param_value_to_text(const clap_plugin_t* plugin, clap_id param_
   }
   return false;
 }
-bool clap1stDist_text_to_value(const clap_plugin_t* plugin, clap_id param_id, const char* display,
-                               double* value)
+bool clap1stDist_text_to_value(const clap_plugin_t *plugin, clap_id param_id, const char *display,
+                               double *value)
 {
   // I'm not going to bother to support this
   return false;
 }
-void clap1stDist_flush(const clap_plugin_t* plugin, const clap_input_events_t* in,
-                       const clap_output_events_t* out)
+void clap1stDist_flush(const clap_plugin_t *plugin, const clap_input_events_t *in,
+                       const clap_output_events_t *out)
 {
-  auto* plug = (clap1st_distortion_plug*)plugin->plugin_data;
+  auto *plug = (clap1st_distortion_plug *)plugin->plugin_data;
 
   int s = in->size(in);
   int q;
   for (q = 0; q < s; ++q)
   {
-    const clap_event_header_t* hdr = in->get(in, q);
+    const clap_event_header_t *hdr = in->get(in, q);
 
     clap1stDist_process_event(plug, hdr);
   }
@@ -245,9 +245,9 @@ static const clap_plugin_params_t s_clap1stDist_params = {
     clap1stDist_param_count,         clap1stDist_param_get_info, clap1stDist_param_get_value,
     clap1stDist_param_value_to_text, clap1stDist_text_to_value,  clap1stDist_flush};
 
-bool clap1stDist_state_save(const clap_plugin_t* plugin, const clap_ostream_t* stream)
+bool clap1stDist_state_save(const clap_plugin_t *plugin, const clap_ostream_t *stream)
 {
-  auto* plug = (clap1st_distortion_plug*)plugin->plugin_data;
+  auto *plug = (clap1st_distortion_plug *)plugin->plugin_data;
 
   // We need to save 2 doubles and an int to save our state plus a version. This is, of course, a
   // terrible implementation of state. You should do better.
@@ -264,7 +264,7 @@ bool clap1stDist_state_save(const clap_plugin_t* plugin, const clap_ostream_t* s
   memcpy(buffer + 12, &(plug->mode), sizeof(int32_t));
 
   int written = 0;
-  char* curr = buffer;
+  char *curr = buffer;
   while (written != buffersize)
   {
     int thiswrite = stream->write(stream, curr, buffersize - written);
@@ -276,15 +276,15 @@ bool clap1stDist_state_save(const clap_plugin_t* plugin, const clap_ostream_t* s
   return true;
 }
 
-bool clap1stDist_state_load(const clap_plugin_t* plugin, const clap_istream_t* stream)
+bool clap1stDist_state_load(const clap_plugin_t *plugin, const clap_istream_t *stream)
 {
-  auto* plug = (clap1st_distortion_plug*)plugin->plugin_data;
+  auto *plug = (clap1st_distortion_plug *)plugin->plugin_data;
 
   int buffersize = 16;
   char buffer[16];
 
   int read = 0;
-  char* curr = buffer;
+  char *curr = buffer;
   while (read != buffersize)
   {
     int thisread = stream->read(stream, curr, buffersize - read);
@@ -299,9 +299,9 @@ bool clap1stDist_state_load(const clap_plugin_t* plugin, const clap_istream_t* s
   memcpy(&plug->mix, buffer + 8, sizeof(float));
   memcpy(&plug->mode, buffer + 12, sizeof(int32_t));
 
-  const clap_host_t* clapHost = plug->host;
-  const clap_host_params_t* p =
-      (const clap_host_params_t*)(clapHost->get_extension(clapHost, CLAP_EXT_PARAMS));
+  const clap_host_t *clapHost = plug->host;
+  const clap_host_params_t *p =
+      (const clap_host_params_t *)(clapHost->get_extension(clapHost, CLAP_EXT_PARAMS));
   if (p)
   {
     p->rescan(clapHost, CLAP_PARAM_RESCAN_VALUES);
@@ -316,12 +316,12 @@ static const clap_plugin_state_t s_clap1stDist_state = {clap1stDist_state_save, 
 // clap_plugin //
 /////////////////
 
-static bool clap1stDist_init(const struct clap_plugin* plugin)
+static bool clap1stDist_init(const struct clap_plugin *plugin)
 {
-  auto* plug = (clap1st_distortion_plug*)plugin->plugin_data;
+  auto *plug = (clap1st_distortion_plug *)plugin->plugin_data;
 
   // Fetch host's extensions here
-  plug->hostLog = (const clap_host_log_t*)plug->host->get_extension(plug->host, CLAP_EXT_LOG);
+  plug->hostLog = (const clap_host_log_t *)plug->host->get_extension(plug->host, CLAP_EXT_LOG);
 
   plug->drive = 0.f;
   plug->mix = 0.5f;
@@ -335,36 +335,36 @@ static bool clap1stDist_init(const struct clap_plugin* plugin)
   return true;
 }
 
-static void clap1stDist_destroy(const struct clap_plugin* plugin)
+static void clap1stDist_destroy(const struct clap_plugin *plugin)
 {
-  auto* plug = (clap1st_distortion_plug*)plugin->plugin_data;
+  auto *plug = (clap1st_distortion_plug *)plugin->plugin_data;
   free(plug);
 }
 
-static bool clap1stDist_activate(const struct clap_plugin* plugin, double sample_rate,
+static bool clap1stDist_activate(const struct clap_plugin *plugin, double sample_rate,
                                  uint32_t min_frames_count, uint32_t max_frames_count)
 {
   return true;
 }
 
-static void clap1stDist_deactivate(const struct clap_plugin* plugin)
+static void clap1stDist_deactivate(const struct clap_plugin *plugin)
 {
 }
 
-static bool clap1stDist_start_processing(const struct clap_plugin* plugin)
+static bool clap1stDist_start_processing(const struct clap_plugin *plugin)
 {
   return true;
 }
 
-static void clap1stDist_stop_processing(const struct clap_plugin* plugin)
+static void clap1stDist_stop_processing(const struct clap_plugin *plugin)
 {
 }
 
-static void clap1stDist_reset(const struct clap_plugin* plugin)
+static void clap1stDist_reset(const struct clap_plugin *plugin)
 {
 }
 
-static void clap1stDist_process_event(clap1st_distortion_plug* plug, const clap_event_header_t* hdr)
+static void clap1stDist_process_event(clap1st_distortion_plug *plug, const clap_event_header_t *hdr)
 {
   if (hdr->space_id == CLAP_CORE_EVENT_SPACE_ID)
   {
@@ -372,7 +372,7 @@ static void clap1stDist_process_event(clap1st_distortion_plug* plug, const clap_
     {
       case CLAP_EVENT_PARAM_VALUE:
       {
-        const clap_event_param_value_t* ev = (const clap_event_param_value_t*)hdr;
+        const clap_event_param_value_t *ev = (const clap_event_param_value_t *)hdr;
         // TODO: handle parameter change
         switch (ev->param_id)
         {
@@ -392,10 +392,10 @@ static void clap1stDist_process_event(clap1st_distortion_plug* plug, const clap_
   }
 }
 
-static clap_process_status clap1stDist_process(const struct clap_plugin* plugin,
-                                               const clap_process_t* process)
+static clap_process_status clap1stDist_process(const struct clap_plugin *plugin,
+                                               const clap_process_t *process)
 {
-  auto* plug = (clap1st_distortion_plug*)plugin->plugin_data;
+  auto *plug = (clap1st_distortion_plug *)plugin->plugin_data;
 
   const uint32_t nframes = process->frames_count;
   const uint32_t nev = process->in_events->size(process->in_events);
@@ -407,7 +407,7 @@ static clap_process_status clap1stDist_process(const struct clap_plugin* plugin,
     /* handle every events that happrens at the frame "i" */
     while (ev_index < nev && next_ev_frame == i)
     {
-      const clap_event_header_t* hdr = process->in_events->get(process->in_events, ev_index);
+      const clap_event_header_t *hdr = process->in_events->get(process->in_events, ev_index);
       if (hdr->time != i)
       {
         next_ev_frame = hdr->time;
@@ -478,7 +478,7 @@ static clap_process_status clap1stDist_process(const struct clap_plugin* plugin,
   return CLAP_PROCESS_CONTINUE;
 }
 
-static const void* clap1stDist_get_extension(const struct clap_plugin* plugin, const char* id)
+static const void *clap1stDist_get_extension(const struct clap_plugin *plugin, const char *id)
 {
   if (!strcmp(id, CLAP_EXT_TRACK_INFO)) return &s_clap1stDist_track_info;
   if (!strcmp(id, CLAP_EXT_AUDIO_PORTS)) return &s_clap1stDist_audio_ports;
@@ -487,13 +487,13 @@ static const void* clap1stDist_get_extension(const struct clap_plugin* plugin, c
   return NULL;
 }
 
-static void clap1stDist_on_main_thread(const struct clap_plugin* plugin)
+static void clap1stDist_on_main_thread(const struct clap_plugin *plugin)
 {
 }
 
-clap_plugin_t* clap1stDist_create(const clap_host_t* host)
+clap_plugin_t *clap1stDist_create(const clap_host_t *host)
 {
-  auto* p = (clap1st_distortion_plug*)calloc(1, sizeof(clap1st_distortion_plug));
+  auto *p = (clap1st_distortion_plug *)calloc(1, sizeof(clap1st_distortion_plug));
   p->host = host;
   p->plugin.desc = &s_clap1stDist_desc;
   p->plugin.plugin_data = p;
@@ -517,19 +517,19 @@ clap_plugin_t* clap1stDist_create(const clap_host_t* host)
 // clap_plugin_factory //
 /////////////////////////
 
-uint32_t plugin_factory_get_plugin_count(const struct clap_plugin_factory* factory)
+uint32_t plugin_factory_get_plugin_count(const struct clap_plugin_factory *factory)
 {
   return 1;
 }
 
-const clap_plugin_descriptor_t* plugin_factory_get_plugin_descriptor(
-    const struct clap_plugin_factory* factory, uint32_t index)
+const clap_plugin_descriptor_t *plugin_factory_get_plugin_descriptor(
+    const struct clap_plugin_factory *factory, uint32_t index)
 {
   return &s_clap1stDist_desc;
 }
 
-const clap_plugin_t* plugin_factory_create_plugin(const struct clap_plugin_factory* factory,
-                                                  const clap_host_t* host, const char* plugin_id)
+const clap_plugin_t *plugin_factory_create_plugin(const struct clap_plugin_factory *factory,
+                                                  const clap_host_t *host, const char *plugin_id)
 {
   if (!clap_version_is_compatible(host->clap_version))
   {
@@ -547,7 +547,7 @@ static const clap_plugin_factory_t s_plugin_factory = {
     plugin_factory_create_plugin,
 };
 
-bool dist_entry_init(const char* plugin_path)
+bool dist_entry_init(const char *plugin_path)
 {
   // called only once, and very first
   return true;
@@ -558,8 +558,8 @@ void dist_entry_deinit(void)
   // called before unloading the DSO
 }
 
-static bool clap_get_auv2_info(const clap_plugin_factory_as_auv2* factory, uint32_t index,
-                               clap_plugin_info_as_auv2_t* info)
+static bool clap_get_auv2_info(const clap_plugin_factory_as_auv2 *factory, uint32_t index,
+                               clap_plugin_info_as_auv2_t *info)
 {
   auto desc = &s_clap1stDist_desc;
 
@@ -580,7 +580,7 @@ const struct clap_plugin_factory_as_auv2 s_auv2_factory = {"FRaD",        // man
                                                            "Free Audio",  // manu name
                                                            clap_get_auv2_info};
 
-const void* dist_entry_get_factory(const char* factory_id)
+const void *dist_entry_get_factory(const char *factory_id)
 {
   if (!strcmp(factory_id, CLAP_PLUGIN_FACTORY_ID)) return &s_plugin_factory;
   if (!strcmp(factory_id, CLAP_PLUGIN_FACTORY_INFO_AUV2)) return &s_auv2_factory;

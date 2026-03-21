@@ -15,6 +15,7 @@ SortIncludes: false
 NamespaceIndentation: None
 ReflowComments: false
 AllowShortFunctionsOnASingleLine: None
+PointerAlignment: Right
 ---
 Language: ObjC
 BasedOnStyle: Google
@@ -30,4 +31,5 @@ SortIncludes: false
 NamespaceIndentation: None
 ReflowComments: false
 AllowShortFunctionsOnASingleLine: None
+PointerAlignment: Right
 ...
