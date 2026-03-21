@@ -1273,9 +1273,11 @@ OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
 
   // Find 'data' key
   const void *pData = CFDictionaryGetValue(tDict, CFSTR(kAUPresetDataKey));
-  if (!pData || CFGetTypeID(CFTypeRef(pData)) != CFDataGetTypeID()) return -1;
-
-    /*
+  if (!pData || CFGetTypeID(CFTypeRef(pData)) != CFDataGetTypeID())
+  {
+    return -1;
+  }
+  /*
    * In the read side I fall through to default, whereas in the write
    * side I use an 'else' on the set of stream formats. This means
    * you at least try in case saved with an older wrapper version
