@@ -291,7 +291,7 @@ function(guarantee_aaxsdk)
         set(AAX_SDK_ROOT "${CMAKE_CURRENT_BINARY_DIR}/cpm/aaxsdk")
 
     else()
-        message(INFO "searching sdk")
+        message(STATUS "searching sdk")
         search_for_sdk_source(SDKDIR aax RESULT AAX_SDK_ROOT)
     endif()
 

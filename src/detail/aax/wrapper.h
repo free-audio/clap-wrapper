@@ -102,8 +102,8 @@ class AAXProcessAdapter
   };
   std::vector<ActiveNote> _activeNotes;
 
-  clap_audio_buffer_t *_input_ports = nullptr;
-  clap_audio_buffer_t *_output_ports = nullptr;
+  clap_audio_buffer_t *_input_ports = nullptr;    // raw pointer for compatibility with C API
+  clap_audio_buffer_t *_output_ports = nullptr;   // raw pointer for compatibility with C API
   clap_event_transport_t _transport = {};
   clap_input_events_t _in_events = {};
   clap_output_events_t _out_events = {};

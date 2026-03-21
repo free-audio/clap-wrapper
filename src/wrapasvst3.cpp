@@ -84,20 +84,20 @@ void utf8_to_utf16l(const char *utf8string, uint16_t *target, size_t targetsize)
     }
     else
     {
-      if (((byte & 0b11100000) == 0b11000000) && src[1])
+      if (((byte & 0b11100000) == 0b11000000) && src[pos + 1])
       {
         codepoint = byte & 0b00011111;
         codepoint = (codepoint << 6) | ((src[pos + 1]) & 0b00111111);
         pos += 2;
       }
-      else if (((byte & 0b11110000) == 0b11100000) && src[1] && src[2])
+      else if (((byte & 0b11110000) == 0b11100000) && src[pos + 1] && src[pos + 2])
       {
         codepoint = byte & 0b00001111;
         codepoint = (codepoint << 6) | ((src[pos + 1] & 0b00111111));
         codepoint = (codepoint << 6) | ((src[pos + 2] & 0b00111111));
         pos += 3;
       }
-      else if (((byte & 0b11111000) == 0b11110000) && src[1] && src[2] && src[3])
+      else if (((byte & 0b11111000) == 0b11110000) && src[pos + 1] && src[pos + 2] && src[pos + 3])
       {
         codepoint = byte & 0b00000111;
         codepoint = (codepoint << 6) | ((src[pos + 1] & 0b00111111));

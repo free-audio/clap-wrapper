@@ -58,7 +58,7 @@ function(target_add_aax_wrapper)
             )
     cmake_parse_arguments(AX "" "${oneValueArgs}" "" ${ARGN} )
 
-    message(INFO "target add aax wrapper: ${CLAP_WRAPPER_OUTPUT_NAME}")
+    message(STATUS "target add aax wrapper: ${CLAP_WRAPPER_OUTPUT_NAME}")
 
     guarantee_aaxsdk()
 

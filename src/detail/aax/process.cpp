@@ -35,7 +35,7 @@ inline clap_beattime doubleToBeatTime(double t)
 
 inline clap_sectime doubleToSecTime(double t)
 {
-  return round(t * CLAP_SECTIME_FACTOR);
+  return std::round(t * CLAP_SECTIME_FACTOR);
 }
 
 AAXProcessAdapter::~AAXProcessAdapter()

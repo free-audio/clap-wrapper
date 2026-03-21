@@ -73,14 +73,7 @@ class ClapAsAAXRegistry
   static bool Exists(ClapAsAAX *instance)
   {
     std::lock_guard<std::mutex> lock(GetMutex());
-    for (auto *inst : GetSet())
-    {
-      if (inst == instance)
-      {
-        return true;
-      }
-    }
-    return false;
+    return GetSet().find(instance) != GetSet().end();
   }
 
  private:
