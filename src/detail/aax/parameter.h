@@ -27,9 +27,9 @@ typedef struct AAXWrappedParameterInfo
   const clap_plugin_t *_plugin;
   const clap_plugin_params_t *_ext_params = nullptr;
   clap_param_info_t _clap_param_info;
-  std::string _aax_identifier;  // someone has too keep the buffer
+  std::string _aax_identifier;  // someone has to keep the buffer
   std::vector<AAX_CString> _names;
-  int32_t _paramAAXIndex;
+  int32_t _paramAAXIndex = 0;
 
   inline bool isAutomatable() const
   {
