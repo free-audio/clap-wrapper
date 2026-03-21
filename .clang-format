@@ -15,6 +15,7 @@ SortIncludes: false
 NamespaceIndentation: None
 ReflowComments: false
 AllowShortFunctionsOnASingleLine: None
+DerivePointerAlignment: false
 PointerAlignment: Right
 ---
 Language: ObjC
@@ -31,5 +32,6 @@ SortIncludes: false
 NamespaceIndentation: None
 ReflowComments: false
 AllowShortFunctionsOnASingleLine: None
+DerivePointerAlignment: false
 PointerAlignment: Right
 ...
