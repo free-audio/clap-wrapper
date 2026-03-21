@@ -10,9 +10,9 @@
 #include <cstdint>
 
 std::string createAAXId(clap_id id);
-uint32_t AAXIDfromString(const char* str);
-uint32_t AAXIDfromString(const std::string& str);
-std::vector<std::string> generateShortStrings(const std::string& input);
+uint32_t AAXIDfromString(const char *str);
+uint32_t AAXIDfromString(const std::string &str);
+std::vector<std::string> generateShortStrings(const std::string &input);
 
 #pragma once
 #include <atomic>
@@ -22,7 +22,7 @@ struct ParamChange
 {
   clap_id paramID;  // we are using the clap_id
   double value;     // applied to clap value range
-  void* cookie;     // cookie from param_info
+  void *cookie;     // cookie from param_info
 };
 
 class ParamChangeQueue
@@ -60,7 +60,7 @@ class ParamChangeQueue
   }
 
   // Producer thread (Control thread)
-  bool push(const ParamChange& change)
+  bool push(const ParamChange &change)
   {
     const uint64_t write = _writeIndex.load(std::memory_order_relaxed);
     const uint64_t nextWrite = write + 1;
@@ -74,7 +74,7 @@ class ParamChangeQueue
   }
 
   // Consumer thread (Audio thread)
-  bool pop(ParamChange& outChange)
+  bool pop(ParamChange &outChange)
   {
     const uint64_t read = _readIndex.load(std::memory_order_relaxed);
 
@@ -92,7 +92,7 @@ class ParamChangeQueue
   }
 
  private:
-  ParamChange* _buffer = nullptr;
+  ParamChange *_buffer = nullptr;
   size_t _capacity;
   size_t _indexMask;
 

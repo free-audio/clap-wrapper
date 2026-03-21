@@ -38,8 +38,8 @@ typedef uint8_t array_of_16_bytes[16];
 
 typedef struct clap_plugin_info_as_aax
 {
-  const char* vendor;    // vendor
-  const char* features;  // feature string for SubCategories
+  const char *vendor;    // vendor
+  const char *features;  // feature string for SubCategories
 } clap_plugin_info_as_aax_t;
 
 /*
@@ -53,16 +53,16 @@ typedef struct clap_plugin_info_as_aax
 
 typedef struct clap_plugin_factory_as_aax
 {
-  const char* package_name;  // the package name, otherwise the first plugin name is being used
+  const char *package_name;  // the package name, otherwise the first plugin name is being used
   uint32_t package_version;
 
   // retrieve additional information for the Steinberg::PClassInfo2 struct by pointer to clap_plugin_as_vst3
   // returns nullptr if no additional information is provided or can be a nullptr itself
-  const clap_plugin_info_as_aax_t*(CLAP_ABI* get_vst3_info)(const clap_plugin_factory_as_aax* factory,
-                                                            uint32_t index);
+  const clap_plugin_info_as_aax_t *(CLAP_ABI *get_vst3_info)(const clap_plugin_factory_as_aax *factory,
+                                                             uint32_t index);
 
-  bool(CLAP_ABI* can_apply_configuration)(const clap_plugin_t* plugin,
-                                          const struct clap_audio_port_configuration_request* requests,
+  bool(CLAP_ABI *can_apply_configuration)(const clap_plugin_t *plugin,
+                                          const struct clap_audio_port_configuration_request *requests,
                                           uint32_t request_count);
 
 } clap_plugin_factory_as_aax_t;
@@ -89,7 +89,7 @@ enum clap_supported_note_expressions_aax
 */
 typedef struct clap_plugin_as_aax
 {
-  uint32_t(CLAP_ABI* getNumMIDIChannels)(const clap_plugin* plugin, uint32_t note_port);  // return 1-16
-  uint32_t(CLAP_ABI* supportedNoteExpressions)(
-      const clap_plugin* plugin);  // returns a bitmap of clap_supported_note_expressions
+  uint32_t(CLAP_ABI *getNumMIDIChannels)(const clap_plugin *plugin, uint32_t note_port);  // return 1-16
+  uint32_t(CLAP_ABI *supportedNoteExpressions)(
+      const clap_plugin *plugin);  // returns a bitmap of clap_supported_note_expressions
 } clap_plugin_as_aax_t;

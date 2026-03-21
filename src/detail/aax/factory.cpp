@@ -7,13 +7,13 @@ namespace CLAPAAX
 {
 static Clap::Library gClapLibrary;
 
-bool findPlugin(Clap::Library& lib, const std::string& pluginfilename)
+bool findPlugin(Clap::Library &lib, const std::string &pluginfilename)
 {
   auto parentfolder = os::getParentFolderName();
   auto paths = Clap::getValidCLAPSearchPaths();
 
   // Strategy 1: look for a clap with the same name as this binary
-  for (auto& i : paths)
+  for (auto &i : paths)
   {
     if (!fs::exists(i)) continue;
     // try to find it the CLAP folder immediately
@@ -40,7 +40,7 @@ bool findPlugin(Clap::Library& lib, const std::string& pluginfilename)
     }
 
     // Strategy 3: enumerate folders in CLAP folder and try to locate the plugin in any sub folder (only one level)
-    for (const auto& subdir : fs::directory_iterator(i))
+    for (const auto &subdir : fs::directory_iterator(i))
     {
       auto k3 = i / subdir / pluginfilename;
       LOGDETAIL("scanning for binary: {}", k3.u8string().c_str());
@@ -57,7 +57,7 @@ bool findPlugin(Clap::Library& lib, const std::string& pluginfilename)
   return false;
 }
 
-Clap::Library* guarantee_clap()
+Clap::Library *guarantee_clap()
 {
 #if 1
   // if there is no ClapLibrary yet

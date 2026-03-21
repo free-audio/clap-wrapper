@@ -70,23 +70,23 @@ class AAXProcessAdapter
   clap_process_t _process;  // process_t for clap
 
   ~AAXProcessAdapter();
-  void applyBusSetting(const clap_plugin_t* plugin, const char* buslayout,
-                       const clap_plugin_configurable_audio_ports_t* ext);
-  void setupProcessing(const clap_plugin_t* plugin, double samplerate,
-                       const clap_plugin_params_t* ext_param, const clap_plugin_audio_ports* ext_audio,
-                       Clap::IAutomation* automation, ParamChangeQueue& inqueue, uint32_t midiportid,
+  void applyBusSetting(const clap_plugin_t *plugin, const char *buslayout,
+                       const clap_plugin_configurable_audio_ports_t *ext);
+  void setupProcessing(const clap_plugin_t *plugin, double samplerate,
+                       const clap_plugin_params_t *ext_param, const clap_plugin_audio_ports *ext_audio,
+                       Clap::IAutomation *automation, ParamChangeQueue &inqueue, uint32_t midiportid,
                        bool preferMIDI);
-  void process(SAAX_Wrapper_AlgorithmicContext* context);
+  void process(SAAX_Wrapper_AlgorithmicContext *context);
   void flush();
 
  private:
   // the plugin
-  const clap_plugin_t* _plugin = nullptr;
-  const clap_plugin_params_t* _ext_param = nullptr;
+  const clap_plugin_t *_plugin = nullptr;
+  const clap_plugin_params_t *_ext_param = nullptr;
   // for automation gestures
   std::vector<clap_id> _gesturedParameters;
 
-  Clap::IAutomation* _automation = nullptr;
+  Clap::IAutomation *_automation = nullptr;
 
   // for Note Expressions - check if we need that
   struct ActiveNote
@@ -99,8 +99,8 @@ class AAXProcessAdapter
   };
   std::vector<ActiveNote> _activeNotes;
 
-  clap_audio_buffer_t* _input_ports = nullptr;
-  clap_audio_buffer_t* _output_ports = nullptr;
+  clap_audio_buffer_t *_input_ports = nullptr;
+  clap_audio_buffer_t *_output_ports = nullptr;
   clap_event_transport_t _transport = {};
   clap_input_events_t _in_events = {};
   clap_output_events_t _out_events = {};
@@ -109,23 +109,23 @@ class AAXProcessAdapter
   std::vector<clap_multi_event_t> _events;
   std::vector<size_t> _eventindices;
   double _samplerate = 44100;
-  float* _silent_input = nullptr;
-  float* _silent_output = nullptr;
+  float *_silent_input = nullptr;
+  float *_silent_output = nullptr;
 
-  ParamChangeQueue* _inqueue;
+  ParamChangeQueue *_inqueue;
 
   void sortEventIndices();
 
-  static bool output_events_try_push(const struct clap_output_events* list,
-                                     const clap_event_header_t* event);
+  static bool output_events_try_push(const struct clap_output_events *list,
+                                     const clap_event_header_t *event);
 
-  bool enqueueOutputEvent(const clap_event_header_t* event);
-  void addToActiveNotes(const clap_event_note* note);
-  void removeFromActiveNotes(const clap_event_note* note);
+  bool enqueueOutputEvent(const clap_event_header_t *event);
+  void addToActiveNotes(const clap_event_note *note);
+  void removeFromActiveNotes(const clap_event_note *note);
 
   // the functions for the event list callback
-  static uint32_t CLAP_ABI input_events_size(const struct clap_input_events* list);
-  static const clap_event_header_t* CLAP_ABI input_events_get(const struct clap_input_events* list,
+  static uint32_t CLAP_ABI input_events_size(const struct clap_input_events *list);
+  static const clap_event_header_t *CLAP_ABI input_events_get(const struct clap_input_events *list,
                                                               uint32_t index);
 
   // MIDI
@@ -133,8 +133,8 @@ class AAXProcessAdapter
   bool _midi_prefer_mididialect = true;
 };
 
-AAX_Result GetEffectDescriptions(AAX_ICollection* outDescriptions);
-AAX_CEffectParameters* AAX_CALLBACK ClapAsAAX_Create();
+AAX_Result GetEffectDescriptions(AAX_ICollection *outDescriptions);
+AAX_CEffectParameters *AAX_CALLBACK ClapAsAAX_Create();
 
 class ClapAsAAX : public AAX_CEffectParameters,
                   public Clap::IHost,
@@ -146,18 +146,18 @@ class ClapAsAAX : public AAX_CEffectParameters,
   ClapAsAAX();
   virtual ~ClapAsAAX();
   AAX_Result EffectInit() override;
-  AAX_Result ResetFieldData(AAX_CFieldIndex iFieldIndex, void* oData, uint32_t iDataSize) const override;
+  AAX_Result ResetFieldData(AAX_CFieldIndex iFieldIndex, void *oData, uint32_t iDataSize) const override;
   AAX_Result TimerWakeup() override;
-  AAX_Result GetParameterIsAutomatable(AAX_CParamID iParameterID, AAX_CBoolean* itIs) const override;
-  AAX_Result GetParameterNumberOfSteps(AAX_CParamID iParameterID, int32_t* aNumSteps) const override;
-  AAX_Result GetParameterValueString(AAX_CParamID iParameterID, AAX_IString* oValueString,
+  AAX_Result GetParameterIsAutomatable(AAX_CParamID iParameterID, AAX_CBoolean *itIs) const override;
+  AAX_Result GetParameterNumberOfSteps(AAX_CParamID iParameterID, int32_t *aNumSteps) const override;
+  AAX_Result GetParameterValueString(AAX_CParamID iParameterID, AAX_IString *oValueString,
                                      int32_t iMaxLength) const override;
-  AAX_Result GetParameterValueFromString(AAX_CParamID iParameterID, double* oValuePtr,
-                                         const AAX_IString& iValueString) const override;
+  AAX_Result GetParameterValueFromString(AAX_CParamID iParameterID, double *oValuePtr,
+                                         const AAX_IString &iValueString) const override;
   AAX_Result GetParameterStringFromValue(AAX_CParamID iParameterID, double value,
-                                         AAX_IString* valueString, int32_t maxLength) const override;
-  AAX_Result GetParameterName(AAX_CParamID iParameterID, AAX_IString* oName) const override;
-  AAX_Result GetParameterNameOfLength(AAX_CParamID iParameterID, AAX_IString* oName,
+                                         AAX_IString *valueString, int32_t maxLength) const override;
+  AAX_Result GetParameterName(AAX_CParamID iParameterID, AAX_IString *oName) const override;
+  AAX_Result GetParameterNameOfLength(AAX_CParamID iParameterID, AAX_IString *oName,
                                       int32_t iNameLength) const override;
 
   // override to catch value changes and pass it to the local queue
@@ -165,24 +165,24 @@ class ClapAsAAX : public AAX_CEffectParameters,
                                             AAX_EUpdateSource iSource) override;
 
   //---The Clunky Chunk-------------------------------------------------------------------
-  AAX_Result GetNumberOfChunks(int32_t* oNumChunks) const override;
-  AAX_Result GetChunkIDFromIndex(int32_t iIndex, AAX_CTypeID* oChunkID) const override;
-  AAX_Result GetChunkSize(AAX_CTypeID iChunkID, uint32_t* oSize) const override;
-  AAX_Result GetChunk(AAX_CTypeID iChunkID, AAX_SPlugInChunk* oChunk) const override;
-  AAX_Result SetChunk(AAX_CTypeID iChunkID, const AAX_SPlugInChunk* iChunk) override;
+  AAX_Result GetNumberOfChunks(int32_t *oNumChunks) const override;
+  AAX_Result GetChunkIDFromIndex(int32_t iIndex, AAX_CTypeID *oChunkID) const override;
+  AAX_Result GetChunkSize(AAX_CTypeID iChunkID, uint32_t *oSize) const override;
+  AAX_Result GetChunk(AAX_CTypeID iChunkID, AAX_SPlugInChunk *oChunk) const override;
+  AAX_Result SetChunk(AAX_CTypeID iChunkID, const AAX_SPlugInChunk *iChunk) override;
 
   AAX_Result NotificationReceived(/* AAX_ENotificationEvent */ AAX_CTypeID inNotificationType,
-                                  const void* inNotificationData,
+                                  const void *inNotificationData,
                                   uint32_t inNotificationDataSize) override;
 
   //---Clap::IHost------------------------------------------------------------------------
 
-  void setupWrapperSpecifics(const clap_plugin_t* plugin) override;
+  void setupWrapperSpecifics(const clap_plugin_t *plugin) override;
 
-  void setupAudioBusses(const clap_plugin_t* plugin,
-                        const clap_plugin_audio_ports_t* audioports) override;
-  void setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_note_ports_t* noteports) override;
-  void setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params) override;
+  void setupAudioBusses(const clap_plugin_t *plugin,
+                        const clap_plugin_audio_ports_t *audioports) override;
+  void setupMIDIBusses(const clap_plugin_t *plugin, const clap_plugin_note_ports_t *noteports) override;
+  void setupParameters(const clap_plugin_t *plugin, const clap_plugin_params_t *params) override;
 
   void param_rescan(clap_param_rescan_flags flags) override;
   void param_clear(clap_id param, clap_param_clear_flags flags) override;
@@ -204,19 +204,19 @@ class ClapAsAAX : public AAX_CEffectParameters,
   void request_callback() override;
 
   // clap_timer support
-  bool register_timer(uint32_t period_ms, clap_id* timer_id) override;
+  bool register_timer(uint32_t period_ms, clap_id *timer_id) override;
   bool unregister_timer(clap_id timer_id) override;
 
-  bool track_info_get(clap_track_info_t* info) override;
-  const char* host_get_name() override;
+  bool track_info_get(clap_track_info_t *info) override;
+  const char *host_get_name() override;
 
   bool supportsContextMenu() const override;
   // context_menu
-  bool context_menu_populate(const clap_context_menu_target_t* target,
-                             const clap_context_menu_builder_t* builder) override;
-  bool context_menu_perform(const clap_context_menu_target_t* target, clap_id action_id) override;
+  bool context_menu_populate(const clap_context_menu_target_t *target,
+                             const clap_context_menu_builder_t *builder) override;
+  bool context_menu_perform(const clap_context_menu_target_t *target, clap_id action_id) override;
   bool context_menu_can_popup() override;
-  bool context_menu_popup(const clap_context_menu_target_t* target, int32_t screen_index, int32_t x,
+  bool context_menu_popup(const clap_context_menu_target_t *target, int32_t screen_index, int32_t x,
                           int32_t y) override;
 
   void onIdle() override;
@@ -226,13 +226,13 @@ class ClapAsAAX : public AAX_CEffectParameters,
   void startProcessing();
   void stopProcessing();
 
-  void process(SAAX_Wrapper_AlgorithmicContext* context);
+  void process(SAAX_Wrapper_AlgorithmicContext *context);
 
  protected:
-  Clap::Library* _library = nullptr;
+  Clap::Library *_library = nullptr;
   std::shared_ptr<Clap::Plugin> _plugin;
 
-  void* _creationcontext = nullptr;  // context from the CLAP library
+  void *_creationcontext = nullptr;  // context from the CLAP library
   os::State _os_attached;
 
   std::string _wrapper_hostname = "CLAP-As-AAX-Wrapper";
@@ -241,9 +241,9 @@ class ClapAsAAX : public AAX_CEffectParameters,
   std::map<std::string, std::shared_ptr<AAXWrappedParameterInfo_t>> _parameterMap;
   std::map<uint32_t, std::shared_ptr<AAXWrappedParameterInfo_t>> _parameterMapCLAP;
 
-  Wrapped_AAX_GUI* _aax_view = nullptr;
+  Wrapped_AAX_GUI *_aax_view = nullptr;
 
-  AAX_IController* _aax_ctrl = nullptr;
+  AAX_IController *_aax_ctrl = nullptr;
 
   mutable Clap::StateMemento _state;
 
@@ -263,6 +263,6 @@ class ClapAsAAX : public AAX_CEffectParameters,
  private:
   // from Clap::IAutomation
   void onBeginEdit(clap_id id) override;
-  void onPerformEdit(const clap_event_param_value_t* value) override;
+  void onPerformEdit(const clap_event_param_value_t *value) override;
   void onEndEdit(clap_id id) override;
 };

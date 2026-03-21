@@ -3,7 +3,7 @@
 #include "clap/clap.h"
 #include "AAX_CEffectGUI.h"
 
-AAX_IEffectGUI* AAX_CALLBACK Wrapped_AAX_GUI_Create(void);
+AAX_IEffectGUI *AAX_CALLBACK Wrapped_AAX_GUI_Create(void);
 
 class ClapAsAAX;
 
@@ -21,18 +21,18 @@ class Wrapped_AAX_GUI : public AAX_CEffectGUI
   void CreateViewContainer() AAX_OVERRIDE;
   void DeleteViewContainer() AAX_OVERRIDE;
 
-  AAX_Result GetViewSize(AAX_Point* oEffectViewSize) const AAX_OVERRIDE;
+  AAX_Result GetViewSize(AAX_Point *oEffectViewSize) const AAX_OVERRIDE;
 
   AAX_Result TimerWakeup() AAX_OVERRIDE;
 
   // Wrapped_AAX_GUI
-  virtual void CreateEffectView(void* inSystemWindow);
+  virtual void CreateEffectView(void *inSystemWindow);
 
  protected:
-  ClapAsAAX* _clap = nullptr;
-  const clap_plugin_t* _plugin = nullptr;
-  const clap_plugin_gui_t* _gui = nullptr;
-  clap_window_t _platformwindow = {nullptr, {(void*)nullptr}};
+  ClapAsAAX *_clap = nullptr;
+  const clap_plugin_t *_plugin = nullptr;
+  const clap_plugin_gui_t *_gui = nullptr;
+  clap_window_t _platformwindow = {nullptr, {(void *)nullptr}};
   bool _created = false;
   bool _resizeInTimer = false;
 };

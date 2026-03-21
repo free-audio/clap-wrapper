@@ -8,17 +8,17 @@
 #include "clap_proxy.h"
 #include "factory.h"
 
-std::vector<std::string> getAvailableBusConfigs(const char* pluginid)
+std::vector<std::string> getAvailableBusConfigs(const char *pluginid)
 {
   // the local microhost
   // why here? because we have factory and the clap-id
   static const clap_host_params_t micro_params = {
-      [](const clap_host_t* host, clap_param_rescan_flags flags) -> void {},
-      [](const clap_host_t* host, clap_id param_id, clap_param_clear_flags flags) -> void {},
-      [](const clap_host_t* host) -> void {}};
+      [](const clap_host_t *host, clap_param_rescan_flags flags) -> void {},
+      [](const clap_host_t *host, clap_id param_id, clap_param_clear_flags flags) -> void {},
+      [](const clap_host_t *host) -> void {}};
   static const clap_host_audio_ports_t micro_audio_ports = {
-      [](const clap_host_t* host, uint32_t flag) -> bool { return false; },
-      [](const clap_host_t* host, uint32_t flags) -> void {}};
+      [](const clap_host_t *host, uint32_t flag) -> bool { return false; },
+      [](const clap_host_t *host, uint32_t flags) -> void {}};
   clap_host_t microhost = {
       CLAP_VERSION,
       nullptr,
@@ -26,7 +26,7 @@ std::vector<std::string> getAvailableBusConfigs(const char* pluginid)
       "clap_wrapper",
       "",
       "1.0",
-      [](const struct clap_host* host, const char* extension_id) -> const void*
+      [](const struct clap_host *host, const char *extension_id) -> const void *
       {
         if (extension_id == nullptr) return nullptr;
         os::log(extension_id);
@@ -34,9 +34,9 @@ std::vector<std::string> getAvailableBusConfigs(const char* pluginid)
         if (!strcmp(CLAP_EXT_AUDIO_PORTS, extension_id)) return &micro_audio_ports;
         return nullptr;
       },
-      [](const struct clap_host* host) -> void {},  // request_restart
-      [](const struct clap_host* host) -> void {},  // request_process
-      [](const struct clap_host* host) -> void {},  // request_callback
+      [](const struct clap_host *host) -> void {},  // request_restart
+      [](const struct clap_host *host) -> void {},  // request_process
+      [](const struct clap_host *host) -> void {},  // request_callback
   };
 
   // -------------------------------------------------------------------------
@@ -71,7 +71,7 @@ std::vector<std::string> getAvailableBusConfigs(const char* pluginid)
       try
       {
         // create a temporary plugin instance ------------------
-        auto* tmpplug =
+        auto *tmpplug =
             factory->_pluginFactory->create_plugin(factory->_pluginFactory, &microhost, i->id);
         try
         {
@@ -94,7 +94,7 @@ std::vector<std::string> getAvailableBusConfigs(const char* pluginid)
         }
         tmpplug->destroy(tmpplug);
       }
-      catch (std::exception& e)
+      catch (std::exception &e)
       {
         os::log(e.what());
       }

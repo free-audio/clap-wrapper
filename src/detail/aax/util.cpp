@@ -17,7 +17,7 @@
 
 // clang_format off
 
-uint32_t fnv1a_keogh(const char* input)
+uint32_t fnv1a_keogh(const char *input)
 {
   uint32_t hash = 0x811c9dc5;
 
@@ -53,7 +53,7 @@ std::string createAAXId(clap_id id)
 
 // an AAXID is a FourCC
 static const char _map[64] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz$";
-uint32_t AAXIDfromString(const char* str)
+uint32_t AAXIDfromString(const char *str)
 {
   // re-use the standard hash function
   auto p = fnv1a_keogh(str);
@@ -64,12 +64,12 @@ uint32_t AAXIDfromString(const char* str)
   return res;
 }
 
-uint32_t AAXIDfromString(const std::string& str)
+uint32_t AAXIDfromString(const std::string &str)
 {
   return AAXIDfromString(str.c_str());
 }
 
-std::vector<std::string> generateShortStrings(const std::string& input)
+std::vector<std::string> generateShortStrings(const std::string &input)
 {
   std::vector<std::string> result;
 
@@ -141,7 +141,7 @@ std::vector<std::string> generateShortStrings(const std::string& input)
 }
 
 // Function to shorten a string to a 4-character string
-std::string ShortenString(const std::string& input)
+std::string ShortenString(const std::string &input)
 {
   std::istringstream iss(input);
   std::vector<std::string> words;
@@ -156,7 +156,7 @@ std::string ShortenString(const std::string& input)
   std::string result;
 
   // Add the first letters of the words
-  for (const auto& w : words)
+  for (const auto &w : words)
   {
     result += w[0];
   }
@@ -164,7 +164,7 @@ std::string ShortenString(const std::string& input)
   // If the resulting string is shorter than 4 characters, add more letters
   if (result.length() < 4)
   {
-    for (const auto& w : words)
+    for (const auto &w : words)
     {
       for (size_t i = 1; i < w.length() && result.length() < 4; ++i)
       {

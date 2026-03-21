@@ -104,21 +104,21 @@ struct AudioSetup
 
 struct ClapPluginExtensions
 {
-  const clap_plugin_state_t* _state = nullptr;
-  const clap_plugin_params_t* _params = nullptr;
-  const clap_plugin_audio_ports_t* _audioports = nullptr;
-  const clap_plugin_configurable_audio_ports_t* _configurable_audio_ports = nullptr;
-  const clap_plugin_gui_t* _gui = nullptr;
-  const clap_plugin_note_ports_t* _noteports = nullptr;
-  const clap_plugin_latency_t* _latency = nullptr;
-  const clap_plugin_render_t* _render = nullptr;
-  const clap_plugin_tail_t* _tail = nullptr;
-  const clap_plugin_timer_support_t* _timer = nullptr;
-  const clap_plugin_track_info_t* _trackinfo = nullptr;
-  const clap_plugin_context_menu_t* _contextmenu = nullptr;
-  const clap_ara_plugin_extension_t* _ara = nullptr;
-  const clap_plugin_gain_adjustment_metering_t* _gainreduc = nullptr;
-    const clap_plugin_auv2_param_ordering_t *_auv2_param_ordering = nullptr;
+  const clap_plugin_state_t *_state = nullptr;
+  const clap_plugin_params_t *_params = nullptr;
+  const clap_plugin_audio_ports_t *_audioports = nullptr;
+  const clap_plugin_configurable_audio_ports_t *_configurable_audio_ports = nullptr;
+  const clap_plugin_gui_t *_gui = nullptr;
+  const clap_plugin_note_ports_t *_noteports = nullptr;
+  const clap_plugin_latency_t *_latency = nullptr;
+  const clap_plugin_render_t *_render = nullptr;
+  const clap_plugin_tail_t *_tail = nullptr;
+  const clap_plugin_timer_support_t *_timer = nullptr;
+  const clap_plugin_track_info_t *_trackinfo = nullptr;
+  const clap_plugin_context_menu_t *_contextmenu = nullptr;
+  const clap_ara_plugin_extension_t *_ara = nullptr;
+  const clap_plugin_gain_adjustment_metering_t *_gainreduc = nullptr;
+  const clap_plugin_auv2_param_ordering_t *_auv2_param_ordering = nullptr;
 #if LIN
   const clap_plugin_posix_fd_support *_posixfd = nullptr;
 #endif

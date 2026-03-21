@@ -52,28 +52,28 @@
 class ClapAsAAXRegistry
 {
  public:
-  static void Register(ClapAsAAX* instance)
+  static void Register(ClapAsAAX *instance)
   {
     std::lock_guard<std::mutex> lock(GetMutex());
     GetSet().insert(instance);
   }
-  static void Unregister(ClapAsAAX* instance)
+  static void Unregister(ClapAsAAX *instance)
   {
     std::lock_guard<std::mutex> lock(GetMutex());
     GetSet().erase(instance);
   }
-  static void ForEach(const std::function<void(ClapAsAAX*)>& fn)
+  static void ForEach(const std::function<void(ClapAsAAX *)> &fn)
   {
     std::lock_guard<std::mutex> lock(GetMutex());
-    for (auto* inst : GetSet())
+    for (auto *inst : GetSet())
     {
       fn(inst);
     }
   }
-  static bool Exists(ClapAsAAX* instance)
+  static bool Exists(ClapAsAAX *instance)
   {
     std::lock_guard<std::mutex> lock(GetMutex());
-    for (auto* inst : GetSet())
+    for (auto *inst : GetSet())
     {
       if (inst == instance)
       {
@@ -84,12 +84,12 @@ class ClapAsAAXRegistry
   }
 
  private:
-  static std::unordered_set<ClapAsAAX*>& GetSet()
+  static std::unordered_set<ClapAsAAX *> &GetSet()
   {
-    static std::unordered_set<ClapAsAAX*> set;
+    static std::unordered_set<ClapAsAAX *> set;
     return set;
   }
-  static std::mutex& GetMutex()
+  static std::mutex &GetMutex()
   {
     static std::mutex mtx;
     return mtx;
@@ -97,7 +97,7 @@ class ClapAsAAXRegistry
 };
 
 int32_t AAX_CALLBACK
-AAXWrapper_inInstanceInitProc(const SAAX_Wrapper_AlgorithmicContext* inInstanceContextPtr,
+AAXWrapper_inInstanceInitProc(const SAAX_Wrapper_AlgorithmicContext *inInstanceContextPtr,
                               AAX_EComponentInstanceInitAction inAction)
 {
   auto self = inInstanceContextPtr->mPrivateData->wrapper;
@@ -131,13 +131,13 @@ AAXWrapper_inInstanceInitProc(const SAAX_Wrapper_AlgorithmicContext* inInstanceC
 
 int32_t AAX_CALLBACK AAXWrapper_BackgroundProc()
 {
-  ClapAsAAXRegistry::ForEach([](ClapAsAAX* instance) { instance->onIdle(); });
+  ClapAsAAXRegistry::ForEach([](ClapAsAAX *instance) { instance->onIdle(); });
   return AAX_SUCCESS;
 }
 
 // AAX needs all the description for a component in advance - there is no dynamic thing in here.
-static void DescribeAlgorithmComponent(AAX_IComponentDescriptor* outDesc,
-                                       const clap_plugin_descriptor_t* clapDescriptor)
+static void DescribeAlgorithmComponent(AAX_IComponentDescriptor *outDesc,
+                                       const clap_plugin_descriptor_t *clapDescriptor)
 {
   AAX_CheckedResult err;
 
@@ -215,7 +215,7 @@ static void DescribeAlgorithmComponent(AAX_IComponentDescriptor* outDesc,
   // Register processing callbacks
   //
   // Create a property map
-  AAX_IPropertyMap* const properties = outDesc->NewPropertyMap();
+  AAX_IPropertyMap *const properties = outDesc->NewPropertyMap();
   if (!properties) err = AAX_ERROR_NULL_OBJECT;
   //
   // Generic properties
@@ -287,8 +287,8 @@ static void DescribeAlgorithmComponent(AAX_IComponentDescriptor* outDesc,
 
 */
 
-static AAX_Result DescribeEffectFromClap(AAX_IEffectDescriptor* outDescriptor,
-                                         const clap_plugin_descriptor_t* clapDescriptor)
+static AAX_Result DescribeEffectFromClap(AAX_IEffectDescriptor *outDescriptor,
+                                         const clap_plugin_descriptor_t *clapDescriptor)
 {
   using namespace CLAPAAX;
 
@@ -297,13 +297,13 @@ static AAX_Result DescribeEffectFromClap(AAX_IEffectDescriptor* outDescriptor,
   // MessageBoxA(NULL, "Debugger", "Halted!", MB_OK);
 
   AAX_CheckedResult err;
-  AAX_IComponentDescriptor* const compDesc = outDescriptor->NewComponentDescriptor();
+  AAX_IComponentDescriptor *const compDesc = outDescriptor->NewComponentDescriptor();
   if (!compDesc) err = AAX_ERROR_NULL_OBJECT;
 
   // add the plugin name(s)
   os::log("generating names:");
   auto list = generateShortStrings(clapDescriptor->name);
-  for (const auto& e : list)
+  for (const auto &e : list)
   {
     os::log(e.c_str());
     err = outDescriptor->AddName(e.c_str());
@@ -323,11 +323,11 @@ static AAX_Result DescribeEffectFromClap(AAX_IEffectDescriptor* outDescriptor,
     err = outDescriptor->AddComponent(compDesc);
   }
   // plugin
-  err = outDescriptor->AddProcPtr(reinterpret_cast<void*>(ClapAsAAX_Create),
+  err = outDescriptor->AddProcPtr(reinterpret_cast<void *>(ClapAsAAX_Create),
                                   kAAX_ProcPtrID_Create_EffectParameters);
 
   // GUI
-  err = outDescriptor->AddProcPtr((void*)Wrapped_AAX_GUI_Create, kAAX_ProcPtrID_Create_EffectGUI);
+  err = outDescriptor->AddProcPtr((void *)Wrapped_AAX_GUI_Create, kAAX_ProcPtrID_Create_EffectGUI);
 
 #if 0
 	// Data model
@@ -401,8 +401,8 @@ const clap_audio_port_configuration_request stereo_in_out[]{
 
 struct request_t
 {
-  const char* label;
-  const clap_audio_port_configuration_request* ptr;
+  const char *label;
+  const clap_audio_port_configuration_request *ptr;
   const int count;
 } request[] = {{"mono-out", mono_out, 1},
                {"stereo-out", stereo_out, 1},
@@ -443,7 +443,7 @@ const clap_audio_port_configuration_request mono4[]{
 
 }  // namespace cfg
 
-AAX_Result GetEffectDescriptions(AAX_ICollection* outCollection)
+AAX_Result GetEffectDescriptions(AAX_ICollection *outCollection)
 {
 #if 0
   {
@@ -457,7 +457,7 @@ AAX_Result GetEffectDescriptions(AAX_ICollection* outCollection)
   AAX_CheckedResult err;
 
   // get CLAP factory and plugins
-  auto* factory = CLAPAAX::guarantee_clap();
+  auto *factory = CLAPAAX::guarantee_clap();
 
   if (factory == nullptr || factory->plugins.empty())
   {
@@ -477,12 +477,12 @@ AAX_Result GetEffectDescriptions(AAX_ICollection* outCollection)
 #if 1
       // why here? because we have factory and the clap-id
       static const clap_host_params_t micro_params = {
-          [](const clap_host_t* host, clap_param_rescan_flags flags) -> void {},
-          [](const clap_host_t* host, clap_id param_id, clap_param_clear_flags flags) -> void {},
-          [](const clap_host_t* host) -> void {}};
+          [](const clap_host_t *host, clap_param_rescan_flags flags) -> void {},
+          [](const clap_host_t *host, clap_id param_id, clap_param_clear_flags flags) -> void {},
+          [](const clap_host_t *host) -> void {}};
       static const clap_host_audio_ports_t micro_audio_ports = {
-          [](const clap_host_t* host, uint32_t flag) -> bool { return false; },
-          [](const clap_host_t* host, uint32_t flags) -> void {}};
+          [](const clap_host_t *host, uint32_t flag) -> bool { return false; },
+          [](const clap_host_t *host, uint32_t flags) -> void {}};
       clap_host_t microhost = {
           CLAP_VERSION,
           nullptr,
@@ -490,7 +490,7 @@ AAX_Result GetEffectDescriptions(AAX_ICollection* outCollection)
           "clap_wrapper",
           "",
           "1.0",
-          [](const struct clap_host* host, const char* extension_id) -> const void*
+          [](const struct clap_host *host, const char *extension_id) -> const void *
           {
             if (extension_id == nullptr) return nullptr;
             os::log(extension_id);
@@ -498,25 +498,25 @@ AAX_Result GetEffectDescriptions(AAX_ICollection* outCollection)
             if (!strcmp(CLAP_EXT_AUDIO_PORTS, extension_id)) return &micro_audio_ports;
             return nullptr;
           },
-          [](const struct clap_host* host) -> void {},  // request_restart
-          [](const struct clap_host* host) -> void {},  // request_process
-          [](const struct clap_host* host) -> void {},  // request_callback
+          [](const struct clap_host *host) -> void {},  // request_restart
+          [](const struct clap_host *host) -> void {},  // request_process
+          [](const struct clap_host *host) -> void {},  // request_callback
       };
 
       try
       {
         // create a temporary plugin instance ------------------
-        auto* tmpplug =
+        auto *tmpplug =
             factory->_pluginFactory->create_plugin(factory->_pluginFactory, &microhost, i->id);
         try
         {
           tmpplug->init(tmpplug);
           auto ext_aud =
-              (clap_plugin_audio_ports*)(tmpplug->get_extension(tmpplug, CLAP_EXT_AUDIO_PORTS));
-          auto ext_cap = (clap_plugin_configurable_audio_ports_t*)(tmpplug->get_extension(
+              (clap_plugin_audio_ports *)(tmpplug->get_extension(tmpplug, CLAP_EXT_AUDIO_PORTS));
+          auto ext_cap = (clap_plugin_configurable_audio_ports_t *)(tmpplug->get_extension(
               tmpplug, CLAP_EXT_CONFIGURABLE_AUDIO_PORTS));
 
-          auto ext_sur = (clap_plugin_surround_t*)(tmpplug->get_extension(tmpplug, CLAP_EXT_SURROUND));
+          auto ext_sur = (clap_plugin_surround_t *)(tmpplug->get_extension(tmpplug, CLAP_EXT_SURROUND));
 
           // build a bus setting ------------------
           configrequests_t requests;
@@ -551,7 +551,7 @@ AAX_Result GetEffectDescriptions(AAX_ICollection* outCollection)
 
             bool standardconfig_is_surround = false;
 
-            for (auto& m : requests)
+            for (auto &m : requests)
             {
               if (!strcmp(m.port_type, CLAP_PORT_MONO)) continue;
               if (!strcmp(m.port_type, CLAP_PORT_STEREO)) continue;
@@ -578,7 +578,7 @@ AAX_Result GetEffectDescriptions(AAX_ICollection* outCollection)
             }
 
             // checking all MONO
-            for (auto& m : requests)
+            for (auto &m : requests)
             {
               m.channel_count = 1;
               m.port_details = nullptr;
@@ -591,7 +591,7 @@ AAX_Result GetEffectDescriptions(AAX_ICollection* outCollection)
             }
 
             // checking all STEREO
-            for (auto& m : requests)
+            for (auto &m : requests)
             {
               m.channel_count = 2;
               m.port_details = nullptr;
@@ -614,10 +614,10 @@ AAX_Result GetEffectDescriptions(AAX_ICollection* outCollection)
           }
           os::log(fmt::format("the following configurations have been determined for plugin {}:",
                               tmpplug->desc->name));
-          for (auto& i : configs)
+          for (auto &i : configs)
           {
             os::log("--------------");
-            for (auto& c : i)
+            for (auto &c : i)
             {
               os::log(fmt::format("  #{} {} {} with {} channels", c.port_index,
                                   c.is_input ? "IN" : "OUT", c.port_type, c.channel_count));
@@ -630,12 +630,12 @@ AAX_Result GetEffectDescriptions(AAX_ICollection* outCollection)
         }
         tmpplug->destroy(tmpplug);
       }
-      catch (std::exception& e)
+      catch (std::exception &e)
       {
         os::log(e.what());
       }
 #endif
-      AAX_IEffectDescriptor* const effectDescriptor = outCollection->NewDescriptor();
+      AAX_IEffectDescriptor *const effectDescriptor = outCollection->NewDescriptor();
 
       if (effectDescriptor)
       {
@@ -647,7 +647,7 @@ AAX_Result GetEffectDescriptions(AAX_ICollection* outCollection)
     }
 
     // use the first plugin name as package name
-    auto& plug = factory->plugins[0];
+    auto &plug = factory->plugins[0];
     outCollection->SetManufacturerName(plug->vendor);
     outCollection->AddPackageName(plug->name);
     outCollection->SetPackageVersion(1);
@@ -660,7 +660,7 @@ AAX_Result GetEffectDescriptions(AAX_ICollection* outCollection)
   return err;
 }
 
-AAX_CEffectParameters* AAX_CALLBACK ClapAsAAX_Create()
+AAX_CEffectParameters *AAX_CALLBACK ClapAsAAX_Create()
 {
   // returning an empty shell
   os::log("-------------------------------------------------------------------------------------");
@@ -750,7 +750,7 @@ AAX_Result ClapAsAAX::EffectInit()
 
 // this is called for each registered field, this is being used to reset the pointer
 // to the actual wrapper plugin instance.
-AAX_Result ClapAsAAX::ResetFieldData(AAX_CFieldIndex iFieldIndex, void* oData, uint32_t iDataSize) const
+AAX_Result ClapAsAAX::ResetFieldData(AAX_CFieldIndex iFieldIndex, void *oData, uint32_t iDataSize) const
 {
   //If this is the MonolithicParameters field, let's initialize it to our this pointer.
   if (iFieldIndex == AAX_FIELD_INDEX(SAAX_Wrapper_AlgorithmicContext, mPrivateData))
@@ -762,8 +762,8 @@ AAX_Result ClapAsAAX::ResetFieldData(AAX_CFieldIndex iFieldIndex, void* oData, u
     memset(oData, 0, iDataSize);
 
     //Set all of the private data variables.
-    SAAX_Wrapper_PrivateData* privatedata = static_cast<SAAX_Wrapper_PrivateData*>(oData);
-    privatedata->wrapper = (ClapAsAAX*)this;  // wrap away the weird const of the function declaration
+    SAAX_Wrapper_PrivateData *privatedata = static_cast<SAAX_Wrapper_PrivateData *>(oData);
+    privatedata->wrapper = (ClapAsAAX *)this;  // wrap away the weird const of the function declaration
     return AAX_SUCCESS;
   }
 
@@ -777,24 +777,24 @@ AAX_Result ClapAsAAX::TimerWakeup()
   return AAX_CEffectParameters::TimerWakeup();
 }
 
-AAX_Result ClapAsAAX::GetParameterIsAutomatable(AAX_CParamID iParameterID, AAX_CBoolean* itIs) const
+AAX_Result ClapAsAAX::GetParameterIsAutomatable(AAX_CParamID iParameterID, AAX_CBoolean *itIs) const
 {
   auto n = this->_parameterMap.find(iParameterID);
   if (n != _parameterMap.end())
   {
-    auto& info = n->second->_clap_param_info;
+    auto &info = n->second->_clap_param_info;
     *itIs = (info.flags & CLAP_PARAM_IS_AUTOMATABLE);
     return AAX_SUCCESS;
   }
   return AAX_ERROR_INVALID_PARAMETER_ID;
 }
 
-AAX_Result ClapAsAAX::GetParameterNumberOfSteps(AAX_CParamID iParameterID, int32_t* aNumSteps) const
+AAX_Result ClapAsAAX::GetParameterNumberOfSteps(AAX_CParamID iParameterID, int32_t *aNumSteps) const
 {
   auto n = this->_parameterMap.find(iParameterID);
   if (n != _parameterMap.end())
   {
-    auto& info = n->second->_clap_param_info;
+    auto &info = n->second->_clap_param_info;
     if (info.flags & CLAP_PARAM_IS_STEPPED)
     {
       // the number of steps if min=0 and max=1 is 2
@@ -810,14 +810,14 @@ AAX_Result ClapAsAAX::GetParameterNumberOfSteps(AAX_CParamID iParameterID, int32
   return AAX_ERROR_INVALID_PARAMETER_ID;
 }
 
-AAX_Result ClapAsAAX::GetParameterValueString(AAX_CParamID iParameterID, AAX_IString* oValueString,
+AAX_Result ClapAsAAX::GetParameterValueString(AAX_CParamID iParameterID, AAX_IString *oValueString,
                                               int32_t iMaxLength) const
 {
   return AAX_CEffectParameters::GetParameterValueString(iParameterID, oValueString, iMaxLength);
 }
 
-AAX_Result ClapAsAAX::GetParameterValueFromString(AAX_CParamID iParameterID, double* oValuePtr,
-                                                  const AAX_IString& iValueString) const
+AAX_Result ClapAsAAX::GetParameterValueFromString(AAX_CParamID iParameterID, double *oValuePtr,
+                                                  const AAX_IString &iValueString) const
 {
   auto n = this->_parameterMap.find(iParameterID);
   if (n != _parameterMap.end())
@@ -839,7 +839,7 @@ AAX_Result ClapAsAAX::GetParameterValueFromString(AAX_CParamID iParameterID, dou
 }
 
 AAX_Result ClapAsAAX::GetParameterStringFromValue(AAX_CParamID iParameterID, double value,
-                                                  AAX_IString* valueString, int32_t maxLength) const
+                                                  AAX_IString *valueString, int32_t maxLength) const
 {
   auto n = this->_parameterMap.find(iParameterID);
   if (n != _parameterMap.end())
@@ -857,7 +857,7 @@ AAX_Result ClapAsAAX::GetParameterStringFromValue(AAX_CParamID iParameterID, dou
   return AAX_ERROR_INVALID_PARAMETER_ID;
 }
 
-AAX_Result ClapAsAAX::GetParameterName(AAX_CParamID iParameterID, AAX_IString* oName) const
+AAX_Result ClapAsAAX::GetParameterName(AAX_CParamID iParameterID, AAX_IString *oName) const
 {
   auto n = this->_parameterMap.find(iParameterID);
   if (n != _parameterMap.end())
@@ -869,7 +869,7 @@ AAX_Result ClapAsAAX::GetParameterName(AAX_CParamID iParameterID, AAX_IString* o
   return AAX_ERROR_UNKNOWN_ID;
 }
 
-AAX_Result ClapAsAAX::GetParameterNameOfLength(AAX_CParamID iParameterID, AAX_IString* oName,
+AAX_Result ClapAsAAX::GetParameterNameOfLength(AAX_CParamID iParameterID, AAX_IString *oName,
                                                int32_t iNameLength) const
 {
   AAX_Result aResult = AAX_ERROR_INVALID_STRING_CONVERSION;
@@ -878,8 +878,8 @@ AAX_Result ClapAsAAX::GetParameterNameOfLength(AAX_CParamID iParameterID, AAX_IS
   auto n = this->_parameterMap.find(iParameterID);
   if (n != _parameterMap.end())
   {
-    auto& names = n->second->_names;
-    const AAX_CString* result = &names.back();
+    auto &names = n->second->_names;
+    const AAX_CString *result = &names.back();
     for (auto i = names.rbegin(); i != names.rend(); ++i)
     {
       if (i->Length() > namelen)
@@ -905,7 +905,7 @@ AAX_Result ClapAsAAX::UpdateParameterNormalizedValue(AAX_CParamID iParameterID, 
 
   auto p = _parameterMap.find(iParameterID);
   if (p == _parameterMap.end()) return AAX_ERROR_INVALID_PARAMETER_ID;
-  auto* ptr = p->second.get();
+  auto *ptr = p->second.get();
 
   _paramsToProcess.push(
       {ptr->_clap_param_info.id, ptr->asClapValue(iValue), ptr->_clap_param_info.cookie});
@@ -916,7 +916,7 @@ AAX_Result ClapAsAAX::UpdateParameterNormalizedValue(AAX_CParamID iParameterID, 
 
 static const AAX_CTypeID CLAP_STATE_CHUNK_ID = 'clap';
 
-AAX_Result ClapAsAAX::GetNumberOfChunks(int32_t* oNumChunks) const
+AAX_Result ClapAsAAX::GetNumberOfChunks(int32_t *oNumChunks) const
 {
   // TODO: Return 1 (and only 1) chunk
   // return AAX_CEffectParameters::GetNumberOfChunks(oNumChunks);
@@ -924,7 +924,7 @@ AAX_Result ClapAsAAX::GetNumberOfChunks(int32_t* oNumChunks) const
   return AAX_SUCCESS;
 }
 
-AAX_Result ClapAsAAX::GetChunkIDFromIndex(int32_t iIndex, AAX_CTypeID* oChunkID) const
+AAX_Result ClapAsAAX::GetChunkIDFromIndex(int32_t iIndex, AAX_CTypeID *oChunkID) const
 {
   if (iIndex != 0)
   {
@@ -936,7 +936,7 @@ AAX_Result ClapAsAAX::GetChunkIDFromIndex(int32_t iIndex, AAX_CTypeID* oChunkID)
   return AAX_SUCCESS;
 }
 
-AAX_Result ClapAsAAX::GetChunkSize(AAX_CTypeID iChunkID, uint32_t* oSize) const
+AAX_Result ClapAsAAX::GetChunkSize(AAX_CTypeID iChunkID, uint32_t *oSize) const
 {
   if (iChunkID != CLAP_STATE_CHUNK_ID) return AAX_ERROR_INVALID_CHUNK_ID;
 
@@ -954,7 +954,7 @@ AAX_Result ClapAsAAX::GetChunkSize(AAX_CTypeID iChunkID, uint32_t* oSize) const
   return AAX_ERROR_INCORRECT_CHUNK_SIZE;
 }
 
-AAX_Result ClapAsAAX::GetChunk(AAX_CTypeID iChunkID, AAX_SPlugInChunk* oChunk) const
+AAX_Result ClapAsAAX::GetChunk(AAX_CTypeID iChunkID, AAX_SPlugInChunk *oChunk) const
 {
   // Fills a block of data with chunk information representing the plug-in's current state.
 
@@ -976,13 +976,13 @@ AAX_Result ClapAsAAX::GetChunk(AAX_CTypeID iChunkID, AAX_SPlugInChunk* oChunk) c
   return AAX_SUCCESS;
 }
 
-AAX_Result ClapAsAAX::SetChunk(AAX_CTypeID iChunkID, const AAX_SPlugInChunk* iChunk)
+AAX_Result ClapAsAAX::SetChunk(AAX_CTypeID iChunkID, const AAX_SPlugInChunk *iChunk)
 {
   if (iChunkID != CLAP_STATE_CHUNK_ID) return AAX_ERROR_INVALID_CHUNK_ID;
 
   _paramsToProcess.clear();
 
-  auto data = (const uint8_t*)(iChunk->fData);
+  auto data = (const uint8_t *)(iChunk->fData);
   _state.setData(data, iChunk->fSize);
   if (_plugin->_ext._state->load(_plugin->_plugin, _state))
   {
@@ -992,7 +992,7 @@ AAX_Result ClapAsAAX::SetChunk(AAX_CTypeID iChunkID, const AAX_SPlugInChunk* iCh
 }
 
 AAX_Result ClapAsAAX::NotificationReceived(AAX_CTypeID inNotificationType,
-                                           const void* inNotificationData,
+                                           const void *inNotificationData,
                                            uint32_t inNotificationDataSize)
 {
   // TODO: check for several notifications from the host
@@ -1035,19 +1035,19 @@ AAX_Result ClapAsAAX::NotificationReceived(AAX_CTypeID inNotificationType,
                                                      inNotificationDataSize);
 }
 
-void ClapAsAAX::setupWrapperSpecifics(const clap_plugin_t* plugin)
+void ClapAsAAX::setupWrapperSpecifics(const clap_plugin_t *plugin)
 {
   // nothing for AAX yet
 }
 
-void ClapAsAAX::setupAudioBusses(const clap_plugin_t* plugin,
-                                 const clap_plugin_audio_ports_t* audioports)
+void ClapAsAAX::setupAudioBusses(const clap_plugin_t *plugin,
+                                 const clap_plugin_audio_ports_t *audioports)
 {
   // the busses are already declared by the stem configuration of the instance
   // any further setup does happen in the AAXProcessAdapter
 }
 
-void ClapAsAAX::setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_note_ports_t* noteports)
+void ClapAsAAX::setupMIDIBusses(const clap_plugin_t *plugin, const clap_plugin_note_ports_t *noteports)
 {
   if (noteports->count(plugin, true) > 0)
   {
@@ -1060,7 +1060,7 @@ void ClapAsAAX::setupMIDIBusses(const clap_plugin_t* plugin, const clap_plugin_n
   }
 }
 
-void ClapAsAAX::setupParameters(const clap_plugin_t* plugin, const clap_plugin_params_t* params)
+void ClapAsAAX::setupParameters(const clap_plugin_t *plugin, const clap_plugin_params_t *params)
 {
   if (!params) return;
 
@@ -1094,7 +1094,7 @@ void ClapAsAAX::setupParameters(const clap_plugin_t* plugin, const clap_plugin_p
 
       auto n = generateShortStrings(paramname);
       wrappedParam->_names.reserve(n.size());
-      for (const auto& i : n)
+      for (const auto &i : n)
       {
         wrappedParam->_names.emplace_back(AAX_CString(i));
       }
@@ -1181,7 +1181,7 @@ void ClapAsAAX::restartPlugin()
 {
 }
 
-bool ClapAsAAX::register_timer(uint32_t period_ms, clap_id* timer_id)
+bool ClapAsAAX::register_timer(uint32_t period_ms, clap_id *timer_id)
 {
   return false;
 }
@@ -1191,14 +1191,14 @@ bool ClapAsAAX::unregister_timer(clap_id timer_id)
   return false;
 }
 
-bool ClapAsAAX::track_info_get(clap_track_info_t* info)
+bool ClapAsAAX::track_info_get(clap_track_info_t *info)
 {
   return false;
 }
 
-const char* ClapAsAAX::host_get_name()
+const char *ClapAsAAX::host_get_name()
 {
-  AAX_IController* ctrl = Controller();
+  AAX_IController *ctrl = Controller();
   AAX_CString hostname;
   if (AAX_SUCCESS == ctrl->GetHostName(&hostname))
   {
@@ -1213,13 +1213,13 @@ bool ClapAsAAX::supportsContextMenu() const
   return false;
 }
 
-bool ClapAsAAX::context_menu_populate(const clap_context_menu_target_t* target,
-                                      const clap_context_menu_builder_t* builder)
+bool ClapAsAAX::context_menu_populate(const clap_context_menu_target_t *target,
+                                      const clap_context_menu_builder_t *builder)
 {
   return false;
 }
 
-bool ClapAsAAX::context_menu_perform(const clap_context_menu_target_t* target, clap_id action_id)
+bool ClapAsAAX::context_menu_perform(const clap_context_menu_target_t *target, clap_id action_id)
 {
   return false;
 }
@@ -1229,7 +1229,7 @@ bool ClapAsAAX::context_menu_can_popup()
   return false;
 }
 
-bool ClapAsAAX::context_menu_popup(const clap_context_menu_target_t* target, int32_t screen_index,
+bool ClapAsAAX::context_menu_popup(const clap_context_menu_target_t *target, int32_t screen_index,
                                    int32_t x, int32_t y)
 {
   return false;
@@ -1317,12 +1317,12 @@ void ClapAsAAX::onBeginEdit(clap_id id)
   }
 }
 
-void ClapAsAAX::onPerformEdit(const clap_event_param_value_t* value)
+void ClapAsAAX::onPerformEdit(const clap_event_param_value_t *value)
 {
   auto p = _parameterMapCLAP.find(value->param_id);
   if (p != _parameterMapCLAP.end())
   {
-    auto* param = p->second.get();
+    auto *param = p->second.get();
     mParameterManager.GetParameter(param->_paramAAXIndex)
         ->SetNormalizedValue(param->asAAXValue(value->value));
   }

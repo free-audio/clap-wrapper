@@ -5,21 +5,21 @@
 #include "AAX_MIDIUtilities.h"
 
 void AAX_CALLBACK AAXWrapper_AlgorithmProcessProc(
-    SAAX_Wrapper_AlgorithmicContext* const inInstancesBegin[], const void* inInstancesEnd)
+    SAAX_Wrapper_AlgorithmicContext *const inInstancesBegin[], const void *inInstancesEnd)
 {
   // processing instances
-  SAAX_Wrapper_AlgorithmicContext* AAX_RESTRICT instance = inInstancesBegin[0];
-  for (SAAX_Wrapper_AlgorithmicContext* const* walk = inInstancesBegin; walk < inInstancesEnd; ++walk)
+  SAAX_Wrapper_AlgorithmicContext *AAX_RESTRICT instance = inInstancesBegin[0];
+  for (SAAX_Wrapper_AlgorithmicContext *const *walk = inInstancesBegin; walk < inInstancesEnd; ++walk)
   {
     instance = *walk;
-    SAAX_Wrapper_PrivateData* data = instance->mPrivateData;
-    auto* plug = data->wrapper;
+    SAAX_Wrapper_PrivateData *data = instance->mPrivateData;
+    auto *plug = data->wrapper;
 
     plug->process(instance);  // passes the context to the plugin which passes it to the ProcessAdapter
   }
 }
 
-void ClapAsAAX::process(SAAX_Wrapper_AlgorithmicContext* context)
+void ClapAsAAX::process(SAAX_Wrapper_AlgorithmicContext *context)
 {
   // abort any flush request
   _flushRequested.store(false);
@@ -46,8 +46,8 @@ AAXProcessAdapter::~AAXProcessAdapter()
   delete[] _output_ports;
 }
 
-void AAXProcessAdapter::applyBusSetting(const clap_plugin_t* plugin, const char* buslayout,
-                                        const clap_plugin_configurable_audio_ports_t* ext)
+void AAXProcessAdapter::applyBusSetting(const clap_plugin_t *plugin, const char *buslayout,
+                                        const clap_plugin_configurable_audio_ports_t *ext)
 {
   if (ext)
   {
@@ -55,10 +55,10 @@ void AAXProcessAdapter::applyBusSetting(const clap_plugin_t* plugin, const char*
     // (2) apply setup to plugin
   }
 }
-void AAXProcessAdapter::setupProcessing(const clap_plugin_t* plugin, double samplerate,
-                                        const clap_plugin_params_t* ext_param,
-                                        const clap_plugin_audio_ports* ext_audio,
-                                        Clap::IAutomation* automation, ParamChangeQueue& inqueue,
+void AAXProcessAdapter::setupProcessing(const clap_plugin_t *plugin, double samplerate,
+                                        const clap_plugin_params_t *ext_param,
+                                        const clap_plugin_audio_ports *ext_audio,
+                                        Clap::IAutomation *automation, ParamChangeQueue &inqueue,
                                         uint32_t midiportid, bool preferMIDI)
 {
   _plugin = plugin;
@@ -149,7 +149,7 @@ void AAXProcessAdapter::setupProcessing(const clap_plugin_t* plugin, double samp
   _eventindices.reserve(_events.capacity());
 }
 
-void AAXProcessAdapter::process(SAAX_Wrapper_AlgorithmicContext* context)
+void AAXProcessAdapter::process(SAAX_Wrapper_AlgorithmicContext *context)
 {
   // transport
   auto aax_transport = context->mTransportNode->GetTransport();
@@ -226,7 +226,7 @@ void AAXProcessAdapter::process(SAAX_Wrapper_AlgorithmicContext* context)
   if (context->mInputNode)
   {
     auto midiInputStream = context->mInputNode->GetNodeBuffer();
-    const AAX_CMidiPacket* midiInPacketPtr = midiInputStream->mBuffer;
+    const AAX_CMidiPacket *midiInPacketPtr = midiInputStream->mBuffer;
     auto numevents = midiInputStream->mBufferSize;
 
     clap_multi_event_t n;  // re-using the event
@@ -353,7 +353,7 @@ void AAXProcessAdapter::sortEventIndices()
   // if they have the same timestamp, the index must be preserved
 
   std::sort(_eventindices.begin(), _eventindices.end(),
-            [&](size_t const& a, size_t const& b)
+            [&](size_t const &a, size_t const &b)
             {
               auto t1 = _events[a].header.time;
               auto t2 = _events[b].header.time;
@@ -361,16 +361,16 @@ void AAXProcessAdapter::sortEventIndices()
             });
 }
 
-bool AAXProcessAdapter::output_events_try_push(const clap_output_events* list,
-                                               const clap_event_header_t* event)
+bool AAXProcessAdapter::output_events_try_push(const clap_output_events *list,
+                                               const clap_event_header_t *event)
 {
-  auto self = static_cast<AAXProcessAdapter*>(list->ctx);
+  auto self = static_cast<AAXProcessAdapter *>(list->ctx);
   // mainly used for CLAP_EVENT_NOTE_CHOKE and CLAP_EVENT_NOTE_END
   // but also for parameter changes
   return self->enqueueOutputEvent(event);
 }
 
-bool AAXProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
+bool AAXProcessAdapter::enqueueOutputEvent(const clap_event_header_t *event)
 {
   switch (event->type)
   {
@@ -415,7 +415,7 @@ bool AAXProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
       return true;
     case CLAP_EVENT_NOTE_END:
     case CLAP_EVENT_NOTE_CHOKE:
-      removeFromActiveNotes((const clap_event_note*)(event));
+      removeFromActiveNotes((const clap_event_note *)(event));
       return true;
       break;
     case CLAP_EVENT_NOTE_EXPRESSION:
@@ -423,7 +423,7 @@ bool AAXProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
       break;
     case CLAP_EVENT_PARAM_VALUE:
     {
-      auto ev = (clap_event_param_value*)event;
+      auto ev = (clap_event_param_value *)event;
       _automation->onPerformEdit(ev);
     }
 
@@ -434,7 +434,7 @@ bool AAXProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
       break;
     case CLAP_EVENT_PARAM_GESTURE_BEGIN:
     {
-      auto ev = (clap_event_param_gesture*)event;
+      auto ev = (clap_event_param_gesture *)event;
       _automation->onBeginEdit(ev->param_id);
     }
       return true;
@@ -442,7 +442,7 @@ bool AAXProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
       break;
     case CLAP_EVENT_PARAM_GESTURE_END:
     {
-      auto ev = (clap_event_param_gesture*)event;
+      auto ev = (clap_event_param_gesture *)event;
       _automation->onEndEdit(ev->param_id);
     }
       return true;
@@ -459,9 +459,9 @@ bool AAXProcessAdapter::enqueueOutputEvent(const clap_event_header_t* event)
   return false;
 }
 
-void AAXProcessAdapter::addToActiveNotes(const clap_event_note* note)
+void AAXProcessAdapter::addToActiveNotes(const clap_event_note *note)
 {
-  for (auto& i : _activeNotes)
+  for (auto &i : _activeNotes)
   {
     if (!i.used)
     {
@@ -476,9 +476,9 @@ void AAXProcessAdapter::addToActiveNotes(const clap_event_note* note)
   _activeNotes.emplace_back(ActiveNote{true, note->note_id, note->port_index, note->channel, note->key});
 }
 
-void AAXProcessAdapter::removeFromActiveNotes(const clap_event_note* note)
+void AAXProcessAdapter::removeFromActiveNotes(const clap_event_note *note)
 {
-  for (auto& i : _activeNotes)
+  for (auto &i : _activeNotes)
   {
     if (i.used && i.port_index == note->port_index && i.channel == note->channel &&
         i.note_id == note->note_id)
@@ -488,16 +488,16 @@ void AAXProcessAdapter::removeFromActiveNotes(const clap_event_note* note)
   }
 }
 
-uint32_t AAXProcessAdapter::input_events_size(const struct clap_input_events* list)
+uint32_t AAXProcessAdapter::input_events_size(const struct clap_input_events *list)
 {
-  auto self = static_cast<AAXProcessAdapter*>(list->ctx);
+  auto self = static_cast<AAXProcessAdapter *>(list->ctx);
   return (uint32_t)self->_events.size();
 }
 
-const clap_event_header_t* AAXProcessAdapter::input_events_get(const struct clap_input_events* list,
+const clap_event_header_t *AAXProcessAdapter::input_events_get(const struct clap_input_events *list,
                                                                uint32_t index)
 {
-  auto self = static_cast<AAXProcessAdapter*>(list->ctx);
+  auto self = static_cast<AAXProcessAdapter *>(list->ctx);
   if (self->_events.size() > index)
   {
     // we can safely return the note.header also for other event types

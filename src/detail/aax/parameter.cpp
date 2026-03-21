@@ -8,11 +8,11 @@ AAX_ClapParamDisplayDelegate::AAX_ClapParamDisplayDelegate(
 {
   // yes, we have all we need
 }
-AAX_ClapParamDisplayDelegate* AAX_ClapParamDisplayDelegate::Clone() const
+AAX_ClapParamDisplayDelegate *AAX_ClapParamDisplayDelegate::Clone() const
 {
   return new AAX_ClapParamDisplayDelegate(*this);
 }
-bool AAX_ClapParamDisplayDelegate::ValueToString(double value, AAX_CString* valueString) const
+bool AAX_ClapParamDisplayDelegate::ValueToString(double value, AAX_CString *valueString) const
 {
   auto i = _info.get();
   char buf[101];
@@ -25,7 +25,7 @@ bool AAX_ClapParamDisplayDelegate::ValueToString(double value, AAX_CString* valu
 }
 
 bool AAX_ClapParamDisplayDelegate::ValueToString(double value, int32_t maxNumChars,
-                                                 AAX_CString* valueString) const
+                                                 AAX_CString *valueString) const
 {
   auto i = _info.get();
   char buf[101];
@@ -38,7 +38,7 @@ bool AAX_ClapParamDisplayDelegate::ValueToString(double value, int32_t maxNumCha
   }
   return false;
 }
-bool AAX_ClapParamDisplayDelegate::StringToValue(const AAX_CString& valueString, double* value) const
+bool AAX_ClapParamDisplayDelegate::StringToValue(const AAX_CString &valueString, double *value) const
 {
   auto i = _info.get();
   return i->_ext_params->text_to_value(i->_plugin, i->_clap_param_info.id, valueString.Get(), value);

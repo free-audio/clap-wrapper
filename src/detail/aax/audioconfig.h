@@ -3,4 +3,4 @@
 #include <vector>
 #include <string>
 
-std::vector<std::string> getAvailableBusConfigs(const char* pluginid);
+std::vector<std::string> getAvailableBusConfigs(const char *pluginid);

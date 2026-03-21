@@ -22,12 +22,12 @@
 
 // step 2: now we can hook in and locate the CLAP library and its entry point
 
-AAX_Result AAXRegisterPlugin(IACFUnknown* pUnkHost, IACFPluginDefinition** ppPluginDefinition)
+AAX_Result AAXRegisterPlugin(IACFUnknown *pUnkHost, IACFPluginDefinition **ppPluginDefinition)
 {
   return AAXRegisterPlugin_Base(pUnkHost, ppPluginDefinition);
 }
 
-AAX_Result AAXStartup(IACFUnknown* pUnkHost)
+AAX_Result AAXStartup(IACFUnknown *pUnkHost)
 {
   // load our clap or return error
   os::log(os::getBinaryName());
@@ -42,7 +42,7 @@ AAX_Result AAXStartup(IACFUnknown* pUnkHost)
   return AAXStartup_Base(pUnkHost);
 }
 
-AAX_Result AAXShutdown(IACFUnknown* pUnkHost)
+AAX_Result AAXShutdown(IACFUnknown *pUnkHost)
 {
   // unload our clap
   return AAXShutdown_Base(pUnkHost);
@@ -77,7 +77,7 @@ extern "C" BOOL WINAPI DllMain(HINSTANCE iInstance, DWORD iSelector, LPVOID iRes
       os::terminate();
     }
   }
-  catch (std::exception& e)
+  catch (std::exception &e)
   {
     std::string ll("Exception occured in DllMain: ");
     ll += e.what();

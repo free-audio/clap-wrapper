@@ -6,7 +6,7 @@
 #include "AAX_IViewContainer.h"
 #include "AAX_CAutoreleasePool.h"
 
-AAX_IEffectGUI* AAX_CALLBACK Wrapped_AAX_GUI_Create(void)
+AAX_IEffectGUI *AAX_CALLBACK Wrapped_AAX_GUI_Create(void)
 {
   return new Wrapped_AAX_GUI;
 }
@@ -38,7 +38,7 @@ void Wrapped_AAX_GUI::CreateViewContents()
   // this is what the actual CLAP is doing
 }
 
-void Wrapped_AAX_GUI::CreateEffectView(void* inSystemWindow)
+void Wrapped_AAX_GUI::CreateEffectView(void *inSystemWindow)
 {
 #if WIN32
 #define CLAP_WINDOW_API CLAP_WINDOW_API_WIN32;
@@ -52,7 +52,7 @@ void Wrapped_AAX_GUI::CreateEffectView(void* inSystemWindow)
 #undef CLAP_WINDOW_API
 
   auto params = this->GetEffectParameters();
-  _clap = dynamic_cast<ClapAsAAX*>(params);
+  _clap = dynamic_cast<ClapAsAAX *>(params);
 
   if (_clap)
   {
@@ -93,7 +93,7 @@ void Wrapped_AAX_GUI::DeleteViewContainer()
   }
 }
 
-AAX_Result Wrapped_AAX_GUI::GetViewSize(AAX_Point* oEffectViewSize) const
+AAX_Result Wrapped_AAX_GUI::GetViewSize(AAX_Point *oEffectViewSize) const
 {
   uint32_t w, h;
   if (_gui->get_size(_plugin, &w, &h))
@@ -117,7 +117,7 @@ bool Wrapped_AAX_GUI::setWindowSize(uint32_t width, uint32_t height)
   {
     _resizeInTimer = true;
   }
-  auto* vc = GetViewContainer();
+  auto *vc = GetViewContainer();
   if (vc)
   {
     AAX_Point p((float)height, (float)width);  // yes, on AAX everything is upside down
