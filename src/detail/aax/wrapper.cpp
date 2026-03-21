@@ -384,7 +384,8 @@ const clap_audio_port_configuration_request stereo_out[]{
 };
 
 const clap_audio_port_configuration_request stereo_in_out[]{
-    {true, 0, 2, CLAP_PORT_STEREO, nullptr}, {false, 0, 2, CLAP_PORT_STEREO, nullptr},
+    {true, 0, 2, CLAP_PORT_STEREO, nullptr},
+    {false, 0, 2, CLAP_PORT_STEREO, nullptr},
     // {false, 1, 2, CLAP_PORT_STEREO, nullptr},
 };
 
