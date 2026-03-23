@@ -1277,7 +1277,6 @@ OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
   {
     return -1;
   }
-
   /*
    * In the read side I fall through to default, whereas in the write
    * side I use an 'else' on the set of stream formats. This means
