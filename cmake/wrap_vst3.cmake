@@ -250,6 +250,10 @@ function(target_add_vst3_wrapper)
                     LIBRARY_OUTPUT_DIRECTORY_RELEASE "${v3root}/${v3root_r}/${V3_OUTPUT_NAME}.vst3/Contents/${v3arch}-win"
                     SUFFIX ".vst3")
 
+            if(MINGW)
+                target_link_options(${V3_TARGET} PRIVATE -static-libgcc -static-libstdc++)
+            endif(MINGW)
+
             # Copy resource directory, if defined
             if(NOT TCLP_RESOURCE_DIRECTORY STREQUAL "")
                 message(WARNING "RESOURCE_DIRECTORY defined, but not (yet) supported for Windows VST3s")
