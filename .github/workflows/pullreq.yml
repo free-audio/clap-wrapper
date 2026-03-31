@@ -219,6 +219,25 @@ jobs:
             vst3_path: ./build/clap-first-distortion_assets/VST3/ClapFirst Bad Distortion.vst3
             name: ClapFirst Windows 64bit Folder MSVC
 
+          - os: windows-latest
+            cmakeargs: -GNinja -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc
+            install_ninja: true
+            run_aptget: false
+            run_validator: false
+            vst3_validator: build/validator-build/bin/validator
+            vst3_path: ./build/clap-first-distortion_assets/VST3/ClapFirst Bad Distortion.vst3
+            name: ClapFirst Windows 64bit Single File gcc/minGW
+
+
+          - os: windows-latest
+            cmakeargs: -GNinja -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc -DEXAMPLE_USE_WINDOWS_FOLDER=TRUE
+            install_ninja: true
+            run_aptget: false
+            run_validator: true
+            vst3_validator: build/validator-build/bin/validator
+            vst3_path: ./build/clap-first-distortion_assets/VST3/ClapFirst Bad Distortion.vst3
+            name: ClapFirst Windows 64bit Folder gcc/minGW
+
           - os: ubuntu-latest
             cmakeargs: -DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_C_COMPILER=gcc-12
             install_ninja: false
@@ -296,5 +315,4 @@ jobs:
           cp -R "${{ matrix.auv2_path }}" ~/Library/Audio/Plug-Ins/Components/
           killall -9 AudioComponentRegistrar || true
           auval -strict -v aufx BdDt FrAD
-          
 
