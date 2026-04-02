@@ -230,11 +230,11 @@ jobs:
 
 
           - os: windows-latest
-            cmakeargs: -GNinja -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc -DEXAMPLE_USE_WINDOWS_FOLDER=TRUE
+            cmakeargs: -GNinja -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc -DEXAMPLE_USE_WINDOWS_FOLDER=TRUE -DMSVC_VST3_VALIDATOR=TRUE
             install_ninja: true
             run_aptget: false
             run_validator: true
-            vst3_validator: build/validator-build/bin/validator
+            vst3_validator: build/validator-build/bin/Debug/validator
             vst3_path: ./build/clap-first-distortion_assets/VST3/ClapFirst Bad Distortion.vst3
             name: ClapFirst Windows 64bit Folder gcc/minGW
 

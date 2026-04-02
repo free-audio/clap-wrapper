@@ -248,7 +248,8 @@ function(target_add_vst3_wrapper)
                     LIBRARY_OUTPUT_DIRECTORY "${v3root}/${v3root_dor}${V3_OUTPUT_NAME}.vst3/Contents/${v3arch}-win"
                     LIBRARY_OUTPUT_DIRECTORY_DEBUG "${v3root}/${v3root_d}/${V3_OUTPUT_NAME}.vst3/Contents/${v3arch}-win"
                     LIBRARY_OUTPUT_DIRECTORY_RELEASE "${v3root}/${v3root_r}/${V3_OUTPUT_NAME}.vst3/Contents/${v3arch}-win"
-                    SUFFIX ".vst3")
+                    SUFFIX ".vst3"
+                    PREFIX "")
 
             # Copy resource directory, if defined
             if(NOT TCLP_RESOURCE_DIRECTORY STREQUAL "")

@@ -189,6 +189,10 @@ function(guarantee_vst3sdk)
 
 
     if (NOT TARGET vst3_validator)
+        if(MSVC_VST3_VALIDATOR)
+            set(MSVC_VALIDATOR_FLAG -DCMAKE_CXX_COMPILER="MSVC" -DCMAKE_C_COMPILER="MSVC" -G "Visual Studio 17 2022" -A x64)
+        endif()
+
         add_custom_target(vst3_validator)
         add_custom_command(TARGET vst3_validator
                 POST_BUILD
@@ -206,6 +210,8 @@ function(guarantee_vst3sdk)
                         -DSMTG_ENABLE_VSTGUI_SUPPORT=OFF
                         -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=OFF
                         -DSMTG_ENABLE_VST3_HOSTING_EXAMPLES=OFF
+
+                        ${MSVC_VALIDATOR_FLAG}
 
                         -B ${CMAKE_BINARY_DIR}/validator-build
 
