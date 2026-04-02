@@ -17,7 +17,7 @@ extern "C"
 #pragma GCC diagnostic ignored "-Wattributes"  // other peoples errors are outside my scope
 #endif
 
-  const CLAP_EXPORT struct clap_plugin_entry clap_entry = {CLAP_VERSION, dist_entry_init,
+  CLAP_EXPORT extern const struct clap_plugin_entry clap_entry = {CLAP_VERSION, dist_entry_init,
                                                            dist_entry_deinit, dist_entry_get_factory};
 
 #ifdef __GNUC__
