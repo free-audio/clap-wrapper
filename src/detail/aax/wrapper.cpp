@@ -523,7 +523,7 @@ static AAX_Result DescribeEffectFromClap(AAX_IEffectDescriptor *outDescriptor,
 
 AAX_Result GetEffectDescriptions(AAX_ICollection *outCollection)
 {
-#if 1
+#if 0
   {
     auto pid = GetCurrentProcessId();
 
