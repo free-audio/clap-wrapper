@@ -886,7 +886,8 @@ AAX_Result ClapAsAAX::EffectInit()
                   _plugin->_plugin, _configuration_requests.data(), _configuration_requests.size()))
           {
             os::log(fmt::format(
-                "audio port configuration could not be applied. Ports {}/{} with {}/{} channels",numInPorts,numOutPorts,numInChannels,numOutChannels ));
+                "audio port configuration could not be applied. Ports {}/{} with {}/{} channels",
+                numInPorts, numOutPorts, numInChannels, numOutChannels));
             return AAX_ERROR_NOT_INITIALIZED;
           }
         }
