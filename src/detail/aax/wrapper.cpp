@@ -275,7 +275,6 @@ static struct sAAXStemIndexToClapMap
     {"9_1_4", AAX_eStemFormat_9_1_4, aax2clap_9_1_4, sizeof(aax2clap_9_1_4)},
     {"9_0_6", AAX_eStemFormat_9_0_6, aax2clap_9_0_6, sizeof(aax2clap_9_0_6)},
     {"9_1_6", AAX_eStemFormat_9_1_6, aax2clap_9_1_6, sizeof(aax2clap_9_1_6)},
-    {nullptr, 0, nullptr},
 };
 
 typedef struct stemformat_combi
@@ -592,7 +591,7 @@ AAX_Result GetEffectDescriptions(AAX_ICollection *outCollection)
           auto ext_cap = (clap_plugin_configurable_audio_ports_t *)(tmpplug->get_extension(
               tmpplug, CLAP_EXT_CONFIGURABLE_AUDIO_PORTS));
 
-          auto ext_sur = (clap_plugin_surround_t *)(tmpplug->get_extension(tmpplug, CLAP_EXT_SURROUND));
+          // auto ext_sur = (clap_plugin_surround_t *)(tmpplug->get_extension(tmpplug, CLAP_EXT_SURROUND));
 
           // build a bus setting ------------------
           configrequests_t requests;
@@ -879,7 +878,7 @@ AAX_Result ClapAsAAX::EffectInit()
             clap_audio_port_info_t p;
             audioports->get(_plugin->_plugin, i, false, &p);
             clap_audio_port_configuration_request rq;
-            build_config_request(&rq, numInChannels, i, false);
+            build_config_request(&rq, numOutChannels, i, false);
             _configuration_requests.emplace_back(rq);
           }
 
@@ -887,7 +886,7 @@ AAX_Result ClapAsAAX::EffectInit()
                   _plugin->_plugin, _configuration_requests.data(), _configuration_requests.size()))
           {
             os::log(fmt::format(
-                "audio port configuration could not be applied. Ports {}/{} with {}/{} channels"));
+                "audio port configuration could not be applied. Ports {}/{} with {}/{} channels",numInPorts,numOutPorts,numInChannels,numOutChannels ));
             return AAX_ERROR_NOT_INITIALIZED;
           }
         }
