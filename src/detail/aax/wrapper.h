@@ -273,8 +273,8 @@ class ClapAsAAX : public AAX_CEffectParameters,
   ParamChangeQueue _paramsToProcess;
 
  private:
-   std::string _predetermined_effectid;
-   int _predetermined_busconfig = 0;
+  std::string _predetermined_effectid;
+  int _predetermined_busconfig = 0;
 
   // from Clap::IAutomation
   void onBeginEdit(clap_id id) override;
