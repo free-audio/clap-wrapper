@@ -353,19 +353,6 @@ static void DescribeAlgorithmComponent(AAX_IComponentDescriptor *outDesc,
   err = outDesc->AddDataInPort(AAX_FIELD_INDEX(SAAX_Wrapper_AlgorithmicContext, mCurrentStateNum),
                                sizeof(uint64_t));
 
-#if 0
-	err = outDesc->AddAudioIn (eAlgFieldID_AudioIn);
-	err = outDesc->AddAudioOut (eAlgFieldID_AudioOut);
-	err = outDesc->AddAudioBufferLength (eAlgFieldID_BufferSize);
-	static_assert(eMeterTap_Count == sizeof(cDemoGain_MeterID)/sizeof(AAX_CTypeID), "unexpected meter tap array size");
-	err = outDesc->AddMeters ( eAlgFieldID_Meters, cDemoGain_MeterID, eMeterTap_Count );
-    //
-	// Register context fields as communications destinations (i.e. input)
-	err = outDesc->AddDataInPort ( eAlgPortID_BypassIn, sizeof (int32_t) );
-	err = outDesc->AddDataInPort ( eAlgPortID_CoefsGainIn, sizeof (SDemoGain_CoefsGain) );
-
-#endif
-
   // Register processing callbacks
   //
   // Create a property map
@@ -383,9 +370,7 @@ static void DescribeAlgorithmComponent(AAX_IComponentDescriptor *outDesc,
                                 true);  // for the CLAP this is mandatory
   err = properties->AddProperty(AAX_eProperty_Constraint_Topology,
                                 AAX_eConstraintTopology_Monolithic);  // no separate UI and DSP
-  //
-  //
-  //
+
   // Stem format -specific properties
   err = properties->AddProperty(AAX_eProperty_InputStemFormat, stemformat.format_in);
   err = properties->AddProperty(AAX_eProperty_OutputStemFormat, stemformat.format_out);
@@ -394,38 +379,19 @@ static void DescribeAlgorithmComponent(AAX_IComponentDescriptor *outDesc,
   err = properties->AddProperty(AAX_eProperty_Constraint_MultiMonoSupport, 0);
   //
   // ID properties
-  std::string p(clapDescriptor->id);
+  // "org.domain.plugin.identifier - Stereo/Stereo"
+  std::string p(fmt::format("{} - {}", clapDescriptor->id, stemformat.name));
   // TODO: enumerate bus combinations
 
-  // "org.domain.plugin.identifier - Stereo/Stereo"
-  p.append(" - ");
-  p.append(stemformat.name);
-
   err = properties->AddProperty(AAX_eProperty_PlugInID_Native,
-                                AAXIDfromString(p.c_str()));  // cDemoGain_PlugInID_Native
+                                AAXIDfromString(p.c_str()));  //The effect ID for this plugin format
   err =
       properties->AddProperty(AAX_eProperty_Constraint_Location, AAX_eConstraintLocationMask_DataModel);
-
-  //	err = properties->AddProperty ( AAX_eProperty_PlugInID_AudioSuite, cDemoGain_PlugInID_AudioSuite );	// for offline processing
-  // 	err = properties->AddProperty ( AAX_eProperty_PlugInID_TI, cDemoGain_PlugInID_TI );
 
   // Register Native callback
   err = outDesc->AddProcessProc_Native<SAAX_Wrapper_AlgorithmicContext>(
       AAXWrapper_AlgorithmProcessProc, properties, AAXWrapper_inInstanceInitProc,
       AAXWrapper_BackgroundProc);
-
-#if 0
-	no TI in clap
-	// TI-specific properties
-#ifndef AAX_TI_BINARY_IN_DEVELOPMENT  // Define this macro when using a debug TI DLL to allocate only 1 instance per chip
-	err = properties->AddProperty ( AAX_eProperty_TI_InstanceCycleCount, 102 );
-	err = properties->AddProperty ( AAX_eProperty_TI_SharedCycleCount, 70 );
-#endif
-	err = properties->AddProperty ( AAX_eProperty_DSP_AudioBufferLength, AAX_eAudioBufferLengthDSP_Default );
-	
-	// Register TI callback
-	err = outDesc->AddProcessProc_TI ("DemoGain_MM_TI_Example.dll", "AlgEntry", properties );
-#endif
 }
 
 /*
