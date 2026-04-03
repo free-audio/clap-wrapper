@@ -883,7 +883,8 @@ AAX_Result ClapAsAAX::EffectInit()
           }
 
           if (!_plugin->_ext._configurable_audio_ports->apply_configuration(
-                  _plugin->_plugin, _configuration_requests.data(), _configuration_requests.size()))
+                  _plugin->_plugin, _configuration_requests.data(),
+                  (uint32_t)_configuration_requests.size()))
           {
             os::log(fmt::format(
                 "audio port configuration could not be applied. Ports {}/{} with {}/{} channels",
