@@ -128,9 +128,171 @@ int32_t AAX_CALLBACK AAXWrapper_BackgroundProc()
   return AAX_SUCCESS;
 }
 
+// ---------------------------------------------------------------------------------------------
+
+// clang-format off
+
+// static maps of channel mappings for CLAP surround from AAX STEM formats
+// the order is defined by the AAX stem channel format, see AAX_Enums.h for "enum AAX_EStemFormat"
+//
+// there are a few assumptions here, since AAX does not completely map with this
+// 
+// ** Ls/Rs in 5.1/7.1
+// mapped to consistently to "Side", so Lss/Rss -> SL/SR and Lsr/Rsr -> BL/BR
+//
+// ** Lw/Rw ("Wide")
+// CLAP does not have Wide-Channels, so they will go to front, so Lw/Rw -> FLC/FRC. This seems to be a common pattern.
+//
+// ** Top Middle (Ltm/Rtm)
+// mapped to their CLAP equivalents (TFL/TFR/TSL/TSR/TBL/TBR/TC/TFC/TBC).
+//
+// additional note: if you, dearest reader, find an issue with the following definition,
+// please open a github issue, this is a "there be dragons" area for me
+
+// AAX -> CLAP channel constants
+#define AAX_M    CLAP_SURROUND_FC
+#define AAX_L    CLAP_SURROUND_FL
+#define AAX_R    CLAP_SURROUND_FR
+#define AAX_C    CLAP_SURROUND_FC
+#define AAX_LFE  CLAP_SURROUND_LFE
+#define AAX_Lc   CLAP_SURROUND_FLC
+#define AAX_Rc   CLAP_SURROUND_FRC
+#define AAX_Ls   CLAP_SURROUND_SL
+#define AAX_Rs   CLAP_SURROUND_SR
+#define AAX_Lss  CLAP_SURROUND_SL
+#define AAX_Rss  CLAP_SURROUND_SR
+#define AAX_Lsr  CLAP_SURROUND_BL
+#define AAX_Rsr  CLAP_SURROUND_BR
+#define AAX_S    CLAP_SURROUND_BC
+#define AAX_Cs   CLAP_SURROUND_BC
+#define AAX_Lw   CLAP_SURROUND_FLC
+#define AAX_Rw   CLAP_SURROUND_FRC
+
+// Top / Height channels
+#define AAX_Ltf  CLAP_SURROUND_TFL
+#define AAX_Rtf  CLAP_SURROUND_TFR
+#define AAX_Ltm  CLAP_SURROUND_TSL
+#define AAX_Rtm  CLAP_SURROUND_TSR
+#define AAX_Ltr  CLAP_SURROUND_TBL
+#define AAX_Rtr  CLAP_SURROUND_TBR
+#define AAX_Lts  CLAP_SURROUND_TSL
+#define AAX_Rts  CLAP_SURROUND_TSR
+#define AAX_TC   CLAP_SURROUND_TC
+#define AAX_TFC  CLAP_SURROUND_TFC
+#define AAX_TBC  CLAP_SURROUND_TBC
+
+static const uint8_t aax2clap_Mono[]        = { AAX_M };
+static const uint8_t aax2clap_Stereo[]      = { AAX_L,                              AAX_R };
+static const uint8_t aax2clap_LCR[]         = { AAX_L,         AAX_C,               AAX_R };
+static const uint8_t aax2clap_LCRS[]        = { AAX_L,         AAX_C,               AAX_R, AAX_S };
+static const uint8_t aax2clap_Quad[]        = { AAX_L,                              AAX_R, AAX_Ls, AAX_Rs };
+static const uint8_t aax2clap_5_0[]         = { AAX_L,         AAX_C,               AAX_R, AAX_Ls, AAX_Rs };
+static const uint8_t aax2clap_5_1[]         = { AAX_L,         AAX_C,               AAX_R, AAX_Ls, AAX_Rs, AAX_LFE };
+static const uint8_t aax2clap_6_0[]         = { AAX_L,         AAX_C,               AAX_R, AAX_Ls, AAX_Cs, AAX_Rs };
+static const uint8_t aax2clap_6_1[]         = { AAX_L,         AAX_C,               AAX_R, AAX_Ls, AAX_Cs, AAX_Rs, AAX_LFE };
+static const uint8_t aax2clap_7_0_SDDS[]    = { AAX_L, AAX_Lc, AAX_C, AAX_Rc,       AAX_R, AAX_Ls, AAX_Rs };
+static const uint8_t aax2clap_7_1_SDDS[]    = { AAX_L, AAX_Lc, AAX_C, AAX_Rc,       AAX_R, AAX_Ls, AAX_Rs, AAX_LFE };
+static const uint8_t aax2clap_7_0_DTS[]     = { AAX_L,         AAX_C,               AAX_R, AAX_Lss, AAX_Rss, AAX_Lsr, AAX_Rsr };
+static const uint8_t aax2clap_7_1_DTS[]     = { AAX_L,         AAX_C,               AAX_R, AAX_Lss, AAX_Rss, AAX_Lsr, AAX_Rsr, AAX_LFE };
+static const uint8_t aax2clap_7_0_2[]       = { AAX_L,         AAX_C,               AAX_R, AAX_Lss, AAX_Rss, AAX_Lsr, AAX_Rsr, AAX_Lts, AAX_Rts };
+static const uint8_t aax2clap_7_1_2[]       = { AAX_L,         AAX_C,               AAX_R, AAX_Lss, AAX_Rss, AAX_Lsr, AAX_Rsr, AAX_LFE, AAX_Lts, AAX_Rts };
+static const uint8_t aax2clap_5_0_2[]       = { AAX_L,         AAX_C,               AAX_R, AAX_Ls, AAX_Rs, AAX_Ltm, AAX_Rtm };
+static const uint8_t aax2clap_5_1_2[]       = { AAX_L,         AAX_C,               AAX_R, AAX_Ls, AAX_Rs, AAX_LFE, AAX_Ltm, AAX_Rtm };
+static const uint8_t aax2clap_5_0_4[]       = { AAX_L,         AAX_C,               AAX_R, AAX_Ls, AAX_Rs, AAX_Ltf, AAX_Rtf, AAX_Ltr, AAX_Rtr };
+static const uint8_t aax2clap_5_1_4[]       = { AAX_L,         AAX_C,               AAX_R, AAX_Ls, AAX_Rs, AAX_LFE, AAX_Ltf, AAX_Rtf, AAX_Ltr, AAX_Rtr };
+static const uint8_t aax2clap_7_0_4[]       = { AAX_L,         AAX_C,               AAX_R, AAX_Lss, AAX_Rss, AAX_Lsr, AAX_Rsr, AAX_Ltf, AAX_Rtf, AAX_Ltr, AAX_Rtr };
+static const uint8_t aax2clap_7_1_4[]       = { AAX_L,         AAX_C,               AAX_R, AAX_Lss, AAX_Rss, AAX_Lsr, AAX_Rsr, AAX_LFE, AAX_Ltf, AAX_Rtf, AAX_Ltr, AAX_Rtr };
+static const uint8_t aax2clap_7_0_6[]       = { AAX_L,         AAX_C,               AAX_R, AAX_Lss, AAX_Rss, AAX_Lsr, AAX_Rsr, AAX_Ltf, AAX_Rtf, AAX_Ltm, AAX_Rtm, AAX_Ltr, AAX_Rtr };
+static const uint8_t aax2clap_7_1_6[]       = { AAX_L,         AAX_C,               AAX_R, AAX_Lss, AAX_Rss, AAX_Lsr, AAX_Rsr, AAX_LFE, AAX_Ltf, AAX_Rtf, AAX_Ltm, AAX_Rtm, AAX_Ltr, AAX_Rtr };
+static const uint8_t aax2clap_9_0_4[]       = { AAX_L,         AAX_C,               AAX_R, AAX_Lw, AAX_Rw, AAX_Lss, AAX_Rss, AAX_Lsr, AAX_Rsr, AAX_Ltf, AAX_Rtf, AAX_Ltr, AAX_Rtr };
+static const uint8_t aax2clap_9_1_4[]       = { AAX_L,         AAX_C,               AAX_R, AAX_Lw, AAX_Rw, AAX_Lss, AAX_Rss, AAX_Lsr, AAX_Rsr, AAX_LFE, AAX_Ltf, AAX_Rtf, AAX_Ltr, AAX_Rtr };
+static const uint8_t aax2clap_9_0_6[]       = { AAX_L,         AAX_C,               AAX_R, AAX_Lw, AAX_Rw, AAX_Lss, AAX_Rss, AAX_Lsr, AAX_Rsr, AAX_Ltf, AAX_Rtf, AAX_Ltm, AAX_Rtm, AAX_Ltr, AAX_Rtr };
+static const uint8_t aax2clap_9_1_6[]       = { AAX_L,         AAX_C,               AAX_R, AAX_Lw, AAX_Rw, AAX_Lss, AAX_Rss, AAX_Lsr, AAX_Rsr, AAX_LFE, AAX_Ltf, AAX_Rtf, AAX_Ltm, AAX_Rtm, AAX_Ltr, AAX_Rtr };
+
+#undef AAX_M 
+#undef AAX_L 
+#undef AAX_R 
+#undef AAX_C 
+#undef AAX_LF
+#undef AAX_Lc
+#undef AAX_Rc
+#undef AAX_Ls
+#undef AAX_Rs
+#undef AAX_Ls
+#undef AAX_Rs
+#undef AAX_Ls
+#undef AAX_Rs
+#undef AAX_S 
+#undef AAX_Cs
+#undef AAX_Lw
+#undef AAX_Rw
+
+#undef AAX_Ltf 
+#undef AAX_Rtf 
+#undef AAX_Ltm 
+#undef AAX_Rtm 
+#undef AAX_Ltr 
+#undef AAX_Rtr 
+#undef AAX_Lts 
+#undef AAX_Rts 
+#undef AAX_TC  
+#undef AAX_TFC 
+#undef AAX_TBC
+
+// clang-format on
+
+static struct sAAXStemIndexToClapMap
+{
+  const char *identifier;
+  uint32_t aaxStemformat;
+  const uint8_t *clapmap;
+  size_t mapsize;
+} aaxchannelmaps[] = {
+    {"Mono", AAX_eStemFormat_Mono, aax2clap_Mono, sizeof(aax2clap_Mono)},
+    {"Stereo", AAX_eStemFormat_Stereo, aax2clap_Stereo, sizeof(aax2clap_Stereo)},
+    {"LCR", AAX_eStemFormat_LCR, aax2clap_LCR, sizeof(aax2clap_LCR)},
+    {"LCRS", AAX_eStemFormat_LCRS, aax2clap_LCRS, sizeof(aax2clap_LCRS)},
+    {"Quad", AAX_eStemFormat_Quad, aax2clap_Quad, sizeof(aax2clap_Quad)},
+    {"5_0", AAX_eStemFormat_5_0, aax2clap_5_0, sizeof(aax2clap_5_0)},
+    {"5_1", AAX_eStemFormat_5_1, aax2clap_5_1, sizeof(aax2clap_5_1)},
+    {"6_0", AAX_eStemFormat_6_0, aax2clap_6_0, sizeof(aax2clap_6_0)},
+    {"6_1", AAX_eStemFormat_6_1, aax2clap_6_1, sizeof(aax2clap_6_1)},
+    {"7_0_SDDS", AAX_eStemFormat_7_0_SDDS, aax2clap_7_0_SDDS, sizeof(aax2clap_7_0_SDDS)},
+    {"7_1_SDDS", AAX_eStemFormat_7_1_SDDS, aax2clap_7_1_SDDS, sizeof(aax2clap_7_1_SDDS)},
+    {"7_0_DTS", AAX_eStemFormat_7_0_DTS, aax2clap_7_0_DTS, sizeof(aax2clap_7_0_DTS)},
+    {"7_1_DTS", AAX_eStemFormat_7_1_DTS, aax2clap_7_1_DTS, sizeof(aax2clap_7_1_DTS)},
+    {"7_0_2", AAX_eStemFormat_7_0_2, aax2clap_7_0_2, sizeof(aax2clap_7_0_2)},
+    {"7_1_2", AAX_eStemFormat_7_1_2, aax2clap_7_1_2, sizeof(aax2clap_7_1_2)},
+    {"5_0_2", AAX_eStemFormat_5_0_2, aax2clap_5_0_2, sizeof(aax2clap_5_0_2)},
+    {"5_1_2", AAX_eStemFormat_5_1_2, aax2clap_5_1_2, sizeof(aax2clap_5_1_2)},
+    {"5_0_4", AAX_eStemFormat_5_0_4, aax2clap_5_0_4, sizeof(aax2clap_5_0_4)},
+    {"5_1_4", AAX_eStemFormat_5_1_4, aax2clap_5_1_4, sizeof(aax2clap_5_1_4)},
+    {"7_0_4", AAX_eStemFormat_7_0_4, aax2clap_7_0_4, sizeof(aax2clap_7_0_4)},
+    {"7_1_4", AAX_eStemFormat_7_1_4, aax2clap_7_1_4, sizeof(aax2clap_7_1_4)},
+    {"7_0_6", AAX_eStemFormat_7_0_6, aax2clap_7_0_6, sizeof(aax2clap_7_0_6)},
+    {"7_1_6", AAX_eStemFormat_7_1_6, aax2clap_7_1_6, sizeof(aax2clap_7_1_6)},
+    {"9_0_4", AAX_eStemFormat_9_0_4, aax2clap_9_0_4, sizeof(aax2clap_9_0_4)},
+    {"9_1_4", AAX_eStemFormat_9_1_4, aax2clap_9_1_4, sizeof(aax2clap_9_1_4)},
+    {"9_0_6", AAX_eStemFormat_9_0_6, aax2clap_9_0_6, sizeof(aax2clap_9_0_6)},
+    {"9_1_6", AAX_eStemFormat_9_1_6, aax2clap_9_1_6, sizeof(aax2clap_9_1_6)},
+    {nullptr, 0, nullptr},
+};
+
+typedef struct stemformat_combi
+{
+  std::string name;
+  uint32_t format_in;
+  uint32_t format_out;
+} stemformat_combi_t;
+
+std::vector<stemformat_combi_t> stemformats;
+
+// --------------------------------------------------------------------------------------------------------
+
 // AAX needs all the description for a component in advance - there is no dynamic thing in here.
 static void DescribeAlgorithmComponent(AAX_IComponentDescriptor *outDesc,
-                                       const clap_plugin_descriptor_t *clapDescriptor)
+                                       const clap_plugin_descriptor_t *clapDescriptor,
+                                       const stemformat_combi_t stemformat)
 {
   AAX_CheckedResult err;
 
@@ -224,9 +386,10 @@ static void DescribeAlgorithmComponent(AAX_IComponentDescriptor *outDesc,
                                 AAX_eConstraintTopology_Monolithic);  // no separate UI and DSP
   //
   //
+  //
   // Stem format -specific properties
-  err = properties->AddProperty(AAX_eProperty_InputStemFormat, AAX_eStemFormat_Stereo);
-  err = properties->AddProperty(AAX_eProperty_OutputStemFormat, AAX_eStemFormat_Stereo);
+  err = properties->AddProperty(AAX_eProperty_InputStemFormat, stemformat.format_in);
+  err = properties->AddProperty(AAX_eProperty_OutputStemFormat, stemformat.format_out);
 
   // multi/mono should not be the same
   err = properties->AddProperty(AAX_eProperty_Constraint_MultiMonoSupport, 0);
@@ -235,7 +398,9 @@ static void DescribeAlgorithmComponent(AAX_IComponentDescriptor *outDesc,
   std::string p(clapDescriptor->id);
   // TODO: enumerate bus combinations
 
-  p.append("-stereo");
+  // "org.domain.plugin.identifier - Stereo/Stereo"
+  p.append(" - ");
+  p.append(stemformat.name);
 
   err = properties->AddProperty(AAX_eProperty_PlugInID_Native,
                                 AAXIDfromString(p.c_str()));  // cDemoGain_PlugInID_Native
@@ -281,13 +446,15 @@ static void DescribeAlgorithmComponent(AAX_IComponentDescriptor *outDesc,
 */
 
 static AAX_Result DescribeEffectFromClap(AAX_IEffectDescriptor *outDescriptor,
-                                         const clap_plugin_descriptor_t *clapDescriptor)
+                                         const clap_plugin_descriptor_t *clapDescriptor,
+                                         const std::vector<stemformat_combi_t> &stemformats)
 {
   using namespace CLAPAAX;
 
   // TODO: list all stem formats
 
-  // MessageBoxA(NULL, "Debugger", "Halted!", MB_OK);
+  //MessageBoxA(NULL, "Debugger", "Halted!", MB_OK);
+  //_CrtDbgBreak();
 
   AAX_CheckedResult err;
   AAX_IComponentDescriptor *const compDesc = outDescriptor->NewComponentDescriptor();
@@ -309,10 +476,12 @@ static AAX_Result DescribeEffectFromClap(AAX_IEffectDescriptor *outDescriptor,
   //
   //
   // Algorithm component
+  for (const auto &c : stemformats)
   {
     // repeat for each bus config
+
     err = compDesc->Clear();
-    DescribeAlgorithmComponent(compDesc, clapDescriptor);
+    DescribeAlgorithmComponent(compDesc, clapDescriptor, c);
     err = outDescriptor->AddComponent(compDesc);
   }
   // plugin
@@ -352,94 +521,9 @@ static AAX_Result DescribeEffectFromClap(AAX_IEffectDescriptor *outDescriptor,
   return err;
 }
 
-// TODO: we will change this in the future.
-namespace cfg
-{
-clap_audio_port_configuration_request mono_out[]{{false, 0, 1, CLAP_PORT_MONO, nullptr}};
-
-const clap_audio_port_configuration_request mono_in_out[]{
-    {true, 0, 1, CLAP_PORT_MONO, nullptr},
-    {false, 0, 1, CLAP_PORT_MONO, nullptr},
-};
-
-const clap_audio_port_configuration_request mono_in_stereo_out[]{
-    {true, 0, 1, CLAP_PORT_MONO, nullptr},
-    {false, 0, 2, CLAP_PORT_STEREO, nullptr},
-};
-
-const clap_audio_port_configuration_request mono_inx2_stereo_out[]{
-    {true, 0, 2, CLAP_PORT_MONO, nullptr},
-    {false, 0, 2, CLAP_PORT_STEREO, nullptr},
-};
-
-const clap_audio_port_configuration_request stereo_out[]{
-    {false, 0, 2, CLAP_PORT_STEREO, nullptr},
-};
-
-const clap_audio_port_configuration_request stereo_in_out[]{
-    {true, 0, 2, CLAP_PORT_STEREO, nullptr},
-    {false, 0, 2, CLAP_PORT_STEREO, nullptr},
-    // {false, 1, 2, CLAP_PORT_STEREO, nullptr},
-};
-
-//const clap_audio_port_configuration_request in2_out2[]{
-//    {true, 0, 2, "", nullptr},
-//    {false, 0, 2, "", nullptr},
-//};
-//
-//const clap_audio_port_configuration_request in2x2_out2[]{
-//    {true, 0, 2, CLAP_PORT_STEREO, nullptr},
-//    {true, 1, 2, CLAP_PORT_STEREO, nullptr},
-//    {false, 0, 2, CLAP_PORT_STEREO, nullptr},
-//};
-
-struct request_t
-{
-  const char *label;
-  const clap_audio_port_configuration_request *ptr;
-  const int count;
-} request[] = {{"mono-out", mono_out, 1},
-               {"stereo-out", stereo_out, 1},
-               {"mono-in,mono-out", mono_in_out, 2},
-               {"stereo-in,stereo-out", stereo_in_out, 2},
-               {"mono-in,stereo-out", mono_in_stereo_out, 2},
-               {"2mono-in,stereo-out", mono_inx2_stereo_out, 2},
-               //{"2in-2out-unspecified", in2_out2, 2},
-               // {"2x2in-2out-unspecified", in2x2_out2, 3},
-
-               {nullptr, nullptr, 0}};
-
-#if 0
-const uint8_t channelmap_quad4[4]{
-  CLAP_SURROUND_FL,
-  CLAP_SURROUND_FR,
-  CLAP_SURROUND_BR,
-  CLAP_SURROUND_BL,
-};
-
-const clap_audio_port_configuration_request quad40_i_o[]{
-    {true, 0, 4, CLAP_PORT_SURROUND, channelmap_quad4},
-    {false, 0, 4, CLAP_PORT_SURROUND, channelmap_quad4},
-};
-
-const clap_audio_port_configuration_request mono4[]{
-    {true, 0, 1, CLAP_PORT_MONO, nullptr},
-    {true, 1, 1, CLAP_PORT_MONO, nullptr},
-    {true, 2, 1, CLAP_PORT_MONO, nullptr},
-    {true, 3, 1, CLAP_PORT_MONO, nullptr},
-    {false, 0, 1, CLAP_PORT_MONO, nullptr},
-    {false, 1, 1, CLAP_PORT_MONO, nullptr},
-    {false, 2, 1, CLAP_PORT_MONO, nullptr},
-    {false, 3, 1, CLAP_PORT_MONO, nullptr},
-
-};
-#endif
-
-}  // namespace cfg
-
 AAX_Result GetEffectDescriptions(AAX_ICollection *outCollection)
 {
-#if 0
+#if 1
   {
     auto pid = GetCurrentProcessId();
 
@@ -466,8 +550,6 @@ AAX_Result GetEffectDescriptions(AAX_ICollection *outCollection)
   {
     for (const auto i : factory->plugins)
     {
-      std::vector<configrequests_t> configs;
-
 #if 1
       // why here? because we have factory and the clap-id
       static const clap_host_params_t micro_params = {
@@ -518,7 +600,9 @@ AAX_Result GetEffectDescriptions(AAX_ICollection *outCollection)
 
           if (ext_aud && ext_cap)
           {
-            // collect input definitions for each audio bus
+            // collect input and output definitions for each audio bus
+            // this will be re-used for all kind of configs
+
             uint32_t numins = ext_aud->count(tmpplug, true);
             uint32_t numout = ext_aud->count(tmpplug, false);
             for (uint32_t i = 0; i < numins; ++i)
@@ -543,79 +627,91 @@ AAX_Result GetEffectDescriptions(AAX_ICollection *outCollection)
               }
             }
 
-            bool standardconfig_is_surround = false;
-
-            for (auto &m : requests)
+            stemformats.clear();
+            for (const auto &i : aaxchannelmaps)
             {
-              if (!strcmp(m.port_type, CLAP_PORT_MONO)) continue;
-              if (!strcmp(m.port_type, CLAP_PORT_STEREO)) continue;
-              // whatever the plugin says, less than 3 channels are MONO or STEREO
-              if (m.channel_count <= 2) continue;
-
-              os::log("default configuration is not mono or stereo\n");
-              // standardconfig_is_mono_or_stereo = false;
-              if (!strcmp(m.port_type, CLAP_PORT_SURROUND))
+              // input and output have the same format
+              for (auto &c : requests)
               {
-                standardconfig_is_surround = true;
+                c.channel_count = AAX_STEM_FORMAT_CHANNEL_COUNT(i.aaxStemformat);
+                switch (AAX_STEM_FORMAT_CHANNEL_COUNT(i.aaxStemformat))
+                {
+                  case 1:
+                    c.port_type = CLAP_PORT_MONO;
+                    c.port_details = nullptr;
+                    break;
+                  case 2:
+                    c.port_type = CLAP_PORT_STEREO;
+                    c.port_details = nullptr;
+                    break;
+                  default:
+                    c.port_type = CLAP_PORT_SURROUND;
+                    c.port_details = i.clapmap;
+                    break;
+                }
               }
-              break;
-            }
-
-            if (ext_sur && standardconfig_is_surround)
-            {
-              uint8_t mapinfo[64];
-              auto chancnt = ext_sur->get_channel_map(tmpplug, 1, 0, mapinfo, 64);
-              if (chancnt == requests[0].channel_count)
+              // now check if the plugin accepts this
+              if (ext_cap->can_apply_configuration(tmpplug, &requests[0], (uint32_t)requests.size()))
               {
-                os::log("got an channel map of {} entries", chancnt);
+                std::string configname = fmt::format("{}/{}", i.aaxStemformat, i.aaxStemformat);
+
+                stemformats.push_back({configname, i.aaxStemformat, i.aaxStemformat});
               }
             }
-
-            // checking all MONO
-            for (auto &m : requests)
-            {
-              m.channel_count = 1;
-              m.port_details = nullptr;
-              m.port_type = CLAP_PORT_MONO;
-            }
-
-            if (ext_cap->can_apply_configuration(tmpplug, &requests[0], (uint32_t)requests.size()))
-            {
-              configs.emplace_back(requests);
-            }
-
-            // checking all STEREO
-            for (auto &m : requests)
-            {
-              m.channel_count = 2;
-              m.port_details = nullptr;
-              m.port_type = CLAP_PORT_STEREO;
-            }
-            if (ext_cap->can_apply_configuration(tmpplug, &requests[0], (uint32_t)requests.size()))
-            {
-              configs.emplace_back(requests);
-            }
-            //
-            // checking all configs as long there is a name for it
-            //while (rq->label)
-            //{
-            //  if (ext_cap->can_apply_configuration(tmpplug, rq->ptr, rq->count))
-            //  {
-            //    configs.emplace_back(rq->label);
-            //  }
-            //  ++rq;
-            //}
           }
+          else
+          {
+            // if not, we fall back to mono/stereo checks
+            clap_audio_port_info_t p;
+            uint32_t numinputs = ext_aud->count(tmpplug, true);
+            uint32_t numoutputs = ext_aud->count(tmpplug, false);
+            std::string f;
+            uint32_t informat = 0, outformat = 0;
+            if (numinputs > 0)
+            {
+              ext_aud->get(tmpplug, 0, false, &p);
+              switch (p.channel_count)
+              {
+                case 1:
+                  informat = AAX_eStemFormat_Mono;
+                  f = "Mono/";
+                  break;
+                case 2:
+                  informat = AAX_eStemFormat_Stereo;
+                  f = "Stereo/";
+                  break;
+                default:
+                  break;
+              }
+            }
+            if (numoutputs > 0)
+            {
+              ext_aud->get(tmpplug, 0, false, &p);
+              switch (p.channel_count)
+              {
+                case 1:
+                  outformat = AAX_eStemFormat_Mono;
+                  f.append("Mono");
+                  break;
+                case 2:
+                  outformat = AAX_eStemFormat_Stereo;
+                  f.append("Stereo");
+                  break;
+                default:
+                  break;
+              }
+            }
+            stemformats.push_back({f, informat, outformat});
+          }
+
           os::log(fmt::format("the following configurations have been determined for plugin {}:",
                               tmpplug->desc->name));
-          for (auto &i : configs)
+          os::log("--------------");
+          for (auto &c : stemformats)
           {
-            os::log("--------------");
-            for (auto &c : i)
-            {
-              os::log(fmt::format("  #{} {} {} with {} channels", c.port_index,
-                                  c.is_input ? "IN" : "OUT", c.port_type, c.channel_count));
-            }
+            os::log(fmt::format("  #{} Channels: {}/{}", c.name,
+                                AAX_STEM_FORMAT_CHANNEL_COUNT(c.format_in),
+                                AAX_STEM_FORMAT_CHANNEL_COUNT(c.format_out)));
           }
         }
         catch (...)
@@ -633,7 +729,7 @@ AAX_Result GetEffectDescriptions(AAX_ICollection *outCollection)
 
       if (effectDescriptor)
       {
-        AAX_SWALLOW_MULT(err = DescribeEffectFromClap(effectDescriptor, i);
+        AAX_SWALLOW_MULT(err = DescribeEffectFromClap(effectDescriptor, i, stemformats);
 
                          // using the clap-plugin id to get it back from the host controller
                          err = outCollection->AddEffect(i->id, effectDescriptor););
@@ -654,6 +750,14 @@ AAX_Result GetEffectDescriptions(AAX_ICollection *outCollection)
   return err;
 }
 
+AAX_CEffectParameters *ClapAsAAX_Create_WithConfig(const char *effect_id, int busconfig)
+{
+  os::log(
+      fmt::format("---- creating AAX wrapper from extension: {} with config {}", effect_id, busconfig));
+  auto result = new ClapAsAAX(effect_id, busconfig);
+  return result;
+}
+
 AAX_CEffectParameters *AAX_CALLBACK ClapAsAAX_Create()
 {
   // returning an empty shell
@@ -671,6 +775,19 @@ ClapAsAAX::ClapAsAAX()
   _activated = false;
 }
 
+ClapAsAAX::ClapAsAAX(const char *effectid, int busconfig)
+  : AAX_CEffectParameters()
+  , Clap::IHost()
+  , Clap::IAutomation()
+  , os::IPlugObject()
+  , _os_attached([this] { os::attach(this); }, [this] { os::detach(this); })
+  , _predetermined_effectid(effectid)
+  , _predetermined_busconfig(busconfig)
+{
+  ClapAsAAXRegistry::Register(this);
+  _activated = false;
+}
+
 ClapAsAAX::~ClapAsAAX()
 {
   // Protools does not shut down properly and when just being closed by click on [X].
@@ -679,6 +796,27 @@ ClapAsAAX::~ClapAsAAX()
   this->stopProcessing();
   this->deactivatePlugin();
   ClapAsAAXRegistry::Unregister(this);
+}
+
+static void build_config_request(clap_audio_port_configuration_request *req, uint32_t numchannels,
+                                 uint32_t index, bool is_input)
+{
+  req->is_input = is_input;
+  req->port_index = index;
+  req->channel_count = numchannels;
+  req->port_details = nullptr;  // will be updated if necessary
+  switch (numchannels)
+  {
+    case 1:
+      req->port_type = CLAP_PORT_MONO;
+      break;
+    case 2:
+      req->port_type = CLAP_PORT_STEREO;
+      break;
+    default:
+      req->port_type = "unknown";
+      break;
+  }
 }
 
 AAX_Result ClapAsAAX::EffectInit()
@@ -693,6 +831,11 @@ AAX_Result ClapAsAAX::EffectInit()
 
   _aax_ctrl = Controller();
   _aax_ctrl->GetEffectID(&m);
+
+  if (!_predetermined_effectid.empty())
+  {
+    m = _predetermined_effectid;
+  }
 
   os::log(fmt::format("AAX Effect Init for '{}'", m.StdString().c_str()));
 
@@ -712,28 +855,61 @@ AAX_Result ClapAsAAX::EffectInit()
           _aax_ctrl->GetInputStemFormat(&stem_in);
           _aax_ctrl->GetOutputStemFormat(&stem_out);
 
-          auto numInputs = AAX_STEM_FORMAT_CHANNEL_COUNT(stem_in);
-          auto numOutputs = AAX_STEM_FORMAT_CHANNEL_COUNT(stem_out);
+          auto numInChannels = AAX_STEM_FORMAT_CHANNEL_COUNT(stem_in);
+          auto numOutChannels = AAX_STEM_FORMAT_CHANNEL_COUNT(stem_out);
+          auto audioports = _plugin->_ext._audioports;
 
-          // TODO: this will be useful later
-          (void)numInputs;
-          (void)numOutputs;
+          auto numInPorts = audioports->count(_plugin->_plugin, true);
+          auto numOutPorts = audioports->count(_plugin->_plugin, false);
+
+          // building configuration requests for all ports, but configure it with the STEM format
+          for (uint32_t i = 0; i < numInPorts; ++i)
+          {
+            // get the port info
+            //clap_audio_port_info_t p;
+            //audioports->get(_plugin->_plugin, i, true, &p); <- since port_index is not port.id, the port info is not needed
+            clap_audio_port_configuration_request rq;
+            build_config_request(&rq, numInChannels, i, true);
+            _configuration_requests.emplace_back(rq);
+          }
+
+          for (uint32_t i = 0; i < numOutPorts; ++i)
+          {
+            // get the port info
+            clap_audio_port_info_t p;
+            audioports->get(_plugin->_plugin, i, false, &p);
+            clap_audio_port_configuration_request rq;
+            build_config_request(&rq, numInChannels, i, false);
+            _configuration_requests.emplace_back(rq);
+          }
+
+          if (!_plugin->_ext._configurable_audio_ports->apply_configuration(
+                  _plugin->_plugin, _configuration_requests.data(), _configuration_requests.size()))
+          {
+            os::log(fmt::format(
+                "audio port configuration could not be applied. Ports {}/{} with {}/{} channels"));
+            return AAX_ERROR_NOT_INITIALIZED;
+          }
+        }
+        else
+        {
+          // when no configurable audio ports exist, the CLAP just works with the
+          // given audio port config and predefined audio configuration
         }
       }
-      AAX_EStemFormat p;
-      _aax_ctrl->GetInputStemFormat(&p);
-      // AAX_eStemFormat_Mono
-      // AAX_eStemFormat_Stereo
-      if (p == AAX_eStemFormat_Mono)
-      {
-      }
-      // TODO: set samplerate and initialize bus format
 
+      // set samplerate
+
+      // set samplerate
       AAX_CSampleRate sr;
       _aax_ctrl->GetSampleRate(&sr);
       _plugin->setSampleRate(sr);
 
-      _plugin->setBlockSizes(32, 1024);
+      // set the blocksizes
+      // AAX does not communicate about block sizes at all, which is a weird design decision
+      // but since AVID hosts are the only relevant AAX hosts and they use maximum of 1024 samples
+      // this is what we provide.
+      _plugin->setBlockSizes(gAAXMinBlockSizeInSamples, gAAXMaxBlockSizeInSamples);
       // set signallatency
       _aax_ctrl->SetSignalLatency(0);
     }
@@ -1002,8 +1178,7 @@ AAX_Result ClapAsAAX::NotificationReceived(AAX_CTypeID inNotificationType,
       int32_t newLatency;
       if (_aax_ctrl->GetSignalLatency(&newLatency) == AAX_SUCCESS)
       {
-        // this is the external output latency, we can't to this yet
-        // TODO: set output latency
+        // from now on, the new latency is active
       }
     }
     break;
@@ -1158,6 +1333,8 @@ bool ClapAsAAX::gui_request_hide()
 void ClapAsAAX::latency_changed()
 {
   _aax_ctrl->SetSignalLatency(_plugin->_ext._latency->get(_plugin->_plugin));
+  // will be signalled from the host with a latency notification
+  // see AAX_eNotificationEvent_SignalLatencyChanged
 }
 
 void ClapAsAAX::tail_changed()

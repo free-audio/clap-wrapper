@@ -134,7 +134,7 @@ void AAXProcessAdapter::setupProcessing(const clap_plugin_t *plugin, double samp
 
   // setup process structure
   _proc.steady_time = -1;                  // change later
-  _proc.frames_count = 1024;               // AAX usually uses 1024, may update during the process call
+  _proc.frames_count = gAAXMaxBlockSizeInSamples;   // AAX usually uses 1024, may update during the process call
   _proc.transport = &_transport;           // point to transport field (updated during process call)
   _proc.audio_inputs_count = numinputs;    // TODO: update configuration accordingly
   _proc.audio_outputs_count = numoutputs;  // TODO: update configuration accordingly

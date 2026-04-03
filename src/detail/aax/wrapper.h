@@ -48,6 +48,7 @@
 #include <map>
 #include <string>
 #include <mutex>
+#include <vector>
 
 #include "../clap/automation.h"
 
@@ -56,6 +57,9 @@
 class AAX_ICollection;
 class Wrapped_AAX_GUI;
 class ClapAsAAX;
+
+constexpr uint32_t gAAXMinBlockSizeInSamples = (2 ^ AAX_eAudioBufferLengthNative_Min);
+constexpr uint32_t gAAXMaxBlockSizeInSamples = (2 ^ AAX_eAudioBufferLengthNative_Max);
 
 class AAXProcessAdapter
 {
@@ -139,6 +143,7 @@ class AAXProcessAdapter
 
 AAX_Result GetEffectDescriptions(AAX_ICollection *outDescriptions);
 AAX_CEffectParameters *AAX_CALLBACK ClapAsAAX_Create();
+AAX_CEffectParameters *AAX_CALLBACK ClapAsAAX_Create_WithConfig(const char *effect_id, int busconfig);
 
 class ClapAsAAX : public AAX_CEffectParameters,
                   public Clap::IHost,
@@ -148,6 +153,7 @@ class ClapAsAAX : public AAX_CEffectParameters,
  public:
   friend class Wrapped_AAX_GUI;
   ClapAsAAX();
+  ClapAsAAX(const char *effectid, int busconfig);
   virtual ~ClapAsAAX();
   AAX_Result EffectInit() override;
   AAX_Result ResetFieldData(AAX_CFieldIndex iFieldIndex, void *oData, uint32_t iDataSize) const override;
@@ -259,12 +265,17 @@ class ClapAsAAX : public AAX_CEffectParameters,
 
   std::unique_ptr<AAXProcessAdapter> _processAdapter;
 
+  std::vector<clap_audio_port_configuration_request> _configuration_requests;
+
   uint32_t _midi_first_portid = 0;
   bool _midi_prefer_mididialect = true;
 
   ParamChangeQueue _paramsToProcess;
 
  private:
+   std::string _predetermined_effectid;
+   int _predetermined_busconfig = 0;
+
   // from Clap::IAutomation
   void onBeginEdit(clap_id id) override;
   void onPerformEdit(const clap_event_param_value_t *value) override;
