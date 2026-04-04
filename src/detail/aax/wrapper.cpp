@@ -755,11 +755,14 @@ ClapAsAAX::ClapAsAAX(const char *effectid, int busconfig)
 
 ClapAsAAX::~ClapAsAAX()
 {
-  // Protools does not shut down properly and when just being closed by click on [X].
-  // therefore we need to clean
-
-  this->stopProcessing();
-  this->deactivatePlugin();
+  // Pro Tools does not shut down properly when closed via [X], so we must clean up
+  // defensively. Guard on _plugin: if EffectInit never completed the shared_ptr is
+  // null and calling into stop/deactivate would dereference it.
+  if (_plugin)
+  {
+    this->stopProcessing();
+    this->deactivatePlugin();
+  }
   ClapAsAAXRegistry::Unregister(this);
 }
 
@@ -910,7 +913,19 @@ AAX_Result ClapAsAAX::ResetFieldData(AAX_CFieldIndex iFieldIndex, void *oData, u
 
 AAX_Result ClapAsAAX::TimerWakeup()
 {
-  // note: this is neither mainthread nor audiothread
+  // Fire any CLAP timers whose period has elapsed.
+  if (_plugin && _plugin->_ext._timer)
+  {
+    auto now = os::getTickInMS();
+    for (auto &to : _timerObjects)
+    {
+      if (to.period_ms > 0 && to.nexttick <= now)
+      {
+        to.nexttick = now + to.period_ms;
+        _plugin->_ext._timer->on_timer(_plugin->_plugin, to.timer_id);
+      }
+    }
+  }
   return AAX_CEffectParameters::TimerWakeup();
 }
 
@@ -1321,11 +1336,44 @@ void ClapAsAAX::restartPlugin()
 
 bool ClapAsAAX::register_timer(uint32_t period_ms, clap_id *timer_id)
 {
-  return false;
+  // AAX TimerWakeup fires at roughly 30ms; clamp period to that minimum.
+  if (period_ms < 30)
+    period_ms = 30;
+
+  auto now = os::getTickInMS();
+
+  // Reuse an existing slot if one is free.
+  for (size_t i = 0; i < _timerObjects.size(); ++i)
+  {
+    auto &to = _timerObjects[i];
+    if (to.period_ms == 0)
+    {
+      to.timer_id = static_cast<clap_id>(i + 1000);
+      to.period_ms = period_ms;
+      to.nexttick = now + period_ms;
+      *timer_id = to.timer_id;
+      return true;
+    }
+  }
+
+  // No free slot — create a new one.
+  auto newid = static_cast<clap_id>(_timerObjects.size() + 1000);
+  _timerObjects.push_back({period_ms, now + period_ms, newid});
+  *timer_id = newid;
+  return true;
 }
 
 bool ClapAsAAX::unregister_timer(clap_id timer_id)
 {
+  for (auto &to : _timerObjects)
+  {
+    if (to.timer_id == timer_id)
+    {
+      to.period_ms = 0;
+      to.nexttick = 0;
+      return true;
+    }
+  }
   return false;
 }
 

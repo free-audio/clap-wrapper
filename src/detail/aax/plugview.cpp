@@ -85,11 +85,17 @@ void Wrapped_AAX_GUI::CreateViewContainer()
 void Wrapped_AAX_GUI::DeleteViewContainer()
 {
   AAX_CAutoreleasePool autorelease;
-  _clap->_aax_view = nullptr;
+  if (_clap)
+  {
+    _clap->_aax_view = nullptr;
+    _clap = nullptr;
+  }
   if (_gui && _created)
   {
     _gui->destroy(_plugin);
     _created = false;
+    _gui = nullptr;
+    _plugin = nullptr;
   }
 }
 

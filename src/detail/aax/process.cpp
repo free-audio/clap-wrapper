@@ -181,7 +181,17 @@ void AAXProcessAdapter::process(SAAX_Wrapper_AlgorithmicContext *context)
         if (aax_transport->GetBarBeatPosition(&bars, &beats, &displayticks, samplelocation) ==
             AAX_SUCCESS)
         {
-          // TODO: _transport.song_pos_beats(doubleToBeatTime())
+          int32_t numerator = 4, denominator = 4;
+          aax_transport->GetCurrentMeter(&numerator, &denominator);
+          // bars and beats from AAX are 1-based; convert to beat count from song start
+          double bar_start_beats = (double)(bars - 1) * numerator;
+          double song_pos_beats = bar_start_beats + (double)(beats - 1);
+          _transport.song_pos_beats = doubleToBeatTime(song_pos_beats);
+          _transport.bar_start = doubleToBeatTime(bar_start_beats);
+          _transport.bar_number = bars - 1;
+          _transport.tsig_num = (uint16_t)numerator;
+          _transport.tsig_denom = (uint16_t)denominator;
+          _transport.flags |= CLAP_TRANSPORT_HAS_BEATS_TIMELINE | CLAP_TRANSPORT_HAS_TIME_SIGNATURE;
         }
         // loop position
         bool loops;

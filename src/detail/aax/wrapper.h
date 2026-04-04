@@ -257,13 +257,21 @@ class ClapAsAAX : public AAX_CEffectParameters,
 
   mutable Clap::StateMemento _state;
 
-  bool _activated = false;
-  bool _processing = false;
+  std::atomic<bool> _activated{false};
+  std::atomic<bool> _processing{false};
   std::atomic<bool> _wants_on_main_thread = false;
   std::atomic<bool> _flushRequested = false;
   uint32_t _latency = 0;
 
   std::unique_ptr<AAXProcessAdapter> _processAdapter;
+
+  struct TimerObject
+  {
+    uint32_t period_ms = 0;  // 0 means unused / available for reuse
+    uint64_t nexttick = 0;
+    clap_id timer_id = 0;
+  };
+  std::vector<TimerObject> _timerObjects;
 
   std::vector<clap_audio_port_configuration_request> _configuration_requests;
 
