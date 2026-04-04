@@ -17,7 +17,15 @@ namespace freeaudio::clap_wrapper::standalone::linux_standalone
 {
 void X11Gui::initialize(freeaudio::clap_wrapper::standalone::StandaloneHost *sah)
 {
+  XInitThreads();
   display = XOpenDisplay(nullptr);
+  if (!display)
+  {
+    const char *disp = getenv("DISPLAY");
+    fprintf(stderr, "XOpenDisplay failed: could not connect to display '%s'\n",
+            disp ? disp : "(DISPLAY not set)");
+    exit(1);
+  }
   sah->x11Gui = this;
   sah->onRequestResize = [this](int w, int h) { return resetSizeTo(w, h); };
   epoll_fd = epoll_create1(EPOLL_CLOEXEC);
@@ -50,12 +58,15 @@ void X11Gui::runloop()
       {
         case MapNotify:
         {
-          clap_window win;
-          win.api = CLAP_WINDOW_API_X11;
-          win.x11 = window;
-          auto ui = plugin->_ext._gui;
-          ui->set_parent(plugin->_plugin, &win);
-          ui->show(plugin->_plugin);
+          if (plugin && plugin->_ext._gui)
+          {
+            clap_window win;
+            win.api = CLAP_WINDOW_API_X11;
+            win.x11 = window;
+            auto ui = plugin->_ext._gui;
+            ui->set_parent(plugin->_plugin, &win);
+            ui->show(plugin->_plugin);
+          }
         }
         break;
         case ClientMessage:
@@ -148,9 +159,14 @@ void X11Gui::setPlugin(std::shared_ptr<Clap::Plugin> p)
 }
 void X11Gui::shutdown()
 {
+  if (plugin && plugin->_ext._gui)
+  {
+    plugin->_ext._gui->destroy(plugin->_plugin);
+  }
   if (epoll_fd >= 0)
   {
     close(epoll_fd);
+    epoll_fd = -1;
   }
   if (display && window > 0)
   {
@@ -161,6 +177,7 @@ void X11Gui::shutdown()
   {
     XCloseDisplay(display);
   }
+  plugin.reset();
 }
 
 int X11Gui::nextTimerId{2112};

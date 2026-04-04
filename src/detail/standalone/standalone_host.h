@@ -30,19 +30,11 @@
 
 namespace freeaudio::clap_wrapper::standalone
 {
-#if LIN
-#if CLAP_WRAPPER_HAS_GTK3
-namespace linux_standalone
-{
-struct GtkGui;
-}
-#endif
-#if CLAP_WRAPPER_STANDALONE_X11
+#if LIN && CLAP_WRAPPER_STANDALONE_X11
 namespace linux_standalone
 {
 struct X11Gui;
 }
-#endif
 #endif
 
 std::optional<fs::path> getStandaloneSettingsPath();
@@ -179,14 +171,8 @@ struct StandaloneHost : Clap::IHost
     return false;
   }
 
-#if LIN
-#if CLAP_WRAPPER_HAS_GTK3
-  freeaudio::clap_wrapper::standalone::linux_standalone::GtkGui *gtkGui{nullptr};
-#endif
-#if CLAP_WRAPPER_STANDALONE_X11
+#if LIN && CLAP_WRAPPER_STANDALONE_X11
   freeaudio::clap_wrapper::standalone::linux_standalone::X11Gui *x11Gui{nullptr};
-#endif
-
 #endif
 
   bool register_timer(uint32_t period_ms, clap_id *timer_id) override;

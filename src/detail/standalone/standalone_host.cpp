@@ -3,13 +3,8 @@
 #include "standalone_host.h"
 #include <fstream>
 
-#if LIN
-#if CLAP_WRAPPER_HAS_GTK3
-#include "detail/standalone/linux/gtkutils.h"
-#endif
-#if CLAP_WRAPPER_STANDALONE_X11
+#if LIN && CLAP_WRAPPER_STANDALONE_X11
 #include "detail/standalone/linux/x11_gui.h"
-#endif
 #endif
 
 #if WIN
@@ -251,10 +246,7 @@ const char *StandaloneHost::host_get_name()
 
 bool StandaloneHost::register_timer(uint32_t period_ms, clap_id *timer_id)
 {
-#if LIN && CLAP_WRAPPER_HAS_GTK3
-  assert(gtkGui);
-  return gtkGui->register_timer(period_ms, timer_id);
-#elif LIN && CLAP_WRAPPER_STANDALONE_X11
+#if LIN && CLAP_WRAPPER_STANDALONE_X11
   assert(x11Gui);
   return x11Gui->register_timer(period_ms, timer_id);
 #else
@@ -263,9 +255,7 @@ bool StandaloneHost::register_timer(uint32_t period_ms, clap_id *timer_id)
 }
 bool StandaloneHost::unregister_timer(clap_id timer_id)
 {
-#if LIN && CLAP_WRAPPER_HAS_GTK3
-  return gtkGui->unregister_timer(timer_id);
-#elif LIN && CLAP_WRAPPER_STANDALONE_X11
+#if LIN && CLAP_WRAPPER_STANDALONE_X11
   assert(x11Gui);
   return x11Gui->unregister_timer(timer_id);
 #else
@@ -275,9 +265,7 @@ bool StandaloneHost::unregister_timer(clap_id timer_id)
 
 bool StandaloneHost::register_fd(int fd, clap_posix_fd_flags_t flags)
 {
-#if LIN && CLAP_WRAPPER_HAS_GTK3
-  return gtkGui->register_fd(fd, flags);
-#elif LIN && CLAP_WRAPPER_STANDALONE_X11
+#if LIN && CLAP_WRAPPER_STANDALONE_X11
   return x11Gui->register_fd(fd, flags);
 #else
   return false;
@@ -289,9 +277,7 @@ bool StandaloneHost::modify_fd(int fd, clap_posix_fd_flags_t flags)
 }
 bool StandaloneHost::unregister_fd(int fd)
 {
-#if LIN && CLAP_WRAPPER_HAS_GTK3
-  return gtkGui->unregister_fd(fd);
-#elif LIN && CLAP_WRAPPER_STANDALONE_X11
+#if LIN && CLAP_WRAPPER_STANDALONE_X11
   return x11Gui->unregister_fd(fd);
 #else
   return false;
