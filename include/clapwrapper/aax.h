@@ -56,9 +56,9 @@ typedef struct clap_plugin_factory_as_aax
   const char *package_name;  // the package name, otherwise the first plugin name is being used
   uint32_t package_version;
 
-  // retrieve additional information for the Steinberg::PClassInfo2 struct by pointer to clap_plugin_as_vst3
+  // retrieve additional information for the AAX information like plugin/component ids for bus configs etc.
   // returns nullptr if no additional information is provided or can be a nullptr itself
-  const clap_plugin_info_as_aax_t *(CLAP_ABI *get_vst3_info)(const clap_plugin_factory_as_aax *factory,
+  const clap_plugin_info_as_aax_t *(CLAP_ABI *get_aax_info)(const clap_plugin_factory_as_aax *factory,
                                                              uint32_t index);
 
   bool(CLAP_ABI *can_apply_configuration)(const clap_plugin_t *plugin,

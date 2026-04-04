@@ -1121,7 +1121,7 @@ AAX_Result ClapAsAAX::GetChunk(AAX_CTypeID iChunkID, AAX_SPlugInChunk *oChunk) c
 
   oChunk->fVersion = 1;
   memset(oChunk->fName, 0, 32);  //Just in case, lets make sure unused chars are null.
-  memcpy(oChunk->fName, "clap-as-aax", 11);
+  memcpy(oChunk->fName, "clap-as-aax-state", 11);
   oChunk->fSize = (int32_t)_state.size();
   memcpy(oChunk->fData, _state.data(), _state.size());
 
