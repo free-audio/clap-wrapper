@@ -58,8 +58,8 @@ class AAX_ICollection;
 class Wrapped_AAX_GUI;
 class ClapAsAAX;
 
-constexpr uint32_t gAAXMinBlockSizeInSamples = (2 ^ AAX_eAudioBufferLengthNative_Min);
-constexpr uint32_t gAAXMaxBlockSizeInSamples = (2 ^ AAX_eAudioBufferLengthNative_Max);
+constexpr uint32_t gAAXMinBlockSizeInSamples = (1 << AAX_eAudioBufferLengthNative_Min);
+constexpr uint32_t gAAXMaxBlockSizeInSamples = (1 << AAX_eAudioBufferLengthNative_Max);
 
 class AAXProcessAdapter
 {
