@@ -1337,8 +1337,7 @@ void ClapAsAAX::restartPlugin()
 bool ClapAsAAX::register_timer(uint32_t period_ms, clap_id *timer_id)
 {
   // AAX TimerWakeup fires at roughly 30ms; clamp period to that minimum.
-  if (period_ms < 30)
-    period_ms = 30;
+  if (period_ms < 30) period_ms = 30;
 
   auto now = os::getTickInMS();
 
