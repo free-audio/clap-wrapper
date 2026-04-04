@@ -1273,22 +1273,18 @@ void ClapAsAAX::param_rescan(clap_param_rescan_flags flags)
   // flag (display name changes) can be honoured — via AAX_CParameter::SetName(),
   // which calls mAutomationDelegate->ParameterNameChanged() internally and triggers
   // Pro Tools to refresh the name everywhere it is displayed.
-  if (!(flags & CLAP_PARAM_RESCAN_TEXT))
-    return;
+  if (!(flags & CLAP_PARAM_RESCAN_TEXT)) return;
 
-  if (!_plugin || !_plugin->_ext._params)
-    return;
+  if (!_plugin || !_plugin->_ext._params) return;
 
   uint32_t count = _plugin->_ext._params->count(_plugin->_plugin);
   for (uint32_t i = 0; i < count; ++i)
   {
     clap_param_info_t info;
-    if (!_plugin->_ext._params->get_info(_plugin->_plugin, i, &info))
-      continue;
+    if (!_plugin->_ext._params->get_info(_plugin->_plugin, i, &info)) continue;
 
     auto it = _parameterMapCLAP.find(info.id);
-    if (it == _parameterMapCLAP.end())
-      continue;
+    if (it == _parameterMapCLAP.end()) continue;
 
     auto &wrapped = *it->second;
 
@@ -1298,8 +1294,7 @@ void ClapAsAAX::param_rescan(clap_param_rescan_flags flags)
 
     // Notify AAX; SetName() calls mAutomationDelegate->ParameterNameChanged() internally.
     AAX_IParameter *aaxParam = mParameterManager.GetParameterByID(wrapped._aax_identifier.c_str());
-    if (aaxParam)
-      aaxParam->SetName(AAX_CString(info.name));
+    if (aaxParam) aaxParam->SetName(AAX_CString(info.name));
   }
 }
 
