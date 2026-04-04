@@ -59,7 +59,7 @@ typedef struct clap_plugin_factory_as_aax
   // retrieve additional information for the AAX information like plugin/component ids for bus configs etc.
   // returns nullptr if no additional information is provided or can be a nullptr itself
   const clap_plugin_info_as_aax_t *(CLAP_ABI *get_aax_info)(const clap_plugin_factory_as_aax *factory,
-                                                             uint32_t index);
+                                                            uint32_t index);
 
   bool(CLAP_ABI *can_apply_configuration)(const clap_plugin_t *plugin,
                                           const struct clap_audio_port_configuration_request *requests,
