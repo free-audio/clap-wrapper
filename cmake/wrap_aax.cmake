@@ -24,8 +24,8 @@ function(private_add_aax_wrapper_sources)
            ${sd}/src/detail/aax/wrapper.h
            ${sd}/src/detail/aax/categories.cpp
            ${sd}/src/detail/aax/categories.h
-           ${sd}/src/detail/aax/audioconfig.cpp
-           ${sd}/src/detail/aax/audioconfig.h
+           # ${sd}/src/detail/aax/audioconfig.cpp
+           # ${sd}/src/detail/aax/audioconfig.h
            ${sd}/src/detail/aax/parameter.cpp
            ${sd}/src/detail/aax/parameter.h
            ${sd}/src/detail/aax/plugview.cpp

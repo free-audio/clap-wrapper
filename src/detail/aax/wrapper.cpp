@@ -1269,14 +1269,50 @@ void ClapAsAAX::setupParameters(const clap_plugin_t *plugin, const clap_plugin_p
 
 void ClapAsAAX::param_rescan(clap_param_rescan_flags flags)
 {
+  // AAX does not support adding/removing parameters at runtime, so only the TEXT
+  // flag (display name changes) can be honoured — via AAX_CParameter::SetName(),
+  // which calls mAutomationDelegate->ParameterNameChanged() internally and triggers
+  // Pro Tools to refresh the name everywhere it is displayed.
+  if (!(flags & CLAP_PARAM_RESCAN_TEXT))
+    return;
+
+  if (!_plugin || !_plugin->_ext._params)
+    return;
+
+  uint32_t count = _plugin->_ext._params->count(_plugin->_plugin);
+  for (uint32_t i = 0; i < count; ++i)
+  {
+    clap_param_info_t info;
+    if (!_plugin->_ext._params->get_info(_plugin->_plugin, i, &info))
+      continue;
+
+    auto it = _parameterMapCLAP.find(info.id);
+    if (it == _parameterMapCLAP.end())
+      continue;
+
+    auto &wrapped = *it->second;
+
+    // Update our cached copy so display delegates stay consistent.
+    strncpy(wrapped._clap_param_info.name, info.name, CLAP_NAME_SIZE - 1);
+    wrapped._clap_param_info.name[CLAP_NAME_SIZE - 1] = '\0';
+
+    // Notify AAX; SetName() calls mAutomationDelegate->ParameterNameChanged() internally.
+    AAX_IParameter *aaxParam = mParameterManager.GetParameterByID(wrapped._aax_identifier.c_str());
+    if (aaxParam)
+      aaxParam->SetName(AAX_CString(info.name));
+  }
 }
 
-void ClapAsAAX::param_clear(clap_id param, clap_param_clear_flags flags)
+void ClapAsAAX::param_clear(clap_id /*param*/, clap_param_clear_flags /*flags*/)
 {
+  // AAX provides no mechanism to clear automation or modulation data for a
+  // specific parameter programmatically. Nothing to do.
 }
 
 void ClapAsAAX::param_request_flush()
 {
+  // Signal onIdle() to call the params flush extension on the next main-thread tick.
+  _flushRequested.store(true);
 }
 
 bool ClapAsAAX::gui_can_resize()
