@@ -257,10 +257,17 @@ static void DescribeAlgorithmComponent(AAX_IComponentDescriptor *outDesc,
 */
 
 static AAX_Result DescribeEffectFromClap(AAX_IEffectDescriptor *outDescriptor,
-                                         const clap_plugin_descriptor_t *clapDescriptor,
+                                         const Clap::Library *clapFactory, uint32_t plugindex,
                                          const std::vector<CLAPAAX::stemformat_combi_t> &stemformats)
 {
   using namespace CLAPAAX;
+
+  const clap_plugin_descriptor_t *clapDescriptor = clapFactory->plugins[plugindex];
+  const clap_plugin_info_as_aax_t *aax_plugin_info = nullptr;
+  if (clapFactory->_pluginFactoryAAXInfo)
+  {
+    aax_plugin_info = clapFactory->get_aax_info(plugindex);
+  }
 
   // TODO: list all stem formats
 
@@ -280,12 +287,18 @@ static AAX_Result DescribeEffectFromClap(AAX_IEffectDescriptor *outDescriptor,
     err = outDescriptor->AddName(e.c_str());
   }
 
-  err = outDescriptor->AddCategory(clapCategoriesToAAX(clapDescriptor->features));
+  // get AAX Plugin category uint32_t bitfield from override
+  if (aax_plugin_info && aax_plugin_info->aax_features != 0)
+  {
+    outDescriptor->AddCategory(aax_plugin_info->aax_features);
+  }
+  else
+  {  // , or derive from feature string
+    err = outDescriptor->AddCategory(clapCategoriesToAAX(clapDescriptor->features));
+  }
 
   // Effect components
-  //
-  //
-  //
+
   // Algorithm component
   for (const auto &c : stemformats)
   {
@@ -388,8 +401,7 @@ AAX_Result GetEffectDescriptions(AAX_ICollection *outCollection)
 
       if (effectDescriptor)
       {
-        AAX_SWALLOW_MULT(err =
-                             DescribeEffectFromClap(effectDescriptor, factory->plugins[i], stemformats);
+        AAX_SWALLOW_MULT(err = DescribeEffectFromClap(effectDescriptor, factory, i, stemformats);
 
                          // using the clap-plugin id to get it back from the host controller
                          err = outCollection->AddEffect(factory->plugins[i]->id, effectDescriptor););

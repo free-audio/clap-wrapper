@@ -49,7 +49,7 @@ class Library
   const clap_ara_factory_t *_pluginFactoryARAInfo = nullptr;
   std::vector<const clap_plugin_descriptor_t *> plugins;
 
-  const clap_plugin_info_as_vst3_t *get_vst3_info(uint32_t index) const;  
+  const clap_plugin_info_as_vst3_t *get_vst3_info(uint32_t index) const;
   const clap_plugin_info_as_aax_t *get_aax_info(uint32_t index) const;
 
 #if MAC
