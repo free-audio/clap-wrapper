@@ -16,16 +16,10 @@
 #endif
 
 // the factory extension
-static const CLAP_CONSTEXPR char CLAP_PLUGIN_FACTORY_INFO_AAX[] = "clap.plugin-factory-info-as-aax/0";
+static const CLAP_CONSTEXPR char CLAP_PLUGIN_FACTORY_INFO_AAX[] = "clap.plugin-factory-info-as-aax/1";
 
 // the plugin extension
-static const CLAP_CONSTEXPR char CLAP_PLUGIN_AS_AAX[] = "clap.plugin-info-as-aax/0";
-
-typedef uint8_t array_of_16_bytes[16];
-
-// clang-format off
-
-// clang-format on
+static const CLAP_CONSTEXPR char CLAP_PLUGIN_AS_AAX[] = "clap.plugin-info-as-aax/1";
 
 /*
   clap_plugin_as_aax
@@ -34,12 +28,37 @@ typedef uint8_t array_of_16_bytes[16];
   if not provided, the wrapper code will use/generate appropriate values
 
   this struct is being returned by the plugin in clap_plugin_factory_as_aax::get_aax_info()
+
+  the issue this shall solve is that AAX declares everything at factory time which is at
+  plugin time in CLAP. the information is usually extracted at factory time by a miniclap host
+  that instantiates each plugin in the clap factory once and reads out some information.
+
+  to improve start up speed, a plugin writer can provide this information on factory time, too,
+  by providing the information via the clap_plugin_factory_as_aax_t factory extension.
+
 */
 
+// clap_plugin_info_as_aax_t is being inquired for each plugin listed in the factory
+
+typedef struct clap_plugin_aax_stem_config
+{
+  const char *name;
+  uint32_t format_in;
+  uint32_t format_out;
+} clap_plugin_aax_stem_config_t;
+
+// this struct describes features for ONE plugin type.
+// you can override the `uint32_t aax_features` by setting it to >0, otherwise the feature string will be parsed
+// you can also set the config that will be reported via additional id
 typedef struct clap_plugin_info_as_aax
 {
-  const char *vendor;    // vendor
-  const char *features;  // feature string for SubCategories
+  uint32_t aax_features;  // maps directly the AAX_EPlugInCategory enum.
+  uint32_t(CLAP_ABI *get_num_stem_configs)();
+  const clap_plugin_aax_stem_config_t *(CLAP_ABI *get_stem_config)(uint32_t index);
+
+  uint32_t(CLAP_ABI *get_num_MIDI_ports)();
+  const uint32_t *(CLAP_ABI *get_MIDI_port_channelmap)(uint32_t index);
+
 } clap_plugin_info_as_aax_t;
 
 /*
@@ -53,8 +72,9 @@ typedef struct clap_plugin_info_as_aax
 
 typedef struct clap_plugin_factory_as_aax
 {
-  const char *package_name;  // the package name, otherwise the first plugin name is being used
-  uint32_t package_version;
+  const char *package_name;          // the package name, otherwise the first plugin name is being used
+  const char *package_manufacturer;  // the package vendor
+  uint32_t package_version;          // the actual version
 
   // retrieve additional information for the AAX information like plugin/component ids for bus configs etc.
   // returns nullptr if no additional information is provided or can be a nullptr itself
@@ -67,6 +87,7 @@ typedef struct clap_plugin_factory_as_aax
 
 } clap_plugin_factory_as_aax_t;
 
+#if 0
 enum clap_supported_note_expressions_aax
 {
   AS_AAX_NOTE_EXPRESSION_VOLUME = 1 << 0,
@@ -93,3 +114,5 @@ typedef struct clap_plugin_as_aax
   uint32_t(CLAP_ABI *supportedNoteExpressions)(
       const clap_plugin *plugin);  // returns a bitmap of clap_supported_note_expressions
 } clap_plugin_as_aax_t;
+
+#endif

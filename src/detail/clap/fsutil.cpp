@@ -229,11 +229,22 @@ bool Library::load(const fs::path &path)
 #endif
 }
 
+// getting the information for a VST3 plugin at given index
 const clap_plugin_info_as_vst3_t *Library::get_vst3_info(uint32_t index) const
 {
   if (_pluginFactoryVst3Info && _pluginFactoryVst3Info->get_vst3_info)
   {
     return _pluginFactoryVst3Info->get_vst3_info(_pluginFactoryVst3Info, index);
+  }
+  return nullptr;
+}
+
+// getting the information for a AAX plugin at given index
+const clap_plugin_info_as_aax_t *Library::get_aax_info(uint32_t index) const
+{
+  if (_pluginFactoryAAXInfo && _pluginFactoryAAXInfo->get_aax_info)
+  {
+    return _pluginFactoryAAXInfo->get_aax_info(_pluginFactoryAAXInfo, index);
   }
   return nullptr;
 }
@@ -261,10 +272,12 @@ void Library::setupPluginsFromPluginEntry(const char *path)
     {
       _pluginFactory =
           static_cast<const clap_plugin_factory *>(_pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_ID));
-      _pluginFactoryVst3Info = static_cast<const clap_plugin_factory_as_vst3 *>(
+      _pluginFactoryVst3Info = static_cast<decltype(_pluginFactoryVst3Info)>(
           _pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_VST3));
-      _pluginFactoryAUv2Info = static_cast<const clap_plugin_factory_as_auv2 *>(
+      _pluginFactoryAUv2Info = static_cast<decltype(_pluginFactoryAUv2Info)>(
           _pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_AUV2));
+      _pluginFactoryAAXInfo = static_cast<decltype(_pluginFactoryAAXInfo)>(
+          _pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_AAX));
       _pluginFactoryARAInfo =
           static_cast<const clap_ara_factory_t *>(_pluginEntry->get_factory(CLAP_EXT_ARA_FACTORY));
 
