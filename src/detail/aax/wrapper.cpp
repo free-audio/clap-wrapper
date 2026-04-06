@@ -136,10 +136,13 @@ int32_t AAX_CALLBACK AAXWrapper_BackgroundProc()
 
 // AAX needs all the description for a component in advance - there is no dynamic thing in here.
 static void DescribeAlgorithmComponent(AAX_IComponentDescriptor *outDesc,
-                                       const clap_plugin_descriptor_t *clapDescriptor,
+                                       const Clap::Library *clapFactory, uint32_t plugindex,
+                                       const clap_plugin_info_as_aax_t *aax_plugin_info,
                                        const CLAPAAX::stemformat_combi_t stemformat)
 {
   AAX_CheckedResult err;
+
+  const clap_plugin_descriptor_t *clapDescriptor = clapFactory->plugins[plugindex];
 
   // Describe algorithm's context structure
   //
@@ -207,8 +210,26 @@ static void DescribeAlgorithmComponent(AAX_IComponentDescriptor *outDesc,
   //
   // Generic properties
 
-  err = properties->AddProperty(AAX_eProperty_ManufacturerID, AAXIDfromString(clapDescriptor->vendor));
-  err = properties->AddProperty(AAX_eProperty_ProductID, AAXIDfromString(clapDescriptor->id));
+  uint32_t manu_id = AAXIDfromString(clapDescriptor->vendor);
+  uint32_t prod_id = AAXIDfromString(clapDescriptor->id);
+  if (clapFactory->_pluginFactoryAAXInfo)
+  {
+    // optionally override generated manufacturer id
+    auto o_manu_id = clapFactory->_pluginFactoryAAXInfo->id_manufacturer;
+    if (o_manu_id != 0)
+    {
+      manu_id = o_manu_id;
+    }
+
+    // optionally override generated product id
+    auto o_prod_id = clapFactory->_pluginFactoryAAXInfo->id_product;
+    if (o_prod_id != 0)
+    {
+      prod_id = o_prod_id;
+    }
+  }
+  err = properties->AddProperty(AAX_eProperty_ManufacturerID, manu_id);
+  err = properties->AddProperty(AAX_eProperty_ProductID, prod_id);
   err = properties->AddProperty(AAX_eProperty_CanBypass, true);
   // err = properties->AddProperty(AAX_eProperty_UsesClientGUI, true);  // true means that it uses auto-GUI by the host, CLAPs have their own UI
 
@@ -223,7 +244,7 @@ static void DescribeAlgorithmComponent(AAX_IComponentDescriptor *outDesc,
 
   // multi/mono should not be the same
   err = properties->AddProperty(AAX_eProperty_Constraint_MultiMonoSupport, 0);
-  //
+
   // ID properties
   // "org.domain.plugin.identifier - Stereo/Stereo"
   std::string p(fmt::format("{} - {}", clapDescriptor->id, stemformat.name));
@@ -311,7 +332,7 @@ static AAX_Result DescribeEffectFromClap(AAX_IEffectDescriptor *outDescriptor,
     // repeat for each bus config
 
     err = compDesc->Clear();
-    DescribeAlgorithmComponent(compDesc, clapDescriptor, c);
+    DescribeAlgorithmComponent(compDesc, clapFactory, plugindex, aax_plugin_info, c);
     err = outDescriptor->AddComponent(compDesc);
   }
   // plugin
