@@ -89,7 +89,7 @@ void AAXProcessAdapter::setupProcessing(const clap_plugin_t *plugin, double samp
   auto numoutputs = ext_audio->count(_plugin, false);
 
   LOGDETAIL(fmt::format("setting up audio for '{}' with {} inputs and {} outputs", _plugin->desc->name,
-                      numinputs, numoutputs));
+                        numinputs, numoutputs));
 
   // TODO: adapt to number of ports
   _input_ports = nullptr;

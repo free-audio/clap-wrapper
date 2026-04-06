@@ -195,7 +195,7 @@ std::vector<stemformat_combi_t> getAvailableBusConfigs(Clap::Library *factory, u
       [](const struct clap_host *host, const char *extension_id) -> const void *
       {
         if (extension_id == nullptr) return nullptr;
-        LOGDETAIL("plugin requests microhost extension {}",extension_id);
+        LOGDETAIL("plugin requests microhost extension {}", extension_id);
         if (!strcmp(CLAP_EXT_PARAMS, extension_id)) return &micro_params;
         if (!strcmp(CLAP_EXT_AUDIO_PORTS, extension_id)) return &micro_audio_ports;
         return nullptr;
