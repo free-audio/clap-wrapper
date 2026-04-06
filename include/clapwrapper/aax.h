@@ -115,4 +115,4 @@ typedef struct clap_plugin_as_aax
       const clap_plugin *plugin);  // returns a bitmap of clap_supported_note_expressions
 } clap_plugin_as_aax_t;
 
-#endif  
+#endif
