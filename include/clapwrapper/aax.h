@@ -80,7 +80,7 @@ typedef struct clap_plugin_factory_as_aax
       id_manufacturer;  // AAX_eProperty_ManufacturerID, should be registered with Avid, and must be identical for all plug-ins from the same manufacturer
   uint32_t
       id_product;  // AAX_eProperty_ProductID, must be identical for all ProcessProcs within a single AAX_IEffectDescriptor "Effect".
-      // leave them 0x00000000 when clap-wrapper shall generate this ID from the id strings automatically
+  // leave them 0x00000000 when clap-wrapper shall generate this ID from the id strings automatically
 
   // retrieve additional information for the AAX information like plugin/component ids for bus configs etc.
   // returns nullptr if no additional information is provided or can be a nullptr itself
