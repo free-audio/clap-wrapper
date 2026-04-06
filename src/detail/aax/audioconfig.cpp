@@ -167,6 +167,7 @@ std::vector<stemformat_combi_t> getAvailableBusConfigs(Clap::Library *factory, u
   if (plug_aax_info)
   {
     uint32_t N = plug_aax_info->get_num_stem_configs();
+    LOGINFO("retrieving {} configs from plugin '{}'", N, pdesc->id);
     for (uint32_t i = 0; i < N; ++i)
     {
       auto *steminfo = plug_aax_info->get_stem_config(i);
@@ -194,7 +195,7 @@ std::vector<stemformat_combi_t> getAvailableBusConfigs(Clap::Library *factory, u
       [](const struct clap_host *host, const char *extension_id) -> const void *
       {
         if (extension_id == nullptr) return nullptr;
-        os::log(extension_id);
+        LOGDETAIL("plugin requests microhost extension {}",extension_id);
         if (!strcmp(CLAP_EXT_PARAMS, extension_id)) return &micro_params;
         if (!strcmp(CLAP_EXT_AUDIO_PORTS, extension_id)) return &micro_audio_ports;
         return nullptr;
@@ -334,24 +335,29 @@ std::vector<stemformat_combi_t> getAvailableBusConfigs(Clap::Library *factory, u
         stemformats.push_back({f, informat, outformat});
       }
 
-      os::log(fmt::format("the following configurations have been determined for plugin {}:",
-                          tmpplug->desc->name));
-      os::log("--------------");
+      LOGDETAIL(fmt::format("the following configurations have been determined for plugin {}:",
+                            tmpplug->desc->name));
+      LOGDETAIL("--------------");
       for (auto &c : stemformats)
       {
-        os::log(fmt::format("  #{} Channels: {}/{}", c.name, AAX_STEM_FORMAT_CHANNEL_COUNT(c.format_in),
-                            AAX_STEM_FORMAT_CHANNEL_COUNT(c.format_out)));
+        LOGDETAIL(fmt::format("  #{} Channels: {}/{}", c.name,
+                              AAX_STEM_FORMAT_CHANNEL_COUNT(c.format_in),
+                              AAX_STEM_FORMAT_CHANNEL_COUNT(c.format_out)));
       }
+    }
+    catch (std::exception &e)
+    {
+      LOGINFO("exception thrown during scan of plugin: {}", e.what());
     }
     catch (...)
     {
-      os::log("something got totally wrong");
+      LOGINFO("something got totally wrong");
     }
     tmpplug->destroy(tmpplug);
   }
   catch (std::exception &e)
   {
-    os::log(e.what());
+    LOGINFO("exception thrown: {}", e.what());
   }
   return stemformats;
 }

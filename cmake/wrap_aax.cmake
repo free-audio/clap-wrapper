@@ -139,7 +139,7 @@ function(target_add_aax_wrapper)
         target_link_libraries (${AX_TARGET} PUBLIC "-framework Foundation" "-framework CoreFoundation")
         set_target_properties(${AX_TARGET} PROPERTIES
                 BUNDLE True
-                BUNDLE_EXTENSION aax
+                BUNDLE_EXTENSION aaxplugin
                 LIBRARY_OUTPUT_NAME ${AX_OUTPUT_NAME}
                 MACOSX_BUNDLE_GUI_IDENTIFIER ${AX_BUNDLE_IDENTIFIER}
                 MACOSX_BUNDLE_BUNDLE_NAME ${AX_OUTPUT_NAME}

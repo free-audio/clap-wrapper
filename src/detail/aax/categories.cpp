@@ -78,7 +78,7 @@ uint32_t clapCategoriesToAAX(const char *const *clap_categories)
 {
   // AAX_ePlugInCategory_WrappedPlugin = 0x00001000,	///<  All plug-ins wrapped by a thrid party wrapper (i.e. VST to RTAS wrapper), except for virtual instrument plug-ins which should be mapped to AAX_PlugInCategory_SWGenerators
   uint32_t result = 0;  // we don't use AAX_ePlugInCategory_WrappedPlugin;
-  os::log("creating categories:");
+ LOGDETAIL("creating categories:");
   for (auto f = clap_categories; f && *f; ++f)
   {
     auto it =
@@ -87,7 +87,7 @@ uint32_t clapCategoriesToAAX(const char *const *clap_categories)
 
     if (it != std::end(translationTable))
     {
-      os::log(fmt::format("  {}", it->clapattribute));
+      LOGDETAIL(fmt::format("  {}", it->clapattribute));
       result |= it->aaxattribute;
     }
   }

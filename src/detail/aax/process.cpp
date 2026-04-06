@@ -88,7 +88,7 @@ void AAXProcessAdapter::setupProcessing(const clap_plugin_t *plugin, double samp
   auto numinputs = ext_audio->count(_plugin, true);
   auto numoutputs = ext_audio->count(_plugin, false);
 
-  os::log(fmt::format("setting up audio for '{}' with {} inputs and {} outputs", _plugin->desc->name,
+  LOGDETAIL(fmt::format("setting up audio for '{}' with {} inputs and {} outputs", _plugin->desc->name,
                       numinputs, numoutputs));
 
   // TODO: adapt to number of ports
@@ -109,11 +109,11 @@ void AAXProcessAdapter::setupProcessing(const clap_plugin_t *plugin, double samp
     if (ext_audio->get(_plugin, i, true, &info))
     {
       _input_ports[i] = {nullptr, nullptr, info.channel_count, 0, 0};
-      os::log(fmt::format("    IN port {} with {} channels", i, info.channel_count));
+      LOGDETAIL(fmt::format("    IN port {} with {} channels", i, info.channel_count));
     }
     else
     {
-      os::log(fmt::format("input port info for port {} can not be requested", i));
+      LOGDETAIL(fmt::format("input port info for port {} can not be requested", i));
       _input_ports[i] = {nullptr, nullptr, 0, 0, 0};
     }
   }
@@ -123,11 +123,11 @@ void AAXProcessAdapter::setupProcessing(const clap_plugin_t *plugin, double samp
     if (ext_audio->get(_plugin, i, false, &info))
     {
       _output_ports[i] = {nullptr, nullptr, info.channel_count, 0, 0};
-      os::log(fmt::format("    OUT port {} with {} channels", i, info.channel_count));
+      LOGDETAIL(fmt::format("    OUT port {} with {} channels", i, info.channel_count));
     }
     else
     {
-      os::log(fmt::format("input port info for port {} can not be requested", i));
+      LOGDETAIL(fmt::format("input port info for port {} can not be requested", i));
       _output_ports[i] = {nullptr, nullptr, 0, 0, 0};
     }
   }

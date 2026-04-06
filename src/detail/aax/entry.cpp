@@ -30,15 +30,15 @@ AAX_Result AAXRegisterPlugin(IACFUnknown *pUnkHost, IACFPluginDefinition **ppPlu
 AAX_Result AAXStartup(IACFUnknown *pUnkHost)
 {
   // load our clap or return error
-  os::log(os::getBinaryName());
+  LOGINFO(os::getBinaryName());
   auto factory = CLAPAAX::guarantee_clap();
   if (!factory)
   {
-    os::log("CLAP as AAX: plugin not found");
+    LOGINFO("CLAP as AAX: plugin not found");
 
     return AAX_ERROR_NO_COMPONENTS;
   }
-  os::log("CLAP as AAX: plugin found");
+  LOGINFO("CLAP as AAX: plugin found");
   return AAXStartup_Base(pUnkHost);
 }
 

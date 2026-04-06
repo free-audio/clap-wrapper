@@ -99,12 +99,12 @@ AAXWrapper_inInstanceInitProc(const SAAX_Wrapper_AlgorithmicContext *inInstanceC
   switch (inAction)
   {
     case AAX_eComponentInstanceInitAction_AddingNewInstance:
-      os::log("adding new instance");
+      LOGDETAIL("adding new instance");
       self->activatePlugin();
       self->startProcessing();
       break;
     case AAX_eComponentInstanceInitAction_RemovingInstance:
-      os::log("removing instance");
+      LOGDETAIL("removing instance");
       if (ClapAsAAXRegistry::Exists(self))
       {
         self->stopProcessing();
@@ -112,11 +112,11 @@ AAXWrapper_inInstanceInitProc(const SAAX_Wrapper_AlgorithmicContext *inInstanceC
       }
       else
       {
-        os::log("instance to be removed does not exists anymore");
+        LOGDETAIL("instance to be removed does not exists anymore");
       }
       break;
     case AAX_eComponentInstanceInitAction_ResetInstance:
-      os::log("resetting instance!?");
+      LOGDETAIL("resetting instance!?");
       break;
     default:
       break;
@@ -242,6 +242,12 @@ static void DescribeAlgorithmComponent(AAX_IComponentDescriptor *outDesc,
 
 /*
 
+  Some explanations on the AAX wording:
+
+  Package:      the plugin dll/bundle
+  Effect:       a certain plugin within the dll/bundle. there can more 1+ components in one package
+  Component:    the plugins with a certain configuration, like stem formats or different bus settings etc.  
+
   this is a variant of the DescribeAlgorithmComponent function of the AAX example plugins
   It usually fills out ONE effect, but this is matching only one CHannel/Stemformat configuration
 
@@ -279,11 +285,11 @@ static AAX_Result DescribeEffectFromClap(AAX_IEffectDescriptor *outDescriptor,
   if (!compDesc) err = AAX_ERROR_NULL_OBJECT;
 
   // add the plugin name(s)
-  os::log("generating names:");
+  LOGDETAIL("generating names:");
   auto list = generateShortStrings(clapDescriptor->name);
   for (const auto &e : list)
   {
-    os::log(e.c_str());
+    LOGDETAIL(e.c_str());
     err = outDescriptor->AddName(e.c_str());
   }
 
@@ -393,7 +399,7 @@ AAX_Result GetEffectDescriptions(AAX_ICollection *outCollection)
 
       if (stemformats.empty())
       {
-        os::log("no valid stem formats determined, skipping plugin {}", factory->plugins[i]->id);
+        LOGINFO("no valid stem formats determined, skipping plugin {}", factory->plugins[i]->id);
         continue;
       }
 
@@ -418,7 +424,7 @@ AAX_Result GetEffectDescriptions(AAX_ICollection *outCollection)
 
 AAX_CEffectParameters *ClapAsAAX_Create_WithConfig(const char *effect_id, int busconfig)
 {
-  os::log(
+  LOGINFO(
       fmt::format("---- creating AAX wrapper from extension: {} with config {}", effect_id, busconfig));
   auto result = new ClapAsAAX(effect_id, busconfig);
   return result;
@@ -427,7 +433,7 @@ AAX_CEffectParameters *ClapAsAAX_Create_WithConfig(const char *effect_id, int bu
 AAX_CEffectParameters *AAX_CALLBACK ClapAsAAX_Create()
 {
   // returning an empty shell
-  os::log("-------------------------------------------------------------------------------------");
+  LOGINFO("-------------------------------------------------------------------------------------");
   return new ClapAsAAX();
 }
 ClapAsAAX::ClapAsAAX()
@@ -506,7 +512,7 @@ AAX_Result ClapAsAAX::EffectInit()
     m = _predetermined_effectid;
   }
 
-  os::log(fmt::format("AAX Effect Init for '{}'", m.StdString().c_str()));
+  LOGINFO(fmt::format("AAX Effect Init for '{}'", m.StdString().c_str()));
 
   _library = CLAPAAX::guarantee_clap();
   _plugin = Clap::Plugin::createInstance(_library->_pluginFactory, m.StdString(), this);
@@ -556,7 +562,7 @@ AAX_Result ClapAsAAX::EffectInit()
                   _plugin->_plugin, _configuration_requests.data(),
                   (uint32_t)_configuration_requests.size()))
           {
-            os::log(fmt::format(
+            LOGINFO(fmt::format(
                 "audio port configuration could not be applied. Ports {}/{} with {}/{} channels",
                 numInPorts, numOutPorts, numInChannels, numOutChannels));
             return AAX_ERROR_NOT_INITIALIZED;
@@ -596,7 +602,7 @@ AAX_Result ClapAsAAX::ResetFieldData(AAX_CFieldIndex iFieldIndex, void *oData, u
   //If this is the MonolithicParameters field, let's initialize it to our this pointer.
   if (iFieldIndex == AAX_FIELD_INDEX(SAAX_Wrapper_AlgorithmicContext, mPrivateData))
   {
-    os::log("Resetting the private field data pointing back to the wrapper");
+    LOGINFO("Resetting the private field data pointing back to the wrapper");
 
     //Make sure everything is at least initialized to 0.
     AAX_ASSERT(iDataSize == sizeof(SAAX_Wrapper_PrivateData));
