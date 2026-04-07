@@ -70,7 +70,8 @@ class ProcessAdapter
                        uint32_t numSamples, size_t numEventInputs, size_t numEventOutputs,
                        Steinberg::Vst::ParameterContainer &params,
                        Steinberg::Vst::IComponentHandler *componenthandler, IAutomation *automation,
-                       bool enablePolyPressure, bool supportsTuningNoteExpression);
+                       std::vector<clap_id> &gesturedParameters, bool enablePolyPressure,
+                       bool supportsTuningNoteExpression);
   void process(Steinberg::Vst::ProcessData &data);
   void flush();
   void processOutputParams(Steinberg::Vst::ProcessData &data);
@@ -104,7 +105,7 @@ class ProcessAdapter
   Steinberg::Vst::BusList *_audiooutputs = nullptr;
 
   // for automation gestures
-  std::vector<clap_id> _gesturedParameters;
+  std::vector<clap_id> *_gesturedParameters;
 
   // for INoteExpression
   struct ActiveNote

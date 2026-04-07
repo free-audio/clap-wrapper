@@ -1212,10 +1212,12 @@ void ClapAsAAX::activatePlugin()
 {
   if (!_activated)
   {
+    _gesturedparameters.reserve(8192);
+
     _processAdapter = std::make_unique<AAXProcessAdapter>();
     _processAdapter->setupProcessing(_plugin->_plugin, _plugin->getSampleRate(), _plugin->_ext._params,
-                                     _plugin->_ext._audioports, this, _paramsToProcess,
-                                     _midi_first_portid, _midi_prefer_mididialect);
+                                     _plugin->_ext._audioports, this, _gesturedparameters,
+                                     _paramsToProcess, _midi_first_portid, _midi_prefer_mididialect);
 
     _activated = true;
     _plugin->activate();

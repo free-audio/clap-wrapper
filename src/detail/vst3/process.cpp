@@ -24,8 +24,8 @@ void ProcessAdapter::setupProcessing(const clap_plugin_t *plugin, const clap_plu
                                      size_t /*numEventOutputs*/,
                                      Steinberg::Vst::ParameterContainer &params,
                                      Steinberg::Vst::IComponentHandler *componenthandler,
-                                     IAutomation *automation, bool enablePolyPressure,
-                                     bool supportsTuningNoteExpression)
+                                     IAutomation *automation, std::vector<clap_id> &gesturedParameters,
+                                     bool enablePolyPressure, bool supportsTuningNoteExpression)
 {
   _plugin = plugin;
   _ext_params = ext_params;
@@ -35,6 +35,7 @@ void ProcessAdapter::setupProcessing(const clap_plugin_t *plugin, const clap_plu
   parameters = &params;
   _componentHandler = componenthandler;
   _automation = automation;
+  _gesturedParameters = &gesturedParameters;
 
   if (numSamples > 0)
   {
@@ -115,8 +116,6 @@ void ProcessAdapter::setupProcessing(const clap_plugin_t *plugin, const clap_plu
   _eventindices.reserve(_events.capacity());
 
   _out_events.ctx = this;
-
-  _gesturedParameters.reserve(8192);
 
   _activeNotes.reserve(32);
 
@@ -290,8 +289,8 @@ void ProcessAdapter::process(Steinberg::Vst::ProcessData &data)
 
       // if a parameter is currently edited by a user, we are not allowed to send this back to the CLAP.
       // this is a fundamental difference between VST3 and CLAP
-      if (std::find(_gesturedParameters.begin(), _gesturedParameters.end(), paramid) !=
-          _gesturedParameters.end())
+      if (std::find(_gesturedParameters->begin(), _gesturedParameters->end(), paramid) !=
+          _gesturedParameters->end())
       {
         continue;
       }
@@ -747,8 +746,8 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t *event)
 
         // if the parameter is marked as being edited in the UI, pass the value
         // to the queue so it can be given to the IComponentHandler
-        if (std::find(_gesturedParameters.begin(), _gesturedParameters.end(), param_id) !=
-            _gesturedParameters.end())
+        if (std::find(_gesturedParameters->begin(), _gesturedParameters->end(), param_id) !=
+            _gesturedParameters->end())
         {
           if (_automation) _automation->onPerformEdit(ev);
         }
@@ -785,7 +784,7 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t *event)
     {
       auto ev = (clap_event_param_gesture *)event;
       auto param = (Vst3Parameter *)this->parameters->getParameter(ev->param_id & 0x7FFFFFFF);
-      _gesturedParameters.push_back(param->getInfo().id);
+      _gesturedParameters->push_back(param->getInfo().id);
       if (_automation) _automation->onBeginEdit(param->getInfo().id);
     }
       return true;
@@ -796,10 +795,11 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t *event)
       auto ev = (clap_event_param_gesture *)event;
       auto param = (Vst3Parameter *)this->parameters->getParameter(ev->param_id & 0x7FFFFFFF);
 
-      auto n = std::remove(_gesturedParameters.begin(), _gesturedParameters.end(), param->getInfo().id);
-      if (n != _gesturedParameters.end())
+      auto n =
+          std::remove(_gesturedParameters->begin(), _gesturedParameters->end(), param->getInfo().id);
+      if (n != _gesturedParameters->end())
       {
-        _gesturedParameters.erase(n, _gesturedParameters.end());
+        _gesturedParameters->erase(n, _gesturedParameters->end());
         if (_automation) _automation->onEndEdit(param->getInfo().id);
       }
     }

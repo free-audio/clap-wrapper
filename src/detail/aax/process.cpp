@@ -58,13 +58,15 @@ void AAXProcessAdapter::applyBusSetting(const clap_plugin_t *plugin, const char 
 void AAXProcessAdapter::setupProcessing(const clap_plugin_t *plugin, double samplerate,
                                         const clap_plugin_params_t *ext_param,
                                         const clap_plugin_audio_ports *ext_audio,
-                                        Clap::IAutomation *automation, ParamChangeQueue &inqueue,
-                                        uint32_t midiportid, bool preferMIDI)
+                                        Clap::IAutomation *automation,
+                                        std::vector<clap_id> &gesturedparameters,
+                                        ParamChangeQueue &inqueue, uint32_t midiportid, bool preferMIDI)
 {
   _plugin = plugin;
   _ext_param = ext_param;
   _automation = automation;
   _inqueue = &inqueue;
+  _gesturedparameters = &gesturedparameters;
 
   _midi_first_portid = midiportid;
   _midi_prefer_mididialect = preferMIDI;

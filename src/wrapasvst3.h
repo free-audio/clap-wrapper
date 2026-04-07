@@ -365,6 +365,7 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   void onIdle() override;
 
  private:
+  std::vector<clap_id> _gesturedparameters;
   // from Clap::IAutomation
   void onBeginEdit(clap_id id) override;
   void onPerformEdit(const clap_event_param_value_t *value) override;

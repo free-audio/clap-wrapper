@@ -81,8 +81,8 @@ class AAXProcessAdapter
                        const clap_plugin_configurable_audio_ports_t *ext);
   void setupProcessing(const clap_plugin_t *plugin, double samplerate,
                        const clap_plugin_params_t *ext_param, const clap_plugin_audio_ports *ext_audio,
-                       Clap::IAutomation *automation, ParamChangeQueue &inqueue, uint32_t midiportid,
-                       bool preferMIDI);
+                       Clap::IAutomation *automation, std::vector<clap_id> &gesturedParameters,
+                       ParamChangeQueue &inqueue, uint32_t midiportid, bool preferMIDI);
   void process(SAAX_Wrapper_AlgorithmicContext *context);
   void flush();
 
@@ -91,7 +91,7 @@ class AAXProcessAdapter
   const clap_plugin_t *_plugin = nullptr;
   const clap_plugin_params_t *_ext_param = nullptr;
   // for automation gestures
-  std::vector<clap_id> _gesturedParameters;
+  std::vector<clap_id> *_gesturedparameters = nullptr;
 
   Clap::IAutomation *_automation = nullptr;
 
@@ -285,6 +285,8 @@ class ClapAsAAX : public AAX_CEffectParameters,
   int _predetermined_busconfig = 0;
 
   // from Clap::IAutomation
+  std::vector<clap_id> _gesturedparameters;
+
   void onBeginEdit(clap_id id) override;
   void onPerformEdit(const clap_event_param_value_t *value) override;
   void onEndEdit(clap_id id) override;
