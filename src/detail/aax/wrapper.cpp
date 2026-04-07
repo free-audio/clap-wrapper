@@ -164,9 +164,7 @@ static void DescribeAlgorithmComponent(AAX_IComponentDescriptor *outDesc,
   AAX_CFieldIndex transportNodeID = AAX_FIELD_INDEX(SAAX_Wrapper_AlgorithmicContext, mTransportNode);
 
   // Global MIDI node — not currently used
-  err = outDesc->AddPrivateData(
-      globalNodeID, sizeof(float),
-      AAX_ePrivateDataOptions_DefaultOptions);
+  err = outDesc->AddPrivateData(globalNodeID, sizeof(float), AAX_ePrivateDataOptions_DefaultOptions);
 
   // Local MIDI input node
   if (businfo.has_midi_in)
@@ -180,9 +178,8 @@ static void DescribeAlgorithmComponent(AAX_IComponentDescriptor *outDesc,
   }
   else
   {
-    err = outDesc->AddPrivateData(
-        localInputNodeID, sizeof(float),
-        AAX_ePrivateDataOptions_DefaultOptions);
+    err =
+        outDesc->AddPrivateData(localInputNodeID, sizeof(float), AAX_ePrivateDataOptions_DefaultOptions);
   }
 
   // Local MIDI output node
