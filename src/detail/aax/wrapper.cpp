@@ -138,7 +138,8 @@ int32_t AAX_CALLBACK AAXWrapper_BackgroundProc()
 static void DescribeAlgorithmComponent(AAX_IComponentDescriptor *outDesc,
                                        const Clap::Library *clapFactory, uint32_t plugindex,
                                        const clap_plugin_info_as_aax_t *aax_plugin_info,
-                                       const CLAPAAX::stemformat_combi_t stemformat)
+                                       const CLAPAAX::plugin_bus_info_t &businfo,
+                                       const CLAPAAX::stemformat_combi_t &stemformat)
 {
   AAX_CheckedResult err;
 
@@ -162,29 +163,38 @@ static void DescribeAlgorithmComponent(AAX_IComponentDescriptor *outDesc,
   AAX_CFieldIndex localInputNodeID = AAX_FIELD_INDEX(SAAX_Wrapper_AlgorithmicContext, mInputNode);
   AAX_CFieldIndex transportNodeID = AAX_FIELD_INDEX(SAAX_Wrapper_AlgorithmicContext, mTransportNode);
 
-  if (false)  // setupInfo.mNeedsGlobalMIDI)
+  // Global MIDI node — not currently used
+  err = outDesc->AddPrivateData(
+      globalNodeID, sizeof(float),
+      AAX_ePrivateDataOptions_DefaultOptions);
+
+  // Local MIDI input node
+  if (businfo.has_midi_in)
   {
-    err = outDesc->AddMIDINode(AAX_FIELD_INDEX(SAAX_Wrapper_AlgorithmicContext, mInputNode),
-                               AAX_eMIDINodeType_LocalInput, "MIDI IN", 0xF);
-    err = outDesc->AddMIDINode(AAX_FIELD_INDEX(SAAX_Wrapper_AlgorithmicContext, mOutputNode),
-                               AAX_eMIDINodeType_LocalOutput, "MIDI OUT", 0xF);
-    err = outDesc->AddMIDINode(globalNodeID, AAX_eMIDINodeType_Global,
-                               "MIDI Global" /*setupInfo.mGlobalMIDINodeName */,
-                               1 /*setupInfo.mGlobalMIDIEventMask*/);
+    if (aax_plugin_info && aax_plugin_info->midi_in_name)
+      err = outDesc->AddMIDINode(localInputNodeID, AAX_eMIDINodeType_LocalInput,
+                                 aax_plugin_info->midi_in_name, aax_plugin_info->midi_in_channel_mask);
+    else
+      err = outDesc->AddMIDINode(localInputNodeID, AAX_eMIDINodeType_LocalInput,
+                                 businfo.midi_in_name.c_str(), 0xFFFF);
   }
   else
-    err = outDesc->AddPrivateData(
-        globalNodeID, sizeof(float),
-        AAX_ePrivateDataOptions_DefaultOptions);  //Just here to fill the port.  Not used.
-
-  if (true)  // setupInfo.mNeedsInputMIDI)
-    err = outDesc->AddMIDINode(localInputNodeID, AAX_eMIDINodeType_LocalInput,
-                               "MIDI IN" /*setupInfo.mInputMIDINodeName*/,
-                               0xF /*setupInfo.mInputMIDIChannelMask*/);
-  else
+  {
     err = outDesc->AddPrivateData(
         localInputNodeID, sizeof(float),
-        AAX_ePrivateDataOptions_DefaultOptions);  //Just here to fill the port.  Not used.
+        AAX_ePrivateDataOptions_DefaultOptions);
+  }
+
+  // Local MIDI output node
+  if (businfo.has_midi_out)
+  {
+    if (aax_plugin_info && aax_plugin_info->midi_out_name)
+      err = outDesc->AddMIDINode(localInputNodeID, AAX_eMIDINodeType_LocalOutput,
+                                 aax_plugin_info->midi_out_name, aax_plugin_info->midi_out_channel_mask);
+    else
+      err = outDesc->AddMIDINode(localInputNodeID, AAX_eMIDINodeType_LocalOutput,
+                                 businfo.midi_out_name.c_str(), 0xFFFF);
+  }
 
   if (true)  // setupInfo.mNeedsTransport)
     err = outDesc->AddMIDINode(transportNodeID, AAX_eMIDINodeType_Transport, "Transport", 0xffff);
@@ -212,17 +222,17 @@ static void DescribeAlgorithmComponent(AAX_IComponentDescriptor *outDesc,
 
   uint32_t manu_id = AAXIDfromString(clapDescriptor->vendor);
   uint32_t prod_id = AAXIDfromString(clapDescriptor->id);
-  if (clapFactory->_pluginFactoryAAXInfo)
+  if (aax_plugin_info)
   {
     // optionally override generated manufacturer id
-    auto o_manu_id = clapFactory->_pluginFactoryAAXInfo->id_manufacturer;
+    auto o_manu_id = aax_plugin_info->id_manufacturer;
     if (o_manu_id != 0)
     {
       manu_id = o_manu_id;
     }
 
     // optionally override generated product id
-    auto o_prod_id = clapFactory->_pluginFactoryAAXInfo->id_product;
+    auto o_prod_id = aax_plugin_info->id_product;
     if (o_prod_id != 0)
     {
       prod_id = o_prod_id;
@@ -285,7 +295,7 @@ static void DescribeAlgorithmComponent(AAX_IComponentDescriptor *outDesc,
 
 static AAX_Result DescribeEffectFromClap(AAX_IEffectDescriptor *outDescriptor,
                                          const Clap::Library *clapFactory, uint32_t plugindex,
-                                         const std::vector<CLAPAAX::stemformat_combi_t> &stemformats)
+                                         const CLAPAAX::plugin_bus_info_t &businfo)
 {
   using namespace CLAPAAX;
 
@@ -327,12 +337,12 @@ static AAX_Result DescribeEffectFromClap(AAX_IEffectDescriptor *outDescriptor,
   // Effect components
 
   // Algorithm component
-  for (const auto &c : stemformats)
+  for (const auto &c : businfo.stemformats)
   {
     // repeat for each bus config
 
     err = compDesc->Clear();
-    DescribeAlgorithmComponent(compDesc, clapFactory, plugindex, aax_plugin_info, c);
+    DescribeAlgorithmComponent(compDesc, clapFactory, plugindex, aax_plugin_info, businfo, c);
     err = outDescriptor->AddComponent(compDesc);
   }
   // plugin
@@ -416,9 +426,9 @@ AAX_Result GetEffectDescriptions(AAX_ICollection *outCollection)
     const uint32_t N = (uint32_t)factory->plugins.size();
     for (uint32_t i = 0; i < N; ++i)
     {
-      auto stemformats = CLAPAAX::getAvailableBusConfigs(factory, i);
+      auto businfo = CLAPAAX::getAvailableBusConfigs(factory, i);
 
-      if (stemformats.empty())
+      if (businfo.stemformats.empty())
       {
         LOGINFO("no valid stem formats determined, skipping plugin {}", factory->plugins[i]->id);
         continue;
@@ -428,7 +438,7 @@ AAX_Result GetEffectDescriptions(AAX_ICollection *outCollection)
 
       if (effectDescriptor)
       {
-        AAX_SWALLOW_MULT(err = DescribeEffectFromClap(effectDescriptor, factory, i, stemformats);
+        AAX_SWALLOW_MULT(err = DescribeEffectFromClap(effectDescriptor, factory, i, businfo);
 
                          // using the clap-plugin id to get it back from the host controller
                          err = outCollection->AddEffect(factory->plugins[i]->id, effectDescriptor););

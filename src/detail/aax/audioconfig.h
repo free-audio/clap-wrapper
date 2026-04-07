@@ -24,6 +24,15 @@ typedef struct sAAXStemIndexToClapMap
   size_t mapsize;
 } sAAXStemIndexToClapMap_t;
 
-std::vector<stemformat_combi_t> getAvailableBusConfigs(Clap::Library *factory, uint32_t index);
+struct plugin_bus_info_t
+{
+  std::vector<stemformat_combi_t> stemformats;
+  bool has_midi_in = false;
+  bool has_midi_out = false;
+  std::string midi_in_name;
+  std::string midi_out_name;
+};
+
+plugin_bus_info_t getAvailableBusConfigs(Clap::Library *factory, uint32_t index);
 
 }  // namespace CLAPAAX

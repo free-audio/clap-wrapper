@@ -53,11 +53,18 @@ typedef struct clap_plugin_aax_stem_config
 typedef struct clap_plugin_info_as_aax
 {
   uint32_t aax_features;  // maps directly the AAX_EPlugInCategory enum.
+
+  uint32_t id_manufacturer;  // AAX_eProperty_ManufacturerID, should be registered with Avid
+  uint32_t id_product;       // AAX_eProperty_ProductID,
+  // leave them 0x00000000 when clap-wrapper shall generate this ID from the id strings automatically
+
+  const char *midi_in_name;        // name of the MIDI IN, set to nullptr if no MIDI in
+  const char *midi_out_name;       // name of the MIDI OUT, set to nullptr if no MIDI out
+  uint32_t midi_in_channel_mask;   // channel mask for the MIDI IN
+  uint32_t midi_out_channel_mask;  // channel mask for the MIDI OUT
+
   uint32_t(CLAP_ABI *get_num_stem_configs)();
   const clap_plugin_aax_stem_config_t *(CLAP_ABI *get_stem_config)(uint32_t index);
-
-  uint32_t(CLAP_ABI *get_num_MIDI_ports)();
-  const uint32_t *(CLAP_ABI *get_MIDI_port_channelmap)(uint32_t index);
 
 } clap_plugin_info_as_aax_t;
 
@@ -75,12 +82,6 @@ typedef struct clap_plugin_factory_as_aax
   const char *package_name;          // the package name, otherwise the first plugin name is being used
   const char *package_manufacturer;  // the package vendor
   uint32_t package_version;          // the actual version
-
-  uint32_t
-      id_manufacturer;  // AAX_eProperty_ManufacturerID, should be registered with Avid, and must be identical for all plug-ins from the same manufacturer
-  uint32_t
-      id_product;  // AAX_eProperty_ProductID, must be identical for all ProcessProcs within a single AAX_IEffectDescriptor "Effect".
-  // leave them 0x00000000 when clap-wrapper shall generate this ID from the id strings automatically
 
   // retrieve additional information for the AAX information like plugin/component ids for bus configs etc.
   // returns nullptr if no additional information is provided or can be a nullptr itself

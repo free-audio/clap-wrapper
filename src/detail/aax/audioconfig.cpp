@@ -149,9 +149,9 @@ static sAAXStemIndexToClapMap_t aaxchannelmaps[] = {
 
 // this function retrieves a list of available bus configurations that a plugin supports
 // when the
-std::vector<stemformat_combi_t> getAvailableBusConfigs(Clap::Library *factory, uint32_t index)
+plugin_bus_info_t getAvailableBusConfigs(Clap::Library *factory, uint32_t index)
 {
-  std::vector<stemformat_combi_t> stemformats;
+  plugin_bus_info_t result;
   const auto pdesc = factory->plugins[index];
 
   // add an EffectDescription for each plugin available via factory
@@ -171,9 +171,19 @@ std::vector<stemformat_combi_t> getAvailableBusConfigs(Clap::Library *factory, u
     for (uint32_t i = 0; i < N; ++i)
     {
       auto *steminfo = plug_aax_info->get_stem_config(i);
-      stemformats.push_back({steminfo->name, steminfo->format_in, steminfo->format_out});
+      result.stemformats.push_back({steminfo->name, steminfo->format_in, steminfo->format_out});
     }
-    return stemformats;
+    if (plug_aax_info->midi_in_name)
+    {
+      result.has_midi_in = true;
+      result.midi_in_name = plug_aax_info->midi_in_name;
+    }
+    if (plug_aax_info->midi_out_name)
+    {
+      result.has_midi_out = true;
+      result.midi_out_name = plug_aax_info->midi_out_name;
+    }
+    return result;
   }
 
   // the local microhost
@@ -216,8 +226,8 @@ std::vector<stemformat_combi_t> getAvailableBusConfigs(Clap::Library *factory, u
       auto ext_aud = (clap_plugin_audio_ports *)(tmpplug->get_extension(tmpplug, CLAP_EXT_AUDIO_PORTS));
       auto ext_cap = (clap_plugin_configurable_audio_ports_t *)(tmpplug->get_extension(
           tmpplug, CLAP_EXT_CONFIGURABLE_AUDIO_PORTS));
-
-      // auto ext_sur = (clap_plugin_surround_t *)(tmpplug->get_extension(tmpplug, CLAP_EXT_SURROUND));
+      auto ext_notes =
+          (const clap_plugin_note_ports_t *)(tmpplug->get_extension(tmpplug, CLAP_EXT_NOTE_PORTS));
 
       // build a bus setting ------------------
       configrequests_t requests;
@@ -255,7 +265,7 @@ std::vector<stemformat_combi_t> getAvailableBusConfigs(Clap::Library *factory, u
 
         // the config array is set, now go through the stem formats and check
         // if their CLAP equivalents are valid.
-        stemformats.clear();
+        result.stemformats.clear();
         for (const auto &i : aaxchannelmaps)
         {
           // input and output have the same format
@@ -286,7 +296,7 @@ std::vector<stemformat_combi_t> getAvailableBusConfigs(Clap::Library *factory, u
             std::string configname = fmt::format("{}/{}", i.aaxStemformat, i.aaxStemformat);
 
             // if yes, push it to the list of working configurations
-            stemformats.push_back({configname, i.aaxStemformat, i.aaxStemformat});
+            result.stemformats.push_back({configname, i.aaxStemformat, i.aaxStemformat});
           }
         }
       }
@@ -332,13 +342,46 @@ std::vector<stemformat_combi_t> getAvailableBusConfigs(Clap::Library *factory, u
               break;
           }
         }
-        stemformats.push_back({f, informat, outformat});
+        result.stemformats.push_back({f, informat, outformat});
+      }
+
+      // probe MIDI note port support
+      if (ext_notes)
+      {
+        uint32_t n_in = ext_notes->count(tmpplug, true);
+        for (uint32_t i = 0; i < n_in; ++i)
+        {
+          clap_note_port_info_t ninfo;
+          if (ext_notes->get(tmpplug, i, true, &ninfo))
+          {
+            if (ninfo.supported_dialects & CLAP_NOTE_DIALECT_MIDI)
+            {
+              result.has_midi_in = true;
+              result.midi_in_name = ninfo.name;
+              break;
+            }
+          }
+        }
+        uint32_t n_out = ext_notes->count(tmpplug, false);
+        for (uint32_t i = 0; i < n_out; ++i)
+        {
+          clap_note_port_info_t ninfo;
+          if (ext_notes->get(tmpplug, i, false, &ninfo))
+          {
+            if (ninfo.supported_dialects & CLAP_NOTE_DIALECT_MIDI)
+            {
+              result.has_midi_out = true;
+              result.midi_out_name = ninfo.name;
+              break;
+            }
+          }
+        }
       }
 
       LOGDETAIL(fmt::format("the following configurations have been determined for plugin {}:",
                             tmpplug->desc->name));
       LOGDETAIL("--------------");
-      for (auto &c : stemformats)
+      for (auto &c : result.stemformats)
       {
         LOGDETAIL(fmt::format("  #{} Channels: {}/{}", c.name,
                               AAX_STEM_FORMAT_CHANNEL_COUNT(c.format_in),
@@ -359,6 +402,6 @@ std::vector<stemformat_combi_t> getAvailableBusConfigs(Clap::Library *factory, u
   {
     LOGINFO("exception thrown: {}", e.what());
   }
-  return stemformats;
+  return result;
 }
 }  // namespace CLAPAAX
