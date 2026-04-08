@@ -234,116 +234,123 @@ plugin_bus_info_t getAvailableBusConfigs(Clap::Library *factory, uint32_t index)
       configrequests_t requests;
       // bool standardconfig_is_mono_or_stereo = true;
 
-      if (ext_aud && ext_cap)
+      if (ext_aud)
       {
-        // collect input and output definitions for each audio bus
-        // build a structure that reflects those busses and re use
-        // them the check of each stem formats.
-
-        uint32_t numins = ext_aud->count(tmpplug, true);
-        uint32_t numout = ext_aud->count(tmpplug, false);
-        for (uint32_t i = 0; i < numins; ++i)
+        if (ext_cap)
         {
-          clap_audio_port_info_t info;
-          if (ext_aud->get(tmpplug, i, true, &info))
+          // collect input and output definitions for each audio bus
+          // build a structure that reflects those busses and re use
+          // them the check of each stem formats.
+
+          uint32_t numins = ext_aud->count(tmpplug, true);
+          uint32_t numout = ext_aud->count(tmpplug, false);
+          for (uint32_t i = 0; i < numins; ++i)
           {
-            // {true, 0, 1, CLAP_PORT_MONO, nullptr},
-            requests.emplace_back(clap_audio_port_configuration_request{true, i, info.channel_count,
-                                                                        info.port_type, nullptr});
+            clap_audio_port_info_t info;
+            if (ext_aud->get(tmpplug, i, true, &info))
+            {
+              // {true, 0, 1, CLAP_PORT_MONO, nullptr},
+              requests.emplace_back(clap_audio_port_configuration_request{true, i, info.channel_count,
+                                                                          info.port_type, nullptr});
+            }
+          }
+          // collect output definition for each audio bus
+          for (uint32_t i = 0; i < numout; ++i)
+          {
+            clap_audio_port_info_t info;
+            if (ext_aud->get(tmpplug, i, true, &info))
+            {
+              // {false, 0, 1, CLAP_PORT_MONO, nullptr},
+              requests.emplace_back(clap_audio_port_configuration_request{false, i, info.channel_count,
+                                                                          info.port_type, nullptr});
+            }
+          }
+
+          // the config array is set, now go through the stem formats and check
+          // if their CLAP equivalents are valid.
+          result.stemformats.clear();
+          for (const auto &i : aaxchannelmaps)
+          {
+            // input and output have the same format
+            for (auto &c : requests)
+            {
+              // c.port_index and c.is_input is already set, now apply channel count and (optionally) surround channel map
+              c.channel_count = AAX_STEM_FORMAT_CHANNEL_COUNT(i.aaxStemformat);
+              switch (AAX_STEM_FORMAT_CHANNEL_COUNT(i.aaxStemformat))
+              {
+                case 1:
+                  c.port_type = CLAP_PORT_MONO;
+                  c.port_details = nullptr;
+                  break;
+                case 2:
+                  c.port_type = CLAP_PORT_STEREO;
+                  c.port_details = nullptr;
+                  break;
+                default:
+                  // assert(c.channel_count == i.mapsize);
+                  c.port_type = CLAP_PORT_SURROUND;
+                  c.port_details = i.clapmap;
+                  break;
+              }
+            }
+            // now check if the plugin accepts this
+            if (ext_cap->can_apply_configuration(tmpplug, &requests[0], (uint32_t)requests.size()))
+            {
+              std::string configname = fmt::format("{}/{}", i.aaxStemformat, i.aaxStemformat);
+
+              // if yes, push it to the list of working configurations
+              result.stemformats.push_back({configname, i.aaxStemformat, i.aaxStemformat});
+            }
           }
         }
-        // collect output definition for each audio bus
-        for (uint32_t i = 0; i < numout; ++i)
+        else
         {
-          clap_audio_port_info_t info;
-          if (ext_aud->get(tmpplug, i, true, &info))
+          // if not, we fall back to mono/stereo checks
+          clap_audio_port_info_t p;
+          uint32_t numinputs = ext_aud->count(tmpplug, true);
+          uint32_t numoutputs = ext_aud->count(tmpplug, false);
+          std::string f;
+          uint32_t informat = 0, outformat = 0;
+          if (numinputs > 0)
           {
-            // {false, 0, 1, CLAP_PORT_MONO, nullptr},
-            requests.emplace_back(clap_audio_port_configuration_request{false, i, info.channel_count,
-                                                                        info.port_type, nullptr});
-          }
-        }
-
-        // the config array is set, now go through the stem formats and check
-        // if their CLAP equivalents are valid.
-        result.stemformats.clear();
-        for (const auto &i : aaxchannelmaps)
-        {
-          // input and output have the same format
-          for (auto &c : requests)
-          {
-            // c.port_index and c.is_input is already set, now apply channel count and (optionally) surround channel map
-            c.channel_count = AAX_STEM_FORMAT_CHANNEL_COUNT(i.aaxStemformat);
-            switch (AAX_STEM_FORMAT_CHANNEL_COUNT(i.aaxStemformat))
+            ext_aud->get(tmpplug, 0, false, &p);
+            switch (p.channel_count)
             {
               case 1:
-                c.port_type = CLAP_PORT_MONO;
-                c.port_details = nullptr;
+                informat = AAX_eStemFormat_Mono;
+                f = "Mono/";
                 break;
               case 2:
-                c.port_type = CLAP_PORT_STEREO;
-                c.port_details = nullptr;
+                informat = AAX_eStemFormat_Stereo;
+                f = "Stereo/";
                 break;
               default:
-                // assert(c.channel_count == i.mapsize);
-                c.port_type = CLAP_PORT_SURROUND;
-                c.port_details = i.clapmap;
                 break;
             }
           }
-          // now check if the plugin accepts this
-          if (ext_cap->can_apply_configuration(tmpplug, &requests[0], (uint32_t)requests.size()))
+          if (numoutputs > 0)
           {
-            std::string configname = fmt::format("{}/{}", i.aaxStemformat, i.aaxStemformat);
-
-            // if yes, push it to the list of working configurations
-            result.stemformats.push_back({configname, i.aaxStemformat, i.aaxStemformat});
+            ext_aud->get(tmpplug, 0, false, &p);
+            switch (p.channel_count)
+            {
+              case 1:
+                outformat = AAX_eStemFormat_Mono;
+                f.append("Mono");
+                break;
+              case 2:
+                outformat = AAX_eStemFormat_Stereo;
+                f.append("Stereo");
+                break;
+              default:
+                break;
+            }
           }
+          result.stemformats.push_back({f, informat, outformat});
         }
       }
       else
       {
-        // if not, we fall back to mono/stereo checks
-        clap_audio_port_info_t p;
-        uint32_t numinputs = ext_aud->count(tmpplug, true);
-        uint32_t numoutputs = ext_aud->count(tmpplug, false);
-        std::string f;
-        uint32_t informat = 0, outformat = 0;
-        if (numinputs > 0)
-        {
-          ext_aud->get(tmpplug, 0, false, &p);
-          switch (p.channel_count)
-          {
-            case 1:
-              informat = AAX_eStemFormat_Mono;
-              f = "Mono/";
-              break;
-            case 2:
-              informat = AAX_eStemFormat_Stereo;
-              f = "Stereo/";
-              break;
-            default:
-              break;
-          }
-        }
-        if (numoutputs > 0)
-        {
-          ext_aud->get(tmpplug, 0, false, &p);
-          switch (p.channel_count)
-          {
-            case 1:
-              outformat = AAX_eStemFormat_Mono;
-              f.append("Mono");
-              break;
-            case 2:
-              outformat = AAX_eStemFormat_Stereo;
-              f.append("Stereo");
-              break;
-            default:
-              break;
-          }
-        }
-        result.stemformats.push_back({f, informat, outformat});
+        LOGINFO("no audio ports extension found");
       }
 
       // probe MIDI note port support
