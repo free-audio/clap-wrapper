@@ -70,7 +70,7 @@ fs::path getPluginPath();
 std::string getParentFolderName();
 std::string getBinaryName();
 
-#if WIN32
+#ifdef WIN32
 void init();
 void terminate();
 #endif
