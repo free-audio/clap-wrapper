@@ -45,6 +45,7 @@ typedef struct clap_plugin_aax_stem_config
   const char *name;
   uint32_t format_in;
   uint32_t format_out;
+  uint32_t plugin_id;  // AAX_eProperty_PlugInID_Native override; 0 = auto-generate
 } clap_plugin_aax_stem_config_t;
 
 // this struct describes features for ONE plugin type.

@@ -253,12 +253,14 @@ static void DescribeAlgorithmComponent(AAX_IComponentDescriptor *outDesc,
   err = properties->AddProperty(AAX_eProperty_Constraint_MultiMonoSupport, 0);
 
   // ID properties
-  // "org.domain.plugin.identifier - Stereo/Stereo"
-  std::string p(fmt::format("{} - {}", clapDescriptor->id, stemformat.name));
-  // TODO: enumerate bus combinations
-
-  err = properties->AddProperty(AAX_eProperty_PlugInID_Native,
-                                AAXIDfromString(p.c_str()));  //The effect ID for this plugin format
+  // Use explicit plugin ID from extension if provided, otherwise auto-generate from id + stem name
+  uint32_t pluginID = stemformat.plugin_id;
+  if (pluginID == 0)
+  {
+    std::string p(fmt::format("{} - {}", clapDescriptor->id, stemformat.name));
+    pluginID = AAXIDfromString(p.c_str());
+  }
+  err = properties->AddProperty(AAX_eProperty_PlugInID_Native, pluginID);
   err =
       properties->AddProperty(AAX_eProperty_Constraint_Location, AAX_eConstraintLocationMask_DataModel);
 

@@ -14,6 +14,7 @@ typedef struct stemformat_combi
   std::string name;
   uint32_t format_in;
   uint32_t format_out;
+  uint32_t plugin_id = 0;  // AAX_eProperty_PlugInID_Native override; 0 = auto-generate
 } stemformat_combi_t;
 
 typedef struct sAAXStemIndexToClapMap

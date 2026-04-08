@@ -171,7 +171,8 @@ plugin_bus_info_t getAvailableBusConfigs(Clap::Library *factory, uint32_t index)
     for (uint32_t i = 0; i < N; ++i)
     {
       auto *steminfo = plug_aax_info->get_stem_config(i);
-      result.stemformats.push_back({steminfo->name, steminfo->format_in, steminfo->format_out});
+      result.stemformats.push_back(
+          {steminfo->name, steminfo->format_in, steminfo->format_out, steminfo->plugin_id});
     }
     if (plug_aax_info->midi_in_name)
     {
