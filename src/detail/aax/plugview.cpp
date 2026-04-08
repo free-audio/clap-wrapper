@@ -40,7 +40,7 @@ void Wrapped_AAX_GUI::CreateViewContents()
 
 void Wrapped_AAX_GUI::CreateEffectView(void *inSystemWindow)
 {
-#if WIN32
+#ifdef WIN32
 #define CLAP_WINDOW_API CLAP_WINDOW_API_WIN32;
 #elif MAC
 #define CLAP_WINDOW_API CLAP_WINDOW_API_COCOA;

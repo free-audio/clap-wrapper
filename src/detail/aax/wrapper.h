@@ -14,7 +14,7 @@
 
 // clang-format off
 
-#if WIN32
+#ifdef WIN32
 #pragma warning(disable: 5033)  // \aax-sdk-2-8-1\Interfaces\AAX_Atomic.h(191,26): warning C5033: 'register' is no longer a supported storage class
 #endif
 

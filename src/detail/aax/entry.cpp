@@ -48,7 +48,7 @@ AAX_Result AAXShutdown(IACFUnknown *pUnkHost)
   return AAXShutdown_Base(pUnkHost);
 }
 
-#if WIN32
+#ifdef WIN32
 // ------------------------------------------------------------------------------------------------
 // on Windows, we pass the iInstance and initialize our minimal os layer
 // in a combined plugin that exports all flavors sametime, this needs to be refactored and abstracted
