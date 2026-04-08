@@ -398,6 +398,14 @@ function(guarantee_aaxsdk)
         ${AAX_SDK_ROOT}/Libs
     )
     # target_compile_options(base-sdk-aax PUBLIC $<IF:$<CONFIG:Debug>,-DDEVELOPMENT=1,-DRELEASE=1>) # work through steinbergs alternate choices for these
+
+    # The AAX SDK uses the deprecated 'register' storage class specifier
+    if (MSVC)
+        target_compile_options(base-sdk-aax PUBLIC /wd5033)
+    else()
+        target_compile_options(base-sdk-aax PUBLIC -Wno-register)
+    endif()
+
     target_link_libraries(base-sdk-aax PUBLIC clap-wrapper-sanitizer-options)
 
     # finally pass to parent scope
