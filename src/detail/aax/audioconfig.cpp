@@ -386,6 +386,8 @@ plugin_bus_info_t getAvailableBusConfigs(Clap::Library *factory, uint32_t index)
         }
       }
 
+#if (CLAP_WRAPPER_LOGLEVEL == 2)
+      // logging out some details
       LOGDETAIL(fmt::format("the following configurations have been determined for plugin {}:",
                             tmpplug->desc->name));
       LOGDETAIL("--------------");
@@ -395,6 +397,7 @@ plugin_bus_info_t getAvailableBusConfigs(Clap::Library *factory, uint32_t index)
                               AAX_STEM_FORMAT_CHANNEL_COUNT(c.format_in),
                               AAX_STEM_FORMAT_CHANNEL_COUNT(c.format_out)));
       }
+#endif
     }
     catch (std::exception &e)
     {
