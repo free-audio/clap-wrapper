@@ -17,6 +17,8 @@
 
 // clang_format off
 
+// fnv1a_keogh is an implementation of a Fowler-Noll-Vo hash function
+// see https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function
 uint32_t fnv1a_keogh(const char *input)
 {
   uint32_t hash = 0x811c9dc5;

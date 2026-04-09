@@ -17,17 +17,18 @@
 #include <vector>
 #include "fs.h"
 
-#ifdef CLAP_WRAPPER_BUILD_FOR_VST3
+#include <fmt/xchar.h>
+#include "osutil_windows.h"
 
+#ifdef CLAP_WRAPPER_BUILD_FOR_VST3
+// for VST3 we need to moduleinit callbacks and ghInst
 #include "public.sdk/source/main/moduleinit.h"
 // from dllmain.cpp of the VST3 SDK
 extern HINSTANCE ghInst;
 #endif
 
-#include <fmt/xchar.h>
-#include "osutil_windows.h"
-
 #ifdef CLAP_WRAPPER_BUILD_FOR_AAX
+// for AAX we need the ghInst
 extern HINSTANCE ghInst;
 #endif
 

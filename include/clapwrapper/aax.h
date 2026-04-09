@@ -21,23 +21,6 @@ static const CLAP_CONSTEXPR char CLAP_PLUGIN_FACTORY_INFO_AAX[] = "clap.plugin-f
 // the plugin extension
 static const CLAP_CONSTEXPR char CLAP_PLUGIN_AS_AAX[] = "clap.plugin-info-as-aax/1";
 
-/*
-  clap_plugin_as_aax
-
-  all members are optional when set to nullptr
-  if not provided, the wrapper code will use/generate appropriate values
-
-  this struct is being returned by the plugin in clap_plugin_factory_as_aax::get_aax_info()
-
-  the issue this shall solve is that AAX declares everything at factory time which is at
-  plugin time in CLAP. the information is usually extracted at factory time by a miniclap host
-  that instantiates each plugin in the clap factory once and reads out some information.
-
-  to improve start up speed, a plugin writer can provide this information on factory time, too,
-  by providing the information via the clap_plugin_factory_as_aax_t factory extension.
-
-*/
-
 // clap_plugin_info_as_aax_t is being inquired for each plugin listed in the factory
 
 typedef struct clap_plugin_aax_stem_config
@@ -51,6 +34,25 @@ typedef struct clap_plugin_aax_stem_config
 // this struct describes features for ONE plugin type.
 // you can override the `uint32_t aax_features` by setting it to >0, otherwise the feature string will be parsed
 // you can also set the config that will be reported via additional id
+/*
+  clap_plugin_as_aax
+
+  this struct describes features for ONE plugin type.
+
+  if not provided, the wrapper code will use/generate appropriate values.
+  the function pointers are not optional.
+
+  this struct is being returned by the plugin in clap_plugin_factory_as_aax::get_aax_info()
+
+  the issue this shall solve is that AAX declares everything at factory time which is at
+  plugin time in CLAP. the information is usually extracted at factory time by a miniclap host
+  that instantiates each plugin in the clap factory once and reads out some information.
+
+  to improve start up speed, a plugin writer can provide this information on factory time, too,
+  by providing the information via the clap_plugin_factory_as_aax_t factory extension.
+
+*/
+
 typedef struct clap_plugin_info_as_aax
 {
   uint32_t aax_features;  // maps directly the AAX_EPlugInCategory enum.
@@ -72,8 +74,9 @@ typedef struct clap_plugin_info_as_aax
 /*
   clap_plugin_factory_as_aax
 
-  all members are optional and can be set to nullptr
+  all members are optional and can be set to nullptr or 0
   if not provided, the wrapper code will use/generate appropriate values
+  the function pointers are not optional.
 
   retrieved when asking for factory CLAP_PLUGIN_FACTORY_INFO_AAX by clap_entry::get_factory()
 */
