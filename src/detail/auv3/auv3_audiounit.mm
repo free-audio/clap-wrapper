@@ -492,6 +492,15 @@ static Clap::Library _library;
     [self _buildBusArrays];
 
     _renderResourcesAllocated = NO;
+
+    // Wire up parameter observer so parameter changes reach the CLAP plugin
+    // both during rendering (via process adapter) and outside rendering (via flush).
+    if (_impl->_parameterTree)
+    {
+      AUV3LOG("init: wiring parameter observer");
+      [self _wireParameterObserver];
+    }
+
     AUV3LOG("init: completed successfully");
   }
   catch (int e)
@@ -586,6 +595,58 @@ static Clap::Library _library;
   _outputBusArray = [[AUAudioUnitBusArray alloc] initWithAudioUnit:self busType:AUAudioUnitBusTypeOutput busses:outputs];
 }
 
+- (void)_wireParameterObserver
+{
+  __weak typeof(self) weakSelf = self;
+
+  _impl->_parameterTree.implementorValueObserver = ^(AUParameter *param, AUValue value) {
+    __strong typeof(weakSelf) strongSelf = weakSelf;
+    if (!strongSelf || !strongSelf->_impl) return;
+    if (!strongSelf->_impl->_plugin || !strongSelf->_impl->_plugin->_ext._params) return;
+
+    // When render resources are allocated, parameter changes arrive via the
+    // render event list (AURenderEventParameter) — the thread-safe path.
+    // Do NOT call addParameterEvent here as it races with process() on
+    // the render thread (both touch _events/_eventindices without locking).
+    if (strongSelf->_renderResourcesAllocated) return;
+
+    // Non-realtime path: push directly to the CLAP plugin via flush.
+    // This is safe because flush must only be called when not processing.
+    auto *plugin = strongSelf->_impl->_plugin->_plugin;
+    auto *ext_params = strongSelf->_impl->_plugin->_ext._params;
+
+    clap_event_param_value_t ev = {};
+    ev.header.size = sizeof(ev);
+    ev.header.type = CLAP_EVENT_PARAM_VALUE;
+    ev.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+    ev.header.time = 0;
+    ev.header.flags = 0;
+    ev.param_id = (clap_id)param.address;
+    ev.value = (double)value;
+    ev.port_index = -1;
+    ev.key = -1;
+    ev.channel = -1;
+    ev.note_id = -1;
+
+    // Build a single-event input list
+    const clap_event_header_t *evPtr = &ev.header;
+    clap_input_events_t in_events = {};
+    in_events.ctx = &evPtr;
+    in_events.size = [](const clap_input_events_t *) -> uint32_t { return 1; };
+    in_events.get = [](const clap_input_events_t *list, uint32_t) -> const clap_event_header_t * {
+      return *static_cast<const clap_event_header_t *const *>(list->ctx);
+    };
+
+    clap_output_events_t out_events = {};
+    out_events.ctx = nullptr;
+    out_events.try_push = [](const clap_output_events_t *, const clap_event_header_t *) -> bool {
+      return true;
+    };
+
+    ext_params->flush(plugin, &in_events, &out_events);
+  };
+}
+
 // --- AUAudioUnit property overrides ---
 
 - (AUAudioUnitBusArray *)inputBusses
@@ -644,8 +705,48 @@ static Clap::Library _library;
 
 - (BOOL)shouldChangeToFormat:(AVAudioFormat *)format forBus:(AUAudioUnitBus *)bus
 {
-  // Accept format changes
-  return YES;
+  if (!_impl) return NO;
+
+  uint32_t requestedChannels = format.channelCount;
+
+  // Check input busses
+  for (NSUInteger i = 0; i < self.inputBusses.count; ++i)
+  {
+    if (self.inputBusses[i] == bus)
+    {
+      if (i < _impl->_inputBusInfos.size())
+      {
+        BOOL ok = (requestedChannels == _impl->_inputBusInfos[i].channelCount);
+        AUV3LOG("shouldChangeToFormat: input bus %lu requested %u ch, supported %u -> %{public}s",
+                (unsigned long)i, requestedChannels, _impl->_inputBusInfos[i].channelCount,
+                ok ? "YES" : "NO");
+        return ok;
+      }
+      AUV3LOG("shouldChangeToFormat: input bus %lu out of range", (unsigned long)i);
+      return NO;
+    }
+  }
+
+  // Check output busses
+  for (NSUInteger i = 0; i < self.outputBusses.count; ++i)
+  {
+    if (self.outputBusses[i] == bus)
+    {
+      if (i < _impl->_outputBusInfos.size())
+      {
+        BOOL ok = (requestedChannels == _impl->_outputBusInfos[i].channelCount);
+        AUV3LOG("shouldChangeToFormat: output bus %lu requested %u ch, supported %u -> %{public}s",
+                (unsigned long)i, requestedChannels, _impl->_outputBusInfos[i].channelCount,
+                ok ? "YES" : "NO");
+        return ok;
+      }
+      AUV3LOG("shouldChangeToFormat: output bus %lu out of range", (unsigned long)i);
+      return NO;
+    }
+  }
+
+  AUV3LOG("shouldChangeToFormat: bus not found, rejecting");
+  return NO;
 }
 
 // --- State save/restore ---
@@ -774,20 +875,6 @@ static Clap::Library _library;
   _impl->_plugin->start_processing();
   _impl->_initialized = true;
 
-  // Wire up the parameter value observer
-  if (_impl->_parameterTree)
-  {
-    AUV3LOG("allocateRenderResources: wiring parameter observer");
-    __weak typeof(self) weakSelf = self;
-    _impl->_parameterTree.implementorValueObserver = ^(AUParameter *param, AUValue value) {
-      __strong typeof(weakSelf) strongSelf = weakSelf;
-      if (strongSelf && strongSelf->_impl && strongSelf->_impl->_processAdapter)
-      {
-        strongSelf->_impl->_processAdapter->addParameterEvent((clap_id)param.address, (double)value, 0);
-      }
-    };
-  }
-
   _renderResourcesAllocated = YES;
   AUV3LOG("allocateRenderResources: completed successfully");
   return YES;
@@ -821,10 +908,10 @@ static Clap::Library _library;
 
 - (AUInternalRenderBlock)internalRenderBlock
 {
-  // Capture a raw pointer to the C++ impl for use in the render block.
-  // This is safe because the render block's lifetime is bounded by
-  // allocateRenderResources / deallocateRenderResources.
-  auto *adapter = _impl->_processAdapter.get();
+  // Capture the stable _impl pointer — the framework may cache this block before
+  // allocateRenderResources is called, so we must dereference _processAdapter at
+  // render time rather than at block-creation time.
+  auto *impl = _impl.get();
 
   return ^AUAudioUnitStatus(AudioUnitRenderActionFlags *actionFlags,
                              const AudioTimeStamp *timestamp,
@@ -833,10 +920,10 @@ static Clap::Library _library;
                              AudioBufferList *outputData,
                              const AURenderEvent *realtimeEventListHead,
                              AURenderPullInputBlock __unsafe_unretained pullInputBlock) {
-    if (!adapter) return kAudioUnitErr_Uninitialized;
+    if (!impl || !impl->_processAdapter) return kAudioUnitErr_Uninitialized;
 
-    return adapter->process(actionFlags, timestamp, frameCount, outputBusNumber, outputData,
-                            realtimeEventListHead, pullInputBlock);
+    return impl->_processAdapter->process(actionFlags, timestamp, frameCount, outputBusNumber,
+                                          outputData, realtimeEventListHead, pullInputBlock);
   };
 }
 
