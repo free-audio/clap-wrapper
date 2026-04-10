@@ -1,0 +1,627 @@
+#import "AUv3HostAppDelegate.h"
+
+#import <AVFoundation/AVFoundation.h>
+#import <AudioToolbox/AudioToolbox.h>
+#import <CoreAudioKit/CoreAudioKit.h>
+#import <CoreMIDI/CoreMIDI.h>
+
+#include <iostream>
+
+// --- FourCC helper: convert a 4-char string like "aufx" to a uint32_t ---
+static uint32_t fourCCFromString(const char *s)
+{
+  if (!s || strlen(s) < 4) return 0;
+  return ((uint32_t)s[0] << 24) | ((uint32_t)s[1] << 16) | ((uint32_t)s[2] << 8) | (uint32_t)s[3];
+}
+
+// --- MIDI input state ---
+static MIDIClientRef sMIDIClient = 0;
+static MIDIPortRef sMIDIInputPort = 0;
+
+@implementation AUv3HostAppDelegate
+{
+  AVAudioEngine *_engine;
+  AVAudioUnit *_avAudioUnit;
+  AUAudioUnit *_directAU;  // used when loading appex directly (no system registration)
+  NSViewController *_auViewController;
+  NSString *_settingsPath;
+
+  // MIDI
+  AUScheduleMIDIEventBlock _scheduleMIDIBlock;
+}
+
+// ---------------------------------------------------------------------------
+#pragma mark - Application lifecycle
+// ---------------------------------------------------------------------------
+
+- (void)applicationDidFinishLaunching:(NSNotification *)notification
+{
+  [NSApp activateIgnoringOtherApps:YES];
+
+  // Defer setup slightly so the window is visible
+  [NSTimer scheduledTimerWithTimeInterval:0.001
+                                   target:self
+                                 selector:@selector(doSetup)
+                                 userInfo:nil
+                                  repeats:NO];
+}
+
+- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender
+{
+  return YES;
+}
+
+- (void)applicationWillTerminate:(NSNotification *)notification
+{
+  [self teardownMIDI];
+  [self saveState];
+
+  if (_engine)
+  {
+    [_engine stop];
+
+    if (_avAudioUnit)
+    {
+      [_engine detachNode:_avAudioUnit];
+    }
+    _engine = nil;
+  }
+
+  if (_directAU)
+  {
+    [_directAU deallocateRenderResources];
+    _directAU = nil;
+  }
+
+  _avAudioUnit = nil;
+  _auViewController = nil;
+}
+
+// ---------------------------------------------------------------------------
+#pragma mark - Appex Registration
+// ---------------------------------------------------------------------------
+
+- (NSBundle *)findEmbeddedAppexBundle
+{
+  NSString *plugInsPath = [[NSBundle mainBundle] builtInPlugInsPath];
+  if (!plugInsPath) return nil;
+
+  NSArray *contents = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:plugInsPath error:nil];
+  for (NSString *item in contents)
+  {
+    if ([item hasSuffix:@".appex"])
+    {
+      NSString *appexPath = [plugInsPath stringByAppendingPathComponent:item];
+      NSBundle *bundle = [NSBundle bundleWithPath:appexPath];
+      if (bundle)
+      {
+        std::cout << "[auv3-standalone] Found appex bundle: " << [appexPath UTF8String] << std::endl;
+        return bundle;
+      }
+    }
+  }
+  return nil;
+}
+
+- (AUAudioUnit *)instantiateAUDirectlyFromAppex:(NSBundle *)appexBundle
+                            componentDescription:(AudioComponentDescription)desc
+                                           error:(NSError **)outError
+{
+  // Load the appex bundle to get its Objective-C classes
+  if (![appexBundle isLoaded])
+  {
+    NSError *loadError = nil;
+    if (![appexBundle loadAndReturnError:&loadError])
+    {
+      std::cout << "[auv3-standalone] ERROR: Failed to load appex bundle: "
+                << [loadError.localizedDescription UTF8String] << std::endl;
+      if (outError) *outError = loadError;
+      return nil;
+    }
+    std::cout << "[auv3-standalone] Appex bundle loaded" << std::endl;
+  }
+
+  // Get the principal class from the appex's Info.plist
+  NSDictionary *plist = appexBundle.infoDictionary;
+  NSDictionary *nsExt = plist[@"NSExtension"];
+  NSString *principalClassName = nsExt[@"NSExtensionPrincipalClass"];
+
+  if (!principalClassName)
+  {
+    std::cout << "[auv3-standalone] ERROR: No NSExtensionPrincipalClass in appex" << std::endl;
+    if (outError)
+      *outError = [NSError errorWithDomain:@"ClapAUv3" code:-1
+                                  userInfo:@{NSLocalizedDescriptionKey: @"No principal class in appex"}];
+    return nil;
+  }
+
+  std::cout << "[auv3-standalone] Principal class: " << [principalClassName UTF8String] << std::endl;
+
+  // Get the factory class
+  Class factoryClass = NSClassFromString(principalClassName);
+  if (!factoryClass)
+  {
+    // Try loading from the bundle explicitly
+    factoryClass = [appexBundle classNamed:principalClassName];
+  }
+
+  if (!factoryClass)
+  {
+    std::cout << "[auv3-standalone] ERROR: Cannot find class " << [principalClassName UTF8String] << std::endl;
+    if (outError)
+      *outError = [NSError errorWithDomain:@"ClapAUv3" code:-2
+                                  userInfo:@{NSLocalizedDescriptionKey:
+                                    [NSString stringWithFormat:@"Cannot find class %@", principalClassName]}];
+    return nil;
+  }
+
+  // The factory class conforms to AUAudioUnitFactory
+  if (![factoryClass conformsToProtocol:@protocol(AUAudioUnitFactory)])
+  {
+    std::cout << "[auv3-standalone] ERROR: Principal class does not conform to AUAudioUnitFactory" << std::endl;
+    if (outError)
+      *outError = [NSError errorWithDomain:@"ClapAUv3" code:-3
+                                  userInfo:@{NSLocalizedDescriptionKey: @"Principal class is not an AUAudioUnitFactory"}];
+    return nil;
+  }
+
+  // Create the factory and ask it to create the AU
+  id<AUAudioUnitFactory> factory = [[factoryClass alloc] init];
+  AUAudioUnit *au = [factory createAudioUnitWithComponentDescription:desc error:outError];
+
+  if (!au)
+  {
+    std::cout << "[auv3-standalone] ERROR: Factory returned nil" << std::endl;
+    return nil;
+  }
+
+  std::cout << "[auv3-standalone] AUAudioUnit created directly from appex" << std::endl;
+  return au;
+}
+
+// ---------------------------------------------------------------------------
+#pragma mark - Setup
+// ---------------------------------------------------------------------------
+
+- (void)doSetup
+{
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
+  // Request microphone permission
+  switch ([AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio])
+  {
+    case AVAuthorizationStatusNotDetermined:
+      [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio
+                               completionHandler:^(BOOL granted) {
+                               }];
+      break;
+    default:
+      break;
+  }
+#endif
+
+  // Build the AudioComponentDescription from compile-time defines
+  AudioComponentDescription desc;
+  desc.componentType = fourCCFromString(AU_TYPE_STR);
+  desc.componentSubType = fourCCFromString(AU_SUBTYPE_STR);
+  desc.componentManufacturer = fourCCFromString(AU_MANUFACTURER_STR);
+  desc.componentFlags = 0;
+  desc.componentFlagsMask = 0;
+
+  std::cout << "[auv3-standalone] Looking for AU: type='" << AU_TYPE_STR
+            << "' subtype='" << AU_SUBTYPE_STR
+            << "' manufacturer='" << AU_MANUFACTURER_STR << "'" << std::endl;
+
+  // First try: check if the AU is already registered with the system
+  AudioComponent comp = AudioComponentFindNext(NULL, &desc);
+  if (comp)
+  {
+    CFStringRef compName = NULL;
+    AudioComponentCopyName(comp, &compName);
+    std::cout << "[auv3-standalone] Found registered AudioComponent: "
+              << (compName ? [(__bridge NSString *)compName UTF8String] : "?") << std::endl;
+    if (compName) CFRelease(compName);
+
+    // Use normal AVAudioUnit instantiation path
+    __weak typeof(self) weakSelf = self;
+    [AVAudioUnit instantiateWithComponentDescription:desc
+                                             options:kAudioComponentInstantiation_LoadInProcess
+                                completionHandler:^(AVAudioUnit *_Nullable audioUnit, NSError *_Nullable error) {
+      dispatch_async(dispatch_get_main_queue(), ^{
+        __strong typeof(weakSelf) self = weakSelf;
+        if (self) [self finishSetupWithAudioUnit:audioUnit error:error];
+      });
+    }];
+    return;
+  }
+
+  // Second path: load the appex bundle directly and instantiate through the factory
+  std::cout << "[auv3-standalone] AudioComponent not registered, loading appex directly" << std::endl;
+
+  NSBundle *appexBundle = [self findEmbeddedAppexBundle];
+  if (!appexBundle)
+  {
+    std::cout << "[auv3-standalone] ERROR: No embedded appex found" << std::endl;
+    NSAlert *alert = [[NSAlert alloc] init];
+    [alert setMessageText:@"Failed to load Audio Unit"];
+    [alert setInformativeText:@"No embedded .appex found in PlugIns directory"];
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
+    return;
+  }
+
+  NSError *error = nil;
+  AUAudioUnit *au = [self instantiateAUDirectlyFromAppex:appexBundle
+                                    componentDescription:desc
+                                                   error:&error];
+  if (!au)
+  {
+    NSString *msg = error ? error.localizedDescription : @"Unknown error creating AU from appex";
+    std::cout << "[auv3-standalone] ERROR: " << [msg UTF8String] << std::endl;
+    NSAlert *alert = [[NSAlert alloc] init];
+    [alert setMessageText:@"Failed to load Audio Unit"];
+    [alert setInformativeText:msg];
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
+    return;
+  }
+
+  // Wrap the raw AUAudioUnit in an AVAudioUnit for use with AVAudioEngine
+  // We need to use AVAudioUnit's instantiation since AVAudioEngine requires AVAudioUnit nodes.
+  // Since the AU isn't registered, we can't use AVAudioUnit directly.
+  // Instead, we'll work with the AUAudioUnit directly (without AVAudioEngine).
+  [self finishSetupWithAUAudioUnit:au];
+}
+
+// ---------------------------------------------------------------------------
+#pragma mark - Finish Setup
+// ---------------------------------------------------------------------------
+
+- (void)finishSetupWithAudioUnit:(AVAudioUnit *)audioUnit error:(NSError *)error
+{
+  if (error || !audioUnit)
+  {
+    NSString *msg = error ? error.localizedDescription : @"Unknown error";
+    std::cout << "[auv3-standalone] ERROR: Failed to instantiate AU: "
+              << [msg UTF8String] << std::endl;
+    NSAlert *alert = [[NSAlert alloc] init];
+    [alert setMessageText:@"Failed to load Audio Unit"];
+    [alert setInformativeText:msg];
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
+    return;
+  }
+
+  _avAudioUnit = audioUnit;
+  std::cout << "[auv3-standalone] AU instantiated via AVAudioUnit: "
+            << [audioUnit.name UTF8String] << std::endl;
+
+  [self restoreState];
+  [self setupEngine];
+  [self setupGUI];
+  [self setupMIDI];
+}
+
+- (void)finishSetupWithAUAudioUnit:(AUAudioUnit *)au
+{
+  // Direct appex loading path: we have an AUAudioUnit but no AVAudioUnit.
+  // We can still set up audio I/O using the AUAudioUnit's render block directly,
+  // and request the view controller for GUI.
+
+  std::cout << "[auv3-standalone] Setting up with direct AUAudioUnit (no AVAudioEngine)" << std::endl;
+
+  // Store the raw AU -- we need to keep it alive
+  _directAU = au;
+
+  // Allocate render resources
+  NSError *error = nil;
+  if (![au allocateRenderResourcesAndReturnError:&error])
+  {
+    std::cout << "[auv3-standalone] ERROR: allocateRenderResources failed: "
+              << [error.localizedDescription UTF8String] << std::endl;
+  }
+  else
+  {
+    std::cout << "[auv3-standalone] Render resources allocated" << std::endl;
+  }
+
+  // Set up the GUI from the AUAudioUnit directly
+  [self setupGUIFromAUAudioUnit:au];
+  [self setupMIDIForAUAudioUnit:au];
+}
+
+// ---------------------------------------------------------------------------
+#pragma mark - AVAudioEngine
+// ---------------------------------------------------------------------------
+
+- (void)setupEngine
+{
+  _engine = [[AVAudioEngine alloc] init];
+  [_engine attachNode:_avAudioUnit];
+
+  AVAudioNode *output = _engine.outputNode;
+  AVAudioFormat *outputFormat = [output inputFormatForBus:0];
+
+  uint32_t auType = fourCCFromString(AU_TYPE_STR);
+
+  if (auType == kAudioUnitType_Effect || auType == kAudioUnitType_MIDIProcessor)
+  {
+    // Effect: input -> AU -> output
+    AVAudioNode *input = _engine.inputNode;
+    AVAudioFormat *inputFormat = [input outputFormatForBus:0];
+
+    [_engine connect:input to:_avAudioUnit format:inputFormat];
+    [_engine connect:_avAudioUnit to:output format:outputFormat];
+  }
+  else
+  {
+    // Instrument/Generator: AU -> output (no audio input needed)
+    [_engine connect:_avAudioUnit to:output format:outputFormat];
+  }
+
+  NSError *error = nil;
+  if (![_engine startAndReturnError:&error])
+  {
+    std::cout << "[auv3-standalone] ERROR: Failed to start engine: "
+              << [error.localizedDescription UTF8String] << std::endl;
+
+    NSAlert *alert = [[NSAlert alloc] init];
+    [alert setMessageText:@"Failed to start audio engine"];
+    [alert setInformativeText:error.localizedDescription];
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
+  }
+  else
+  {
+    std::cout << "[auv3-standalone] Engine started. Sample rate: "
+              << outputFormat.sampleRate << " Hz" << std::endl;
+  }
+}
+
+// ---------------------------------------------------------------------------
+#pragma mark - GUI
+// ---------------------------------------------------------------------------
+
+- (void)setupGUI
+{
+  AUAudioUnit *au = _avAudioUnit.AUAudioUnit;
+
+  [au requestViewControllerWithCompletionHandler:^(AUViewControllerBase *vc) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      if (!vc)
+      {
+        std::cout << "[auv3-standalone] No view controller provided by AU" << std::endl;
+        // Show the window as-is (empty) -- the plugin has no GUI
+        [[self window] orderFrontRegardless];
+        return;
+      }
+
+      self->_auViewController = vc;
+
+      NSSize preferredSize = vc.preferredContentSize;
+      if (preferredSize.width < 1 || preferredSize.height < 1)
+      {
+        preferredSize = NSMakeSize(480, 360);
+      }
+
+      [[self window] setContentSize:preferredSize];
+      [[self window] setDelegate:self];
+
+      NSView *contentView = [[self window] contentView];
+      NSView *auView = vc.view;
+      auView.frame = contentView.bounds;
+      auView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+      [contentView addSubview:auView];
+
+      [[self window] orderFrontRegardless];
+
+      std::cout << "[auv3-standalone] GUI displayed ("
+                << (int)preferredSize.width << "x" << (int)preferredSize.height << ")" << std::endl;
+    });
+  }];
+}
+
+- (void)setupGUIFromAUAudioUnit:(AUAudioUnit *)au
+{
+  [au requestViewControllerWithCompletionHandler:^(AUViewControllerBase *vc) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      if (!vc)
+      {
+        std::cout << "[auv3-standalone] No view controller provided by AU (direct)" << std::endl;
+        [[self window] orderFrontRegardless];
+        return;
+      }
+
+      self->_auViewController = vc;
+
+      NSSize preferredSize = vc.preferredContentSize;
+      if (preferredSize.width < 1 || preferredSize.height < 1)
+      {
+        preferredSize = NSMakeSize(480, 360);
+      }
+
+      [[self window] setContentSize:preferredSize];
+      [[self window] setDelegate:self];
+
+      NSView *contentView = [[self window] contentView];
+      NSView *auView = vc.view;
+      auView.frame = contentView.bounds;
+      auView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+      [contentView addSubview:auView];
+
+      [[self window] orderFrontRegardless];
+
+      std::cout << "[auv3-standalone] GUI displayed (direct) ("
+                << (int)preferredSize.width << "x" << (int)preferredSize.height << ")" << std::endl;
+    });
+  }];
+}
+
+- (void)setupMIDIForAUAudioUnit:(AUAudioUnit *)au
+{
+  _scheduleMIDIBlock = au.scheduleMIDIEventBlock;
+  if (!_scheduleMIDIBlock)
+  {
+    std::cout << "[auv3-standalone] AU does not accept MIDI (direct)" << std::endl;
+    return;
+  }
+
+  // Reuse the same MIDI setup logic
+  OSStatus status = MIDIClientCreate(CFSTR("ClapWrapperAUv3Standalone"), NULL, NULL, &sMIDIClient);
+  if (status != noErr) return;
+
+  status = MIDIInputPortCreate(sMIDIClient, CFSTR("Input"),
+                               midiInputCallback,
+                               (__bridge void *)_scheduleMIDIBlock,
+                               &sMIDIInputPort);
+  if (status != noErr) return;
+
+  ItemCount numSources = MIDIGetNumberOfSources();
+  for (ItemCount i = 0; i < numSources; ++i)
+  {
+    MIDIEndpointRef src = MIDIGetSource(i);
+    MIDIPortConnectSource(sMIDIInputPort, src, NULL);
+  }
+  std::cout << "[auv3-standalone] MIDI connected (direct) to " << numSources << " source(s)" << std::endl;
+}
+
+// ---------------------------------------------------------------------------
+#pragma mark - MIDI
+// ---------------------------------------------------------------------------
+
+static void midiInputCallback(const MIDIPacketList *pktlist, void *readProcRefCon,
+                              void *srcConnRefCon)
+{
+  AUScheduleMIDIEventBlock block = (__bridge AUScheduleMIDIEventBlock)readProcRefCon;
+  if (!block) return;
+
+  const MIDIPacket *packet = &pktlist->packet[0];
+  for (UInt32 i = 0; i < pktlist->numPackets; ++i)
+  {
+    if (packet->length > 0 && packet->length <= 3)
+    {
+      block(AUEventSampleTimeImmediate, 0, packet->length, packet->data);
+    }
+    packet = MIDIPacketNext(packet);
+  }
+}
+
+- (void)setupMIDI
+{
+  _scheduleMIDIBlock = _avAudioUnit.AUAudioUnit.scheduleMIDIEventBlock;
+  if (!_scheduleMIDIBlock)
+  {
+    std::cout << "[auv3-standalone] AU does not accept MIDI" << std::endl;
+    return;
+  }
+
+  OSStatus status = MIDIClientCreate(CFSTR("ClapWrapperAUv3Standalone"), NULL, NULL, &sMIDIClient);
+  if (status != noErr)
+  {
+    std::cout << "[auv3-standalone] Failed to create MIDI client: " << status << std::endl;
+    return;
+  }
+
+  status = MIDIInputPortCreate(sMIDIClient, CFSTR("Input"),
+                               midiInputCallback,
+                               (__bridge void *)_scheduleMIDIBlock,
+                               &sMIDIInputPort);
+  if (status != noErr)
+  {
+    std::cout << "[auv3-standalone] Failed to create MIDI input port: " << status << std::endl;
+    return;
+  }
+
+  // Connect to all available MIDI sources
+  ItemCount numSources = MIDIGetNumberOfSources();
+  for (ItemCount i = 0; i < numSources; ++i)
+  {
+    MIDIEndpointRef src = MIDIGetSource(i);
+    MIDIPortConnectSource(sMIDIInputPort, src, NULL);
+  }
+
+  std::cout << "[auv3-standalone] MIDI connected to " << numSources << " source(s)" << std::endl;
+}
+
+- (void)teardownMIDI
+{
+  if (sMIDIInputPort)
+  {
+    MIDIPortDispose(sMIDIInputPort);
+    sMIDIInputPort = 0;
+  }
+  if (sMIDIClient)
+  {
+    MIDIClientDispose(sMIDIClient);
+    sMIDIClient = 0;
+  }
+  _scheduleMIDIBlock = nil;
+}
+
+// ---------------------------------------------------------------------------
+#pragma mark - State persistence
+// ---------------------------------------------------------------------------
+
+- (NSString *)settingsDirectory
+{
+  if (!_settingsPath)
+  {
+    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES);
+    NSString *appSupport = [paths firstObject];
+    _settingsPath = [appSupport stringByAppendingPathComponent:@"clap-wrapper-auv3-standalone"];
+
+    NSFileManager *fm = [NSFileManager defaultManager];
+    if (![fm fileExistsAtPath:_settingsPath])
+    {
+      [fm createDirectoryAtPath:_settingsPath withIntermediateDirectories:YES attributes:nil error:nil];
+    }
+  }
+  return _settingsPath;
+}
+
+- (NSString *)settingsFilePath
+{
+  NSString *auName = _avAudioUnit.name ?: @"unknown";
+  // Sanitize name for filesystem
+  NSCharacterSet *illegal = [NSCharacterSet characterSetWithCharactersInString:@"/\\:"];
+  auName = [[auName componentsSeparatedByCharactersInSet:illegal] componentsJoinedByString:@"_"];
+  return [[self settingsDirectory] stringByAppendingPathComponent:
+          [NSString stringWithFormat:@"%@.plist", auName]];
+}
+
+- (void)saveState
+{
+  if (!_avAudioUnit) return;
+
+  NSDictionary *state = _avAudioUnit.AUAudioUnit.fullState;
+  if (state)
+  {
+    NSString *path = [self settingsFilePath];
+    [state writeToFile:path atomically:YES];
+    std::cout << "[auv3-standalone] State saved to " << [path UTF8String] << std::endl;
+  }
+}
+
+- (void)restoreState
+{
+  if (!_avAudioUnit) return;
+
+  NSString *path = [self settingsFilePath];
+  NSDictionary *state = [NSDictionary dictionaryWithContentsOfFile:path];
+  if (state)
+  {
+    _avAudioUnit.AUAudioUnit.fullState = state;
+    std::cout << "[auv3-standalone] State restored from " << [path UTF8String] << std::endl;
+  }
+}
+
+// ---------------------------------------------------------------------------
+#pragma mark - NSWindowDelegate
+// ---------------------------------------------------------------------------
+
+- (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)frameSize
+{
+  // Let the window resize freely; the AU view uses autoresizing
+  return frameSize;
+}
+
+@end

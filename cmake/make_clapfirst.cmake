@@ -76,7 +76,7 @@ function(make_clapfirst_plugins)
         if (ANY_WASM_TOOLCHAIN)
             set(C1ST_PLUGIN_FORMATS WCLAP)
         else()
-            set(C1ST_PLUGIN_FORMATS CLAP VST3 AUV2 AAX)
+            set(C1ST_PLUGIN_FORMATS CLAP VST3 AUV2 AUV3 AAX)
         endif()
     endif()
 
@@ -84,12 +84,14 @@ function(make_clapfirst_plugins)
         set(BUILD_CLAP -1)
         set(BUILD_VST3 -1)
         set(BUILD_AUV2 -1)
+        set(BUILD_AUV3 -1)
         set(BUILD_AAX -1)
         list(FIND C1ST_PLUGIN_FORMATS "WCLAP" BUILD_WCLAP)
     else()
         list(FIND C1ST_PLUGIN_FORMATS "CLAP" BUILD_CLAP)
         list(FIND C1ST_PLUGIN_FORMATS "VST3" BUILD_VST3)
         list(FIND C1ST_PLUGIN_FORMATS "AUV2" BUILD_AUV2)
+        list(FIND C1ST_PLUGIN_FORMATS "AUV3" BUILD_AUV3)
         list(FIND C1ST_PLUGIN_FORMATS "AAX" BUILD_AAX)
         set(BUILD_WCLAP -1)
 
@@ -213,6 +215,70 @@ function(make_clapfirst_plugins)
         endif()
 
         add_dependencies(${ALL_TARGET} ${AUV2_TARGET})
+    endif()
+
+    if (APPLE AND ${BUILD_AUV3} GREATER -1)
+        message(STATUS "clap-wrapper: ClapFirst is making an AUv3")
+        set(AUV3_TARGET ${C1ST_TARGET_NAME}_auv3)
+        add_library(${AUV3_TARGET} MODULE)
+        target_sources(${AUV3_TARGET} PRIVATE ${C1ST_ENTRY_SOURCE})
+        target_link_libraries(${AUV3_TARGET} PRIVATE ${C1ST_IMPL_TARGET})
+        if (DEFINED C1ST_AUV2_MANUFACTURER_CODE)
+            target_add_auv3_wrapper(
+                    TARGET ${AUV3_TARGET}
+                    OUTPUT_NAME "${C1ST_OUTPUT_NAME}"
+                    BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFER}.auv3"
+                    BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
+                    RESOURCE_DIRECTORY "${C1ST_RESOURCE_DIRECTORY}"
+
+                    MANUFACTURER_NAME "${C1ST_AUV2_MANUFACTURER_NAME}"
+                    MANUFACTURER_CODE "${C1ST_AUV2_MANUFACTURER_CODE}"
+                    SUBTYPE_CODE "${C1ST_AUV2_SUBTYPE_CODE}"
+                    INSTRUMENT_TYPE "${C1ST_AUV2_INSTRUMENT_TYPE}"
+            )
+        else()
+            target_add_auv3_wrapper(
+                    TARGET ${AUV3_TARGET}
+                    OUTPUT_NAME "${C1ST_OUTPUT_NAME}"
+                    BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFER}.auv3"
+                    BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
+                    RESOURCE_DIRECTORY "${C1ST_RESOURCE_DIRECTORY}"
+
+                    CLAP_TARGET_FOR_CONFIG "${CLAP_TARGET}"
+            )
+        endif()
+
+        if (DEFINED C1ST_ASSET_OUTPUT_DIRECTORY)
+            set_target_properties(${AUV3_TARGET} PROPERTIES
+                    LIBRARY_OUTPUT_DIRECTORY ${C1ST_ASSET_OUTPUT_DIRECTORY})
+        endif()
+
+        add_dependencies(${ALL_TARGET} ${AUV3_TARGET})
+
+        # AUv3 Standalone host app (embeds the .appex)
+        if (DEFINED C1ST_AUV2_MANUFACTURER_CODE)
+            set(AUV3SA_TARGET ${C1ST_TARGET_NAME}_auv3_standalone)
+            message(STATUS "clap-wrapper: ClapFirst is making an AUv3 Standalone")
+            add_executable(${AUV3SA_TARGET})
+            target_add_auv3_standalone_wrapper(
+                    TARGET ${AUV3SA_TARGET}
+                    OUTPUT_NAME "${C1ST_OUTPUT_NAME} AUv3"
+                    BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFER}.auv3standalone"
+                    BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
+                    AUV3_TARGET ${AUV3_TARGET}
+                    AU_TYPE "${C1ST_AUV2_INSTRUMENT_TYPE}"
+                    AU_SUBTYPE "${C1ST_AUV2_SUBTYPE_CODE}"
+                    AU_MANUFACTURER "${C1ST_AUV2_MANUFACTURER_CODE}"
+                    MACOS_ICON "${C1ST_STANDALONE_MACOS_ICON}"
+            )
+
+            if (DEFINED C1ST_ASSET_OUTPUT_DIRECTORY)
+                set_target_properties(${AUV3SA_TARGET} PROPERTIES
+                        RUNTIME_OUTPUT_DIRECTORY ${C1ST_ASSET_OUTPUT_DIRECTORY})
+            endif()
+
+            add_dependencies(${ALL_TARGET} ${AUV3SA_TARGET})
+        endif()
     endif()
 
     ## ----------------------

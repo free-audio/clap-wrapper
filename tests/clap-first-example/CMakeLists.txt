@@ -36,7 +36,7 @@ make_clapfirst_plugins(
         # vst3 validator on windows needs this to be true to pass
         WINDOWS_FOLDER_VST3 ${EXAMPLE_USE_WINDOWS_FOLDER}
 
-        PLUGIN_FORMATS CLAP VST3 AUV2 WCLAP
+        PLUGIN_FORMATS CLAP VST3 AUV2 AUV3 WCLAP
 
         ASSET_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${PROJECT_NAME}_assets
 

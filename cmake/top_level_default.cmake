@@ -50,6 +50,33 @@ if (PROJECT_IS_TOP_LEVEL)
 		endif()
 	endif()
 
+	if (${CLAP_WRAPPER_BUILD_AUV3})
+		add_library(${pluginname}_as_auv3 MODULE)
+		target_add_auv3_wrapper(
+				TARGET ${pluginname}_as_auv3
+				OUTPUT_NAME "${CLAP_WRAPPER_OUTPUT_NAME}"
+				BUNDLE_IDENTIFIER "${CLAP_WRAPPER_BUNDLE_IDENTIFIER}"
+				BUNDLE_VERSION "${CLAP_WRAPPER_BUNDLE_VERSION}"
+
+				INSTRUMENT_TYPE "aumu"
+				MANUFACTURER_NAME "schnuf.org"
+				MANUFACTURER_CODE "clAA"
+				SUBTYPE_CODE "gWwp"
+		)
+
+		add_executable(${pluginname}_as_auv3_standalone)
+		target_add_auv3_standalone_wrapper(
+				TARGET ${pluginname}_as_auv3_standalone
+				OUTPUT_NAME "${CLAP_WRAPPER_OUTPUT_NAME} AUv3"
+				BUNDLE_IDENTIFIER "${CLAP_WRAPPER_BUNDLE_IDENTIFIER}"
+				BUNDLE_VERSION "${CLAP_WRAPPER_BUNDLE_VERSION}"
+				AUV3_TARGET ${pluginname}_as_auv3
+				AU_TYPE "aumu"
+				AU_SUBTYPE "gWwp"
+				AU_MANUFACTURER "clAA"
+		)
+	endif()
+
 	if (${CLAP_WRAPPER_BUILD_STANDALONE})
 		add_executable(${pluginname}_as_standalone)
 		target_add_standalone_wrapper(TARGET ${pluginname}_as_standalone
