@@ -64,9 +64,25 @@ function(target_add_auv3_wrapper)
             )
     set(bhtgoutdir "${CMAKE_CURRENT_BINARY_DIR}/${AUV3_TARGET}-auv3-build-helper-output")
 
+    # Create output dir and a placeholder Info.plist at configure time.
+    # CMake's generate step needs the plist to exist (MACOSX_BUNDLE_INFO_PLIST),
+    # but the real one is produced by the build-helper at build time.
+    file(MAKE_DIRECTORY "${bhtgoutdir}")
+    if (NOT EXISTS "${bhtgoutdir}/auv3_Info.plist")
+        file(WRITE "${bhtgoutdir}/auv3_Info.plist"
+"<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">
+<plist version=\"1.0\">
+<dict>
+    <key>CFBundlePackageType</key>
+    <string>XPC!</string>
+</dict>
+</plist>
+")
+    endif()
+
     add_custom_command(TARGET ${bhtg} POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E echo "clap-wrapper: auv3 configuration output dir is ${bhtgoutdir}"
-            COMMAND ${CMAKE_COMMAND} -E make_directory "${bhtgoutdir}"
             )
 
     add_dependencies(${AUV3_TARGET} ${bhtg})
@@ -203,7 +219,9 @@ function(target_add_auv3_wrapper)
         target_link_libraries(${AUV3_TARGET}-clap-wrapper-auv3-lib INTERFACE clap-wrapper-extensions clap-wrapper-shared-detail clap-wrapper-compile-options)
     endif ()
 
-    set_target_properties(${AUV3_TARGET} PROPERTIES LIBRARY_OUTPUT_NAME "${AUV3_OUTPUT_NAME}")
+    set_target_properties(${AUV3_TARGET} PROPERTIES
+            OUTPUT_NAME "${AUV3_OUTPUT_NAME}"
+            LIBRARY_OUTPUT_NAME "${AUV3_OUTPUT_NAME}")  # also set for target_copy_after_build compatibility
     target_link_libraries(${AUV3_TARGET} PUBLIC ${AUV3_TARGET}-clap-wrapper-auv3-lib)
 
     if ("${CLAP_WRAPPER_BUNDLE_VERSION}" STREQUAL "")
@@ -221,28 +239,27 @@ function(target_add_auv3_wrapper)
             "-framework CoreMIDI")
 
     set_target_properties(${AUV3_TARGET} PROPERTIES
-            BUNDLE True
+            MACOSX_BUNDLE True
             BUNDLE_EXTENSION appex
-            LIBRARY_OUTPUT_NAME ${AUV3_OUTPUT_NAME}
+            OUTPUT_NAME ${AUV3_OUTPUT_NAME}
             MACOSX_BUNDLE_GUI_IDENTIFIER "${AUV3_BUNDLE_IDENTIFIER}"
             MACOSX_BUNDLE_BUNDLE_NAME ${AUV3_OUTPUT_NAME}
             MACOSX_BUNDLE_BUNDLE_VERSION ${AUV3_BUNDLE_VERSION}
             MACOSX_BUNDLE_SHORT_VERSION_STRING ${AUV3_BUNDLE_VERSION}
             )
 
-    # For Xcode: tell it to use the build-helper's plist as INFOPLIST_FILE so
-    # Xcode's own "Process Info.plist" phase preserves our NSExtension block.
-    # For non-Xcode generators: POST_BUILD copy works because there's no
-    # implicit plist processing after POST_BUILD.
+    # The build-helper generates auv3_Info.plist at build time (POST_BUILD).
+    # We replace Xcode's/CMake's auto-generated plist with it after the build.
+    # Using MACOSX_BUNDLE_INFO_PLIST doesn't work reliably because Xcode may
+    # process the template before the build-helper has run.
     if (CMAKE_GENERATOR STREQUAL "Xcode")
         set_target_properties(${AUV3_TARGET} PROPERTIES
-                MACOSX_BUNDLE_INFO_PLIST "${bhtgoutdir}/auv3_Info.plist"
+                XCODE_PRODUCT_TYPE com.apple.product-type.app-extension
                 )
-    else()
-        add_custom_command(TARGET ${AUV3_TARGET} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy ${bhtgoutdir}/auv3_Info.plist $<TARGET_FILE_DIR:${AUV3_TARGET}>/../Info.plist
-            COMMENT "Replacing Info.plist with build-helper generated version (contains NSExtension)")
     endif()
+    add_custom_command(TARGET ${AUV3_TARGET} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "${bhtgoutdir}/auv3_Info.plist" "$<TARGET_BUNDLE_CONTENT_DIR:${AUV3_TARGET}>/Info.plist"
+        COMMENT "Replacing Info.plist with build-helper generated version (contains NSExtension)")
 
     set_target_properties(${AUV3_TARGET} PROPERTIES XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${AUV3_BUNDLE_IDENTIFIER}")
 

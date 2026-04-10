@@ -51,7 +51,7 @@ if (PROJECT_IS_TOP_LEVEL)
 	endif()
 
 	if (${CLAP_WRAPPER_BUILD_AUV3})
-		add_library(${pluginname}_as_auv3 MODULE)
+		add_executable(${pluginname}_as_auv3)
 		target_add_auv3_wrapper(
 				TARGET ${pluginname}_as_auv3
 				OUTPUT_NAME "${CLAP_WRAPPER_OUTPUT_NAME}"
@@ -62,6 +62,15 @@ if (PROJECT_IS_TOP_LEVEL)
 				MANUFACTURER_NAME "schnuf.org"
 				MANUFACTURER_CODE "clAA"
 				SUBTYPE_CODE "gWwp"
+		)
+
+		# Embed the installed .clap into the appex so it can find the plugin at runtime
+		set(_clap_bundle_name "${CLAP_WRAPPER_OUTPUT_NAME}.clap")
+		set(_clap_embed_dst "$<TARGET_BUNDLE_DIR:${pluginname}_as_auv3>/Contents/PlugIns/${_clap_bundle_name}")
+		add_custom_command(TARGET ${pluginname}_as_auv3 POST_BUILD
+				COMMAND ${CMAKE_COMMAND} "-DCLAP_NAME=${_clap_bundle_name}" "-DDST=${_clap_embed_dst}"
+					-P "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_clap.cmake"
+				COMMENT "Embedding ${_clap_bundle_name} in AUv3 appex"
 		)
 
 		add_executable(${pluginname}_as_auv3_standalone)

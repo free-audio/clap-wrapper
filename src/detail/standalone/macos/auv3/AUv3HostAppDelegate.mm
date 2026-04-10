@@ -6,6 +6,7 @@
 #import <CoreMIDI/CoreMIDI.h>
 
 #include <iostream>
+#include <dlfcn.h>
 
 // --- FourCC helper: convert a 4-char string like "aufx" to a uint32_t ---
 static uint32_t fourCCFromString(const char *s)
@@ -24,6 +25,7 @@ static MIDIPortRef sMIDIInputPort = 0;
   AVAudioUnit *_avAudioUnit;
   AUAudioUnit *_directAU;  // used when loading appex directly (no system registration)
   NSViewController *_auViewController;
+  NSViewController *_factoryViewController;  // the factory/principal class VC from direct appex loading
   NSString *_settingsPath;
 
   // MIDI
@@ -107,18 +109,40 @@ static MIDIPortRef sMIDIInputPort = 0;
                             componentDescription:(AudioComponentDescription)desc
                                            error:(NSError **)outError
 {
-  // Load the appex bundle to get its Objective-C classes
+  // Load the appex bundle to get its Objective-C classes.
+  // Note: MH_EXECUTE binaries can't be loaded via NSBundle's load method,
+  // so we use dlopen on the executable directly to register the ObjC classes.
   if (![appexBundle isLoaded])
   {
-    NSError *loadError = nil;
-    if (![appexBundle loadAndReturnError:&loadError])
+    NSString *execPath = [appexBundle executablePath];
+    if (execPath)
     {
-      std::cout << "[auv3-standalone] ERROR: Failed to load appex bundle: "
-                << [loadError.localizedDescription UTF8String] << std::endl;
-      if (outError) *outError = loadError;
-      return nil;
+      void *handle = dlopen([execPath fileSystemRepresentation], RTLD_NOW | RTLD_LOCAL);
+      if (!handle)
+      {
+        std::cout << "[auv3-standalone] dlopen fallback failed: " << dlerror() << std::endl;
+      }
+      else
+      {
+        std::cout << "[auv3-standalone] Appex loaded via dlopen" << std::endl;
+      }
     }
-    std::cout << "[auv3-standalone] Appex bundle loaded" << std::endl;
+
+    // Also try NSBundle load (works for MH_BUNDLE/MH_DYLIB)
+    if (![appexBundle isLoaded])
+    {
+      NSError *loadError = nil;
+      if (![appexBundle loadAndReturnError:&loadError])
+      {
+        std::cout << "[auv3-standalone] WARNING: NSBundle load failed: "
+                  << [loadError.localizedDescription UTF8String]
+                  << " (may be expected for executable appex)" << std::endl;
+      }
+      else
+      {
+        std::cout << "[auv3-standalone] Appex bundle loaded via NSBundle" << std::endl;
+      }
+    }
   }
 
   // Get the principal class from the appex's Info.plist
@@ -165,8 +189,10 @@ static MIDIPortRef sMIDIInputPort = 0;
     return nil;
   }
 
-  // Create the factory and ask it to create the AU
+  // Create the factory and ask it to create the AU.
+  // The factory IS also the view controller (AUViewController subclass), so keep it alive.
   id<AUAudioUnitFactory> factory = [[factoryClass alloc] init];
+  _factoryViewController = (NSViewController *)factory;
   AUAudioUnit *au = [factory createAudioUnitWithComponentDescription:desc error:outError];
 
   if (!au)
@@ -422,38 +448,39 @@ static MIDIPortRef sMIDIInputPort = 0;
 
 - (void)setupGUIFromAUAudioUnit:(AUAudioUnit *)au
 {
-  [au requestViewControllerWithCompletionHandler:^(AUViewControllerBase *vc) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-      if (!vc)
-      {
-        std::cout << "[auv3-standalone] No view controller provided by AU (direct)" << std::endl;
-        [[self window] orderFrontRegardless];
-        return;
-      }
+  // Use the factory VC directly — it IS the view controller (AUViewController subclass)
+  // and already has audioUnit set from createAudioUnitWithComponentDescription:.
+  NSViewController *vc = _factoryViewController;
+  if (!vc)
+  {
+    std::cout << "[auv3-standalone] No factory view controller available (direct)" << std::endl;
+    [[self window] orderFrontRegardless];
+    return;
+  }
 
-      self->_auViewController = vc;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    self->_auViewController = vc;
 
-      NSSize preferredSize = vc.preferredContentSize;
-      if (preferredSize.width < 1 || preferredSize.height < 1)
-      {
-        preferredSize = NSMakeSize(480, 360);
-      }
+    NSSize preferredSize = vc.preferredContentSize;
+    if (preferredSize.width < 1 || preferredSize.height < 1)
+    {
+      preferredSize = NSMakeSize(480, 360);
+    }
 
-      [[self window] setContentSize:preferredSize];
-      [[self window] setDelegate:self];
+    [[self window] setContentSize:preferredSize];
+    [[self window] setDelegate:self];
 
-      NSView *contentView = [[self window] contentView];
-      NSView *auView = vc.view;
-      auView.frame = contentView.bounds;
-      auView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-      [contentView addSubview:auView];
+    NSView *contentView = [[self window] contentView];
+    NSView *auView = vc.view;
+    auView.frame = contentView.bounds;
+    auView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    [contentView addSubview:auView];
 
-      [[self window] orderFrontRegardless];
+    [[self window] orderFrontRegardless];
 
-      std::cout << "[auv3-standalone] GUI displayed (direct) ("
-                << (int)preferredSize.width << "x" << (int)preferredSize.height << ")" << std::endl;
-    });
-  }];
+    std::cout << "[auv3-standalone] GUI displayed (direct) ("
+              << (int)preferredSize.width << "x" << (int)preferredSize.height << ")" << std::endl;
+  });
 }
 
 - (void)setupMIDIForAUAudioUnit:(AUAudioUnit *)au

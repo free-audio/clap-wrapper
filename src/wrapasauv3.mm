@@ -17,3 +17,16 @@
 #include "generated_auv3_entrypoints.hxx"
 
 #pragma clang diagnostic pop
+
+#include <dispatch/dispatch.h>
+
+// App extension entry point.
+// For in-process hosting, macOS loads the appex bundle directly and
+// instantiates NSExtensionPrincipalClass — main() is never reached.
+// For out-of-process hosting, macOS launches this executable and
+// dispatch_main() keeps the process alive for XPC message handling.
+int mainXXX(int, const char *[])
+{
+  // dispatch_main();
+  return 0;
+}

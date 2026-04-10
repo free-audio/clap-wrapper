@@ -147,7 +147,7 @@ function(target_add_auv3_standalone_wrapper)
     # which is the same as the .appex top-level directory.
     # We use TARGET_BUNDLE_DIR for BUNDLE targets to get the correct path.
     set(_auv3_appex_src "$<TARGET_BUNDLE_DIR:${AUSA_AUV3_TARGET}>")
-    set(_auv3_appex_dst "$<TARGET_BUNDLE_DIR:${AUSA_TARGET}>/Contents/PlugIns/$<TARGET_PROPERTY:${AUSA_AUV3_TARGET},LIBRARY_OUTPUT_NAME>.appex")
+    set(_auv3_appex_dst "$<TARGET_BUNDLE_DIR:${AUSA_TARGET}>/Contents/PlugIns/$<TARGET_PROPERTY:${AUSA_AUV3_TARGET},OUTPUT_NAME>.appex")
 
     add_custom_command(TARGET ${AUSA_TARGET} POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_BUNDLE_DIR:${AUSA_TARGET}>/Contents/PlugIns"
