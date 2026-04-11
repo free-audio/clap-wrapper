@@ -8,12 +8,12 @@
 #include <cmath>
 #include <cassert>
 
-static os_log_t _procLog() {
-  static os_log_t log = os_log_create("org.clap-wrapper.auv3", "process");
-  return log;
-}
-#define PROCLOG(...) os_log(_procLog(), __VA_ARGS__)
-#define PROCERR(...) os_log_error(_procLog(), __VA_ARGS__)
+// static os_log_t _procLog() {
+//  static os_log_t log = os_log_create("org.clap-wrapper.auv3", "process");
+//  return log;
+// }
+#define PROCLOG(...) // os_log(_procLog(), __VA_ARGS__)
+#define PROCERR(...) // os_log_error(_procLog(), __VA_ARGS__)
 
 namespace Clap::AUv3
 {

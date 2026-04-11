@@ -58,6 +58,16 @@ static MIDIPortRef sMIDIInputPort = 0;
   [self teardownMIDI];
   [self saveState];
 
+  // Remove KVO observer before tearing down
+  if (_auViewController)
+  {
+    @try {
+      [_auViewController removeObserver:self forKeyPath:@"preferredContentSize"];
+    } @catch (NSException *e) {
+      // Observer was never added (e.g., no GUI path)
+    }
+  }
+
   if (_engine)
   {
     [_engine stop];
@@ -423,6 +433,13 @@ static MIDIPortRef sMIDIInputPort = 0;
 
       self->_auViewController = vc;
 
+      // Observe preferredContentSize — the AU view controller sets this
+      // asynchronously when the CLAP GUI is created (after viewDidMoveToWindow).
+      [vc addObserver:self
+           forKeyPath:@"preferredContentSize"
+              options:NSKeyValueObservingOptionNew
+              context:NULL];
+
       NSSize preferredSize = vc.preferredContentSize;
       if (preferredSize.width < 1 || preferredSize.height < 1)
       {
@@ -460,6 +477,13 @@ static MIDIPortRef sMIDIInputPort = 0;
 
   dispatch_async(dispatch_get_main_queue(), ^{
     self->_auViewController = vc;
+
+    // Observe preferredContentSize — the AU view controller sets this
+    // asynchronously when the CLAP GUI is created (after viewDidMoveToWindow).
+    [vc addObserver:self
+         forKeyPath:@"preferredContentSize"
+            options:NSKeyValueObservingOptionNew
+            context:NULL];
 
     NSSize preferredSize = vc.preferredContentSize;
     if (preferredSize.width < 1 || preferredSize.height < 1)
@@ -649,6 +673,31 @@ static void midiInputCallback(const MIDIPacketList *pktlist, void *readProcRefCo
 {
   // Let the window resize freely; the AU view uses autoresizing
   return frameSize;
+}
+
+// ---------------------------------------------------------------------------
+#pragma mark - KVO
+// ---------------------------------------------------------------------------
+
+- (void)observeValueForKeyPath:(NSString *)keyPath
+                      ofObject:(id)object
+                        change:(NSDictionary<NSKeyValueChangeKey, id> *)change
+                       context:(void *)context
+{
+  if ([keyPath isEqualToString:@"preferredContentSize"] && object == _auViewController)
+  {
+    NSSize size = [(NSViewController *)object preferredContentSize];
+    std::cout << "[auv3-standalone] preferredContentSize changed to "
+              << (int)size.width << "x" << (int)size.height << std::endl;
+    if (size.width > 0 && size.height > 0)
+    {
+      dispatch_async(dispatch_get_main_queue(), ^{
+        [[self window] setContentSize:size];
+        NSView *auView = self->_auViewController.view;
+        auView.frame = [[self window] contentView].bounds;
+      });
+    }
+  }
 }
 
 @end

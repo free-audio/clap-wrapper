@@ -369,7 +369,10 @@ class AUv3ImplDetail : public Clap::IHost,
   bool gui_can_resize() override
   {
     if (_plugin && _plugin->_ext._gui)
+    {
+      auto mainGuard = _plugin->AlwaysMainThread();
       return _plugin->_ext._gui->can_resize(_plugin->_plugin);
+    }
     return false;
   }
 
@@ -992,6 +995,7 @@ static Clap::Library _library;
   if (_impl && _impl->_plugin && _impl->_plugin->_ext._state)
   {
     Clap::StateMemento chunk;
+    auto mainGuard = _impl->_plugin->AlwaysMainThread();
     if (_impl->_plugin->_ext._state->save(_impl->_plugin->_plugin, chunk))
     {
       NSData *clapState = [NSData dataWithBytes:chunk.data() length:chunk.size()];
@@ -1209,28 +1213,51 @@ static Clap::Library _library;
     return NO;
   }
 
+  // In out-of-process AUv3, _main_thread_id was captured on the XPC worker
+  // thread during init, so the CLAP proxy doesn't recognize the actual main
+  // thread. Override the thread identity for all GUI calls.
+  auto mainGuard = _impl->_plugin->AlwaysMainThread();
+
   auto *gui = _impl->_plugin->_ext._gui;
   auto *plugin = _impl->_plugin->_plugin;
 
-  if (!gui->is_api_supported(plugin, CLAP_WINDOW_API_COCOA, false)) return NO;
+  if (!gui->is_api_supported(plugin, CLAP_WINDOW_API_COCOA, false))
+  {
+    AUV3LOG("createGUIInView: COCOA API not supported");
+    return NO;
+  }
+  AUV3LOG("createGUIInView: COCOA API supported");
 
-  if (!gui->create(plugin, CLAP_WINDOW_API_COCOA, false)) return NO;
+  if (!gui->create(plugin, CLAP_WINDOW_API_COCOA, false))
+  {
+    AUV3LOG("createGUIInView: gui->create() failed");
+    return NO;
+  }
+  AUV3LOG("createGUIInView: gui->create() succeeded");
 
   gui->set_scale(plugin, 1.0);
+  AUV3LOG("createGUIInView: set_scale done");
 
   uint32_t w = 0, h = 0;
   gui->get_size(plugin, &w, &h);
+  AUV3LOG("createGUIInView: get_size returned %ux%u", w, h);
 
   if (gui->can_resize(plugin))
   {
     gui->adjust_size(plugin, &w, &h);
+    AUV3LOG("createGUIInView: adjust_size returned %ux%u", w, h);
   }
 
   clap_window_t window;
   window.api = CLAP_WINDOW_API_COCOA;
   window.cocoa = (__bridge void *)parentView;
+  AUV3LOG("createGUIInView: calling set_parent (parentView=%p, parentView.window=%p)",
+          parentView, parentView.window);
   gui->set_parent(plugin, &window);
+  AUV3LOG("createGUIInView: set_parent done");
+
   gui->show(plugin);
+  AUV3LOG("createGUIInView: show done, returning YES (size=%ux%u)", w, h);
 
   if (outWidth) *outWidth = w;
   if (outHeight) *outHeight = h;
@@ -1250,6 +1277,8 @@ static Clap::Library _library;
     return;
   }
 
+  auto mainGuard = _impl->_plugin->AlwaysMainThread();
+
   AUV3LOG("destroyGUI: hiding and destroying GUI");
   _impl->_plugin->_ext._gui->hide(_impl->_plugin->_plugin);
   _impl->_plugin->_ext._gui->destroy(_impl->_plugin->_plugin);
@@ -1260,12 +1289,14 @@ static Clap::Library _library;
 - (BOOL)canResizeGUI
 {
   if (!_impl || !_impl->_plugin || !_impl->_plugin->_ext._gui) return NO;
+  auto mainGuard = _impl->_plugin->AlwaysMainThread();
   return _impl->_plugin->_ext._gui->can_resize(_impl->_plugin->_plugin) ? YES : NO;
 }
 
 - (BOOL)setGUISize:(uint32_t)width height:(uint32_t)height
 {
   if (!_impl || !_impl->_plugin || !_impl->_plugin->_ext._gui) return NO;
+  auto mainGuard = _impl->_plugin->AlwaysMainThread();
   return _impl->_plugin->_ext._gui->set_size(_impl->_plugin->_plugin, width, height) ? YES : NO;
 }
 
@@ -1277,41 +1308,89 @@ static Clap::Library _library;
 
 @end
 
+// Forward-declare private method used by ClapAUv3ContainerView
+@interface ClapAUv3ViewController ()
+- (void)_viewDidMoveToWindow;
+@end
+
+// -----------------------------------------------------------------------
+// ClapAUv3ContainerView — custom NSView that notifies the VC when
+// it enters or leaves a window. NSViewController lifecycle methods
+// (viewDidAppear etc.) are unreliable when the host doesn't manage
+// the VC hierarchy properly. viewDidMoveToWindow always fires.
+// -----------------------------------------------------------------------
+
+@interface ClapAUv3ContainerView : NSView
+@property (nonatomic, weak) ClapAUv3ViewController *viewController;
+@end
+
+@implementation ClapAUv3ContainerView
+
+- (void)viewDidMoveToWindow
+{
+  [super viewDidMoveToWindow];
+  [self.viewController _viewDidMoveToWindow];
+}
+
+- (void)viewDidMoveToSuperview
+{
+  [super viewDidMoveToSuperview];
+  // viewDidMoveToWindow only fires when the window changes. For LoadInProcess,
+  // the system puts the view in the host's window during factory creation.
+  // When the host later calls addSubview:, the window is the SAME, so
+  // viewDidMoveToWindow doesn't fire. viewDidMoveToSuperview fires in both cases.
+  if (self.superview && self.window)
+  {
+    [self.viewController _viewDidMoveToWindow];
+  }
+}
+
+@end
+
 // -----------------------------------------------------------------------
 // ClapAUv3ViewController implementation (also serves as AUAudioUnitFactory)
 // -----------------------------------------------------------------------
 
 @implementation ClapAUv3ViewController
+{
+  BOOL _guiCreated;
+}
 
 - (void)loadView
 {
   AUV3LOG("loadView: entered (thread=%{public}s)",
           [NSThread.currentThread.name UTF8String] ?: "unnamed");
-  NSView *view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 0, 0)];
-  view.autoresizingMask = NSViewNotSizable;
+  // Use a custom container view that notifies us via viewDidMoveToWindow.
+  // NSViewController lifecycle methods (viewDidAppear, viewDidLayout) only fire
+  // when the VC is in the view controller hierarchy — many hosts just do
+  // addSubview: without addChildViewController:, so those methods never fire.
+  // viewDidMoveToWindow on NSView fires unconditionally.
+  ClapAUv3ContainerView *view = [[ClapAUv3ContainerView alloc] initWithFrame:NSMakeRect(0, 0, 0, 0)];
+  view.viewController = self;
   view.translatesAutoresizingMaskIntoConstraints = YES;
   [self setView:view];
   AUV3LOG("loadView: completed");
 }
 
-// Custom setter: trigger GUI creation when audioUnit is set and view is already loaded.
-// This matches the VST3 SDK's setAudioUnit: → makePlugView pattern.
 - (void)setAudioUnit:(ClapAUv3AudioUnit *)audioUnit
 {
-  AUV3LOG("setAudioUnit: entered (audioUnit=%p, viewLoaded=%d, thread=%{public}s)",
+  AUV3LOG("setAudioUnit: entered (audioUnit=%p, viewLoaded=%d, window=%p, thread=%{public}s)",
           audioUnit, [self isViewLoaded],
+          [self isViewLoaded] ? self.view.window : nil,
           [NSThread.currentThread.name UTF8String] ?: "unnamed");
   _audioUnit = audioUnit;
-  // Do NOT create the GUI here. The GUI is created lazily when the host
-  // explicitly shows the view (viewDidAppear / viewDidLayout). Creating it
-  // eagerly blocks the main thread (JUCE MessageManager init), which prevents
-  // the appex from processing subsequent XPC messages — causing auval WARM
-  // timeout (-10863) and similar hangs in headless hosts.
+  // Do NOT dispatch GUI creation here. dispatch_async fires during JUCE's
+  // nested run loop pump (during factory init), causing gui->create() to
+  // deadlock. GUI creation is triggered by:
+  // - viewDidAppear (out-of-process: system manages VC lifecycle)
+  // - viewDidMoveToSuperview (in-process: host calls addSubview:)
+  // - viewDidMoveToWindow (in-process: view enters host window)
 }
 
 - (void)_createPluginGUI
 {
-  AUV3LOG("_createPluginGUI: entered (audioUnit=%p)", self.audioUnit);
+  AUV3LOG("_createPluginGUI: entered (audioUnit=%p, isMainThread=%d)", self.audioUnit,
+          [NSThread isMainThread]);
   if (!self.audioUnit)
   {
     AUV3LOG("_createPluginGUI: no audioUnit set, skipping");
@@ -1334,29 +1413,87 @@ static Clap::Library _library;
   }
 }
 
+// Convergence point: called when the view enters a window or audioUnit is set.
+// Creates the GUI once all preconditions are met.
+- (void)_tryCreateGUI
+{
+  AUV3LOG("_tryCreateGUI: entered (guiCreated=%d, audioUnit=%p, viewLoaded=%d, window=%p, isMainThread=%d)",
+          _guiCreated, self.audioUnit, self.isViewLoaded,
+          self.isViewLoaded ? self.view.window : nil,
+          [NSThread isMainThread]);
+  if (_guiCreated) return;
+  if (!self.audioUnit) return;
+  if (!self.isViewLoaded || !self.view.window) return;
+
+  AUV3LOG("_tryCreateGUI: preconditions met, creating GUI");
+  _guiCreated = YES;
+  [self _createPluginGUI];
+}
+
+// Called by ClapAUv3ContainerView.viewDidMoveToWindow when the view enters a window.
+- (void)_viewDidMoveToWindow
+{
+  AUV3LOG("_viewDidMoveToWindow: window=%p, audioUnit=%p, isMainThread=%d",
+          self.view.window, self.audioUnit, [NSThread isMainThread]);
+  if (self.view.window)
+  {
+    AUV3LOG("_viewDidMoveToWindow: view entered window, scheduling GUI creation");
+    // Defer to next run loop iteration — viewDidMoveToWindow fires synchronously
+    // during addSubview:, and JUCE plugins need the run loop to be processing
+    // events before their GUI can be created.
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [self _tryCreateGUI];
+    });
+  }
+  else
+  {
+    AUV3LOG("_viewDidMoveToWindow: view removed from window, destroying GUI");
+    if (_guiCreated)
+    {
+      _guiCreated = NO;
+      [self.audioUnit destroyGUI];
+    }
+  }
+}
+
 - (void)viewDidLoad
 {
   AUV3LOG("viewDidLoad: entered");
   [super viewDidLoad];
-  // Do NOT create the GUI here — defer to viewDidAppear so the CLAP GUI
-  // is only created when the host actually displays the view.
   AUV3LOG("viewDidLoad: completed");
 }
 
+// Out-of-process: the system manages the VC lifecycle properly (the extension
+// is hosted via XPC), so viewDidAppear fires when the host displays the view.
+// In-process: viewDidAppear doesn't fire (host doesn't use addChildViewController:),
+// but viewDidMoveToSuperview on the container view handles that case.
 - (void)viewDidAppear
 {
-  AUV3LOG("viewDidAppear: entered (audioUnit=%p)", self.audioUnit);
+  AUV3LOG("viewDidAppear: entered (audioUnit=%p, isMainThread=%d)",
+          self.audioUnit, [NSThread isMainThread]);
   [super viewDidAppear];
-  [self _createPluginGUI];
-  AUV3LOG("viewDidAppear: completed");
+  [self _tryCreateGUI];
 }
 
 - (void)viewDidDisappear
 {
   AUV3LOG("viewDidDisappear: entered");
-  [self.audioUnit destroyGUI];
+  if (_guiCreated)
+  {
+    _guiCreated = NO;
+    [self.audioUnit destroyGUI];
+  }
   [super viewDidDisappear];
-  AUV3LOG("viewDidDisappear: completed");
+}
+
+- (void)dealloc
+{
+  AUV3LOG("ClapAUv3ViewController dealloc (guiCreated=%d)", _guiCreated);
+  if (_guiCreated)
+  {
+    [self.audioUnit destroyGUI];
+    _guiCreated = NO;
+  }
 }
 
 // --- AUAudioUnitFactory ---
