@@ -73,6 +73,7 @@ class AUv3ImplDetail : public Clap::IHost,
     AUV3LOG("~AUv3ImplDetail: destructor entered (plugin=%{public}s)", _plugin ? "valid" : "null");
     if (_plugin)
     {
+      auto mainGuard = _plugin->AlwaysMainThread();
       AUV3LOG("~AUv3ImplDetail: calling _plugin->terminate()");
       _plugin->terminate();
       AUV3LOG("~AUv3ImplDetail: calling _plugin.reset()");
@@ -125,6 +126,11 @@ class AUv3ImplDetail : public Clap::IHost,
   // naturally atomic on arm64/x86_64 so benign race at worst (slightly stale value).
   std::unordered_map<clap_id, double> _paramValueCache;
   std::unordered_map<clap_id, void *> _paramCookieCache;
+
+  // Cached latency in samples — queried on init and when the plugin calls
+  // latency_changed(). The AUv3 host reads the latency property from any
+  // thread, so we cache it to avoid calling into the plugin on the wrong thread.
+  uint32_t _cachedLatencySamples = 0;
 
   // Queue for audio -> UI thread parameter notifications
   ClapWrapper::detail::shared::fixedqueue<queueEvent, 8192> _queueToUI;
@@ -358,7 +364,12 @@ class AUv3ImplDetail : public Clap::IHost,
 
   void latency_changed() override
   {
-    AUV3LOG("IHost::latency_changed() called");
+    if (_plugin && _plugin->_ext._latency)
+    {
+      auto mainGuard = _plugin->AlwaysMainThread();
+      _cachedLatencySamples = _plugin->_ext._latency->get(_plugin->_plugin);
+      AUV3LOG("IHost::latency_changed() -> %u samples", _cachedLatencySamples);
+    }
   }
 
   void tail_changed() override
@@ -650,6 +661,14 @@ static Clap::Library _library;
 
     AUV3LOG("init: calling plugin->initialize()");
     _impl->_plugin->initialize();
+
+    // Cache the initial latency so the AUv3 host can read it from any thread.
+    if (_impl->_plugin->_ext._latency)
+    {
+      _impl->_cachedLatencySamples = _impl->_plugin->_ext._latency->get(_impl->_plugin->_plugin);
+      AUV3LOG("init: initial latency = %u samples", _impl->_cachedLatencySamples);
+    }
+
     // Start the idle timer on the main queue. This services request_callback()
     // (on_main_thread) between render cycles. We don't use the global os::attach
     // mechanism — its CFRunLoopTimer is unreliable in out-of-process AUv3.
@@ -716,6 +735,7 @@ static Clap::Library _library;
 
     if (_impl->_plugin)
     {
+      auto mainGuard = _impl->_plugin->AlwaysMainThread();
       AUV3LOG("dealloc: calling _plugin->terminate()");
       _impl->_plugin->terminate();
       AUV3LOG("dealloc: calling _plugin.reset()");
@@ -919,10 +939,13 @@ static Clap::Library _library;
 
 - (NSTimeInterval)latency
 {
-  if (_impl && _impl->_plugin && _impl->_plugin->_ext._latency)
+  // Return the cached latency — queried on init and updated when the plugin
+  // calls latency_changed(). Avoids calling into the plugin on the wrong thread.
+  if (_impl && _impl->_cachedLatencySamples > 0)
   {
-    uint32_t samples = _impl->_plugin->_ext._latency->get(_impl->_plugin->_plugin);
-    return (double)samples / self.outputBusses[0].format.sampleRate;
+    double sr = self.outputBusses[0].format.sampleRate;
+    if (sr > 0)
+      return (double)_impl->_cachedLatencySamples / sr;
   }
   return 0;
 }
@@ -1206,12 +1229,7 @@ static Clap::Library _library;
 
 - (BOOL)createGUIInView:(NSView *)parentView width:(uint32_t *)outWidth height:(uint32_t *)outHeight
 {
-  AUV3LOG("createGUIInView: entered (parentView=%p)", parentView);
-  if (!_impl || !_impl->_plugin || !_impl->_plugin->_ext._gui)
-  {
-    AUV3LOG("createGUIInView: no GUI extension available");
-    return NO;
-  }
+  if (!_impl || !_impl->_plugin || !_impl->_plugin->_ext._gui) return NO;
 
   // In out-of-process AUv3, _main_thread_id was captured on the XPC worker
   // thread during init, so the CLAP proxy doesn't recognize the actual main
@@ -1221,43 +1239,25 @@ static Clap::Library _library;
   auto *gui = _impl->_plugin->_ext._gui;
   auto *plugin = _impl->_plugin->_plugin;
 
-  if (!gui->is_api_supported(plugin, CLAP_WINDOW_API_COCOA, false))
-  {
-    AUV3LOG("createGUIInView: COCOA API not supported");
-    return NO;
-  }
-  AUV3LOG("createGUIInView: COCOA API supported");
+  if (!gui->is_api_supported(plugin, CLAP_WINDOW_API_COCOA, false)) return NO;
 
-  if (!gui->create(plugin, CLAP_WINDOW_API_COCOA, false))
-  {
-    AUV3LOG("createGUIInView: gui->create() failed");
-    return NO;
-  }
-  AUV3LOG("createGUIInView: gui->create() succeeded");
+  if (!gui->create(plugin, CLAP_WINDOW_API_COCOA, false)) return NO;
 
   gui->set_scale(plugin, 1.0);
-  AUV3LOG("createGUIInView: set_scale done");
 
   uint32_t w = 0, h = 0;
   gui->get_size(plugin, &w, &h);
-  AUV3LOG("createGUIInView: get_size returned %ux%u", w, h);
 
   if (gui->can_resize(plugin))
   {
     gui->adjust_size(plugin, &w, &h);
-    AUV3LOG("createGUIInView: adjust_size returned %ux%u", w, h);
   }
 
   clap_window_t window;
   window.api = CLAP_WINDOW_API_COCOA;
   window.cocoa = (__bridge void *)parentView;
-  AUV3LOG("createGUIInView: calling set_parent (parentView=%p, parentView.window=%p)",
-          parentView, parentView.window);
   gui->set_parent(plugin, &window);
-  AUV3LOG("createGUIInView: set_parent done");
-
   gui->show(plugin);
-  AUV3LOG("createGUIInView: show done, returning YES (size=%ux%u)", w, h);
 
   if (outWidth) *outWidth = w;
   if (outHeight) *outHeight = h;
@@ -1270,20 +1270,12 @@ static Clap::Library _library;
 
 - (void)destroyGUI
 {
-  AUV3LOG("destroyGUI: entered");
-  if (!_impl || !_impl->_plugin || !_impl->_plugin->_ext._gui)
-  {
-    AUV3LOG("destroyGUI: no GUI extension, nothing to destroy");
-    return;
-  }
+  if (!_impl || !_impl->_plugin || !_impl->_plugin->_ext._gui) return;
 
   auto mainGuard = _impl->_plugin->AlwaysMainThread();
-
-  AUV3LOG("destroyGUI: hiding and destroying GUI");
   _impl->_plugin->_ext._gui->hide(_impl->_plugin->_plugin);
   _impl->_plugin->_ext._gui->destroy(_impl->_plugin->_plugin);
   _impl->_guiParentView = nil;
-  AUV3LOG("destroyGUI: completed");
 }
 
 - (BOOL)canResizeGUI
@@ -1326,6 +1318,12 @@ static Clap::Library _library;
 
 @implementation ClapAUv3ContainerView
 
+- (BOOL)isFlipped
+{
+  // Plugin GUIs expect (0,0) at top-left (flipped coordinate system).
+  return YES;
+}
+
 - (void)viewDidMoveToWindow
 {
   [super viewDidMoveToWindow];
@@ -1358,96 +1356,67 @@ static Clap::Library _library;
 
 - (void)loadView
 {
-  AUV3LOG("loadView: entered (thread=%{public}s)",
-          [NSThread.currentThread.name UTF8String] ?: "unnamed");
-  // Use a custom container view that notifies us via viewDidMoveToWindow.
-  // NSViewController lifecycle methods (viewDidAppear, viewDidLayout) only fire
-  // when the VC is in the view controller hierarchy — many hosts just do
-  // addSubview: without addChildViewController:, so those methods never fire.
-  // viewDidMoveToWindow on NSView fires unconditionally.
+  // Custom container view that detects when the view enters a window
+  // via viewDidMoveToWindow / viewDidMoveToSuperview. NSViewController
+  // lifecycle methods (viewDidAppear etc.) only fire when the VC is in
+  // the view controller hierarchy — many hosts just call addSubview:.
   ClapAUv3ContainerView *view = [[ClapAUv3ContainerView alloc] initWithFrame:NSMakeRect(0, 0, 0, 0)];
   view.viewController = self;
   view.translatesAutoresizingMaskIntoConstraints = YES;
   [self setView:view];
-  AUV3LOG("loadView: completed");
 }
 
 - (void)setAudioUnit:(ClapAUv3AudioUnit *)audioUnit
 {
-  AUV3LOG("setAudioUnit: entered (audioUnit=%p, viewLoaded=%d, window=%p, thread=%{public}s)",
-          audioUnit, [self isViewLoaded],
-          [self isViewLoaded] ? self.view.window : nil,
-          [NSThread.currentThread.name UTF8String] ?: "unnamed");
   _audioUnit = audioUnit;
-  // Do NOT dispatch GUI creation here. dispatch_async fires during JUCE's
-  // nested run loop pump (during factory init), causing gui->create() to
-  // deadlock. GUI creation is triggered by:
-  // - viewDidAppear (out-of-process: system manages VC lifecycle)
-  // - viewDidMoveToSuperview (in-process: host calls addSubview:)
-  // - viewDidMoveToWindow (in-process: view enters host window)
 }
 
 - (void)_createPluginGUI
 {
-  AUV3LOG("_createPluginGUI: entered (audioUnit=%p, isMainThread=%d)", self.audioUnit,
-          [NSThread isMainThread]);
-  if (!self.audioUnit)
-  {
-    AUV3LOG("_createPluginGUI: no audioUnit set, skipping");
-    return;
-  }
+  if (!self.audioUnit) return;
 
   uint32_t w = 0, h = 0;
   if ([self.audioUnit createGUIInView:self.view width:&w height:&h])
   {
-    AUV3LOG("_createPluginGUI: GUI created, size=%ux%u", w, h);
+    AUV3LOG("GUI created, size=%ux%u", w, h);
     if (w > 0 && h > 0)
     {
+      // Explicit KVO notifications — required for the remote proxy to
+      // forward preferredContentSize changes across the XPC boundary
+      // to the host process.
+      [self willChangeValueForKey:@"preferredContentSize"];
       self.preferredContentSize = NSMakeSize(w, h);
+      [self didChangeValueForKey:@"preferredContentSize"];
       self.view.frame = NSMakeRect(0, 0, w, h);
     }
   }
-  else
-  {
-    AUV3LOG("_createPluginGUI: createGUIInView returned NO");
-  }
 }
 
-// Convergence point: called when the view enters a window or audioUnit is set.
-// Creates the GUI once all preconditions are met.
+// Convergence point for GUI creation. Called from multiple triggers:
+// - viewDidMoveToWindow / viewDidMoveToSuperview (in-process)
+// - viewDidAppear (out-of-process)
+// Creates the GUI once all preconditions are met. Guarded by _guiCreated.
 - (void)_tryCreateGUI
 {
-  AUV3LOG("_tryCreateGUI: entered (guiCreated=%d, audioUnit=%p, viewLoaded=%d, window=%p, isMainThread=%d)",
-          _guiCreated, self.audioUnit, self.isViewLoaded,
-          self.isViewLoaded ? self.view.window : nil,
-          [NSThread isMainThread]);
   if (_guiCreated) return;
   if (!self.audioUnit) return;
   if (!self.isViewLoaded || !self.view.window) return;
 
-  AUV3LOG("_tryCreateGUI: preconditions met, creating GUI");
   _guiCreated = YES;
   [self _createPluginGUI];
 }
 
-// Called by ClapAUv3ContainerView.viewDidMoveToWindow when the view enters a window.
+// Called by ClapAUv3ContainerView when the view enters or leaves a window.
 - (void)_viewDidMoveToWindow
 {
-  AUV3LOG("_viewDidMoveToWindow: window=%p, audioUnit=%p, isMainThread=%d",
-          self.view.window, self.audioUnit, [NSThread isMainThread]);
   if (self.view.window)
   {
-    AUV3LOG("_viewDidMoveToWindow: view entered window, scheduling GUI creation");
-    // Defer to next run loop iteration — viewDidMoveToWindow fires synchronously
-    // during addSubview:, and JUCE plugins need the run loop to be processing
-    // events before their GUI can be created.
     dispatch_async(dispatch_get_main_queue(), ^{
       [self _tryCreateGUI];
     });
   }
   else
   {
-    AUV3LOG("_viewDidMoveToWindow: view removed from window, destroying GUI");
     if (_guiCreated)
     {
       _guiCreated = NO;
@@ -1458,26 +1427,20 @@ static Clap::Library _library;
 
 - (void)viewDidLoad
 {
-  AUV3LOG("viewDidLoad: entered");
   [super viewDidLoad];
-  AUV3LOG("viewDidLoad: completed");
 }
 
-// Out-of-process: the system manages the VC lifecycle properly (the extension
-// is hosted via XPC), so viewDidAppear fires when the host displays the view.
-// In-process: viewDidAppear doesn't fire (host doesn't use addChildViewController:),
-// but viewDidMoveToSuperview on the container view handles that case.
+// Out-of-process: the system manages the VC lifecycle properly, so
+// viewDidAppear fires when the host displays the view.
+// In-process: viewDidMoveToSuperview on the container view handles it.
 - (void)viewDidAppear
 {
-  AUV3LOG("viewDidAppear: entered (audioUnit=%p, isMainThread=%d)",
-          self.audioUnit, [NSThread isMainThread]);
   [super viewDidAppear];
   [self _tryCreateGUI];
 }
 
 - (void)viewDidDisappear
 {
-  AUV3LOG("viewDidDisappear: entered");
   if (_guiCreated)
   {
     _guiCreated = NO;
@@ -1488,7 +1451,6 @@ static Clap::Library _library;
 
 - (void)dealloc
 {
-  AUV3LOG("ClapAUv3ViewController dealloc (guiCreated=%d)", _guiCreated);
   if (_guiCreated)
   {
     [self.audioUnit destroyGUI];

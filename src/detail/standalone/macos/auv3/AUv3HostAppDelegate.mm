@@ -247,7 +247,7 @@ static MIDIPortRef sMIDIInputPort = 0;
             << "' subtype='" << AU_SUBTYPE_STR
             << "' manufacturer='" << AU_MANUFACTURER_STR << "'" << std::endl;
 
-  // First try: check if the AU is already registered with the system
+  // First try: use the system-registered AU (via AVAudioUnit + AVAudioEngine)
   AudioComponent comp = AudioComponentFindNext(NULL, &desc);
   if (comp)
   {
@@ -257,11 +257,10 @@ static MIDIPortRef sMIDIInputPort = 0;
               << (compName ? [(__bridge NSString *)compName UTF8String] : "?") << std::endl;
     if (compName) CFRelease(compName);
 
-    // Use normal AVAudioUnit instantiation path
     __weak typeof(self) weakSelf = self;
     [AVAudioUnit instantiateWithComponentDescription:desc
                                              options:kAudioComponentInstantiation_LoadInProcess
-                                completionHandler:^(AVAudioUnit *_Nullable audioUnit, NSError *_Nullable error) {
+                                  completionHandler:^(AVAudioUnit *_Nullable audioUnit, NSError *_Nullable error) {
       dispatch_async(dispatch_get_main_queue(), ^{
         __strong typeof(weakSelf) self = weakSelf;
         if (self) [self finishSetupWithAudioUnit:audioUnit error:error];
@@ -270,7 +269,7 @@ static MIDIPortRef sMIDIInputPort = 0;
     return;
   }
 
-  // Second path: load the appex bundle directly and instantiate through the factory
+  // Fallback: load the appex bundle directly (in-process, no AVAudioEngine)
   std::cout << "[auv3-standalone] AudioComponent not registered, loading appex directly" << std::endl;
 
   NSBundle *appexBundle = [self findEmbeddedAppexBundle];
@@ -446,19 +445,33 @@ static MIDIPortRef sMIDIInputPort = 0;
         preferredSize = NSMakeSize(480, 360);
       }
 
-      [[self window] setContentSize:preferredSize];
-      [[self window] setDelegate:self];
+      NSWindow *window = [self window];
+      [window setContentSize:preferredSize];
+      [window setDelegate:self];
+      window.styleMask |= NSWindowStyleMaskResizable;
+      window.contentMinSize = NSMakeSize(100, 100);
 
-      NSView *contentView = [[self window] contentView];
+      NSView *contentView = [window contentView];
       NSView *auView = vc.view;
       auView.frame = contentView.bounds;
       auView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
       [contentView addSubview:auView];
 
-      [[self window] orderFrontRegardless];
+      [window setMovableByWindowBackground:YES];
+      [window orderFrontRegardless];
+
+      std::cout << "[auv3-standalone] window styleMask=0x"
+                << std::hex << (unsigned long)window.styleMask << std::dec
+                << " resizable=" << ((window.styleMask & NSWindowStyleMaskResizable) ? "YES" : "NO")
+                << std::endl;
 
       std::cout << "[auv3-standalone] GUI displayed ("
                 << (int)preferredSize.width << "x" << (int)preferredSize.height << ")" << std::endl;
+
+      // For out-of-process AUv3, KVO on preferredContentSize may not work
+      // across the XPC boundary. Poll after a delay to pick up the plugin's
+      // actual GUI size once it has been created (via viewDidAppear).
+      [self _pollPreferredContentSize:vc retries:10];
     });
   }];
 }
@@ -491,19 +504,27 @@ static MIDIPortRef sMIDIInputPort = 0;
       preferredSize = NSMakeSize(480, 360);
     }
 
-    [[self window] setContentSize:preferredSize];
-    [[self window] setDelegate:self];
+    NSWindow *window = [self window];
+    [window setContentSize:preferredSize];
+    [window setDelegate:self];
+    // Ensure the window is resizable
+    window.styleMask |= NSWindowStyleMaskResizable;
 
-    NSView *contentView = [[self window] contentView];
+    NSView *contentView = [window contentView];
     NSView *auView = vc.view;
     auView.frame = contentView.bounds;
-    auView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    // Do NOT set autoresizingMask — it fights with explicit frame changes
+    // from the plugin (which sets self.view.frame to the GUI size).
+    // Window sizing is managed explicitly via _resizeWindowToFitGUI.
+    auView.autoresizingMask = 0;
     [contentView addSubview:auView];
 
-    [[self window] orderFrontRegardless];
+    [window orderFrontRegardless];
 
     std::cout << "[auv3-standalone] GUI displayed (direct) ("
               << (int)preferredSize.width << "x" << (int)preferredSize.height << ")" << std::endl;
+
+    [self _pollPreferredContentSize:vc retries:10];
   });
 }
 
@@ -676,6 +697,75 @@ static void midiInputCallback(const MIDIPacketList *pktlist, void *readProcRefCo
 }
 
 // ---------------------------------------------------------------------------
+#pragma mark - GUI size tracking
+// ---------------------------------------------------------------------------
+
+- (void)_resizeWindowToFitGUI:(NSViewController *)vc
+{
+  NSSize size = vc.preferredContentSize;
+  NSWindow *window = [self window];
+  if (size.width <= 0 || size.height <= 0 || !window) return;
+
+  // Resize keeping top-left corner fixed
+  NSRect oldFrame = window.frame;
+  NSRect contentRect = NSMakeRect(0, 0, size.width, size.height);
+  NSRect newFrame = [window frameRectForContentRect:contentRect];
+  newFrame.origin.x = oldFrame.origin.x;
+  newFrame.origin.y = oldFrame.origin.y + oldFrame.size.height - newFrame.size.height;
+
+  [window setFrame:newFrame display:YES animate:NO];
+
+  vc.view.frame = NSMakeRect(0, 0, size.width, size.height);
+  [vc.view setNeedsDisplay:YES];
+  [[window contentView] setNeedsDisplay:YES];
+}
+
+- (void)_pollPreferredContentSize:(NSViewController *)vc retries:(int)retries
+{
+  if (retries <= 0)
+  {
+    // Last resort: re-request the VC from the AU to get a fresh proxy
+    // with updated preferredContentSize.
+    if (_avAudioUnit)
+    {
+      [_avAudioUnit.AUAudioUnit requestViewControllerWithCompletionHandler:^(AUViewControllerBase *freshVC) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+          if (freshVC)
+          {
+            NSSize size = freshVC.preferredContentSize;
+            std::cout << "[auv3-standalone] Re-requested VC preferredContentSize: "
+                      << (int)size.width << "x" << (int)size.height << std::endl;
+            if (size.width > 0 && size.height > 0)
+            {
+              self->_auViewController.preferredContentSize = size;
+              [self _resizeWindowToFitGUI:self->_auViewController];
+            }
+          }
+        });
+      }];
+    }
+    return;
+  }
+
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(500 * NSEC_PER_MSEC)),
+                 dispatch_get_main_queue(), ^{
+    NSSize size = vc.preferredContentSize;
+    NSSize windowContent = [[self window] contentView].frame.size;
+
+    if (size.width > 0 && size.height > 0 &&
+        ((int)size.width != (int)windowContent.width ||
+         (int)size.height != (int)windowContent.height))
+    {
+      [self _resizeWindowToFitGUI:vc];
+    }
+    else
+    {
+      [self _pollPreferredContentSize:vc retries:retries - 1];
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
 #pragma mark - KVO
 // ---------------------------------------------------------------------------
 
@@ -692,9 +782,7 @@ static void midiInputCallback(const MIDIPacketList *pktlist, void *readProcRefCo
     if (size.width > 0 && size.height > 0)
     {
       dispatch_async(dispatch_get_main_queue(), ^{
-        [[self window] setContentSize:size];
-        NSView *auView = self->_auViewController.view;
-        auView.frame = [[self window] contentView].bounds;
+        [self _resizeWindowToFitGUI:self->_auViewController];
       });
     }
   }
