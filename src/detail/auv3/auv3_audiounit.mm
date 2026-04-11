@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <unordered_map>
 
 static os_log_t _auv3Log() {
   static os_log_t log = os_log_create("org.clap-wrapper.auv3", "wrapper");
@@ -26,6 +27,13 @@ static os_log_t _auv3Log() {
 }
 #define AUV3LOG(...) os_log(_auv3Log(), __VA_ARGS__)
 #define AUV3ERR(...) os_log_error(_auv3Log(), __VA_ARGS__)
+
+// Forward-declare private methods used by C++ code before the @implementation
+@interface ClapAUv3AudioUnit ()
+- (void)_replaceParameterTree;
+- (void)_notifyParameterValuesChanged;
+- (void)_wireParameterObserver;
+@end
 
 // -----------------------------------------------------------------------
 // C++ implementation detail bridging IHost, IAutomation, and IPlugObject
@@ -65,8 +73,6 @@ class AUv3ImplDetail : public Clap::IHost,
     AUV3LOG("~AUv3ImplDetail: destructor entered (plugin=%{public}s)", _plugin ? "valid" : "null");
     if (_plugin)
     {
-      AUV3LOG("~AUv3ImplDetail: calling _os_attached.off()");
-      _os_attached.off();
       AUV3LOG("~AUv3ImplDetail: calling _plugin->terminate()");
       _plugin->terminate();
       AUV3LOG("~AUv3ImplDetail: calling _plugin.reset()");
@@ -105,6 +111,7 @@ class AUv3ImplDetail : public Clap::IHost,
   std::string _hostname = "CLAP-as-AUv3";
   std::atomic<bool> _initialized{false};
   std::atomic_bool _requestUICallback{false};
+  dispatch_source_t _idleTimer = nullptr;
 
   // Back-reference to the ObjC audio unit (weak to avoid retain cycle)
   __weak ClapAUv3AudioUnit *_audioUnit = nil;
@@ -112,14 +119,64 @@ class AUv3ImplDetail : public Clap::IHost,
   // The NSView that the CLAP GUI is parented to (set by createGUIInView:)
   __weak NSView *_guiParentView = nil;
 
+  // Cached parameter values — avoids calling params->get_value() on every
+  // provider callback (wrong thread, expensive via XPC). Updated on set/flush/process.
+  // Reads from XPC thread, writes from XPC + audio thread; aligned double is
+  // naturally atomic on arm64/x86_64 so benign race at worst (slightly stale value).
+  std::unordered_map<clap_id, double> _paramValueCache;
+  std::unordered_map<clap_id, void *> _paramCookieCache;
+
   // Queue for audio -> UI thread parameter notifications
   ClapWrapper::detail::shared::fixedqueue<queueEvent, 8192> _queueToUI;
 
   // --- IHost ---
-  void mark_dirty() override {}
-  void restartPlugin() override {}
+  void mark_dirty() override
+  {
+    AUV3LOG("IHost::mark_dirty() called");
+  }
+  void restartPlugin() override
+  {
+    AUV3LOG("IHost::restartPlugin() called");
+  }
 
-  void request_callback() override { _requestUICallback = true; }
+  void request_callback() override
+  {
+    // Just set the flag. The main-queue idle timer will service it between
+    // render cycles. Never call on_main_thread() synchronously or from
+    // the render thread — JUCE holds locks in on_main_thread() that
+    // process() also needs, causing deadlock.
+    _requestUICallback = true;
+  }
+
+  void startIdleTimer()
+  {
+    if (_idleTimer) return;
+    _idleTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+    dispatch_source_set_timer(_idleTimer, DISPATCH_TIME_NOW, 10 * NSEC_PER_MSEC, 1 * NSEC_PER_MSEC);
+
+    auto plugin = _plugin;
+    auto *flag = &_requestUICallback;
+    auto *processing = &_initialized;  // true between start_processing/stop_processing
+    dispatch_source_set_event_handler(_idleTimer, ^{
+      // Do NOT call on_main_thread() while the plugin is processing.
+      // JUCE's on_main_thread() acquires locks that process() also needs —
+      // calling both concurrently (main thread vs render thread) deadlocks.
+      if (processing->load() || !flag->exchange(false)) return;
+
+      auto guard = plugin->AlwaysMainThread();
+      plugin->_plugin->on_main_thread(plugin->_plugin);
+    });
+    dispatch_resume(_idleTimer);
+  }
+
+  void stopIdleTimer()
+  {
+    if (_idleTimer)
+    {
+      dispatch_source_cancel(_idleTimer);
+      _idleTimer = nullptr;
+    }
+  }
 
   void setupWrapperSpecifics(const clap_plugin_t *plugin) override
   {
@@ -187,25 +244,126 @@ class AUv3ImplDetail : public Clap::IHost,
                        const clap_plugin_params_t *params) override
   {
     _parameterTree = Clap::AUv3::createParameterTree(plugin, params);
+
+    // Populate the parameter value and cookie caches with initial values
+    if (params)
+    {
+      uint32_t numParams = params->count(plugin);
+      for (uint32_t i = 0; i < numParams; ++i)
+      {
+        clap_param_info_t info;
+        if (params->get_info(plugin, i, &info))
+        {
+          double value = 0;
+          if (params->get_value(plugin, info.id, &value))
+            _paramValueCache[info.id] = value;
+          else
+            _paramValueCache[info.id] = info.default_value;
+          _paramCookieCache[info.id] = info.cookie;
+        }
+      }
+    }
   }
 
   void param_rescan(clap_param_rescan_flags flags) override
   {
-    // TODO: Rebuild parameter tree when plugin requests rescan
-    std::cout << "[clap-wrapper] auv3: param_rescan requested (not yet fully implemented)" << std::endl;
+    AUV3LOG("IHost::param_rescan(flags=0x%x) called", (unsigned)flags);
+    if (!_plugin || !_plugin->_ext._params) return;
+
+    auto mainGuard = _plugin->AlwaysMainThread();
+    auto *params = _plugin->_ext._params;
+    auto *plug = _plugin->_plugin;
+
+    if (flags & (CLAP_PARAM_RESCAN_ALL | CLAP_PARAM_RESCAN_INFO))
+    {
+      // AUParameter properties (name, range, flags) are immutable — rebuild the entire tree.
+      _parameterTree = Clap::AUv3::createParameterTree(plug, params);
+
+      // Immediately replace the value provider with the cached version —
+      // createParameterTree() wires a provider that calls get_value() directly,
+      // which fails the thread check if called from the render thread.
+      auto *cache = &_paramValueCache;
+      _parameterTree.implementorValueProvider = ^AUValue(AUParameter *param) {
+        auto it = cache->find((clap_id)param.address);
+        if (it != cache->end())
+          return (AUValue)it->second;
+        return (AUValue)0.0;
+      };
+
+      // Refresh value and cookie caches
+      _paramValueCache.clear();
+      _paramCookieCache.clear();
+      uint32_t n = params->count(plug);
+      for (uint32_t i = 0; i < n; ++i)
+      {
+        clap_param_info_t info;
+        if (params->get_info(plug, i, &info))
+        {
+          double value = 0;
+          if (params->get_value(plug, info.id, &value))
+            _paramValueCache[info.id] = value;
+          else
+            _paramValueCache[info.id] = info.default_value;
+          _paramCookieCache[info.id] = info.cookie;
+        }
+      }
+
+      // Notify AUv3 host via KVO — must be on main thread
+      __strong auto au = _audioUnit;
+      if (au)
+      {
+        dispatch_async(dispatch_get_main_queue(), ^{
+          [au _replaceParameterTree];
+        });
+      }
+    }
+    else if (flags & CLAP_PARAM_RESCAN_VALUES)
+    {
+      // Just refresh cached values — tree structure is unchanged
+      uint32_t n = params->count(plug);
+      for (uint32_t i = 0; i < n; ++i)
+      {
+        clap_param_info_t info;
+        if (params->get_info(plug, i, &info))
+        {
+          double value = 0;
+          if (params->get_value(plug, info.id, &value))
+            _paramValueCache[info.id] = value;
+        }
+      }
+
+      // Notify host that values changed
+      __strong auto au = _audioUnit;
+      if (au)
+      {
+        dispatch_async(dispatch_get_main_queue(), ^{
+          [au _notifyParameterValuesChanged];
+        });
+      }
+    }
+
+    // CLAP_PARAM_RESCAN_TEXT needs no action — implementorStringFromValueCallback
+    // already calls plugin->value_to_text() on each invocation.
   }
 
-  void param_clear(clap_id param, clap_param_clear_flags flags) override {}
-  void param_request_flush() override {}
+  void param_clear(clap_id param, clap_param_clear_flags flags) override
+  {
+    AUV3LOG("IHost::param_clear(param=%u, flags=0x%x) called", (unsigned)param, (unsigned)flags);
+  }
+
+  void param_request_flush() override
+  {
+    AUV3LOG("IHost::param_request_flush() called");
+  }
 
   void latency_changed() override
   {
-    // AUv3 handles latency via the latency property - hosts observe it via KVO
+    AUV3LOG("IHost::latency_changed() called");
   }
 
   void tail_changed() override
   {
-    // AUv3 handles tail time via the tailTime property
+    AUV3LOG("IHost::tail_changed() called");
   }
 
   bool gui_can_resize() override
@@ -285,6 +443,7 @@ class AUv3ImplDetail : public Clap::IHost,
   // --- IAutomation ---
   void onBeginEdit(clap_id id) override
   {
+    AUV3LOG("IAutomation::onBeginEdit(id=%u)", (unsigned)id);
     queueEvent evt;
     evt._type = queueEvent::type::editstart;
     evt._data._id = id;
@@ -293,6 +452,10 @@ class AUv3ImplDetail : public Clap::IHost,
 
   void onPerformEdit(const clap_event_param_value_t *value) override
   {
+    AUV3LOG("IAutomation::onPerformEdit(id=%u, value=%.4f)", (unsigned)value->param_id, value->value);
+    // Update cache immediately (audio thread write, benign race with reader)
+    _paramValueCache[value->param_id] = value->value;
+
     queueEvent evt;
     evt._type = queueEvent::type::editvalue;
     evt._data._value = *value;
@@ -301,6 +464,7 @@ class AUv3ImplDetail : public Clap::IHost,
 
   void onEndEdit(clap_id id) override
   {
+    AUV3LOG("IAutomation::onEndEdit(id=%u)", (unsigned)id);
     queueEvent evt;
     evt._type = queueEvent::type::editend;
     evt._data._id = id;
@@ -483,8 +647,11 @@ static Clap::Library _library;
 
     AUV3LOG("init: calling plugin->initialize()");
     _impl->_plugin->initialize();
-    AUV3LOG("init: calling _os_attached.on()");
-    _impl->_os_attached.on();
+    // Start the idle timer on the main queue. This services request_callback()
+    // (on_main_thread) between render cycles. We don't use the global os::attach
+    // mechanism — its CFRunLoopTimer is unreliable in out-of-process AUv3.
+    AUV3LOG("init: starting idle timer on main queue");
+    _impl->startIdleTimer();
 
     // Build audio bus arrays from the CLAP audio port info
     AUV3LOG("init: building bus arrays (inputs=%zu outputs=%zu)",
@@ -539,15 +706,19 @@ static Clap::Library _library;
           _impl ? "valid" : "null",
           (_impl && _impl->_plugin) ? "valid" : "null");
 
-  if (_impl && _impl->_plugin)
+  if (_impl)
   {
-    AUV3LOG("dealloc: calling _os_attached.off()");
-    _impl->_os_attached.off();
-    AUV3LOG("dealloc: calling _plugin->terminate()");
-    _impl->_plugin->terminate();
-    AUV3LOG("dealloc: calling _plugin.reset()");
-    _impl->_plugin.reset();
-    AUV3LOG("dealloc: plugin teardown complete");
+    AUV3LOG("dealloc: stopping idle timer");
+    _impl->stopIdleTimer();
+
+    if (_impl->_plugin)
+    {
+      AUV3LOG("dealloc: calling _plugin->terminate()");
+      _impl->_plugin->terminate();
+      AUV3LOG("dealloc: calling _plugin.reset()");
+      _impl->_plugin.reset();
+      AUV3LOG("dealloc: plugin teardown complete");
+    }
   }
   AUV3LOG("dealloc: calling _impl.reset()");
   _impl.reset();
@@ -604,6 +775,9 @@ static Clap::Library _library;
     if (!strongSelf || !strongSelf->_impl) return;
     if (!strongSelf->_impl->_plugin || !strongSelf->_impl->_plugin->_ext._params) return;
 
+    // Always update the cache
+    strongSelf->_impl->_paramValueCache[(clap_id)param.address] = (double)value;
+
     // When render resources are allocated, parameter changes arrive via the
     // render event list (AURenderEventParameter) — the thread-safe path.
     // Do NOT call addParameterEvent here as it races with process() on
@@ -615,18 +789,21 @@ static Clap::Library _library;
     auto *plugin = strongSelf->_impl->_plugin->_plugin;
     auto *ext_params = strongSelf->_impl->_plugin->_ext._params;
 
+    clap_id pid = (clap_id)param.address;
     clap_event_param_value_t ev = {};
     ev.header.size = sizeof(ev);
     ev.header.type = CLAP_EVENT_PARAM_VALUE;
     ev.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
     ev.header.time = 0;
     ev.header.flags = 0;
-    ev.param_id = (clap_id)param.address;
+    ev.param_id = pid;
     ev.value = (double)value;
     ev.port_index = -1;
     ev.key = -1;
     ev.channel = -1;
     ev.note_id = -1;
+    auto cookieIt = strongSelf->_impl->_paramCookieCache.find(pid);
+    ev.cookie = (cookieIt != strongSelf->_impl->_paramCookieCache.end()) ? cookieIt->second : nullptr;
 
     // Build a single-event input list
     const clap_event_header_t *evPtr = &ev.header;
@@ -643,8 +820,63 @@ static Clap::Library _library;
       return true;
     };
 
+    auto mainGuard = strongSelf->_impl->_plugin->AlwaysMainThread();
     ext_params->flush(plugin, &in_events, &out_events);
   };
+
+  // Rewire the parameter tree callbacks. The provider uses the local cache
+  // instead of calling params->get_value() (which requires main thread and is
+  // expensive over XPC). String conversion still calls into the plugin with guards.
+  auto plugin = _impl->_plugin;  // shared_ptr keeps it alive in the blocks
+  auto *cache = &_impl->_paramValueCache;
+
+  _impl->_parameterTree.implementorValueProvider = ^AUValue(AUParameter *param) {
+    auto it = cache->find((clap_id)param.address);
+    if (it != cache->end())
+      return (AUValue)it->second;
+    return (AUValue)0.0;
+  };
+
+  _impl->_parameterTree.implementorStringFromValueCallback = ^NSString *(AUParameter *param, const AUValue *value) {
+    auto guard = plugin->AlwaysMainThread();
+    char buf[256];
+    AUValue v = value ? *value : param.value;
+    if (plugin->_ext._params->value_to_text(plugin->_plugin, (clap_id)param.address, (double)v, buf, sizeof(buf)))
+    {
+      return [NSString stringWithUTF8String:buf];
+    }
+    return [NSString stringWithFormat:@"%.3f", v];
+  };
+
+  _impl->_parameterTree.implementorValueFromStringCallback = ^AUValue(AUParameter *param, NSString *string) {
+    auto guard = plugin->AlwaysMainThread();
+    double value = 0;
+    if (plugin->_ext._params->text_to_value(plugin->_plugin, (clap_id)param.address, [string UTF8String], &value))
+    {
+      return (AUValue)value;
+    }
+    return (AUValue)[string doubleValue];
+  };
+}
+
+- (void)_replaceParameterTree
+{
+  AUV3LOG("_replaceParameterTree: firing KVO and re-wiring callbacks");
+  // Fire KVO so the host picks up the new tree
+  [self willChangeValueForKey:@"parameterTree"];
+  [self didChangeValueForKey:@"parameterTree"];
+
+  // Re-wire the provider, observer, and string conversion callbacks
+  [self _wireParameterObserver];
+}
+
+- (void)_notifyParameterValuesChanged
+{
+  AUV3LOG("_notifyParameterValuesChanged: firing KVO");
+  // Pseudo-property documented in AUAudioUnit.h — hosts observe this
+  // to know when all parameter values have been invalidated
+  [self willChangeValueForKey:@"allParameterValues"];
+  [self didChangeValueForKey:@"allParameterValues"];
 }
 
 // --- AUAudioUnit property overrides ---
@@ -788,7 +1020,26 @@ static Clap::Library _library;
       AUV3LOG("setFullState (restore): loading %zu bytes of CLAP state", (size_t)[clapState length]);
       Clap::StateMemento chunk;
       chunk.setData((const uint8_t *)[clapState bytes], [clapState length]);
+      auto mainGuard = _impl->_plugin->AlwaysMainThread();
       _impl->_plugin->_ext._state->load(_impl->_plugin->_plugin, chunk);
+
+      // Refresh the parameter cache after state restore — all values may have changed
+      if (_impl->_plugin->_ext._params)
+      {
+        auto *params = _impl->_plugin->_ext._params;
+        auto *plug = _impl->_plugin->_plugin;
+        uint32_t numParams = params->count(plug);
+        for (uint32_t i = 0; i < numParams; ++i)
+        {
+          clap_param_info_t info;
+          if (params->get_info(plug, i, &info))
+          {
+            double value = 0;
+            if (params->get_value(plug, info.id, &value))
+              _impl->_paramValueCache[info.id] = value;
+          }
+        }
+      }
       AUV3LOG("setFullState (restore): completed");
     }
     else
@@ -862,8 +1113,12 @@ static Clap::Library _library;
       _impl->_plugin->_plugin, _impl->_plugin->_ext._params, _impl.get(),
       self.maximumFramesToRender, _impl->_midi_preferred_dialect);
 
-  // Set transport state block
+  // Set transport state and musical context blocks
   _impl->_processAdapter->setTransportStateBlock(self.transportStateBlock);
+  _impl->_processAdapter->setMusicalContextBlock(self.musicalContextBlock);
+
+  // Wire cookie cache for parameter events
+  _impl->_processAdapter->_cookieCache = &_impl->_paramCookieCache;
 
   // Set MIDI output block
   _impl->_processAdapter->midiOutputEventBlock = self.MIDIOutputEventBlock;
@@ -922,8 +1177,24 @@ static Clap::Library _library;
                              AURenderPullInputBlock __unsafe_unretained pullInputBlock) {
     if (!impl || !impl->_processAdapter) return kAudioUnitErr_Uninitialized;
 
-    return impl->_processAdapter->process(actionFlags, timestamp, frameCount, outputBusNumber,
-                                          outputData, realtimeEventListHead, pullInputBlock);
+    // Force audio-thread identity for the duration of the render call.
+    // In out-of-process AUv3, _main_thread_id was captured on the XPC worker
+    // thread during init, so the default heuristic is wrong.
+    auto audioGuard = impl->_plugin->AlwaysAudioThread();
+
+    auto status = impl->_processAdapter->process(actionFlags, timestamp, frameCount, outputBusNumber,
+                                                 outputData, realtimeEventListHead, pullInputBlock);
+
+    // Do NOT dispatch on_main_thread() from the render block. Surge XT's
+    // on_main_thread() acquires JUCE locks that process() also needs — dispatching
+    // it asynchronously causes lock contention: on_main_thread() runs on main while
+    // process() runs on render thread, both needing the same lock → deadlock.
+    //
+    // The _requestUICallback flag is still set by request_callback(). It will be
+    // serviced when a GUI is active (via idle timer) or when the plugin is not
+    // processing (e.g., after deallocateRenderResources).
+
+    return status;
   };
 }
 

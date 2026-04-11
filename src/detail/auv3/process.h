@@ -22,6 +22,7 @@
 #import <AVFoundation/AVFoundation.h>
 #include <vector>
 #include <map>
+#include <unordered_map>
 #include "../clap/automation.h"
 
 namespace Clap::AUv3
@@ -59,8 +60,9 @@ class ProcessAdapter
                             const AURenderEvent *realtimeEventListHead,
                             AURenderPullInputBlock __unsafe_unretained pullInputBlock);
 
-  // Provide transport state from the host
+  // Provide transport/musical context from the host
   void setTransportStateBlock(AUHostTransportStateBlock __nullable block);
+  void setMusicalContextBlock(AUHostMusicalContextBlock __nullable block);
 
   // Queue a parameter change from the host (outside render block)
   void addParameterEvent(clap_id paramId, double value, uint32_t sampleOffset);
@@ -77,8 +79,13 @@ class ProcessAdapter
 
   void sortEventIndices();
   bool enqueueOutputEvent(const clap_event_header_t *event);
-  void translateAUv3Events(const AURenderEvent *head);
+  void translateAUv3Events(const AURenderEvent *head, AUEventSampleTime bufferStartTime,
+                           AVAudioFrameCount frameCount);
 
+ public:
+  const std::unordered_map<clap_id, void *> *_cookieCache = nullptr;
+
+ private:
   const clap_plugin_t *_plugin = nullptr;
   const clap_plugin_params_t *_ext_params = nullptr;
   Clap::IAutomation *_automation = nullptr;
@@ -104,10 +111,18 @@ class ProcessAdapter
   uint32_t _preferred_midi_dialect = CLAP_NOTE_DIALECT_CLAP;
 
   AUHostTransportStateBlock __nullable _transportStateBlock = nil;
+  AUHostMusicalContextBlock __nullable _musicalContextBlock = nil;
 
   // Temporary storage for input pulling
   AudioBufferList *_inputBufferList = nullptr;
   uint32_t _inputBufferListChannels = 0;
+
+  // Multi-bus render tracking: AUv3 calls the render block once per output bus,
+  // but CLAP processes all buses in a single process() call. We process on the
+  // first bus and just copy output for subsequent buses in the same cycle.
+  uint64_t _lastProcessedSampleTime = UINT64_MAX;
+  uint32_t _numMaxSamples = 0;
+  std::vector<std::vector<float>> _outputStorage;  // [bus * maxCh + ch][samples]
 };
 
 }  // namespace Clap::AUv3
