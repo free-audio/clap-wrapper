@@ -1384,10 +1384,11 @@ static Clap::Library _library;
       // Explicit KVO notifications — required for the remote proxy to
       // forward preferredContentSize changes across the XPC boundary
       // to the host process.
+      self.view.frame = NSMakeRect(0, 0, w, h);
       [self willChangeValueForKey:@"preferredContentSize"];
       self.preferredContentSize = NSMakeSize(w, h);
       [self didChangeValueForKey:@"preferredContentSize"];
-      self.view.frame = NSMakeRect(0, 0, w, h);
+
     }
   }
 }
@@ -1428,6 +1429,12 @@ static Clap::Library _library;
 - (void)viewDidLoad
 {
   [super viewDidLoad];
+  // Try to create the GUI early so preferredContentSize is set BEFORE
+  // the host reads it via requestViewControllerWithCompletionHandler:.
+  // For out-of-process AUv3, the proxy doesn't forward property changes,
+  // so the host only sees the value that was set at VC creation time.
+  // If gui->create() blocks (JUCE plugins), viewDidAppear handles it later.
+  [self _tryCreateGUI];
 }
 
 // Out-of-process: the system manages the VC lifecycle properly, so

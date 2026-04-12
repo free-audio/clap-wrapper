@@ -36,13 +36,30 @@ static std::string fourCCFromString(const std::string &input)
   return result;
 }
 
+// Generate a valid ObjC identifier suffix from an arbitrary string.
+// Uses hex encoding of fnv1a hash to produce a unique, deterministic suffix.
+static std::string objcIdentifierFromString(const std::string &input)
+{
+  uint32_t hash = fnv1a_keogh(input.c_str());
+  char buf[16];
+  snprintf(buf, sizeof(buf), "%08X", hash);
+  return buf;
+}
+
 struct auInfo
 {
   std::string name, vers, type, subt, manu, manunm, clapid, desc, clapname, bundlevers;
   bool explicitMode{false};
   std::vector<std::string> tags;
 
-  const std::string factoryBase{"ClapAUv3ViewController_inst"};
+  // Each plugin needs a unique ObjC class name to avoid collisions when
+  // multiple AUv3 wrappers are loaded in the same process.
+  std::string factoryBase() const
+  {
+    std::string key = manu + subt;
+    if (!clapid.empty()) key = clapid;
+    return "ClapAUv3VC_" + objcIdentifierFromString(key);
+  }
 
   uint32_t bundleversToVersion() const
   {
@@ -83,7 +100,7 @@ struct auInfo
        << "            <key>description</key>\n"
        << "            <string>" << desc << "</string>\n"
        << "            <key>factoryFunction</key>\n"
-       << "            <string>" << factoryBase << idx << "</string>\n"
+       << "            <string>" << factoryBase() << idx << "</string>\n"
        << "            <key>manufacturer</key>\n"
        << "            <string>" << manu << "</string>\n"
        << "            <key>subtype</key>\n"
@@ -364,7 +381,7 @@ int main(int argc, char **argv)
   of << intop.rdbuf();
 
   // The principal class is the first factory subclass
-  std::string principalClass = units[0].factoryBase + "0";
+  std::string principalClass = units[0].factoryBase() + "0";
 
   of << "    <key>NSExtension</key>\n"
      << "    <dict>\n"
@@ -407,7 +424,7 @@ int main(int argc, char **argv)
     idx = 0;
     for (const auto &u : units)
     {
-      auto vcName = u.factoryBase + std::to_string(idx);
+      auto vcName = u.factoryBase() + std::to_string(idx);
 
       std::cout << "    + " << u.name << " view controller " << vcName << std::endl;
 
