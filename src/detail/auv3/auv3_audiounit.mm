@@ -1307,6 +1307,26 @@ static Clap::Library _library;
   if (_impl) _impl->_viewController = vc;
 }
 
+- (BOOL)queryPreferredGUISize:(uint32_t *)outWidth height:(uint32_t *)outHeight
+{
+  if (!_impl || !_impl->_plugin || !_impl->_plugin->_ext._gui) return NO;
+
+  auto mainGuard = _impl->_plugin->AlwaysMainThread();
+  auto *gui = _impl->_plugin->_ext._gui;
+  auto *plugin = _impl->_plugin->_plugin;
+
+  if (!gui->is_api_supported(plugin, CLAP_WINDOW_API_COCOA, false)) return NO;
+  if (!gui->create(plugin, CLAP_WINDOW_API_COCOA, false)) return NO;
+
+  uint32_t w = 0, h = 0;
+  gui->get_size(plugin, &w, &h);
+  gui->destroy(plugin);
+
+  if (outWidth) *outWidth = w;
+  if (outHeight) *outHeight = h;
+  return (w > 0 && h > 0) ? YES : NO;
+}
+
 // --- View controller ---
 // Override requestViewControllerWithCompletionHandler: to return the factory VC.
 // The default AUAudioUnit implementation returns nil. The extension infrastructure
@@ -1388,14 +1408,14 @@ static Clap::Library _library;
   // via viewDidMoveToWindow / viewDidMoveToSuperview. NSViewController
   // lifecycle methods (viewDidAppear etc.) only fire when the VC is in
   // the view controller hierarchy — many hosts just call addSubview:.
-  // Use a reasonable default size rather than 0x0. The viewbridge infrastructure
-  // may reject a zero-sized view, preventing the host from displaying custom UI.
-  // The actual size is updated once the CLAP GUI is created (_createPluginGUI).
-  ClapAUv3ContainerView *view = [[ClapAUv3ContainerView alloc] initWithFrame:NSMakeRect(0, 0, 400, 300)];
+  // Start with a reasonable default size. The viewbridge rejects zero-sized views.
+  // The actual size is updated from the CLAP plugin in setAudioUnit: / _createPluginGUI.
+  NSSize initialSize = NSMakeSize(400, 300);
+  ClapAUv3ContainerView *view = [[ClapAUv3ContainerView alloc] initWithFrame:NSMakeRect(0, 0, initialSize.width, initialSize.height)];
   view.viewController = self;
   view.translatesAutoresizingMaskIntoConstraints = YES;
   [self setView:view];
-  self.preferredContentSize = NSMakeSize(400, 300);
+  self.preferredContentSize = initialSize;
 }
 
 - (void)setAudioUnit:(ClapAUv3AudioUnit *)audioUnit
@@ -1405,6 +1425,16 @@ static Clap::Library _library;
   // requestViewControllerWithCompletionHandler:
   if (audioUnit)
     audioUnit->_factoryViewController = self;
+
+  // Query the CLAP plugin for its preferred GUI size so the host sees
+  // the correct dimensions before the GUI is actually created.
+  uint32_t w = 0, h = 0;
+  if (audioUnit && [audioUnit queryPreferredGUISize:&w height:&h])
+  {
+    if (self.isViewLoaded)
+      self.view.frame = NSMakeRect(0, 0, w, h);
+    self.preferredContentSize = NSMakeSize(w, h);
+  }
 }
 
 - (void)_createPluginGUI
