@@ -67,8 +67,5 @@
 // for gui_request_resize to set preferredContentSize on the VC.
 - (void)setViewController:(ClapAUv3ViewController *)vc;
 
-// Queries the CLAP plugin for its preferred GUI size without attaching to a view.
-// Returns YES and fills outWidth/outHeight if the plugin has a GUI, NO otherwise.
-- (BOOL)queryPreferredGUISize:(uint32_t *)outWidth height:(uint32_t *)outHeight;
 
 @end

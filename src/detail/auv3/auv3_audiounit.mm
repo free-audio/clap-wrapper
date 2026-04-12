@@ -103,6 +103,9 @@ class AUv3ImplDetail : public Clap::IHost,
 
   // Parameters
   AUParameterTree *_parameterTree = nil;
+  // Observer token used as 'originator' when pushing parameter changes to the host.
+  // This prevents the host from echoing the change back to our implementorValueObserver.
+  AUParameterObserverToken _parameterObserverToken = nullptr;
 
   // Hosting
   std::string _clapname;
@@ -167,7 +170,13 @@ class AUv3ImplDetail : public Clap::IHost,
     auto plugin = _plugin;
     auto *flag = &_requestUICallback;
     auto *processing = &_initialized;  // true between start_processing/stop_processing
+    auto *self = this;
     dispatch_source_set_event_handler(_idleTimer, ^{
+      // Drain the parameter automation queue (Touch/Value/Release → host).
+      // This is safe even while processing — it only touches AUParameter
+      // objects on the main queue, no CLAP plugin calls.
+      self->drainParameterQueue();
+
       // Do NOT call on_main_thread() while the plugin is processing.
       // JUCE's on_main_thread() acquires locks that process() also needs —
       // calling both concurrently (main thread vs render thread) deadlocks.
@@ -486,6 +495,57 @@ class AUv3ImplDetail : public Clap::IHost,
     _queueToUI.push(evt);
   }
 
+  // Drain the audio→UI parameter queue and forward automation events to the host.
+  // Safe to call while processing — only touches AUParameter objects, no CLAP calls.
+  void drainParameterQueue()
+  {
+    queueEvent evt;
+    while (_queueToUI.pop(evt))
+    {
+      if (!_parameterTree) continue;
+
+      switch (evt._type)
+      {
+        case queueEvent::type::editstart:
+        {
+          AUParameter *param = [_parameterTree parameterWithAddress:(AUParameterAddress)evt._data._id];
+          if (param)
+          {
+            [param setValue:param.value
+                originator:_parameterObserverToken
+                atHostTime:0
+                 eventType:AUParameterAutomationEventTypeTouch];
+          }
+          break;
+        }
+        case queueEvent::type::editvalue:
+        {
+          AUParameter *param = [_parameterTree parameterWithAddress:(AUParameterAddress)evt._data._value.param_id];
+          if (param)
+          {
+            [param setValue:(AUValue)evt._data._value.value
+                originator:_parameterObserverToken
+                atHostTime:0
+                 eventType:AUParameterAutomationEventTypeValue];
+          }
+          break;
+        }
+        case queueEvent::type::editend:
+        {
+          AUParameter *param = [_parameterTree parameterWithAddress:(AUParameterAddress)evt._data._id];
+          if (param)
+          {
+            [param setValue:param.value
+                originator:_parameterObserverToken
+                atHostTime:0
+                 eventType:AUParameterAutomationEventTypeRelease];
+          }
+          break;
+        }
+      }
+    }
+  }
+
   // --- IPlugObject ---
   void onIdle() override
   {
@@ -497,28 +557,7 @@ class AUv3ImplDetail : public Clap::IHost,
       _plugin->_plugin->on_main_thread(_plugin->_plugin);
     }
 
-    // Process queued parameter changes from audio thread
-    queueEvent evt;
-    while (_queueToUI.pop(evt))
-    {
-      switch (evt._type)
-      {
-        case queueEvent::type::editvalue:
-        {
-          if (_parameterTree)
-          {
-            AUParameter *param = [_parameterTree parameterWithAddress:(AUParameterAddress)evt._data._value.param_id];
-            if (param)
-            {
-              param.value = (AUValue)evt._data._value.value;
-            }
-          }
-          break;
-        }
-        default:
-          break;
-      }
-    }
+    drainParameterQueue();
   }
 };
 
@@ -734,6 +773,12 @@ static Clap::Library _library;
     AUV3LOG("dealloc: stopping idle timer");
     _impl->stopIdleTimer();
 
+    if (_impl->_parameterObserverToken && _impl->_parameterTree)
+    {
+      [_impl->_parameterTree removeParameterObserver:_impl->_parameterObserverToken];
+      _impl->_parameterObserverToken = nullptr;
+    }
+
     if (_impl->_plugin)
     {
       auto mainGuard = _impl->_plugin->AlwaysMainThread();
@@ -793,6 +838,17 @@ static Clap::Library _library;
 - (void)_wireParameterObserver
 {
   __weak typeof(self) weakSelf = self;
+
+  // Register a parameter observer to obtain a token. The token is used as
+  // 'originator' in setValue:originator:atHostTime:eventType: so that
+  // changes pushed from the CLAP plugin don't echo back through
+  // implementorValueObserver (which would re-flush them to the plugin).
+  // The observer block itself is intentionally empty — all host→plugin
+  // value changes arrive via implementorValueObserver below.
+  _impl->_parameterObserverToken = [_impl->_parameterTree
+      tokenByAddingParameterObserver:^(AUParameterAddress address, AUValue value) {
+        // Intentionally empty — see comment above.
+      }];
 
   _impl->_parameterTree.implementorValueObserver = ^(AUParameter *param, AUValue value) {
     __strong typeof(weakSelf) strongSelf = weakSelf;
@@ -886,6 +942,14 @@ static Clap::Library _library;
 - (void)_replaceParameterTree
 {
   AUV3LOG("_replaceParameterTree: firing KVO and re-wiring callbacks");
+
+  // Remove the old observer token before the tree is replaced
+  if (_impl->_parameterObserverToken && _impl->_parameterTree)
+  {
+    [_impl->_parameterTree removeParameterObserver:_impl->_parameterObserverToken];
+    _impl->_parameterObserverToken = nullptr;
+  }
+
   // Fire KVO so the host picks up the new tree
   [self willChangeValueForKey:@"parameterTree"];
   [self didChangeValueForKey:@"parameterTree"];
@@ -1307,26 +1371,6 @@ static Clap::Library _library;
   if (_impl) _impl->_viewController = vc;
 }
 
-- (BOOL)queryPreferredGUISize:(uint32_t *)outWidth height:(uint32_t *)outHeight
-{
-  if (!_impl || !_impl->_plugin || !_impl->_plugin->_ext._gui) return NO;
-
-  auto mainGuard = _impl->_plugin->AlwaysMainThread();
-  auto *gui = _impl->_plugin->_ext._gui;
-  auto *plugin = _impl->_plugin->_plugin;
-
-  if (!gui->is_api_supported(plugin, CLAP_WINDOW_API_COCOA, false)) return NO;
-  if (!gui->create(plugin, CLAP_WINDOW_API_COCOA, false)) return NO;
-
-  uint32_t w = 0, h = 0;
-  gui->get_size(plugin, &w, &h);
-  gui->destroy(plugin);
-
-  if (outWidth) *outWidth = w;
-  if (outHeight) *outHeight = h;
-  return (w > 0 && h > 0) ? YES : NO;
-}
-
 // --- View controller ---
 // Override requestViewControllerWithCompletionHandler: to return the factory VC.
 // The default AUAudioUnit implementation returns nil. The extension infrastructure
@@ -1410,7 +1454,7 @@ static Clap::Library _library;
   // the view controller hierarchy — many hosts just call addSubview:.
   // Start with a reasonable default size. The viewbridge rejects zero-sized views.
   // The actual size is updated from the CLAP plugin in setAudioUnit: / _createPluginGUI.
-  NSSize initialSize = NSMakeSize(400, 300);
+  NSSize initialSize = NSMakeSize(400, 500);
   ClapAUv3ContainerView *view = [[ClapAUv3ContainerView alloc] initWithFrame:NSMakeRect(0, 0, initialSize.width, initialSize.height)];
   view.viewController = self;
   view.translatesAutoresizingMaskIntoConstraints = YES;
@@ -1426,15 +1470,6 @@ static Clap::Library _library;
   if (audioUnit)
     audioUnit->_factoryViewController = self;
 
-  // Query the CLAP plugin for its preferred GUI size so the host sees
-  // the correct dimensions before the GUI is actually created.
-  uint32_t w = 0, h = 0;
-  if (audioUnit && [audioUnit queryPreferredGUISize:&w height:&h])
-  {
-    if (self.isViewLoaded)
-      self.view.frame = NSMakeRect(0, 0, w, h);
-    self.preferredContentSize = NSMakeSize(w, h);
-  }
 }
 
 - (void)_createPluginGUI
