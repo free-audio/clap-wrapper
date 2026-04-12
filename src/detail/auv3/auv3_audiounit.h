@@ -34,6 +34,14 @@
 @end
 
 @interface ClapAUv3AudioUnit : AUAudioUnit
+{
+  @package
+  // Weak back-reference to the factory VC that created this AU.
+  // Set by [ClapAUv3ViewController setAudioUnit:] during factory creation.
+  // Used by requestViewControllerWithCompletionHandler: so the host can
+  // obtain the VC for displaying the plugin's custom UI.
+  __weak ClapAUv3ViewController *_factoryViewController;
+}
 
 - (instancetype)initWithComponentDescription:(AudioComponentDescription)componentDescription
                                      options:(AudioComponentInstantiationOptions)options
@@ -54,5 +62,9 @@
 
 // Called by the view controller when the host resizes the view.
 - (BOOL)setGUISize:(uint32_t)width height:(uint32_t)height;
+
+// Called by the view controller to establish the back-reference needed
+// for gui_request_resize to set preferredContentSize on the VC.
+- (void)setViewController:(ClapAUv3ViewController *)vc;
 
 @end

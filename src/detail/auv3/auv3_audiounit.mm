@@ -120,6 +120,10 @@ class AUv3ImplDetail : public Clap::IHost,
   // The NSView that the CLAP GUI is parented to (set by createGUIInView:)
   __weak NSView *_guiParentView = nil;
 
+  // The view controller that owns the GUI — needed for gui_request_resize
+  // to set preferredContentSize (the only legal AUv3 host communication path).
+  __weak ClapAUv3ViewController *_viewController = nil;
+
   // Cached parameter values — avoids calling params->get_value() on every
   // provider callback (wrong thread, expensive via XPC). Updated on set/flush/process.
   // Reads from XPC thread, writes from XPC + audio thread; aligned double is
@@ -389,23 +393,20 @@ class AUv3ImplDetail : public Clap::IHost,
 
   bool gui_request_resize(uint32_t width, uint32_t height) override
   {
-    // Notify the host that the plugin wants to resize
-    if (_guiParentView)
-    {
-      dispatch_async(dispatch_get_main_queue(), ^{
-        NSView *view = _guiParentView;
-        if (view)
-        {
-          NSWindow *window = view.window;
-          if (window)
-          {
-            [window setContentSize:NSMakeSize(width, height)];
-          }
-        }
-      });
-      return true;
-    }
-    return false;
+    // Communicate size changes through the AUv3 protocol: set preferredContentSize
+    // on the view controller. The host decides the final size.
+    dispatch_async(dispatch_get_main_queue(), ^{
+      __strong ClapAUv3ViewController *vc = _viewController;
+      if (vc)
+      {
+        vc.view.frame = NSMakeRect(0, 0, width, height);
+
+        [vc willChangeValueForKey:@"preferredContentSize"];
+        vc.preferredContentSize = NSMakeSize(width, height);
+        [vc didChangeValueForKey:@"preferredContentSize"];
+      }
+    });
+    return true;
   }
 
   bool gui_request_show() override { return false; }
@@ -1253,6 +1254,14 @@ static Clap::Library _library;
     gui->adjust_size(plugin, &w, &h);
   }
 
+  // Confirm the size to the plugin (matches VST3/AUv2 pattern).
+  gui->set_size(plugin, w, h);
+
+  // Resize the parent view BEFORE set_parent() so the CLAP plugin's
+  // subview is created inside a properly-sized container. Without this
+  // the container is 0x0 and plugins that clip to parent bounds are invisible.
+  [parentView setFrame:NSMakeRect(0, 0, w, h)];
+
   clap_window_t window;
   window.api = CLAP_WINDOW_API_COCOA;
   window.cocoa = (__bridge void *)parentView;
@@ -1276,6 +1285,7 @@ static Clap::Library _library;
   _impl->_plugin->_ext._gui->hide(_impl->_plugin->_plugin);
   _impl->_plugin->_ext._gui->destroy(_impl->_plugin->_plugin);
   _impl->_guiParentView = nil;
+  _impl->_viewController = nil;
 }
 
 - (BOOL)canResizeGUI
@@ -1292,11 +1302,29 @@ static Clap::Library _library;
   return _impl->_plugin->_ext._gui->set_size(_impl->_plugin->_plugin, width, height) ? YES : NO;
 }
 
+- (void)setViewController:(ClapAUv3ViewController *)vc
+{
+  if (_impl) _impl->_viewController = vc;
+}
+
 // --- View controller ---
-// requestViewControllerWithCompletionHandler: is NOT overridden.
-// The default AUAudioUnit implementation returns the NSExtensionPrincipalClass
-// view controller (the factory VC that created this AU). This is the same
-// pattern used by the VST3 SDK's AUv3 wrapper.
+// Override requestViewControllerWithCompletionHandler: to return the factory VC.
+// The default AUAudioUnit implementation returns nil. The extension infrastructure
+// may handle this automatically in some contexts, but explicitly returning the VC
+// ensures the host can always obtain it (both in-process and out-of-process).
+
+- (void)requestViewControllerWithCompletionHandler:(void (^)(AUViewControllerBase * __nullable))completionHandler
+{
+  AUV3LOG("requestViewControllerWithCompletionHandler: called (factoryVC=%p)", _factoryViewController);
+  completionHandler(_factoryViewController);
+}
+
+// Tell the host this AU has a custom view. Without this, some hosts
+// (Logic Pro) may never offer the "Custom" view option.
+- (BOOL)providesUserInterface
+{
+  return (_impl && _impl->_plugin && _impl->_plugin->_ext._gui) ? YES : NO;
+}
 
 @end
 
@@ -1360,20 +1388,31 @@ static Clap::Library _library;
   // via viewDidMoveToWindow / viewDidMoveToSuperview. NSViewController
   // lifecycle methods (viewDidAppear etc.) only fire when the VC is in
   // the view controller hierarchy — many hosts just call addSubview:.
-  ClapAUv3ContainerView *view = [[ClapAUv3ContainerView alloc] initWithFrame:NSMakeRect(0, 0, 0, 0)];
+  // Use a reasonable default size rather than 0x0. The viewbridge infrastructure
+  // may reject a zero-sized view, preventing the host from displaying custom UI.
+  // The actual size is updated once the CLAP GUI is created (_createPluginGUI).
+  ClapAUv3ContainerView *view = [[ClapAUv3ContainerView alloc] initWithFrame:NSMakeRect(0, 0, 400, 300)];
   view.viewController = self;
   view.translatesAutoresizingMaskIntoConstraints = YES;
   [self setView:view];
+  self.preferredContentSize = NSMakeSize(400, 300);
 }
 
 - (void)setAudioUnit:(ClapAUv3AudioUnit *)audioUnit
 {
   _audioUnit = audioUnit;
+  // Establish the back-reference so the AU can return us from
+  // requestViewControllerWithCompletionHandler:
+  if (audioUnit)
+    audioUnit->_factoryViewController = self;
 }
 
 - (void)_createPluginGUI
 {
   if (!self.audioUnit) return;
+
+  // Establish the back-reference so gui_request_resize can reach this VC
+  [self.audioUnit setViewController:self];
 
   uint32_t w = 0, h = 0;
   if ([self.audioUnit createGUIInView:self.view width:&w height:&h])
@@ -1446,6 +1485,29 @@ static Clap::Library _library;
   [self _tryCreateGUI];
 }
 
+- (void)viewDidLayout
+{
+  [super viewDidLayout];
+  if (!_guiCreated) return;
+
+  NSRect bounds = self.view.bounds;
+  if (bounds.size.width > 0 && bounds.size.height > 0)
+  {
+    // Propagate host-initiated container resize to the CLAP plugin
+    if ([self.audioUnit canResizeGUI])
+    {
+      [self.audioUnit setGUISize:(uint32_t)bounds.size.width
+                          height:(uint32_t)bounds.size.height];
+    }
+
+    // Ensure the CLAP plugin's subview fills the container
+    for (NSView *subview in self.view.subviews)
+    {
+      subview.frame = bounds;
+    }
+  }
+}
+
 - (void)viewDidDisappear
 {
   if (_guiCreated)
@@ -1481,8 +1543,13 @@ static Clap::Library _library;
 - (void)beginRequestWithExtensionContext:(NSExtensionContext *)context
 {
   AUV3LOG("beginRequestWithExtensionContext: entered (context=%p)", context);
+  // MUST call super — AUViewController uses this to set up the view bridge
+  // service. Without it the host never receives the view controller and
+  // the plugin's custom UI cannot be displayed.
+  [super beginRequestWithExtensionContext:context];
+  AUV3LOG("beginRequestWithExtensionContext: leaving (context=%p)", context);
 }
 
 @end
 
-#pragma clang diagnostic pop
+// #pragma clang diagnostic pop
