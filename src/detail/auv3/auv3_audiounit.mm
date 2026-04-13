@@ -1135,6 +1135,36 @@ static Clap::Library _library;
   return 0;
 }
 
+- (NSArray<NSNumber *> *)channelCapabilities
+{
+  if (!_impl) return nil;
+
+  // Build the channel capability pairs from CLAP audio port info, matching AUv2's
+  // SupportedNumChannels() approach. Each pair is [inChannels, outChannels].
+  // If there are no input ports, report 0 for input (generator/instrument).
+  NSMutableArray<NSNumber *> *caps = [NSMutableArray new];
+
+  std::vector<int> inCounts, outCounts;
+  for (auto &bus : _impl->_inputBusInfos)
+    inCounts.push_back((int)bus.channelCount);
+  for (auto &bus : _impl->_outputBusInfos)
+    outCounts.push_back((int)bus.channelCount);
+
+  if (inCounts.empty()) inCounts.push_back(0);
+  if (outCounts.empty()) outCounts.push_back(0);
+
+  for (int ic : inCounts)
+  {
+    for (int oc : outCounts)
+    {
+      [caps addObject:@(ic)];
+      [caps addObject:@(oc)];
+    }
+  }
+
+  return caps;
+}
+
 - (BOOL)shouldChangeToFormat:(AVAudioFormat *)format forBus:(AUAudioUnitBus *)bus
 {
   if (!_impl) return NO;
