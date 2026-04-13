@@ -244,7 +244,7 @@ jobs:
             run_aptget: false
             run_validator: true
             do_xcodeselect: true
-            xcode_version: 16.2
+            xcode_version: 15.4
             vst3_validator: build/validator-build/bin/Debug/validator
             vst3_path: ./build/clap-first-distortion_assets/Debug/ClapFirst Bad Distortion.vst3
             auv2_path: ./build/clap-first-distortion_assets/Debug/ClapFirst Bad Distortion.component
