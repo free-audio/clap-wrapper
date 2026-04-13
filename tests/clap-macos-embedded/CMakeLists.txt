@@ -3,7 +3,7 @@
 #
 
 
-project(clap-macos-embedded)
+project(clap-macos-embedded VERSION 0.9.0)
 
 set(PRODUCT_NAME "Clap Macos Embedded")
 

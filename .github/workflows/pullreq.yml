@@ -43,7 +43,6 @@ jobs:
           mkdir deps
           cd deps
           git clone https://github.com/free-audio/clap
-          git clone https://github.com/audiosdk/aax
           git clone https://github.com/steinbergmedia/vst3sdk
           cd vst3sdk
           # temporary workaround, switch to vst3 sdk 3.7.7
@@ -53,7 +52,7 @@ jobs:
 
       - name: Build project
         run: |
-          cmake -S . -B ./build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCLAP_SDK_ROOT=deps/clap -DVST3_SDK_ROOT=deps/vst3sdk -DAAX_SDK_ROOT=deps/aax -DCLAP_WRAPPER_OUTPUT_NAME=testplug
+          cmake -S . -B ./build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCLAP_SDK_ROOT=deps/clap -DVST3_SDK_ROOT=deps/vst3sdk -DCLAP_WRAPPER_OUTPUT_NAME=testplug
           cmake --build ./build --config Debug
 
       - name: Show Build Results
@@ -243,8 +242,6 @@ jobs:
             install_ninja: true
             run_aptget: false
             run_validator: true
-            do_xcodeselect: true
-            xcode_version: 15.4
             vst3_validator: build/validator-build/bin/Debug/validator
             vst3_path: ./build/clap-first-distortion_assets/Debug/ClapFirst Bad Distortion.vst3
             auv2_path: ./build/clap-first-distortion_assets/Debug/ClapFirst Bad Distortion.component
@@ -268,10 +265,6 @@ jobs:
       - name: Install Ninja
         if: ${{ matrix.install_ninja }}
         uses: seanmiddleditch/gha-setup-ninja@master
-
-      - name: XCode Select
-        if: ${{ matrix.do_xcodeselect }}
-        run: sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode_version }}.app
 
       - name: Build project
         run: |

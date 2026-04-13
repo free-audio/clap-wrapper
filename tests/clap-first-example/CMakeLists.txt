@@ -5,7 +5,7 @@
 #
 # https://github.com/baconpaul/six-sines
 
-project(clap-first-distortion)
+project(clap-first-distortion VERSION 0.9.0)
 
 set(PRODUCT_NAME "ClapFirst Bad Distortion")
 
