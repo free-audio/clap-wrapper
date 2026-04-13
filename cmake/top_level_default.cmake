@@ -60,9 +60,9 @@ if (PROJECT_IS_TOP_LEVEL)
 					BUNDLE_VERSION "${CLAP_WRAPPER_BUNDLE_VERSION}"
 
 					INSTRUMENT_TYPE "aumu"
-					MANUFACTURER_NAME "schnuf.org"
-					MANUFACTURER_CODE "clAA"
-					SUBTYPE_CODE "gWwp"
+					MANUFACTURER_NAME "cleveraudio.org"
+					MANUFACTURER_CODE "clAd"
+					SUBTYPE_CODE "gWrq"
 			)
 
 			# Embed the installed .clap into the appex so it can find the plugin at runtime
