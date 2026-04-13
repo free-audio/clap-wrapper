@@ -738,8 +738,7 @@ void ProcessAdapter::addToActiveNotes(const clap_event_note_t *note)
       return;
     }
   }
-  _activeNotes.emplace_back(
-      ActiveNote{true, note->note_id, note->port_index, note->channel, note->key});
+  _activeNotes.emplace_back(ActiveNote{true, note->note_id, note->port_index, note->channel, note->key});
 }
 
 void ProcessAdapter::removeFromActiveNotes(const clap_event_note_t *note)

@@ -1541,14 +1541,12 @@ static Clap::Library _library;
     clap_input_events_t in_events;
     in_events.ctx = &ev;
     in_events.size = [](const clap_input_events_t *) -> uint32_t { return 1; };
-    in_events.get = [](const clap_input_events_t *list, uint32_t) -> const clap_event_header_t * {
-      return &static_cast<const clap_event_param_value_t *>(list->ctx)->header;
-    };
+    in_events.get = [](const clap_input_events_t *list, uint32_t) -> const clap_event_header_t *
+    { return &static_cast<const clap_event_param_value_t *>(list->ctx)->header; };
     clap_output_events_t out_events;
     out_events.ctx = nullptr;
-    out_events.try_push = [](const clap_output_events_t *, const clap_event_header_t *) -> bool {
-      return false;
-    };
+    out_events.try_push = [](const clap_output_events_t *, const clap_event_header_t *) -> bool
+    { return false; };
     _impl->_plugin->_ext._params->flush(_impl->_plugin->_plugin, &in_events, &out_events);
   }
 

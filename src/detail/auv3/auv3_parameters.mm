@@ -63,13 +63,18 @@ struct GroupNode
   }
 };
 
-ParameterTreeResult createParameterTree(const clap_plugin_t *plugin,
-                                        const clap_plugin_params_t *params)
+ParameterTreeResult createParameterTree(const clap_plugin_t *plugin, const clap_plugin_params_t *params)
 {
-  if (!params) return {[AUParameterTree createTreeWithChildren:@[]], CLAP_INVALID_ID};
+  if (!params) return
+    {
+      [AUParameterTree createTreeWithChildren:@[]], CLAP_INVALID_ID
+    };
 
   uint32_t numParams = params->count(plugin);
-  if (numParams == 0) return {[AUParameterTree createTreeWithChildren:@[]], CLAP_INVALID_ID};
+  if (numParams == 0) return
+    {
+      [AUParameterTree createTreeWithChildren:@[]], CLAP_INVALID_ID
+    };
 
   clap_id bypassParamId = CLAP_INVALID_ID;
 
