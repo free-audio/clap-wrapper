@@ -61,9 +61,12 @@ static MIDIPortRef sMIDIInputPort = 0;
   // Remove KVO observer before tearing down
   if (_auViewController)
   {
-    @try {
+    @try
+    {
       [_auViewController removeObserver:self forKeyPath:@"preferredContentSize"];
-    } @catch (NSException *e) {
+    }
+    @catch (NSException *e)
+    {
       // Observer was never added (e.g., no GUI path)
     }
   }
@@ -116,8 +119,8 @@ static MIDIPortRef sMIDIInputPort = 0;
 }
 
 - (AUAudioUnit *)instantiateAUDirectlyFromAppex:(NSBundle *)appexBundle
-                            componentDescription:(AudioComponentDescription)desc
-                                           error:(NSError **)outError
+                           componentDescription:(AudioComponentDescription)desc
+                                          error:(NSError **)outError
 {
   // Load the appex bundle to get its Objective-C classes.
   // Note: MH_EXECUTE binaries can't be loaded via NSBundle's load method,
@@ -144,9 +147,9 @@ static MIDIPortRef sMIDIInputPort = 0;
       NSError *loadError = nil;
       if (![appexBundle loadAndReturnError:&loadError])
       {
-        std::cout << "[auv3-standalone] WARNING: NSBundle load failed: "
-                  << [loadError.localizedDescription UTF8String]
-                  << " (may be expected for executable appex)" << std::endl;
+        std::cout << "[auv3-standalone] WARNING: NSBundle load failed: " <<
+            [loadError.localizedDescription UTF8String] << " (may be expected for executable appex)"
+                  << std::endl;
       }
       else
       {
@@ -164,8 +167,10 @@ static MIDIPortRef sMIDIInputPort = 0;
   {
     std::cout << "[auv3-standalone] ERROR: No NSExtensionPrincipalClass in appex" << std::endl;
     if (outError)
-      *outError = [NSError errorWithDomain:@"ClapAUv3" code:-1
-                                  userInfo:@{NSLocalizedDescriptionKey: @"No principal class in appex"}];
+      *outError =
+          [NSError errorWithDomain:@"ClapAUv3"
+                              code:-1
+                          userInfo:@{NSLocalizedDescriptionKey : @"No principal class in appex"}];
     return nil;
   }
 
@@ -181,21 +186,30 @@ static MIDIPortRef sMIDIInputPort = 0;
 
   if (!factoryClass)
   {
-    std::cout << "[auv3-standalone] ERROR: Cannot find class " << [principalClassName UTF8String] << std::endl;
+    std::cout << "[auv3-standalone] ERROR: Cannot find class " << [principalClassName UTF8String]
+              << std::endl;
     if (outError)
-      *outError = [NSError errorWithDomain:@"ClapAUv3" code:-2
-                                  userInfo:@{NSLocalizedDescriptionKey:
-                                    [NSString stringWithFormat:@"Cannot find class %@", principalClassName]}];
+      *outError = [NSError errorWithDomain:@"ClapAUv3"
+                                      code:-2
+                                  userInfo:@{
+                                    NSLocalizedDescriptionKey : [NSString
+                                        stringWithFormat:@"Cannot find class %@", principalClassName]
+                                  }];
     return nil;
   }
 
   // The factory class conforms to AUAudioUnitFactory
   if (![factoryClass conformsToProtocol:@protocol(AUAudioUnitFactory)])
   {
-    std::cout << "[auv3-standalone] ERROR: Principal class does not conform to AUAudioUnitFactory" << std::endl;
+    std::cout << "[auv3-standalone] ERROR: Principal class does not conform to AUAudioUnitFactory"
+              << std::endl;
     if (outError)
-      *outError = [NSError errorWithDomain:@"ClapAUv3" code:-3
-                                  userInfo:@{NSLocalizedDescriptionKey: @"Principal class is not an AUAudioUnitFactory"}];
+      *outError =
+          [NSError errorWithDomain:@"ClapAUv3"
+                              code:-3
+                          userInfo:@{
+                            NSLocalizedDescriptionKey : @"Principal class is not an AUAudioUnitFactory"
+                          }];
     return nil;
   }
 
@@ -227,7 +241,7 @@ static MIDIPortRef sMIDIInputPort = 0;
   {
     case AVAuthorizationStatusNotDetermined:
       [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio
-                               completionHandler:^(BOOL granted) {
+                               completionHandler:^(BOOL granted){
                                }];
       break;
     default:
@@ -243,9 +257,8 @@ static MIDIPortRef sMIDIInputPort = 0;
   desc.componentFlags = 0;
   desc.componentFlagsMask = 0;
 
-  std::cout << "[auv3-standalone] Looking for AU: type='" << AU_TYPE_STR
-            << "' subtype='" << AU_SUBTYPE_STR
-            << "' manufacturer='" << AU_MANUFACTURER_STR << "'" << std::endl;
+  std::cout << "[auv3-standalone] Looking for AU: type='" << AU_TYPE_STR << "' subtype='"
+            << AU_SUBTYPE_STR << "' manufacturer='" << AU_MANUFACTURER_STR << "'" << std::endl;
 
   // First try: use the system-registered AU (via AVAudioUnit + AVAudioEngine)
   AudioComponent comp = AudioComponentFindNext(NULL, &desc);
@@ -260,12 +273,13 @@ static MIDIPortRef sMIDIInputPort = 0;
     __weak typeof(self) weakSelf = self;
     [AVAudioUnit instantiateWithComponentDescription:desc
                                              options:kAudioComponentInstantiation_LoadInProcess
-                                  completionHandler:^(AVAudioUnit *_Nullable audioUnit, NSError *_Nullable error) {
-      dispatch_async(dispatch_get_main_queue(), ^{
-        __strong typeof(weakSelf) self = weakSelf;
-        if (self) [self finishSetupWithAudioUnit:audioUnit error:error];
-      });
-    }];
+                                   completionHandler:^(AVAudioUnit *_Nullable audioUnit,
+                                                       NSError *_Nullable error) {
+                                     dispatch_async(dispatch_get_main_queue(), ^{
+                                       __strong typeof(weakSelf) self = weakSelf;
+                                       if (self) [self finishSetupWithAudioUnit:audioUnit error:error];
+                                     });
+                                   }];
     return;
   }
 
@@ -316,8 +330,7 @@ static MIDIPortRef sMIDIInputPort = 0;
   if (error || !audioUnit)
   {
     NSString *msg = error ? error.localizedDescription : @"Unknown error";
-    std::cout << "[auv3-standalone] ERROR: Failed to instantiate AU: "
-              << [msg UTF8String] << std::endl;
+    std::cout << "[auv3-standalone] ERROR: Failed to instantiate AU: " << [msg UTF8String] << std::endl;
     NSAlert *alert = [[NSAlert alloc] init];
     [alert setMessageText:@"Failed to load Audio Unit"];
     [alert setInformativeText:msg];
@@ -327,8 +340,8 @@ static MIDIPortRef sMIDIInputPort = 0;
   }
 
   _avAudioUnit = audioUnit;
-  std::cout << "[auv3-standalone] AU instantiated via AVAudioUnit: "
-            << [audioUnit.name UTF8String] << std::endl;
+  std::cout << "[auv3-standalone] AU instantiated via AVAudioUnit: " << [audioUnit.name UTF8String]
+            << std::endl;
 
   [self restoreState];
   [self setupEngine];
@@ -351,8 +364,8 @@ static MIDIPortRef sMIDIInputPort = 0;
   NSError *error = nil;
   if (![au allocateRenderResourcesAndReturnError:&error])
   {
-    std::cout << "[auv3-standalone] ERROR: allocateRenderResources failed: "
-              << [error.localizedDescription UTF8String] << std::endl;
+    std::cout << "[auv3-standalone] ERROR: allocateRenderResources failed: " <<
+        [error.localizedDescription UTF8String] << std::endl;
   }
   else
   {
@@ -396,8 +409,8 @@ static MIDIPortRef sMIDIInputPort = 0;
   NSError *error = nil;
   if (![_engine startAndReturnError:&error])
   {
-    std::cout << "[auv3-standalone] ERROR: Failed to start engine: "
-              << [error.localizedDescription UTF8String] << std::endl;
+    std::cout << "[auv3-standalone] ERROR: Failed to start engine: " <<
+        [error.localizedDescription UTF8String] << std::endl;
 
     NSAlert *alert = [[NSAlert alloc] init];
     [alert setMessageText:@"Failed to start audio engine"];
@@ -407,8 +420,8 @@ static MIDIPortRef sMIDIInputPort = 0;
   }
   else
   {
-    std::cout << "[auv3-standalone] Engine started. Sample rate: "
-              << outputFormat.sampleRate << " Hz" << std::endl;
+    std::cout << "[auv3-standalone] Engine started. Sample rate: " << outputFormat.sampleRate << " Hz"
+              << std::endl;
   }
 }
 
@@ -460,13 +473,13 @@ static MIDIPortRef sMIDIInputPort = 0;
       [window setMovableByWindowBackground:YES];
       [window orderFrontRegardless];
 
-      std::cout << "[auv3-standalone] window styleMask=0x"
-                << std::hex << (unsigned long)window.styleMask << std::dec
+      std::cout << "[auv3-standalone] window styleMask=0x" << std::hex << (unsigned long)window.styleMask
+                << std::dec
                 << " resizable=" << ((window.styleMask & NSWindowStyleMaskResizable) ? "YES" : "NO")
                 << std::endl;
 
-      std::cout << "[auv3-standalone] GUI displayed ("
-                << (int)preferredSize.width << "x" << (int)preferredSize.height << ")" << std::endl;
+      std::cout << "[auv3-standalone] GUI displayed (" << (int)preferredSize.width << "x"
+                << (int)preferredSize.height << ")" << std::endl;
 
       // For out-of-process AUv3, KVO on preferredContentSize may not work
       // across the XPC boundary. Poll after a delay to pick up the plugin's
@@ -521,8 +534,8 @@ static MIDIPortRef sMIDIInputPort = 0;
 
     [window orderFrontRegardless];
 
-    std::cout << "[auv3-standalone] GUI displayed (direct) ("
-              << (int)preferredSize.width << "x" << (int)preferredSize.height << ")" << std::endl;
+    std::cout << "[auv3-standalone] GUI displayed (direct) (" << (int)preferredSize.width << "x"
+              << (int)preferredSize.height << ")" << std::endl;
 
     [self _pollPreferredContentSize:vc retries:10];
   });
@@ -541,10 +554,8 @@ static MIDIPortRef sMIDIInputPort = 0;
   OSStatus status = MIDIClientCreate(CFSTR("ClapWrapperAUv3Standalone"), NULL, NULL, &sMIDIClient);
   if (status != noErr) return;
 
-  status = MIDIInputPortCreate(sMIDIClient, CFSTR("Input"),
-                               midiInputCallback,
-                               (__bridge void *)_scheduleMIDIBlock,
-                               &sMIDIInputPort);
+  status = MIDIInputPortCreate(sMIDIClient, CFSTR("Input"), midiInputCallback,
+                               (__bridge void *)_scheduleMIDIBlock, &sMIDIInputPort);
   if (status != noErr) return;
 
   ItemCount numSources = MIDIGetNumberOfSources();
@@ -553,15 +564,15 @@ static MIDIPortRef sMIDIInputPort = 0;
     MIDIEndpointRef src = MIDIGetSource(i);
     MIDIPortConnectSource(sMIDIInputPort, src, NULL);
   }
-  std::cout << "[auv3-standalone] MIDI connected (direct) to " << numSources << " source(s)" << std::endl;
+  std::cout << "[auv3-standalone] MIDI connected (direct) to " << numSources << " source(s)"
+            << std::endl;
 }
 
 // ---------------------------------------------------------------------------
 #pragma mark - MIDI
 // ---------------------------------------------------------------------------
 
-static void midiInputCallback(const MIDIPacketList *pktlist, void *readProcRefCon,
-                              void *srcConnRefCon)
+static void midiInputCallback(const MIDIPacketList *pktlist, void *readProcRefCon, void *srcConnRefCon)
 {
   AUScheduleMIDIEventBlock block = (__bridge AUScheduleMIDIEventBlock)readProcRefCon;
   if (!block) return;
@@ -593,10 +604,8 @@ static void midiInputCallback(const MIDIPacketList *pktlist, void *readProcRefCo
     return;
   }
 
-  status = MIDIInputPortCreate(sMIDIClient, CFSTR("Input"),
-                               midiInputCallback,
-                               (__bridge void *)_scheduleMIDIBlock,
-                               &sMIDIInputPort);
+  status = MIDIInputPortCreate(sMIDIClient, CFSTR("Input"), midiInputCallback,
+                               (__bridge void *)_scheduleMIDIBlock, &sMIDIInputPort);
   if (status != noErr)
   {
     std::cout << "[auv3-standalone] Failed to create MIDI input port: " << status << std::endl;
@@ -637,7 +646,8 @@ static void midiInputCallback(const MIDIPacketList *pktlist, void *readProcRefCo
 {
   if (!_settingsPath)
   {
-    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES);
+    NSArray *paths =
+        NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES);
     NSString *appSupport = [paths firstObject];
     _settingsPath = [appSupport stringByAppendingPathComponent:@"clap-wrapper-auv3-standalone"];
 
@@ -656,8 +666,8 @@ static void midiInputCallback(const MIDIPacketList *pktlist, void *readProcRefCo
   // Sanitize name for filesystem
   NSCharacterSet *illegal = [NSCharacterSet characterSetWithCharactersInString:@"/\\:"];
   auName = [[auName componentsSeparatedByCharactersInSet:illegal] componentsJoinedByString:@"_"];
-  return [[self settingsDirectory] stringByAppendingPathComponent:
-          [NSString stringWithFormat:@"%@.plist", auName]];
+  return [[self settingsDirectory]
+      stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.plist", auName]];
 }
 
 - (void)saveState
@@ -728,41 +738,42 @@ static void midiInputCallback(const MIDIPacketList *pktlist, void *readProcRefCo
     // with updated preferredContentSize.
     if (_avAudioUnit)
     {
-      [_avAudioUnit.AUAudioUnit requestViewControllerWithCompletionHandler:^(AUViewControllerBase *freshVC) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-          if (freshVC)
-          {
-            NSSize size = freshVC.preferredContentSize;
-            std::cout << "[auv3-standalone] Re-requested VC preferredContentSize: "
-                      << (int)size.width << "x" << (int)size.height << std::endl;
-            if (size.width > 0 && size.height > 0)
-            {
-              self->_auViewController.preferredContentSize = size;
-              [self _resizeWindowToFitGUI:self->_auViewController];
-            }
-          }
-        });
-      }];
+      [_avAudioUnit.AUAudioUnit
+          requestViewControllerWithCompletionHandler:^(AUViewControllerBase *freshVC) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+              if (freshVC)
+              {
+                NSSize size = freshVC.preferredContentSize;
+                std::cout << "[auv3-standalone] Re-requested VC preferredContentSize: "
+                          << (int)size.width << "x" << (int)size.height << std::endl;
+                if (size.width > 0 && size.height > 0)
+                {
+                  self->_auViewController.preferredContentSize = size;
+                  [self _resizeWindowToFitGUI:self->_auViewController];
+                }
+              }
+            });
+          }];
     }
     return;
   }
 
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(500 * NSEC_PER_MSEC)),
                  dispatch_get_main_queue(), ^{
-    NSSize size = vc.preferredContentSize;
-    NSSize windowContent = [[self window] contentView].frame.size;
+                   NSSize size = vc.preferredContentSize;
+                   NSSize windowContent = [[self window] contentView].frame.size;
 
-    if (size.width > 0 && size.height > 0 &&
-        ((int)size.width != (int)windowContent.width ||
-         (int)size.height != (int)windowContent.height))
-    {
-      [self _resizeWindowToFitGUI:vc];
-    }
-    else
-    {
-      [self _pollPreferredContentSize:vc retries:retries - 1];
-    }
-  });
+                   if (size.width > 0 && size.height > 0 &&
+                       ((int)size.width != (int)windowContent.width ||
+                        (int)size.height != (int)windowContent.height))
+                   {
+                     [self _resizeWindowToFitGUI:vc];
+                   }
+                   else
+                   {
+                     [self _pollPreferredContentSize:vc retries:retries - 1];
+                   }
+                 });
 }
 
 // ---------------------------------------------------------------------------
@@ -777,8 +788,8 @@ static void midiInputCallback(const MIDIPacketList *pktlist, void *readProcRefCo
   if ([keyPath isEqualToString:@"preferredContentSize"] && object == _auViewController)
   {
     NSSize size = [(NSViewController *)object preferredContentSize];
-    std::cout << "[auv3-standalone] preferredContentSize changed to "
-              << (int)size.width << "x" << (int)size.height << std::endl;
+    std::cout << "[auv3-standalone] preferredContentSize changed to " << (int)size.width << "x"
+              << (int)size.height << std::endl;
     if (size.width > 0 && size.height > 0)
     {
       dispatch_async(dispatch_get_main_queue(), ^{

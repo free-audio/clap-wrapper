@@ -63,8 +63,7 @@ struct GroupNode
   }
 };
 
-AUParameterTree *createParameterTree(const clap_plugin_t *plugin,
-                                     const clap_plugin_params_t *params)
+AUParameterTree *createParameterTree(const clap_plugin_t *plugin, const clap_plugin_params_t *params)
 {
   if (!params) return [AUParameterTree createTreeWithChildren:@[]];
 
@@ -189,8 +188,8 @@ AUParameterTree *createParameterTree(const clap_plugin_t *plugin,
 
   tree.implementorValueFromStringCallback = ^AUValue(AUParameter *param, NSString *string) {
     double value = 0;
-    if (capturedParams->text_to_value(capturedPlugin, (clap_id)param.address,
-                                      [string UTF8String], &value))
+    if (capturedParams->text_to_value(capturedPlugin, (clap_id)param.address, [string UTF8String],
+                                      &value))
     {
       return (AUValue)value;
     }

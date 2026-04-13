@@ -29,14 +29,14 @@ class MacOSHelper
  public:
   void init();
   void terminate();
-  void attach(IPlugObject* plugobject);
-  void detach(IPlugObject* plugobject);
+  void attach(IPlugObject *plugobject);
+  void detach(IPlugObject *plugobject);
 
  private:
-  static void timerCallback(CFRunLoopTimerRef t, void* info);
+  static void timerCallback(CFRunLoopTimerRef t, void *info);
   void executeDefered();
   CFRunLoopTimerRef _timer = nullptr;
-  std::vector<IPlugObject*> _plugs;
+  std::vector<IPlugObject *> _plugs;
 } gMacOSHelper;
 
 // standard specific extensions
@@ -63,15 +63,15 @@ void MacOSHelper::executeDefered()
   }
 }
 
-void MacOSHelper::timerCallback(CFRunLoopTimerRef /*t*/, void* info)
+void MacOSHelper::timerCallback(CFRunLoopTimerRef /*t*/, void *info)
 {
-  auto self = static_cast<MacOSHelper*>(info);
+  auto self = static_cast<MacOSHelper *>(info);
   self->executeDefered();
 }
 
 static float kIntervall = 10.f;
 
-void MacOSHelper::attach(IPlugObject* plugobject)
+void MacOSHelper::attach(IPlugObject *plugobject)
 {
   if (_plugs.empty())
   {
@@ -85,7 +85,7 @@ void MacOSHelper::attach(IPlugObject* plugobject)
   _plugs.push_back(plugobject);
 }
 
-void MacOSHelper::detach(IPlugObject* plugobject)
+void MacOSHelper::detach(IPlugObject *plugobject)
 {
   _plugs.erase(std::remove(_plugs.begin(), _plugs.end(), plugobject), _plugs.end());
   if (_plugs.empty())
@@ -104,13 +104,13 @@ void MacOSHelper::detach(IPlugObject* plugobject)
 namespace os
 {
 // [UI Thread]
-void attach(IPlugObject* plugobject)
+void attach(IPlugObject *plugobject)
 {
   gMacOSHelper.attach(plugobject);
 }
 
 // [UI Thread]
-void detach(IPlugObject* plugobject)
+void detach(IPlugObject *plugobject)
 {
   gMacOSHelper.detach(plugobject);
 }
@@ -123,7 +123,7 @@ uint64_t getTickInMS()
 fs::path getPluginPath()
 {
   Dl_info info;
-  if (dladdr((void*)getPluginPath, &info))
+  if (dladdr((void *)getPluginPath, &info))
   {
     fs::path binaryPath = info.dli_fname;
     return binaryPath.parent_path().parent_path().parent_path();

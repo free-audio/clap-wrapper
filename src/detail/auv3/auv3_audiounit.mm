@@ -21,7 +21,8 @@
 #include <map>
 #include <unordered_map>
 
-static os_log_t _auv3Log() {
+static os_log_t _auv3Log()
+{
   static os_log_t log = os_log_create("org.clap-wrapper.auv3", "wrapper");
   return log;
 }
@@ -59,9 +60,7 @@ class queueEvent
   } _data;
 };
 
-class AUv3ImplDetail : public Clap::IHost,
-                       public Clap::IAutomation,
-                       public os::IPlugObject
+class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::IPlugObject
 {
  public:
   AUv3ImplDetail() : _os_attached([this] { os::attach(this); }, [this] { os::detach(this); })
@@ -230,8 +229,7 @@ class AUv3ImplDetail : public Clap::IHost,
     }
   }
 
-  void setupMIDIBusses(const clap_plugin_t *plugin,
-                       const clap_plugin_note_ports_t *noteports) override
+  void setupMIDIBusses(const clap_plugin_t *plugin, const clap_plugin_note_ports_t *noteports) override
   {
     if (!noteports) return;
 
@@ -259,8 +257,7 @@ class AUv3ImplDetail : public Clap::IHost,
     }
   }
 
-  void setupParameters(const clap_plugin_t *plugin,
-                       const clap_plugin_params_t *params) override
+  void setupParameters(const clap_plugin_t *plugin, const clap_plugin_params_t *params) override
   {
     _parameterTree = Clap::AUv3::createParameterTree(plugin, params);
 
@@ -304,8 +301,7 @@ class AUv3ImplDetail : public Clap::IHost,
       auto *cache = &_paramValueCache;
       _parameterTree.implementorValueProvider = ^AUValue(AUParameter *param) {
         auto it = cache->find((clap_id)param.address);
-        if (it != cache->end())
-          return (AUValue)it->second;
+        if (it != cache->end()) return (AUValue)it->second;
         return (AUValue)0.0;
       };
 
@@ -346,8 +342,7 @@ class AUv3ImplDetail : public Clap::IHost,
         if (params->get_info(plug, i, &info))
         {
           double value = 0;
-          if (params->get_value(plug, info.id, &value))
-            _paramValueCache[info.id] = value;
+          if (params->get_value(plug, info.id, &value)) _paramValueCache[info.id] = value;
         }
       }
 
@@ -418,11 +413,23 @@ class AUv3ImplDetail : public Clap::IHost,
     return true;
   }
 
-  bool gui_request_show() override { return false; }
-  bool gui_request_hide() override { return false; }
+  bool gui_request_show() override
+  {
+    return false;
+  }
+  bool gui_request_hide() override
+  {
+    return false;
+  }
 
-  bool register_timer(uint32_t period_ms, clap_id *timer_id) override { return false; }
-  bool unregister_timer(clap_id timer_id) override { return false; }
+  bool register_timer(uint32_t period_ms, clap_id *timer_id) override
+  {
+    return false;
+  }
+  bool unregister_timer(clap_id timer_id) override
+  {
+    return false;
+  }
 
   const char *host_get_name() override
   {
@@ -445,9 +452,15 @@ class AUv3ImplDetail : public Clap::IHost,
     return _hostname.c_str();
   }
 
-  bool track_info_get(clap_track_info_t *info) override { return false; }
+  bool track_info_get(clap_track_info_t *info) override
+  {
+    return false;
+  }
 
-  bool supportsContextMenu() const override { return false; }
+  bool supportsContextMenu() const override
+  {
+    return false;
+  }
   bool context_menu_populate(const clap_context_menu_target_t *target,
                              const clap_context_menu_builder_t *builder) override
   {
@@ -457,9 +470,12 @@ class AUv3ImplDetail : public Clap::IHost,
   {
     return false;
   }
-  bool context_menu_can_popup() override { return false; }
-  bool context_menu_popup(const clap_context_menu_target_t *target, int32_t screen_index,
-                          int32_t x, int32_t y) override
+  bool context_menu_can_popup() override
+  {
+    return false;
+  }
+  bool context_menu_popup(const clap_context_menu_target_t *target, int32_t screen_index, int32_t x,
+                          int32_t y) override
   {
     return false;
   }
@@ -512,21 +528,22 @@ class AUv3ImplDetail : public Clap::IHost,
           if (param)
           {
             [param setValue:param.value
-                originator:_parameterObserverToken
-                atHostTime:0
-                 eventType:AUParameterAutomationEventTypeTouch];
+                 originator:_parameterObserverToken
+                 atHostTime:0
+                  eventType:AUParameterAutomationEventTypeTouch];
           }
           break;
         }
         case queueEvent::type::editvalue:
         {
-          AUParameter *param = [_parameterTree parameterWithAddress:(AUParameterAddress)evt._data._value.param_id];
+          AUParameter *param =
+              [_parameterTree parameterWithAddress:(AUParameterAddress)evt._data._value.param_id];
           if (param)
           {
             [param setValue:(AUValue)evt._data._value.value
-                originator:_parameterObserverToken
-                atHostTime:0
-                 eventType:AUParameterAutomationEventTypeValue];
+                 originator:_parameterObserverToken
+                 atHostTime:0
+                  eventType:AUParameterAutomationEventTypeValue];
           }
           break;
         }
@@ -536,9 +553,9 @@ class AUv3ImplDetail : public Clap::IHost,
           if (param)
           {
             [param setValue:param.value
-                originator:_parameterObserverToken
-                atHostTime:0
-                 eventType:AUParameterAutomationEventTypeRelease];
+                 originator:_parameterObserverToken
+                 atHostTime:0
+                  eventType:AUParameterAutomationEventTypeRelease];
           }
           break;
         }
@@ -590,7 +607,8 @@ static Clap::Library _library;
 {
   AUV3LOG("initWithComponentDescription: entered (name=%{public}s id=%{public}s idx=%d)",
           [clapName UTF8String], clapId ? [clapId UTF8String] : "(nil)", clapIndex);
-  AUV3LOG("initWithComponentDescription: thread=%{public}s", [NSThread.currentThread.name UTF8String] ?: "unnamed");
+  AUV3LOG("initWithComponentDescription: thread=%{public}s",
+          [NSThread.currentThread.name UTF8String] ?: "unnamed");
 
   self = [super initWithComponentDescription:componentDescription options:options error:outError];
   if (!self)
@@ -608,8 +626,8 @@ static Clap::Library _library;
     _impl->_clapid = clapId ? [clapId UTF8String] : "";
     _impl->_idx = clapIndex;
 
-    AUV3LOG("init: name='%{public}s' id='%{public}s' idx=%d",
-            _impl->_clapname.c_str(), _impl->_clapid.c_str(), _impl->_idx);
+    AUV3LOG("init: name='%{public}s' id='%{public}s' idx=%d", _impl->_clapname.c_str(),
+            _impl->_clapid.c_str(), _impl->_idx);
 
     // Load CLAP library
     if (!_library.hasEntryPoint())
@@ -619,7 +637,8 @@ static Clap::Library _library;
       {
         AUV3ERR("init: _clapname empty and no internal entry point");
         if (outError)
-          *outError = [NSError errorWithDomain:@"ClapAUv3" code:-1
+          *outError = [NSError errorWithDomain:@"ClapAUv3"
+                                          code:-1
                                       userInfo:@{NSLocalizedDescriptionKey : @"CLAP name is empty"}];
         return nil;
       }
@@ -646,8 +665,10 @@ static Clap::Library _library;
       {
         AUV3ERR("init: cannot load CLAP '%{public}s'", _impl->_clapname.c_str());
         if (outError)
-          *outError = [NSError errorWithDomain:@"ClapAUv3" code:-2
-                                      userInfo:@{NSLocalizedDescriptionKey : @"Cannot load CLAP plugin"}];
+          *outError =
+              [NSError errorWithDomain:@"ClapAUv3"
+                                  code:-2
+                              userInfo:@{NSLocalizedDescriptionKey : @"Cannot load CLAP plugin"}];
         return nil;
       }
     }
@@ -678,8 +699,10 @@ static Clap::Library _library;
     {
       AUV3ERR("init: cannot determine plugin description");
       if (outError)
-        *outError = [NSError errorWithDomain:@"ClapAUv3" code:-3
-                                    userInfo:@{NSLocalizedDescriptionKey : @"Cannot find CLAP plugin descriptor"}];
+        *outError = [NSError
+            errorWithDomain:@"ClapAUv3"
+                       code:-3
+                   userInfo:@{NSLocalizedDescriptionKey : @"Cannot find CLAP plugin descriptor"}];
       return nil;
     }
 
@@ -688,13 +711,16 @@ static Clap::Library _library;
 
     // Create the plugin instance
     AUV3LOG("init: creating plugin instance via factory");
-    _impl->_plugin = Clap::Plugin::createInstance(_library._pluginFactory, _impl->_desc->id, _impl.get());
+    _impl->_plugin =
+        Clap::Plugin::createInstance(_library._pluginFactory, _impl->_desc->id, _impl.get());
     if (!_impl->_plugin)
     {
       AUV3ERR("init: factory returned null plugin instance");
       if (outError)
-        *outError = [NSError errorWithDomain:@"ClapAUv3" code:-4
-                                    userInfo:@{NSLocalizedDescriptionKey : @"CLAP plugin instance creation failed"}];
+        *outError = [NSError
+            errorWithDomain:@"ClapAUv3"
+                       code:-4
+                   userInfo:@{NSLocalizedDescriptionKey : @"CLAP plugin instance creation failed"}];
       return nil;
     }
     AUV3LOG("init: plugin instance created successfully");
@@ -716,8 +742,8 @@ static Clap::Library _library;
     _impl->startIdleTimer();
 
     // Build audio bus arrays from the CLAP audio port info
-    AUV3LOG("init: building bus arrays (inputs=%zu outputs=%zu)",
-            _impl->_inputBusInfos.size(), _impl->_outputBusInfos.size());
+    AUV3LOG("init: building bus arrays (inputs=%zu outputs=%zu)", _impl->_inputBusInfos.size(),
+            _impl->_outputBusInfos.size());
     [self _buildBusArrays];
 
     _renderResourcesAllocated = NO;
@@ -736,24 +762,30 @@ static Clap::Library _library;
   {
     AUV3ERR("init: caught exception of type int: %d", e);
     if (outError)
-      *outError = [NSError errorWithDomain:@"ClapAUv3" code:e
-                                  userInfo:@{NSLocalizedDescriptionKey : @"C++ int exception during init"}];
+      *outError =
+          [NSError errorWithDomain:@"ClapAUv3"
+                              code:e
+                          userInfo:@{NSLocalizedDescriptionKey : @"C++ int exception during init"}];
     return nil;
   }
   catch (const std::exception &e)
   {
     AUV3ERR("init: caught std::exception: %{public}s", e.what());
     if (outError)
-      *outError = [NSError errorWithDomain:@"ClapAUv3" code:-99
-                                  userInfo:@{NSLocalizedDescriptionKey : [NSString stringWithUTF8String:e.what()]}];
+      *outError = [NSError
+          errorWithDomain:@"ClapAUv3"
+                     code:-99
+                 userInfo:@{NSLocalizedDescriptionKey : [NSString stringWithUTF8String:e.what()]}];
     return nil;
   }
   catch (...)
   {
     AUV3ERR("init: caught unknown C++ exception");
     if (outError)
-      *outError = [NSError errorWithDomain:@"ClapAUv3" code:-98
-                                  userInfo:@{NSLocalizedDescriptionKey : @"Unknown C++ exception during init"}];
+      *outError =
+          [NSError errorWithDomain:@"ClapAUv3"
+                              code:-98
+                          userInfo:@{NSLocalizedDescriptionKey : @"Unknown C++ exception during init"}];
     return nil;
   }
 
@@ -764,8 +796,7 @@ static Clap::Library _library;
 {
   AUV3LOG("dealloc: entered (self=%p, thread=%{public}s)", self,
           [NSThread.currentThread.name UTF8String] ?: "unnamed");
-  AUV3LOG("dealloc: _impl=%{public}s, _plugin=%{public}s",
-          _impl ? "valid" : "null",
+  AUV3LOG("dealloc: _impl=%{public}s, _plugin=%{public}s", _impl ? "valid" : "null",
           (_impl && _impl->_plugin) ? "valid" : "null");
 
   if (_impl)
@@ -800,8 +831,9 @@ static Clap::Library _library;
   NSMutableArray<AUAudioUnitBus *> *inputs = [NSMutableArray new];
   for (auto &busInfo : _impl->_inputBusInfos)
   {
-    AVAudioFormat *format = [[AVAudioFormat alloc] initStandardFormatWithSampleRate:self.outputBusses.count > 0 ? 44100.0 : 44100.0
-                                                                          channels:busInfo.channelCount];
+    AVAudioFormat *format = [[AVAudioFormat alloc]
+        initStandardFormatWithSampleRate:self.outputBusses.count > 0 ? 44100.0 : 44100.0
+                                channels:busInfo.channelCount];
     if (format)
     {
       NSError *error = nil;
@@ -813,14 +845,16 @@ static Clap::Library _library;
       }
     }
   }
-  _inputBusArray = [[AUAudioUnitBusArray alloc] initWithAudioUnit:self busType:AUAudioUnitBusTypeInput busses:inputs];
+  _inputBusArray = [[AUAudioUnitBusArray alloc] initWithAudioUnit:self
+                                                          busType:AUAudioUnitBusTypeInput
+                                                           busses:inputs];
 
   // Build output bus array
   NSMutableArray<AUAudioUnitBus *> *outputs = [NSMutableArray new];
   for (auto &busInfo : _impl->_outputBusInfos)
   {
-    AVAudioFormat *format = [[AVAudioFormat alloc] initStandardFormatWithSampleRate:44100.0
-                                                                          channels:busInfo.channelCount];
+    AVAudioFormat *format =
+        [[AVAudioFormat alloc] initStandardFormatWithSampleRate:44100.0 channels:busInfo.channelCount];
     if (format)
     {
       NSError *error = nil;
@@ -832,7 +866,9 @@ static Clap::Library _library;
       }
     }
   }
-  _outputBusArray = [[AUAudioUnitBusArray alloc] initWithAudioUnit:self busType:AUAudioUnitBusTypeOutput busses:outputs];
+  _outputBusArray = [[AUAudioUnitBusArray alloc] initWithAudioUnit:self
+                                                           busType:AUAudioUnitBusTypeOutput
+                                                            busses:outputs];
 }
 
 - (void)_wireParameterObserver
@@ -845,9 +881,9 @@ static Clap::Library _library;
   // implementorValueObserver (which would re-flush them to the plugin).
   // The observer block itself is intentionally empty — all host→plugin
   // value changes arrive via implementorValueObserver below.
-  _impl->_parameterObserverToken = [_impl->_parameterTree
-      tokenByAddingParameterObserver:^(AUParameterAddress address, AUValue value) {
-        // Intentionally empty — see comment above.
+  _impl->_parameterObserverToken =
+      [_impl->_parameterTree tokenByAddingParameterObserver:^(AUParameterAddress address, AUValue value){
+          // Intentionally empty — see comment above.
       }];
 
   _impl->_parameterTree.implementorValueObserver = ^(AUParameter *param, AUValue value) {
@@ -890,15 +926,13 @@ static Clap::Library _library;
     clap_input_events_t in_events = {};
     in_events.ctx = &evPtr;
     in_events.size = [](const clap_input_events_t *) -> uint32_t { return 1; };
-    in_events.get = [](const clap_input_events_t *list, uint32_t) -> const clap_event_header_t * {
-      return *static_cast<const clap_event_header_t *const *>(list->ctx);
-    };
+    in_events.get = [](const clap_input_events_t *list, uint32_t) -> const clap_event_header_t *
+    { return *static_cast<const clap_event_header_t *const *>(list->ctx); };
 
     clap_output_events_t out_events = {};
     out_events.ctx = nullptr;
-    out_events.try_push = [](const clap_output_events_t *, const clap_event_header_t *) -> bool {
-      return true;
-    };
+    out_events.try_push = [](const clap_output_events_t *, const clap_event_header_t *) -> bool
+    { return true; };
 
     auto mainGuard = strongSelf->_impl->_plugin->AlwaysMainThread();
     ext_params->flush(plugin, &in_events, &out_events);
@@ -912,31 +946,34 @@ static Clap::Library _library;
 
   _impl->_parameterTree.implementorValueProvider = ^AUValue(AUParameter *param) {
     auto it = cache->find((clap_id)param.address);
-    if (it != cache->end())
-      return (AUValue)it->second;
+    if (it != cache->end()) return (AUValue)it->second;
     return (AUValue)0.0;
   };
 
-  _impl->_parameterTree.implementorStringFromValueCallback = ^NSString *(AUParameter *param, const AUValue *value) {
-    auto guard = plugin->AlwaysMainThread();
-    char buf[256];
-    AUValue v = value ? *value : param.value;
-    if (plugin->_ext._params->value_to_text(plugin->_plugin, (clap_id)param.address, (double)v, buf, sizeof(buf)))
-    {
-      return [NSString stringWithUTF8String:buf];
-    }
-    return [NSString stringWithFormat:@"%.3f", v];
-  };
+  _impl->_parameterTree.implementorStringFromValueCallback =
+      ^NSString *(AUParameter *param, const AUValue *value) {
+        auto guard = plugin->AlwaysMainThread();
+        char buf[256];
+        AUValue v = value ? *value : param.value;
+        if (plugin->_ext._params->value_to_text(plugin->_plugin, (clap_id)param.address, (double)v, buf,
+                                                sizeof(buf)))
+        {
+          return [NSString stringWithUTF8String:buf];
+        }
+        return [NSString stringWithFormat:@"%.3f", v];
+      };
 
-  _impl->_parameterTree.implementorValueFromStringCallback = ^AUValue(AUParameter *param, NSString *string) {
-    auto guard = plugin->AlwaysMainThread();
-    double value = 0;
-    if (plugin->_ext._params->text_to_value(plugin->_plugin, (clap_id)param.address, [string UTF8String], &value))
-    {
-      return (AUValue)value;
-    }
-    return (AUValue)[string doubleValue];
-  };
+  _impl->_parameterTree.implementorValueFromStringCallback =
+      ^AUValue(AUParameter *param, NSString *string) {
+        auto guard = plugin->AlwaysMainThread();
+        double value = 0;
+        if (plugin->_ext._params->text_to_value(plugin->_plugin, (clap_id)param.address,
+                                                [string UTF8String], &value))
+        {
+          return (AUValue)value;
+        }
+        return (AUValue)[string doubleValue];
+      };
 }
 
 - (void)_replaceParameterTree
@@ -1009,8 +1046,7 @@ static Clap::Library _library;
   if (_impl && _impl->_cachedLatencySamples > 0)
   {
     double sr = self.outputBusses[0].format.sampleRate;
-    if (sr > 0)
-      return (double)_impl->_cachedLatencySamples / sr;
+    if (sr > 0) return (double)_impl->_cachedLatencySamples / sr;
   }
   return 0;
 }
@@ -1127,8 +1163,7 @@ static Clap::Library _library;
           if (params->get_info(plug, i, &info))
           {
             double value = 0;
-            if (params->get_value(plug, info.id, &value))
-              _impl->_paramValueCache[info.id] = value;
+            if (params->get_value(plug, info.id, &value)) _impl->_paramValueCache[info.id] = value;
           }
         }
       }
@@ -1159,7 +1194,8 @@ static Clap::Library _library;
     AUV3ERR("allocateRenderResources: plugin not initialized (_impl=%{public}s)",
             _impl ? "valid" : "null");
     if (outError)
-      *outError = [NSError errorWithDomain:@"ClapAUv3" code:-10
+      *outError = [NSError errorWithDomain:@"ClapAUv3"
+                                      code:-10
                                   userInfo:@{NSLocalizedDescriptionKey : @"Plugin not initialized"}];
     return NO;
   }
@@ -1174,8 +1210,8 @@ static Clap::Library _library;
   {
     sampleRate = self.inputBusses[0].format.sampleRate;
   }
-  AUV3LOG("allocateRenderResources: sampleRate=%.0f maxFrames=%u",
-          sampleRate, (unsigned)self.maximumFramesToRender);
+  AUV3LOG("allocateRenderResources: sampleRate=%.0f maxFrames=%u", sampleRate,
+          (unsigned)self.maximumFramesToRender);
 
   auto guarantee_mainthread = _impl->_plugin->AlwaysMainThread();
 
@@ -1193,8 +1229,8 @@ static Clap::Library _library;
   {
     outputChs.push_back((uint32_t)self.outputBusses[i].format.channelCount);
   }
-  AUV3LOG("allocateRenderResources: input busses=%zu output busses=%zu",
-          inputChs.size(), outputChs.size());
+  AUV3LOG("allocateRenderResources: input busses=%zu output busses=%zu", inputChs.size(),
+          outputChs.size());
 
   // Create and set up the process adapter
   AUV3LOG("allocateRenderResources: creating process adapter");
@@ -1202,8 +1238,8 @@ static Clap::Library _library;
   _impl->_processAdapter->setupProcessing(
       (uint32_t)inputChs.size(), inputChs.empty() ? nullptr : inputChs.data(),
       (uint32_t)outputChs.size(), outputChs.empty() ? nullptr : outputChs.data(),
-      _impl->_plugin->_plugin, _impl->_plugin->_ext._params, _impl.get(),
-      self.maximumFramesToRender, _impl->_midi_preferred_dialect);
+      _impl->_plugin->_plugin, _impl->_plugin->_ext._params, _impl.get(), self.maximumFramesToRender,
+      _impl->_midi_preferred_dialect);
 
   // Set transport state and musical context blocks
   _impl->_processAdapter->setTransportStateBlock(self.transportStateBlock);
@@ -1260,13 +1296,10 @@ static Clap::Library _library;
   // render time rather than at block-creation time.
   auto *impl = _impl.get();
 
-  return ^AUAudioUnitStatus(AudioUnitRenderActionFlags *actionFlags,
-                             const AudioTimeStamp *timestamp,
-                             AUAudioFrameCount frameCount,
-                             NSInteger outputBusNumber,
-                             AudioBufferList *outputData,
-                             const AURenderEvent *realtimeEventListHead,
-                             AURenderPullInputBlock __unsafe_unretained pullInputBlock) {
+  return ^AUAudioUnitStatus(AudioUnitRenderActionFlags *actionFlags, const AudioTimeStamp *timestamp,
+                            AUAudioFrameCount frameCount, NSInteger outputBusNumber,
+                            AudioBufferList *outputData, const AURenderEvent *realtimeEventListHead,
+                            AURenderPullInputBlock __unsafe_unretained pullInputBlock) {
     if (!impl || !impl->_processAdapter) return kAudioUnitErr_Uninitialized;
 
     // Force audio-thread identity for the duration of the render call.
@@ -1377,7 +1410,8 @@ static Clap::Library _library;
 // may handle this automatically in some contexts, but explicitly returning the VC
 // ensures the host can always obtain it (both in-process and out-of-process).
 
-- (void)requestViewControllerWithCompletionHandler:(void (^)(AUViewControllerBase * __nullable))completionHandler
+- (void)requestViewControllerWithCompletionHandler:
+    (void (^)(AUViewControllerBase *__nullable))completionHandler
 {
   AUV3LOG("requestViewControllerWithCompletionHandler: called (factoryVC=%p)", _factoryViewController);
   completionHandler(_factoryViewController);
@@ -1405,7 +1439,7 @@ static Clap::Library _library;
 // -----------------------------------------------------------------------
 
 @interface ClapAUv3ContainerView : NSView
-@property (nonatomic, weak) ClapAUv3ViewController *viewController;
+@property(nonatomic, weak) ClapAUv3ViewController *viewController;
 @end
 
 @implementation ClapAUv3ContainerView
@@ -1455,7 +1489,8 @@ static Clap::Library _library;
   // Start with a reasonable default size. The viewbridge rejects zero-sized views.
   // The actual size is updated from the CLAP plugin in setAudioUnit: / _createPluginGUI.
   NSSize initialSize = NSMakeSize(400, 500);
-  ClapAUv3ContainerView *view = [[ClapAUv3ContainerView alloc] initWithFrame:NSMakeRect(0, 0, initialSize.width, initialSize.height)];
+  ClapAUv3ContainerView *view = [[ClapAUv3ContainerView alloc]
+      initWithFrame:NSMakeRect(0, 0, initialSize.width, initialSize.height)];
   view.viewController = self;
   view.translatesAutoresizingMaskIntoConstraints = YES;
   [self setView:view];
@@ -1467,9 +1502,7 @@ static Clap::Library _library;
   _audioUnit = audioUnit;
   // Establish the back-reference so the AU can return us from
   // requestViewControllerWithCompletionHandler:
-  if (audioUnit)
-    audioUnit->_factoryViewController = self;
-
+  if (audioUnit) audioUnit->_factoryViewController = self;
 }
 
 - (void)_createPluginGUI
@@ -1492,7 +1525,6 @@ static Clap::Library _library;
       [self willChangeValueForKey:@"preferredContentSize"];
       self.preferredContentSize = NSMakeSize(w, h);
       [self didChangeValueForKey:@"preferredContentSize"];
-
     }
   }
 }
@@ -1561,8 +1593,7 @@ static Clap::Library _library;
     // Propagate host-initiated container resize to the CLAP plugin
     if ([self.audioUnit canResizeGUI])
     {
-      [self.audioUnit setGUISize:(uint32_t)bounds.size.width
-                          height:(uint32_t)bounds.size.height];
+      [self.audioUnit setGUISize:(uint32_t)bounds.size.width height:(uint32_t)bounds.size.height];
     }
 
     // Ensure the CLAP plugin's subview fills the container
@@ -1600,8 +1631,10 @@ static Clap::Library _library;
 {
   AUV3ERR("createAudioUnitWithComponentDescription: BASE class called — subclass should override");
   if (error)
-    *error = [NSError errorWithDomain:@"ClapAUv3" code:-100
-                             userInfo:@{NSLocalizedDescriptionKey : @"Base factory should not be called directly"}];
+    *error = [NSError
+        errorWithDomain:@"ClapAUv3"
+                   code:-100
+               userInfo:@{NSLocalizedDescriptionKey : @"Base factory should not be called directly"}];
   return nil;
 }
 

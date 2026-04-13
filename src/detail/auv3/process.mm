@@ -12,8 +12,8 @@
 //  static os_log_t log = os_log_create("org.clap-wrapper.auv3", "process");
 //  return log;
 // }
-#define PROCLOG(...) // os_log(_procLog(), __VA_ARGS__)
-#define PROCERR(...) // os_log_error(_procLog(), __VA_ARGS__)
+#define PROCLOG(...)  // os_log(_procLog(), __VA_ARGS__)
+#define PROCERR(...)  // os_log_error(_procLog(), __VA_ARGS__)
 
 namespace Clap::AUv3
 {
@@ -62,8 +62,7 @@ ProcessAdapter::~ProcessAdapter()
 
 void ProcessAdapter::setupProcessing(uint32_t numInputBusses, const uint32_t *inputChannelCounts,
                                      uint32_t numOutputBusses, const uint32_t *outputChannelCounts,
-                                     const clap_plugin_t *plugin,
-                                     const clap_plugin_params_t *ext_params,
+                                     const clap_plugin_t *plugin, const clap_plugin_params_t *ext_params,
                                      Clap::IAutomation *automation, uint32_t numMaxSamples,
                                      uint32_t preferredMIDIDialect)
 {
@@ -147,8 +146,7 @@ void ProcessAdapter::setupProcessing(uint32_t numInputBusses, const uint32_t *in
   // Allocate output storage for multi-bus rendering (max 8 channels per bus)
   _numMaxSamples = numMaxSamples;
   _outputStorage.resize(_numOutputs * 8);
-  for (auto &buf : _outputStorage)
-    buf.resize(numMaxSamples, 0.0f);
+  for (auto &buf : _outputStorage) buf.resize(numMaxSamples, 0.0f);
   _lastProcessedSampleTime = UINT64_MAX;
 
   // Wire up CLAP process data
@@ -200,9 +198,8 @@ void ProcessAdapter::sortEventIndices()
             });
 }
 
-void ProcessAdapter::translateAUv3Events(const AURenderEvent *head,
-                                          AUEventSampleTime bufferStartTime,
-                                          AVAudioFrameCount frameCount)
+void ProcessAdapter::translateAUv3Events(const AURenderEvent *head, AUEventSampleTime bufferStartTime,
+                                         AVAudioFrameCount frameCount)
 {
   for (const AURenderEvent *event = head; event != nullptr; event = event->head.next)
   {
@@ -226,8 +223,8 @@ void ProcessAdapter::translateAUv3Events(const AURenderEvent *head,
       {
         auto &pe = event->parameter;
         PROCLOG("translateEvent: param addr=%llu value=%.4f absTime=%lld offset=%u",
-                (unsigned long long)pe.parameterAddress, (float)pe.value,
-                (long long)pe.eventSampleTime, sampleOffset);
+                (unsigned long long)pe.parameterAddress, (float)pe.value, (long long)pe.eventSampleTime,
+                sampleOffset);
         n.header.size = sizeof(clap_event_param_value_t);
         n.header.type = CLAP_EVENT_PARAM_VALUE;
         n.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
@@ -237,8 +234,7 @@ void ProcessAdapter::translateAUv3Events(const AURenderEvent *head,
         clap_id pid = (clap_id)pe.parameterAddress;
 
         // Skip unknown parameter IDs — auval sends bogus IDs to test robustness
-        if (_cookieCache && _cookieCache->find(pid) == _cookieCache->end())
-          break;
+        if (_cookieCache && _cookieCache->find(pid) == _cookieCache->end()) break;
 
         n.param.param_id = pid;
         n.param.value = (double)pe.value;
@@ -255,9 +251,8 @@ void ProcessAdapter::translateAUv3Events(const AURenderEvent *head,
 
       case AURenderEventMIDI:
       {
-        
         auto &me = event->MIDI;
-        PROCLOG("translateEvent: %02x %02x %02x",(int)me.data[0],(int)me.data[1],(int)me.data[2]);
+        PROCLOG("translateEvent: %02x %02x %02x", (int)me.data[0], (int)me.data[1], (int)me.data[2]);
         uint8_t status = me.data[0];
         uint8_t strippedStatus = (status >> 4) & 0x0F;
         uint8_t channel = status & 0x0F;
@@ -337,10 +332,8 @@ void ProcessAdapter::translateAUv3Events(const AURenderEvent *head,
 }
 
 AUAudioUnitStatus ProcessAdapter::process(AudioUnitRenderActionFlags *actionFlags,
-                                          const AudioTimeStamp *timestamp,
-                                          AVAudioFrameCount frameCount,
-                                          NSInteger outputBusNumber,
-                                          AudioBufferList *outputData,
+                                          const AudioTimeStamp *timestamp, AVAudioFrameCount frameCount,
+                                          NSInteger outputBusNumber, AudioBufferList *outputData,
                                           const AURenderEvent *realtimeEventListHead,
                                           AURenderPullInputBlock __unsafe_unretained pullInputBlock)
 {
@@ -397,8 +390,7 @@ AUAudioUnitStatus ProcessAdapter::process(AudioUnitRenderActionFlags *actionFlag
     if (_transportStateBlock(&transportFlags, &currentSamplePosition, &cycleStartBeatPosition,
                              &cycleEndBeatPosition))
     {
-      if (transportFlags & AUHostTransportStateMoving)
-        _transport.flags |= CLAP_TRANSPORT_IS_PLAYING;
+      if (transportFlags & AUHostTransportStateMoving) _transport.flags |= CLAP_TRANSPORT_IS_PLAYING;
       if (transportFlags & AUHostTransportStateRecording)
         _transport.flags |= CLAP_TRANSPORT_IS_RECORDING;
       if (transportFlags & AUHostTransportStateCycling)
@@ -419,8 +411,8 @@ AUAudioUnitStatus ProcessAdapter::process(AudioUnitRenderActionFlags *actionFlag
     NSInteger sampleOffsetToNextBeat = 0;
     double downbeatPos = 0;
 
-    if (_musicalContextBlock(&tempo, &tsigNum, &tsigDenom, &beatPos,
-                             &sampleOffsetToNextBeat, &downbeatPos))
+    if (_musicalContextBlock(&tempo, &tsigNum, &tsigDenom, &beatPos, &sampleOffsetToNextBeat,
+                             &downbeatPos))
     {
       if (tempo > 0)
       {
@@ -450,8 +442,8 @@ AUAudioUnitStatus ProcessAdapter::process(AudioUnitRenderActionFlags *actionFlag
   }
 
   // Pull input audio
-  PROCLOG("process: pulling input (_numInputs=%u, pullInputBlock=%{public}s)",
-          _numInputs, pullInputBlock ? "yes" : "nil");
+  PROCLOG("process: pulling input (_numInputs=%u, pullInputBlock=%{public}s)", _numInputs,
+          pullInputBlock ? "yes" : "nil");
   if (_numInputs > 0 && pullInputBlock)
   {
     for (uint32_t bus = 0; bus < _numInputs; ++bus)
@@ -469,7 +461,8 @@ AUAudioUnitStatus ProcessAdapter::process(AudioUnitRenderActionFlags *actionFlag
 
       AudioUnitRenderActionFlags pullFlags = 0;
       PROCLOG("process: pulling bus %u (%u ch)", bus, numCh);
-      AUAudioUnitStatus status = pullInputBlock(&pullFlags, timestamp, frameCount, bus, _inputBufferList);
+      AUAudioUnitStatus status =
+          pullInputBlock(&pullFlags, timestamp, frameCount, bus, _inputBufferList);
       PROCLOG("process: pull bus %u status=%d", bus, (int)status);
       if (status == noErr)
       {
@@ -594,8 +587,7 @@ void ProcessAdapter::addParameterEvent(clap_id paramId, double value, uint32_t s
   if (_cookieCache)
   {
     auto it = _cookieCache->find(paramId);
-    if (it != _cookieCache->end())
-      n.param.cookie = it->second;
+    if (it != _cookieCache->end()) n.param.cookie = it->second;
   }
   n.param.port_index = -1;
   n.param.key = -1;
