@@ -402,7 +402,7 @@ AUAudioUnitStatus ProcessAdapter::process(AudioUnitRenderActionFlags *actionFlag
     }
   }
 
-  if (false && _musicalContextBlock)
+  if (_musicalContextBlock)
   {
     double tempo = 0;
     double tsigNum = 0;

@@ -63,12 +63,15 @@ struct GroupNode
   }
 };
 
-AUParameterTree *createParameterTree(const clap_plugin_t *plugin, const clap_plugin_params_t *params)
+ParameterTreeResult createParameterTree(const clap_plugin_t *plugin,
+                                        const clap_plugin_params_t *params)
 {
-  if (!params) return [AUParameterTree createTreeWithChildren:@[]];
+  if (!params) return {[AUParameterTree createTreeWithChildren:@[]], CLAP_INVALID_ID};
 
   uint32_t numParams = params->count(plugin);
-  if (numParams == 0) return [AUParameterTree createTreeWithChildren:@[]];
+  if (numParams == 0) return {[AUParameterTree createTreeWithChildren:@[]], CLAP_INVALID_ID};
+
+  clap_id bypassParamId = CLAP_INVALID_ID;
 
   // Root group node for building hierarchy
   GroupNode root;
@@ -92,6 +95,9 @@ AUParameterTree *createParameterTree(const clap_plugin_t *plugin, const clap_plu
     bool isHidden = (info.flags & CLAP_PARAM_IS_HIDDEN) != 0;
     bool isReadonly = (info.flags & CLAP_PARAM_IS_READONLY) != 0;
     bool isAutomatable = (info.flags & CLAP_PARAM_IS_AUTOMATABLE) != 0;
+    bool isBypass = (info.flags & CLAP_PARAM_IS_BYPASS) != 0;
+
+    if (isBypass) bypassParamId = info.id;
 
     if (isHidden) continue;  // skip hidden parameters
 
@@ -196,7 +202,7 @@ AUParameterTree *createParameterTree(const clap_plugin_t *plugin, const clap_plu
     return (AUValue)[string doubleValue];
   };
 
-  return tree;
+  return {tree, bypassParamId};
 }
 
 }  // namespace Clap::AUv3

@@ -102,6 +102,7 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
 
   // Parameters
   AUParameterTree *_parameterTree = nil;
+  clap_id _bypassParamId = CLAP_INVALID_ID;  // set if CLAP plugin has a bypass parameter
   // Observer token used as 'originator' when pushing parameter changes to the host.
   // This prevents the host from echoing the change back to our implementorValueObserver.
   AUParameterObserverToken _parameterObserverToken = nullptr;
@@ -141,6 +142,15 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
   // Queue for audio -> UI thread parameter notifications
   ClapWrapper::detail::shared::fixedqueue<queueEvent, 8192> _queueToUI;
 
+  // CLAP timer extension support — mirrors VST3/AAX TimerObject pattern
+  struct TimerObject
+  {
+    uint32_t period = 0;  // 0 = unused slot (available for reuse)
+    uint64_t nexttick = 0;
+    clap_id timer_id = 0;
+  };
+  std::vector<TimerObject> _timerObjects;
+
   // --- IHost ---
   void mark_dirty() override
   {
@@ -176,13 +186,19 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
       // objects on the main queue, no CLAP plugin calls.
       self->drainParameterQueue();
 
-      // Do NOT call on_main_thread() while the plugin is processing.
-      // JUCE's on_main_thread() acquires locks that process() also needs —
-      // calling both concurrently (main thread vs render thread) deadlocks.
-      if (processing->load() || !flag->exchange(false)) return;
+      // Do NOT call into the plugin while processing — risk of deadlock
+      // (JUCE holds locks in on_main_thread that process() also needs).
+      if (processing->load()) return;
 
-      auto guard = plugin->AlwaysMainThread();
-      plugin->_plugin->on_main_thread(plugin->_plugin);
+      // Service request_callback
+      if (flag->exchange(false))
+      {
+        auto guard = plugin->AlwaysMainThread();
+        plugin->_plugin->on_main_thread(plugin->_plugin);
+      }
+
+      // Fire CLAP timers
+      self->fireTimers();
     });
     dispatch_resume(_idleTimer);
   }
@@ -194,6 +210,7 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
       dispatch_source_cancel(_idleTimer);
       _idleTimer = nullptr;
     }
+    _timerObjects.clear();
   }
 
   void setupWrapperSpecifics(const clap_plugin_t *plugin) override
@@ -259,7 +276,9 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
 
   void setupParameters(const clap_plugin_t *plugin, const clap_plugin_params_t *params) override
   {
-    _parameterTree = Clap::AUv3::createParameterTree(plugin, params);
+    auto result = Clap::AUv3::createParameterTree(plugin, params);
+    _parameterTree = result.tree;
+    _bypassParamId = result.bypassParamId;
 
     // Populate the parameter value and cookie caches with initial values
     if (params)
@@ -293,7 +312,9 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
     if (flags & (CLAP_PARAM_RESCAN_ALL | CLAP_PARAM_RESCAN_INFO))
     {
       // AUParameter properties (name, range, flags) are immutable — rebuild the entire tree.
-      _parameterTree = Clap::AUv3::createParameterTree(plug, params);
+      auto rescanResult = Clap::AUv3::createParameterTree(plug, params);
+      _parameterTree = rescanResult.tree;
+      _bypassParamId = rescanResult.bypassParamId;
 
       // Immediately replace the value provider with the cached version —
       // createParameterTree() wires a provider that calls get_value() directly,
@@ -424,11 +445,57 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
 
   bool register_timer(uint32_t period_ms, clap_id *timer_id) override
   {
-    return false;
+    if (period_ms < 30) period_ms = 30;
+
+    // Reuse an unused slot
+    for (size_t i = 0; i < _timerObjects.size(); ++i)
+    {
+      auto &to = _timerObjects[i];
+      if (to.period == 0)
+      {
+        to.timer_id = static_cast<clap_id>(i + 1000);
+        to.period = period_ms;
+        to.nexttick = os::getTickInMS() + period_ms;
+        *timer_id = to.timer_id;
+        return true;
+      }
+    }
+
+    // Create new slot
+    auto newid = static_cast<clap_id>(_timerObjects.size() + 1000);
+    _timerObjects.push_back({period_ms, os::getTickInMS() + period_ms, newid});
+    *timer_id = newid;
+    return true;
   }
+
   bool unregister_timer(clap_id timer_id) override
   {
+    for (auto &to : _timerObjects)
+    {
+      if (to.timer_id == timer_id)
+      {
+        to.period = 0;
+        to.nexttick = 0;
+        return true;
+      }
+    }
     return false;
+  }
+
+  void fireTimers()
+  {
+    if (_timerObjects.empty() || !_plugin || !_plugin->_ext._timer) return;
+
+    auto now = os::getTickInMS();
+    for (auto &to : _timerObjects)
+    {
+      if (to.period > 0 && to.nexttick <= now)
+      {
+        to.nexttick = now + to.period;
+        auto guard = _plugin->AlwaysMainThread();
+        _plugin->_ext._timer->on_timer(_plugin->_plugin, to.timer_id);
+      }
+    }
   }
 
   const char *host_get_name() override
@@ -544,6 +611,12 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
                  originator:_parameterObserverToken
                  atHostTime:0
                   eventType:AUParameterAutomationEventTypeValue];
+          }
+          // If this was the bypass parameter, notify KVO observers of shouldBypassEffect
+          if (evt._data._value.param_id == _bypassParamId && _audioUnit)
+          {
+            [_audioUnit willChangeValueForKey:@"shouldBypassEffect"];
+            [_audioUnit didChangeValueForKey:@"shouldBypassEffect"];
           }
           break;
         }
@@ -1422,6 +1495,73 @@ static Clap::Library _library;
 - (BOOL)providesUserInterface
 {
   return (_impl && _impl->_plugin && _impl->_plugin->_ext._gui) ? YES : NO;
+}
+
+// --- Bypass ---
+
+- (BOOL)shouldBypassEffect
+{
+  if (!_impl || _impl->_bypassParamId == CLAP_INVALID_ID) return NO;
+
+  auto it = _impl->_paramValueCache.find(_impl->_bypassParamId);
+  if (it != _impl->_paramValueCache.end()) return it->second >= 0.5;
+  return NO;
+}
+
+- (void)setShouldBypassEffect:(BOOL)shouldBypassEffect
+{
+  if (!_impl || _impl->_bypassParamId == CLAP_INVALID_ID) return;
+
+  double newValue = shouldBypassEffect ? 1.0 : 0.0;
+
+  // Update cache
+  _impl->_paramValueCache[_impl->_bypassParamId] = newValue;
+
+  // Push to the CLAP plugin via params->flush()
+  if (_impl->_plugin && _impl->_plugin->_ext._params)
+  {
+    auto guard = _impl->_plugin->AlwaysMainThread();
+
+    clap_event_param_value_t ev = {};
+    ev.header.size = sizeof(ev);
+    ev.header.type = CLAP_EVENT_PARAM_VALUE;
+    ev.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+    ev.header.time = 0;
+    ev.header.flags = 0;
+    ev.param_id = _impl->_bypassParamId;
+    ev.cookie = _impl->_paramCookieCache.count(_impl->_bypassParamId)
+                    ? _impl->_paramCookieCache[_impl->_bypassParamId]
+                    : nullptr;
+    ev.port_index = -1;
+    ev.key = -1;
+    ev.channel = -1;
+    ev.note_id = -1;
+    ev.value = newValue;
+
+    clap_input_events_t in_events;
+    in_events.ctx = &ev;
+    in_events.size = [](const clap_input_events_t *) -> uint32_t { return 1; };
+    in_events.get = [](const clap_input_events_t *list, uint32_t) -> const clap_event_header_t * {
+      return &static_cast<const clap_event_param_value_t *>(list->ctx)->header;
+    };
+    clap_output_events_t out_events;
+    out_events.ctx = nullptr;
+    out_events.try_push = [](const clap_output_events_t *, const clap_event_header_t *) -> bool {
+      return false;
+    };
+    _impl->_plugin->_ext._params->flush(_impl->_plugin->_plugin, &in_events, &out_events);
+  }
+
+  // Update the AUParameter in the tree so the UI stays in sync
+  if (_impl->_parameterTree)
+  {
+    AUParameter *param =
+        [_impl->_parameterTree parameterWithAddress:(AUParameterAddress)_impl->_bypassParamId];
+    if (param)
+    {
+      [param setValue:(AUValue)newValue originator:_impl->_parameterObserverToken];
+    }
+  }
 }
 
 @end

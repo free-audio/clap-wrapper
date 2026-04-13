@@ -19,11 +19,18 @@
 namespace Clap::AUv3
 {
 
+struct ParameterTreeResult
+{
+  AUParameterTree *tree;
+  clap_id bypassParamId;  // CLAP_INVALID_ID if no bypass parameter found
+};
+
 // Build an AUParameterTree from the CLAP plugin's parameter extensions.
 // The tree groups parameters by their module path (split on '/').
 // The callbacks (implementorValueObserver, implementorValueProvider, etc.)
 // are wired to the provided plugin and params extension.
-AUParameterTree *createParameterTree(const clap_plugin_t *plugin,
-                                     const clap_plugin_params_t *params);
+// Also detects the CLAP_PARAM_IS_BYPASS parameter and returns its ID.
+ParameterTreeResult createParameterTree(const clap_plugin_t *plugin,
+                                        const clap_plugin_params_t *params);
 
 }  // namespace Clap::AUv3
