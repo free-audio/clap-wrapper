@@ -175,6 +175,9 @@ void ProcessAdapter::setupProcessing(uint32_t numInputBusses, const uint32_t *in
   _events.reserve(8192);
   _eventindices.clear();
   _eventindices.reserve(8192);
+
+  _activeNotes.clear();
+  _activeNotes.reserve(32);
 }
 
 void ProcessAdapter::setTransportStateBlock(AUHostTransportStateBlock __nullable block)
@@ -275,6 +278,7 @@ void ProcessAdapter::translateAUv3Events(const AURenderEvent *head, AUEventSampl
 
             _eventindices.emplace_back(_events.size());
             _events.emplace_back(n);
+            addToActiveNotes(&n.note);
             break;
           }
           else if (strippedStatus == 0x08 || (strippedStatus == 0x09 && me.data[2] == 0))  // Note Off
@@ -286,6 +290,55 @@ void ProcessAdapter::translateAUv3Events(const AURenderEvent *head, AUEventSampl
             n.note.key = me.data[1] & 0x7F;
             n.note.velocity = (strippedStatus == 0x08) ? (float)(me.data[2] & 0x7F) / 127.0f : 0.0f;
             n.note.channel = channel;
+
+            _eventindices.emplace_back(_events.size());
+            _events.emplace_back(n);
+            removeFromActiveNotes(&n.note);
+            break;
+          }
+          else if (strippedStatus == 0x0A)  // Poly Aftertouch → per-note PRESSURE
+          {
+            n.header.type = CLAP_EVENT_NOTE_EXPRESSION;
+            n.header.size = sizeof(clap_event_note_expression_t);
+            n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_PRESSURE;
+            n.noteexpression.port_index = 0;
+            n.noteexpression.channel = channel;
+            n.noteexpression.key = me.data[1] & 0x7F;
+            n.noteexpression.note_id = -1;
+            n.noteexpression.value = (double)(me.data[2] & 0x7F) / 127.0;
+
+            _eventindices.emplace_back(_events.size());
+            _events.emplace_back(n);
+            break;
+          }
+          else if (strippedStatus == 0x0D)  // Channel Pressure → channel-wide PRESSURE
+          {
+            n.header.type = CLAP_EVENT_NOTE_EXPRESSION;
+            n.header.size = sizeof(clap_event_note_expression_t);
+            n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_PRESSURE;
+            n.noteexpression.port_index = 0;
+            n.noteexpression.channel = channel;
+            n.noteexpression.key = -1;  // wildcard: all keys on this channel
+            n.noteexpression.note_id = -1;
+            n.noteexpression.value = (double)(me.data[1] & 0x7F) / 127.0;
+
+            _eventindices.emplace_back(_events.size());
+            _events.emplace_back(n);
+            break;
+          }
+          else if (strippedStatus == 0x0E)  // Pitch Bend → channel-wide TUNING
+          {
+            n.header.type = CLAP_EVENT_NOTE_EXPRESSION;
+            n.header.size = sizeof(clap_event_note_expression_t);
+            n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_TUNING;
+            n.noteexpression.port_index = 0;
+            n.noteexpression.channel = channel;
+            n.noteexpression.key = -1;  // wildcard: all keys on this channel
+            n.noteexpression.note_id = -1;
+            // MIDI pitch bend: 14-bit value (0-16383), center at 8192
+            // Convert to CLAP semitones: ±2 semitones (MIDI default range)
+            uint16_t bendValue = ((uint16_t)(me.data[2] & 0x7F) << 7) | (me.data[1] & 0x7F);
+            n.noteexpression.value = ((double)bendValue - 8192.0) / 8192.0 * 2.0;
 
             _eventindices.emplace_back(_events.size());
             _events.emplace_back(n);
@@ -545,6 +598,40 @@ AUAudioUnitStatus ProcessAdapter::process(AudioUnitRenderActionFlags *actionFlag
         }
         break;
       }
+      case CLAP_EVENT_NOTE_EXPRESSION:
+      {
+        if (!midiOutputEventBlock) break;
+
+        auto &ne = evt.noteexpression;
+
+        if (ne.expression_id == CLAP_NOTE_EXPRESSION_PRESSURE && ne.key >= 0)
+        {
+          // Per-note pressure → Poly Aftertouch
+          uint8_t data[3] = {(uint8_t)(0xA0 | (ne.channel >= 0 ? ne.channel & 0x0F : 0)),
+                             (uint8_t)(ne.key & 0x7F),
+                             (uint8_t)(std::clamp(ne.value, 0.0, 1.0) * 127.0)};
+          midiOutputEventBlock(timestamp->mSampleTime + evt.header.time, 0, 3, data);
+        }
+        else if (ne.expression_id == CLAP_NOTE_EXPRESSION_PRESSURE && ne.key < 0)
+        {
+          // Channel-wide pressure → Channel Pressure
+          uint8_t data[2] = {(uint8_t)(0xD0 | (ne.channel >= 0 ? ne.channel & 0x0F : 0)),
+                             (uint8_t)(std::clamp(ne.value, 0.0, 1.0) * 127.0)};
+          midiOutputEventBlock(timestamp->mSampleTime + evt.header.time, 0, 2, data);
+        }
+        else if (ne.expression_id == CLAP_NOTE_EXPRESSION_TUNING)
+        {
+          // Tuning → Pitch Bend (±2 semitone range)
+          double normalized = std::clamp(ne.value / 2.0, -1.0, 1.0);
+          uint16_t bendValue = (uint16_t)((normalized + 1.0) * 8192.0);
+          if (bendValue > 16383) bendValue = 16383;
+          uint8_t data[3] = {(uint8_t)(0xE0 | (ne.channel >= 0 ? ne.channel & 0x0F : 0)),
+                             (uint8_t)(bendValue & 0x7F), (uint8_t)((bendValue >> 7) & 0x7F)};
+          midiOutputEventBlock(timestamp->mSampleTime + evt.header.time, 0, 3, data);
+        }
+        // Other expression types (volume, pan, vibrato, brightness) have no MIDI 1.0 equivalent
+        break;
+      }
       default:
         break;
     }
@@ -635,6 +722,35 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t *event)
     return true;
   }
   return false;
+}
+
+void ProcessAdapter::addToActiveNotes(const clap_event_note_t *note)
+{
+  for (auto &i : _activeNotes)
+  {
+    if (!i.used)
+    {
+      i.note_id = note->note_id;
+      i.port_index = note->port_index;
+      i.channel = note->channel;
+      i.key = note->key;
+      i.used = true;
+      return;
+    }
+  }
+  _activeNotes.emplace_back(
+      ActiveNote{true, note->note_id, note->port_index, note->channel, note->key});
+}
+
+void ProcessAdapter::removeFromActiveNotes(const clap_event_note_t *note)
+{
+  for (auto &i : _activeNotes)
+  {
+    if (i.used && i.port_index == note->port_index && i.channel == note->channel && i.key == note->key)
+    {
+      i.used = false;
+    }
+  }
 }
 
 }  // namespace Clap::AUv3

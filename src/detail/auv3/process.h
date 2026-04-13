@@ -110,6 +110,20 @@ class ProcessAdapter
 
   uint32_t _preferred_midi_dialect = CLAP_NOTE_DIALECT_CLAP;
 
+  // Active note tracking for note expression targeting
+  struct ActiveNote
+  {
+    bool used = false;
+    int32_t note_id;
+    int16_t port_index;
+    int16_t channel;
+    int16_t key;
+  };
+  std::vector<ActiveNote> _activeNotes;
+
+  void addToActiveNotes(const clap_event_note_t *note);
+  void removeFromActiveNotes(const clap_event_note_t *note);
+
   AUHostTransportStateBlock __nullable _transportStateBlock = nil;
   AUHostMusicalContextBlock __nullable _musicalContextBlock = nil;
 
