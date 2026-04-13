@@ -30,7 +30,6 @@ struct ParameterTreeResult
 // The callbacks (implementorValueObserver, implementorValueProvider, etc.)
 // are wired to the provided plugin and params extension.
 // Also detects the CLAP_PARAM_IS_BYPASS parameter and returns its ID.
-ParameterTreeResult createParameterTree(const clap_plugin_t *plugin,
-                                        const clap_plugin_params_t *params);
+ParameterTreeResult createParameterTree(const clap_plugin_t *plugin, const clap_plugin_params_t *params);
 
 }  // namespace Clap::AUv3

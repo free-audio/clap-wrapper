@@ -54,10 +54,9 @@ class ProcessAdapter
 
   // Main render call - invoked from the AUv3 internalRenderBlock.
   // Translates AUv3 events, pulls input, calls CLAP process, and writes output.
-  AUAudioUnitStatus process(AudioUnitRenderActionFlags *actionFlags,
-                            const AudioTimeStamp *timestamp, AVAudioFrameCount frameCount,
-                            NSInteger outputBusNumber, AudioBufferList *outputData,
-                            const AURenderEvent *realtimeEventListHead,
+  AUAudioUnitStatus process(AudioUnitRenderActionFlags *actionFlags, const AudioTimeStamp *timestamp,
+                            AVAudioFrameCount frameCount, NSInteger outputBusNumber,
+                            AudioBufferList *outputData, const AURenderEvent *realtimeEventListHead,
                             AURenderPullInputBlock __unsafe_unretained pullInputBlock);
 
   // Provide transport/musical context from the host

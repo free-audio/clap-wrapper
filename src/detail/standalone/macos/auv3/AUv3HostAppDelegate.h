@@ -4,6 +4,6 @@
 
 @interface AUv3HostAppDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate>
 
-@property (nonatomic, weak) IBOutlet NSWindow *window;
+@property(nonatomic, weak) IBOutlet NSWindow *window;
 
 @end

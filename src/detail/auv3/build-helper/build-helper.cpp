@@ -431,22 +431,24 @@ int main(int argc, char **argv)
       // Generate a unique AUViewController subclass per plugin
       // This class serves as both the view controller AND the AUAudioUnitFactory
       cppf << "// ViewController/Factory for '" << u.name << "' (" << u.type << "/" << u.subt << ")\n";
-      cppf << "@interface " << vcName
-           << " : ClapAUv3ViewController\n"
+      cppf << "@interface " << vcName << " : ClapAUv3ViewController\n"
            << "@end\n\n";
       cppf << "@implementation " << vcName << "\n";
-      cppf << "- (AUAudioUnit *)createAudioUnitWithComponentDescription:(AudioComponentDescription)desc\n"
-           << "                                                   error:(NSError **)error {\n"
-           << "    ClapAUv3AudioUnit *au = [[ClapAUv3AudioUnit alloc] initWithComponentDescription:desc\n"
-           << "                                                          options:0\n"
-           << "                                                            error:error\n"
-           << "                                                         clapName:@\"" << u.clapname << "\"\n"
-           << "                                                           clapId:@\"" << u.clapid << "\"\n"
-           << "                                                        clapIndex:" << idx << "];\n"
-           << "    self.audioUnit = au;\n"
-           << "    return au;\n"
-           << "}\n"
-           << "@end\n\n";
+      cppf
+          << "- (AUAudioUnit *)createAudioUnitWithComponentDescription:(AudioComponentDescription)desc\n"
+          << "                                                   error:(NSError **)error {\n"
+          << "    ClapAUv3AudioUnit *au = [[ClapAUv3AudioUnit alloc] initWithComponentDescription:desc\n"
+          << "                                                          options:0\n"
+          << "                                                            error:error\n"
+          << "                                                         clapName:@\"" << u.clapname
+          << "\"\n"
+          << "                                                           clapId:@\"" << u.clapid
+          << "\"\n"
+          << "                                                        clapIndex:" << idx << "];\n"
+          << "    self.audioUnit = au;\n"
+          << "    return au;\n"
+          << "}\n"
+          << "@end\n\n";
 
       idx++;
     }
