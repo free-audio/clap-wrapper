@@ -51,6 +51,11 @@ function(target_add_standalone_wrapper)
         set(SA_RESOURCE_DIRECTORY "")
     endif()
 
+    if (NOT DEFINED SA_BUNDLE_VERSION)
+        message(STATUS "No SA_BUNDLE_VERSION - using ${PROJECT_VERSION}")
+        set(SA_BUNDLE_VERSION "${PROJECT_VERSION}")
+    endif()
+
     guarantee_rtaudio()
     guarantee_rtmidi()
 
@@ -88,12 +93,16 @@ function(target_add_standalone_wrapper)
                 ${GEN_XIB}
                 )
 
+
         set_target_properties(${SA_TARGET} PROPERTIES
                 BUNDLE TRUE
                 BUNDLE_NAME ${SA_OUTPUT_NAME}
                 BUNDLE_EXTENSION app
                 OUTPUT_NAME ${SA_OUTPUT_NAME}
                 MACOSX_BUNDLE_BUNDLE_NAME ${SA_OUTPUT_NAME}
+                MACOSX_BUNDLE_SHORT_VERSION_STRING ${SA_BUNDLE_VERSION}
+                MACOSX_BUNDLE_LONG_VERSION_STRING ${SA_BUNDLE_VERSION}
+                MACOSX_BUNDLE_BUNDLE_VERSION ${SA_BUNDLE_VERSION}
                 MACOSX_BUNDLE TRUE
                 MACOSX_BUNDLE_INFO_PLIST ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/macos/Info.plist.in
                 RESOURCE "${GEN_XIB}"

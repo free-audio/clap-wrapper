@@ -295,6 +295,8 @@ void StandaloneHost::startAudioThreadOn(unsigned int inputDeviceID, uint32_t inp
 void StandaloneHost::stopAudioThread()
 {
   LOGINFO("Shutting down audio");
+  if (!rtaDac) return;
+
   if (!rtaDac->isStreamRunning())
   {
   }

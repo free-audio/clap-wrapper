@@ -117,8 +117,8 @@ function(make_clapfirst_plugins)
     endif()
 
     if (NOT DEFINED C1ST_BUNDLE_VERSION)
-        message(STATUS "clap-wrapper: Defaulting clap first version to 0.01")
-        set(C1ST_BUNDLE_VERSION "0.01")
+        message(STATUS "clap-wrapper: Defaulting clap first version to ${PROJECT_VERSION}")
+        set(C1ST_BUNDLE_VERSION "${PROJECT_VERSION}")
     endif()
 
     set(ALL_TARGET ${C1ST_TARGET_NAME}_all)
@@ -304,6 +304,7 @@ function(make_clapfirst_plugins)
                         MACOS_ICON "${C1ST_STANDALONE_MACOS_ICON}"
                         WINDOWS_ICON "${C1ST_STANDALONE_WINDOWS_ICON}"
                         RESOURCE_DIRECTORY "${C1ST_RESOURCE_DIRECTORY}"
+                        BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
                 )
                 if (DEFINED C1ST_ASSET_OUTPUT_DIRECTORY)
                     if (NOT WIN32)

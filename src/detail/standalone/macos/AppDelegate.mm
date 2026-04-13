@@ -92,7 +92,7 @@
                                                     userInfo:nil
                                                      repeats:YES];
   auto *runLoop = [NSRunLoop currentRunLoop];
-  [runLoop addTimer:self.requestCallbackTimer forMode:NSDefaultRunLoopMode];
+  [runLoop addTimer:self.requestCallbackTimer forMode:NSRunLoopCommonModes];
   std::string pid{PLUGIN_ID};
   int pindex{PLUGIN_INDEX};
 
@@ -138,11 +138,45 @@
     if (!ui->is_api_supported(p, CLAP_WINDOW_API_COCOA, false))
       LOGINFO("[WARNING] GUI API not supported");
 
-    ui->create(p, CLAP_WINDOW_API_COCOA, false);
+    if (!ui->create(p, CLAP_WINDOW_API_COCOA, false))
+    {
+      LOGINFO("[ERROR] Plugin GUI create() failed");
+      @autoreleasepool
+      {
+        NSAlert *alert = [[NSAlert alloc] init];
+        [alert setMessageText:@"Plugin Error"];
+        [alert setInformativeText:@"The plugin failed to create its user interface."];
+        [alert addButtonWithTitle:@"OK"];
+        [alert runModal];
+      }
+      return;
+    }
     ui->set_scale(p, 1);
 
-    uint32_t w, h;
-    ui->get_size(p, &w, &h);
+    uint32_t w = 0, h = 0;
+    bool sizeValid = ui->get_size(p, &w, &h);
+    NSString *sizeError = nil;
+    if (!sizeValid)
+      sizeError = @"The plugin failed to report its window size.";
+    else if (w == 0 || h == 0 || w > 16384 || h > 16384)
+      sizeError =
+          [NSString stringWithFormat:@"The plugin reported an invalid window size (%u x %u).", w, h];
+
+    if (sizeError)
+    {
+      LOGINFO("[ERROR] Plugin GUI get_size() failed: {}", [sizeError UTF8String]);
+      @autoreleasepool
+      {
+        NSAlert *alert = [[NSAlert alloc] init];
+        [alert setMessageText:@"Plugin Error"];
+        [alert setInformativeText:sizeError];
+        [alert addButtonWithTitle:@"OK"];
+        [alert runModal];
+      }
+      ui->destroy(p);
+      return;
+    }
+
     if (ui->can_resize(p))
     {
       ui->adjust_size(p, &w, &h);
@@ -158,7 +192,21 @@
     clap_window win;
     win.api = CLAP_WINDOW_API_COCOA;
     win.cocoa = view;
-    ui->set_parent(p, &win);
+    if (!ui->set_parent(p, &win))
+    {
+      LOGINFO("[ERROR] Plugin GUI set_parent() failed");
+      @autoreleasepool
+      {
+        NSAlert *alert = [[NSAlert alloc] init];
+        [alert setMessageText:@"Plugin Error"];
+        [alert
+            setInformativeText:
+                @"The plugin failed to embed its user interface. Please contact the plugin developer."];
+        [alert addButtonWithTitle:@"OK"];
+        [alert runModal];
+      }
+      return;
+    }
     ui->show(p);
   }
 
