@@ -239,7 +239,7 @@ jobs:
             name: ClapFirst Linux ub24 gcc14
 
           - os: macos-latest
-            cmakeargs: -G"Xcode"
+            cmakeargs: -G"Xcode" -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO
             install_ninja: true
             run_aptget: false
             run_validator: true
