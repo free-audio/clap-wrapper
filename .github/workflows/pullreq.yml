@@ -239,10 +239,12 @@ jobs:
             name: ClapFirst Linux ub24 gcc14
 
           - os: macos-latest
-            cmakeargs: -G"Xcode" -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO
+            cmakeargs: -G"Xcode"
             install_ninja: true
             run_aptget: false
             run_validator: true
+            do_xcodeselect: true
+            xcode_version: 16.2
             vst3_validator: build/validator-build/bin/Debug/validator
             vst3_path: ./build/clap-first-distortion_assets/Debug/ClapFirst Bad Distortion.vst3
             auv2_path: ./build/clap-first-distortion_assets/Debug/ClapFirst Bad Distortion.component
@@ -266,6 +268,10 @@ jobs:
       - name: Install Ninja
         if: ${{ matrix.install_ninja }}
         uses: seanmiddleditch/gha-setup-ninja@master
+
+      - name: XCode Select
+        if: ${{ matrix.do_xcodeselect }}
+        run: sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode_version }}.app
 
       - name: Build project
         run: |
