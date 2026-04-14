@@ -186,8 +186,13 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
       // objects on the main queue, no CLAP plugin calls.
       self->drainParameterQueue();
 
-      // Do NOT call into the plugin while processing — risk of deadlock
-      // (JUCE holds locks in on_main_thread that process() also needs).
+      // Fire CLAP timers — safe while processing since timer callbacks
+      // run on the main thread, not the audio thread.
+      self->fireTimers();
+
+      // Do NOT call on_main_thread() while the plugin is processing.
+      // JUCE's on_main_thread() acquires locks that process() also needs —
+      // calling both concurrently (main thread vs render thread) deadlocks.
       if (processing->load()) return;
 
       // Service request_callback
@@ -196,9 +201,6 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
         auto guard = plugin->AlwaysMainThread();
         plugin->_plugin->on_main_thread(plugin->_plugin);
       }
-
-      // Fire CLAP timers
-      self->fireTimers();
     });
     dispatch_resume(_idleTimer);
   }
@@ -398,6 +400,13 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
       auto mainGuard = _plugin->AlwaysMainThread();
       _cachedLatencySamples = _plugin->_ext._latency->get(_plugin->_plugin);
       AUV3LOG("IHost::latency_changed() -> %u samples", _cachedLatencySamples);
+
+      // Notify the AUv3 host via KVO so it re-reads the latency property
+      if (_audioUnit)
+      {
+        [_audioUnit willChangeValueForKey:@"latency"];
+        [_audioUnit didChangeValueForKey:@"latency"];
+      }
     }
   }
 
@@ -1357,6 +1366,20 @@ static Clap::Library _library;
   // Activate the CLAP plugin
   AUV3LOG("allocateRenderResources: calling activate()");
   _impl->_plugin->activate();
+
+  // Re-cache latency — the plugin may have set it during activation
+  if (_impl->_plugin->_ext._latency)
+  {
+    uint32_t newLatency = _impl->_plugin->_ext._latency->get(_impl->_plugin->_plugin);
+    if (newLatency != _impl->_cachedLatencySamples)
+    {
+      _impl->_cachedLatencySamples = newLatency;
+      AUV3LOG("allocateRenderResources: latency updated to %u samples after activate", newLatency);
+      [self willChangeValueForKey:@"latency"];
+      [self didChangeValueForKey:@"latency"];
+    }
+  }
+
   AUV3LOG("allocateRenderResources: calling start_processing()");
   _impl->_plugin->start_processing();
   _impl->_initialized = true;
