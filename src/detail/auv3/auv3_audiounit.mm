@@ -1154,10 +1154,8 @@ static Clap::Library _library;
   NSMutableArray<NSNumber *> *caps = [NSMutableArray new];
 
   std::vector<int> inCounts, outCounts;
-  for (auto &bus : _impl->_inputBusInfos)
-    inCounts.push_back((int)bus.channelCount);
-  for (auto &bus : _impl->_outputBusInfos)
-    outCounts.push_back((int)bus.channelCount);
+  for (auto &bus : _impl->_inputBusInfos) inCounts.push_back((int)bus.channelCount);
+  for (auto &bus : _impl->_outputBusInfos) outCounts.push_back((int)bus.channelCount);
 
   if (inCounts.empty()) inCounts.push_back(0);
   if (outCounts.empty()) outCounts.push_back(0);
