@@ -20,17 +20,21 @@ struct auInfo
     uint16_t rev[3]{0, 0, 0};
     auto sum = [&]()
     {
+      std::cout << "    + Calculating version from bundle version " << rev[0] << " " << rev[1] << " " << rev[2] << std::endl;
       auto res = std::max((rev[0] << 16) + (rev[1] << 8) + rev[2], 1);
       return res;
     };
     auto uv = bundlevers;
+    std::cout << "    + Using bundle version " << bundlevers << std::endl;
+
     for (int i = 0; i < 3; ++i)
     {
-      auto p = uv.find('.');
-      if (p == std::string::npos)
+      if (uv.empty())
       {
         return sum();
       }
+      auto p = uv.find('.');
+
       auto sub = uv.substr(0, p);
       rev[i] = std::atoi(sub.c_str());
       uv = uv.substr(p + 1);
