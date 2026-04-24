@@ -51,25 +51,27 @@ function(target_add_auv3_wrapper)
         set(AUV3_RESOURCE_DIRECTORY "")
     endif()
 
-    # Build helper to generate Info.plist and entry points
-    set(bhtg ${AUV3_TARGET}-auv3-build-helper)
-    set(bhsc "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv3/build-helper/")
-    add_executable(${bhtg} ${bhsc}/build-helper.cpp)
-    target_link_libraries(${bhtg} PRIVATE
-            clap-wrapper-compile-options
-            clap-wrapper-shared-detail
-            macos_filesystem_support
-            "-framework Foundation"
-            "-framework CoreFoundation"
-            )
     set(bhtgoutdir "${CMAKE_CURRENT_BINARY_DIR}/${AUV3_TARGET}-auv3-build-helper-output")
-
-    # Create output dir and a placeholder Info.plist at configure time.
-    # CMake's generate step needs the plist to exist (MACOSX_BUNDLE_INFO_PLIST),
-    # but the real one is produced by the build-helper at build time.
     file(MAKE_DIRECTORY "${bhtgoutdir}")
-    if (NOT EXISTS "${bhtgoutdir}/auv3_Info.plist")
-        file(WRITE "${bhtgoutdir}/auv3_Info.plist"
+
+    if (NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        # macOS: build a host tool that reads info from the hosted CLAP and
+        # emits the real Info.plist + generated entrypoints at build time.
+        set(bhtg ${AUV3_TARGET}-auv3-build-helper)
+        set(bhsc "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv3/build-helper/")
+        add_executable(${bhtg} ${bhsc}/build-helper.cpp)
+        target_link_libraries(${bhtg} PRIVATE
+                clap-wrapper-compile-options
+                clap-wrapper-shared-detail
+                macos_filesystem_support
+                "-framework Foundation"
+                "-framework CoreFoundation"
+                )
+
+        # Placeholder Info.plist for the CMake generate step (real one is
+        # produced by the helper at build time, POST_BUILD).
+        if (NOT EXISTS "${bhtgoutdir}/auv3_Info.plist")
+            file(WRITE "${bhtgoutdir}/auv3_Info.plist"
 "<?xml version=\"1.0\" encoding=\"UTF-8\"?>
 <!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">
 <plist version=\"1.0\">
@@ -79,15 +81,88 @@ function(target_add_auv3_wrapper)
 </dict>
 </plist>
 ")
+        endif()
+
+        add_custom_command(TARGET ${bhtg} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E echo "clap-wrapper: auv3 configuration output dir is ${bhtgoutdir}"
+                )
+
+        add_dependencies(${AUV3_TARGET} ${bhtg})
+    else()
+        # iOS: the build-helper is a host C++ tool and Xcode cannot target
+        # both macOS and iOS from a single CMake configure. So on iOS we
+        # bypass the helper and generate the two files it emits directly
+        # from CMake templates. This limits us to the single-plugin case
+        # (the most common), which matches what the clap-first flow does
+        # on iOS anyway — a single .clap linked into the .appex.
+        if (NOT DEFINED AUV3_INSTRUMENT_TYPE)
+            set(AUV3_INSTRUMENT_TYPE "aumu")
+        endif()
+        if (NOT DEFINED AUV3_SUBTYPE_CODE)
+            set(AUV3_SUBTYPE_CODE "errr")
+        endif()
+        if (NOT DEFINED AUV3_MANUFACTURER_CODE)
+            set(AUV3_MANUFACTURER_CODE "errr")
+        endif()
+        if (NOT DEFINED AUV3_MANUFACTURER_NAME)
+            set(AUV3_MANUFACTURER_NAME "errr")
+        endif()
+        if (NOT DEFINED AUV3_OUTPUT_NAME)
+            set(AUV3_OUTPUT_NAME ${AUV3_TARGET})
+        endif()
+
+        # Derive a deterministic ObjC class-name suffix so multiple wrappers
+        # in the same process don't collide. Host tool uses FNV-1a + an LCG
+        # mix; MD5 here isn't bit-identical but serves the same purpose
+        # (deterministic + unique per plugin).
+        string(MD5 _csd_md5_full "${AUV3_MANUFACTURER_CODE}${AUV3_SUBTYPE_CODE}")
+        string(SUBSTRING "${_csd_md5_full}" 0 8 _csd_md5_short)
+        string(TOUPPER "${_csd_md5_short}" _csd_md5_short)
+        set(AUV3_FACTORY_CLASS_NAME "ClapAUv3VC_${_csd_md5_short}")
+
+        # Pack dotted version into uint32 (matches bundleversToVersion).
+        set(AUV3_VERSION_INT 1)
+        if (AUV3_BUNDLE_VERSION MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)")
+            math(EXPR AUV3_VERSION_INT "(${CMAKE_MATCH_1} * 65536) + (${CMAKE_MATCH_2} * 256) + ${CMAKE_MATCH_3}")
+        elseif (AUV3_BUNDLE_VERSION MATCHES "^([0-9]+)\\.([0-9]+)")
+            math(EXPR AUV3_VERSION_INT "(${CMAKE_MATCH_1} * 65536) + (${CMAKE_MATCH_2} * 256)")
+        endif()
+
+        # The hosted CLAP's name (for Clap::getValidCLAPSearchPaths fallback)
+        # and id. On iOS we're always clap-first (static-linked), so the
+        # runtime path through _library.hasEntryPoint() is used — clap-name
+        # and clap-id are only cosmetic on iOS, but we still fill them.
+        if (NOT DEFINED AUV3_CLAP_NAME)
+            set(AUV3_CLAP_NAME "${AUV3_OUTPUT_NAME}")
+        endif()
+        if (NOT DEFINED AUV3_CLAP_ID)
+            set(AUV3_CLAP_ID "")
+        endif()
+
+        # Deployment target for the Info.plist MinimumOSVersion key.
+        if (DEFINED CMAKE_OSX_DEPLOYMENT_TARGET AND NOT "${CMAKE_OSX_DEPLOYMENT_TARGET}" STREQUAL "")
+            set(AUV3_IOS_DEPLOYMENT_TARGET "${CMAKE_OSX_DEPLOYMENT_TARGET}")
+        else()
+            set(AUV3_IOS_DEPLOYMENT_TARGET "15.0")
+        endif()
+
+        configure_file(
+            "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv3/templates/auv3_ios_Info.plist.in"
+            "${bhtgoutdir}/auv3_Info.plist"
+            @ONLY)
+        configure_file(
+            "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv3/templates/generated_auv3_entrypoints.hxx.in"
+            "${bhtgoutdir}/generated_auv3_entrypoints.hxx"
+            @ONLY)
     endif()
 
-    add_custom_command(TARGET ${bhtg} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E echo "clap-wrapper: auv3 configuration output dir is ${bhtgoutdir}"
-            )
-
-    add_dependencies(${AUV3_TARGET} ${bhtg})
-
-    if (DEFINED AUV3_CLAP_TARGET_FOR_CONFIG)
+    # The three dispatch branches below schedule the build-helper to emit
+    # auv3_Info.plist + generated_auv3_entrypoints.hxx as POST_BUILD steps
+    # of the ${bhtg} target. On iOS we already produced those files via
+    # configure_file() above, so the POST_BUILD dispatch is macOS-only.
+    if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        # Everything is prepared. Skip the host-tool POST_BUILD dispatch.
+    elseif (DEFINED AUV3_CLAP_TARGET_FOR_CONFIG)
         set(clpt ${AUV3_CLAP_TARGET_FOR_CONFIG})
         message(STATUS "clap-wrapper: building auv3 based on target ${AUV3_CLAP_TARGET_FOR_CONFIG}")
         get_property(ton TARGET ${clpt} PROPERTY LIBRARY_OUTPUT_NAME)
@@ -194,8 +269,12 @@ function(target_add_auv3_wrapper)
 
     set(AUV3_MANUFACTURER_NAME ${AUV3_MANUFACTURER_NAME} PARENT_SCOPE)
     set(AUV3_MANUFACTURER_CODE ${AUV3_MANUFACTURER_CODE} PARENT_SCOPE)
-    configure_file(${bhsc}/auv3_infoplist_top.in
-            ${bhtgoutdir}/auv3_infoplist_top)
+    # auv3_infoplist_top is consumed by the macOS host build-helper; on iOS
+    # we don't build the helper so this template is not needed.
+    if (NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        configure_file(${bhsc}/auv3_infoplist_top.in
+                ${bhtgoutdir}/auv3_infoplist_top)
+    endif()
 
     set(AUV3_INSTRUMENT_TYPE ${AUV3_INSTRUMENT_TYPE} PARENT_SCOPE)
     set(AUV3_SUBTYPE_CODE ${AUV3_SUBTYPE_CODE} PARENT_SCOPE)
@@ -211,6 +290,18 @@ function(target_add_auv3_wrapper)
             ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv3/process.mm
             ${bhtgoutdir}/generated_auv3_entrypoints.hxx)
     target_compile_options(${AUV3_TARGET} PRIVATE -fno-char8_t -fobjc-arc)
+
+    if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        # On iOS the appex can't dlopen a .clap, so the hosted CLAP's
+        # clap_entry must be statically linked into the appex binary.
+        # This compile def flips Clap::Library's constructor to take the
+        # extern const clap_entry pointer directly instead of searching the
+        # filesystem via CLAP search paths (which don't exist on iOS).
+        # The consuming project is expected to pull a clap_entry-defining
+        # TU into the appex target (clap-saw-demo does this via
+        # src/clap-saw-demo-clap-entry.cpp).
+        target_compile_definitions(${AUV3_TARGET} PRIVATE STATICALLY_LINKED_CLAP_ENTRY=1)
+    endif()
 
     if (NOT TARGET ${AUV3_TARGET}-clap-wrapper-auv3-lib)
         add_library(${AUV3_TARGET}-clap-wrapper-auv3-lib INTERFACE)
@@ -228,15 +319,36 @@ function(target_add_auv3_wrapper)
         set(CLAP_WRAPPER_BUNDLE_VERSION "1.0")
     endif ()
 
-    target_link_libraries(${AUV3_TARGET} PUBLIC
-            "-framework Foundation"
-            "-framework CoreFoundation"
-            "-framework AppKit"
-            "-framework AudioToolbox"
-            "-framework AVFoundation"
-            "-framework CoreAudio"
-            "-framework CoreAudioKit"
-            "-framework CoreMIDI")
+    # On iOS, target both iPhone (1) and iPad (2). Without this, Xcode
+    # defaults to iPhone-only and the appex won't register for iPad hosts
+    # (Matches in registry: 0, even with a correct Info.plist).
+    if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        set_target_properties(${AUV3_TARGET} PROPERTIES
+                XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2")
+    endif()
+
+    # Frameworks: AppKit on macOS, UIKit on iOS. Everything else is shared.
+    if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        target_link_libraries(${AUV3_TARGET} PUBLIC
+                "-framework Foundation"
+                "-framework CoreFoundation"
+                "-framework UIKit"
+                "-framework AudioToolbox"
+                "-framework AVFoundation"
+                "-framework CoreAudio"
+                "-framework CoreAudioKit"
+                "-framework CoreMIDI")
+    else()
+        target_link_libraries(${AUV3_TARGET} PUBLIC
+                "-framework Foundation"
+                "-framework CoreFoundation"
+                "-framework AppKit"
+                "-framework AudioToolbox"
+                "-framework AVFoundation"
+                "-framework CoreAudio"
+                "-framework CoreAudioKit"
+                "-framework CoreMIDI")
+    endif()
 
     set_target_properties(${AUV3_TARGET} PROPERTIES
             MACOSX_BUNDLE True
@@ -248,44 +360,89 @@ function(target_add_auv3_wrapper)
             MACOSX_BUNDLE_SHORT_VERSION_STRING ${AUV3_BUNDLE_VERSION}
             )
 
-    # The build-helper generates auv3_Info.plist at build time (POST_BUILD).
-    # We replace Xcode's/CMake's auto-generated plist with it after the build.
-    # Using MACOSX_BUNDLE_INFO_PLIST doesn't work reliably because Xcode may
-    # process the template before the build-helper has run.
+    # The build-helper (or CMake configure_file on iOS) produces an
+    # auv3_Info.plist at build time. We splice its AUv3-specific keys
+    # (NSExtension, CFBundlePackageType=XPC!, CFBundleDisplayName) onto
+    # whatever Xcode has already placed in the bundle.
+    #
+    # Using MACOSX_BUNDLE_INFO_PLIST to feed this in up front doesn't work
+    # reliably because Xcode processes the template before the build-helper
+    # has run.
+    #
+    # On macOS we can simply overwrite the whole plist — macOS appex
+    # registration tolerates the missing DT* / CFBundleSupportedPlatforms
+    # keys that Xcode normally stamps in. On iOS it does NOT — pluginkit
+    # silently drops the appex from the AU catalog when those platform
+    # keys are absent, and AVAudioUnitComponentManager reports 0 matches.
+    # So on iOS we merge instead of replace, keeping every key Xcode
+    # produced.
     if (CMAKE_GENERATOR STREQUAL "Xcode")
         set_target_properties(${AUV3_TARGET} PROPERTIES
                 XCODE_PRODUCT_TYPE com.apple.product-type.app-extension
                 )
     endif()
-    add_custom_command(TARGET ${AUV3_TARGET} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy "${bhtgoutdir}/auv3_Info.plist" "$<TARGET_BUNDLE_CONTENT_DIR:${AUV3_TARGET}>/Info.plist"
-        COMMENT "Replacing Info.plist with build-helper generated version (contains NSExtension)")
+    if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        # /usr/bin/python3 is the Apple-supplied interpreter and is stable
+        # across developers' machines; /usr/bin/env python3 can pick up a
+        # Homebrew install with broken linkage.
+        add_custom_command(TARGET ${AUV3_TARGET} POST_BUILD
+            COMMAND /usr/bin/python3
+                "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/cmake/auv3_merge_ios_plist.py"
+                "$<TARGET_BUNDLE_CONTENT_DIR:${AUV3_TARGET}>/Info.plist"
+                "${bhtgoutdir}/auv3_Info.plist"
+            COMMENT "Merging AUv3 keys into iOS Info.plist (preserving DT* / CFBundleSupportedPlatforms)")
+    else()
+        add_custom_command(TARGET ${AUV3_TARGET} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy "${bhtgoutdir}/auv3_Info.plist" "$<TARGET_BUNDLE_CONTENT_DIR:${AUV3_TARGET}>/Info.plist"
+            COMMENT "Replacing Info.plist with build-helper generated version (contains NSExtension)")
+    endif()
 
     set_target_properties(${AUV3_TARGET} PROPERTIES XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${AUV3_BUNDLE_IDENTIFIER}")
 
-    macos_include_clap_in_bundle(TARGET ${AUV3_TARGET}
-            MACOS_EMBEDDED_CLAP_LOCATION ${AUV3_MACOSX_EMBEDDED_CLAP_LOCATION})
-    macos_bundle_flag(TARGET ${AUV3_TARGET})
+    # Embedding a .clap inside Contents/PlugIns/ is a macOS-only story:
+    #   - macOS AUv3 appex's Contents/PlugIns/ is a valid search path that
+    #     clap-wrapper's runtime (auv3_audiounit.mm) will dlopen from.
+    #   - iOS app extensions may only load code from the signed .appex
+    #     bundle's Frameworks/ directory, not Contents/PlugIns/, and the
+    #     hosted CLAP must be a Framework (not a .clap MODULE). iOS therefore
+    #     requires the clap-first / static-linked path: the AUV3 target links
+    #     the impl lib and the CLAP symbols are baked into the appex binary.
+    if (NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        macos_include_clap_in_bundle(TARGET ${AUV3_TARGET}
+                MACOS_EMBEDDED_CLAP_LOCATION ${AUV3_MACOSX_EMBEDDED_CLAP_LOCATION})
+        macos_bundle_flag(TARGET ${AUV3_TARGET})
+    endif()
 
     if(NOT AUV3_RESOURCE_DIRECTORY STREQUAL "")
         message(WARNING "RESOURCE_DIRECTORY defined, but not (yet) supported for AUV3")
     endif()
 
-    # Set entitlements for sandboxing (required for AUv3 registration)
-    set(AUV3_ENTITLEMENTS "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv3/auv3.entitlements")
+    if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        # iOS appex signing is handled by Xcode at build time via the selected
+        # code-sign identity + provisioning profile (or the simulator's
+        # automatic signing). We do NOT run `codesign -s -` here: ad-hoc
+        # signing against the iOS code directory produces a bundle the
+        # simulator and devices will refuse to load. Also, iOS has no
+        # app-sandbox entitlement — it's implicit.
+        # The default Xcode settings give us ad-hoc signing on the simulator
+        # (no provisioning profile required).
+    else()
+        # Set entitlements for sandboxing (required for AUv3 registration on macOS)
+        set(AUV3_ENTITLEMENTS "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv3/auv3.entitlements")
 
-    # For Xcode, set the entitlements via build settings
-    set_target_properties(${AUV3_TARGET} PROPERTIES
-            XCODE_ATTRIBUTE_CODE_SIGN_ENTITLEMENTS "${AUV3_ENTITLEMENTS}"
-            XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "-"
-            XCODE_ATTRIBUTE_ENABLE_APP_SANDBOX "YES"
-            )
+        # For Xcode, set the entitlements via build settings
+        set_target_properties(${AUV3_TARGET} PROPERTIES
+                XCODE_ATTRIBUTE_CODE_SIGN_ENTITLEMENTS "${AUV3_ENTITLEMENTS}"
+                XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "-"
+                XCODE_ATTRIBUTE_ENABLE_APP_SANDBOX "YES"
+                )
 
-    # Ad-hoc sign the appex with entitlements so macOS will register it as an Audio Unit
-    add_custom_command(TARGET ${AUV3_TARGET} POST_BUILD
-            COMMAND codesign -s - -f --entitlements "${AUV3_ENTITLEMENTS}" "$<TARGET_BUNDLE_DIR:${AUV3_TARGET}>"
-            COMMENT "Ad-hoc signing AUv3 appex with sandbox entitlements"
-            )
+        # Ad-hoc sign the appex with entitlements so macOS will register it as an Audio Unit
+        add_custom_command(TARGET ${AUV3_TARGET} POST_BUILD
+                COMMAND codesign -s - -f --entitlements "${AUV3_ENTITLEMENTS}" "$<TARGET_BUNDLE_DIR:${AUV3_TARGET}>"
+                COMMENT "Ad-hoc signing AUv3 appex with sandbox entitlements"
+                )
+    endif()
 
     if (${CLAP_WRAPPER_COPY_AFTER_BUILD})
         target_copy_after_build(TARGET ${AUV3_TARGET} FLAVOR auv3)

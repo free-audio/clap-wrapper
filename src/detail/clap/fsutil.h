@@ -74,6 +74,13 @@ class Library
 #endif
   }
 
+  // Wire up a statically-linked clap_entry. Intended for targets where the
+  // CLAP's clap_entry global is in the same binary as the wrapper (iOS
+  // AUv3, clap-first standalones). The caller supplies the entry pointer
+  // directly, bypassing any filesystem / dlopen search. Safe to call once
+  // after construction.
+  void useStaticEntry(const clap_plugin_entry_t *entry, const char *path);
+
  private:
 #if MAC
   CFBundleRef _bundle{nullptr};

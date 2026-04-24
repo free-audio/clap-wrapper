@@ -19,6 +19,8 @@
 #import <CoreAudioKit/CoreAudioKit.h>
 #import <CoreMIDI/CoreMIDI.h>
 
+#import "auv3_platform.h"
+
 #pragma clang diagnostic pop
 
 @class ClapAUv3AudioUnit;
@@ -52,7 +54,10 @@
 
 // Called by the view controller to create/attach the CLAP GUI to a parent view.
 // Returns YES if the CLAP plugin has a GUI and it was successfully created.
-- (BOOL)createGUIInView:(NSView *)parentView width:(uint32_t *)outWidth height:(uint32_t *)outHeight;
+// parentView is an NSView on macOS and a UIView on iOS (see auv3_platform.h).
+- (BOOL)createGUIInView:(CLAPWRAP_ViewClass *)parentView
+                  width:(uint32_t *)outWidth
+                 height:(uint32_t *)outHeight;
 
 // Called by the view controller when the view is being torn down.
 - (void)destroyGUI;

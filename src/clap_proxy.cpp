@@ -2,6 +2,16 @@
 #include "detail/clap/fsutil.h"
 #include <cstring>
 
+#if __APPLE__
+#include <TargetConditionals.h>
+#endif
+
+// Private iOS window-API handshake (clap-wrapper side). Kept in sync with
+// the constant declared in src/detail/auv3/auv3_platform.h.
+#ifndef CLAP_WINDOW_API_UIKIT
+#define CLAP_WINDOW_API_UIKIT "uikit"
+#endif
+
 #if MAC || LIN
 #include <iostream>
 #define OutputDebugString(x) std::cout << __FILE__ << ":" << __LINE__ << " " << (x) << std::endl;
@@ -260,7 +270,13 @@ void Plugin::connectClap(const clap_plugin_t *clap)
     api = CLAP_WINDOW_API_WIN32;
 #endif
 #if MAC
+    // CLAP has no standard UIKit API string; use the private "uikit"
+    // identifier on iOS, shared with the hosted plugin.
+#if TARGET_OS_IPHONE
+    api = CLAP_WINDOW_API_UIKIT;
+#else
     api = CLAP_WINDOW_API_COCOA;
+#endif
 #endif
 #if LIN
     api = CLAP_WINDOW_API_X11;
@@ -268,7 +284,8 @@ void Plugin::connectClap(const clap_plugin_t *clap)
 
     if (!_ext._gui->is_api_supported(_plugin, api, false))
     {
-      // disable GUI if not win32
+      // disable GUI if the hosted plugin doesn't support this platform's
+      // expected window API
       _ext._gui = nullptr;
     }
   }

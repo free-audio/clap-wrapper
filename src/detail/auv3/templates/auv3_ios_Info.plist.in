@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>English</string>
+    <key>CFBundleExecutable</key>
+    <string>@AUV3_OUTPUT_NAME@</string>
+    <key>CFBundleIdentifier</key>
+    <string>@AUV3_BUNDLE_IDENTIFIER@</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>@AUV3_OUTPUT_NAME@</string>
+    <key>CFBundleDisplayName</key>
+    <string>@AUV3_OUTPUT_NAME@</string>
+    <key>CFBundlePackageType</key>
+    <string>XPC!</string>
+    <key>CFBundleShortVersionString</key>
+    <string>@AUV3_BUNDLE_VERSION@</string>
+    <key>CFBundleSignature</key>
+    <string>????</string>
+    <key>CFBundleVersion</key>
+    <string>@AUV3_BUNDLE_VERSION@</string>
+    <key>MinimumOSVersion</key>
+    <string>@AUV3_IOS_DEPLOYMENT_TARGET@</string>
+    <key>UIDeviceFamily</key>
+    <array>
+        <integer>1</integer>
+        <integer>2</integer>
+    </array>
+    <key>NSExtension</key>
+    <dict>
+        <key>NSExtensionAttributes</key>
+        <dict>
+            <!-- AudioComponentBundle is intentionally omitted: the factory
+                 class (factoryFunction) lives in the appex's own main binary,
+                 not in a separate framework. Apple's docs say to omit this
+                 key in that case; setting it here causes the AU system to
+                 look for the class as a bundle resource and silently fail
+                 to register the component. -->
+            <key>AudioComponents</key>
+            <array>
+                <dict>
+                    <key>description</key>
+                    <string>@AUV3_OUTPUT_NAME@ CLAP to AUv3 Wrapper</string>
+                    <key>factoryFunction</key>
+                    <string>@AUV3_FACTORY_CLASS_NAME@</string>
+                    <key>manufacturer</key>
+                    <string>@AUV3_MANUFACTURER_CODE@</string>
+                    <key>name</key>
+                    <string>@AUV3_MANUFACTURER_NAME@: @AUV3_OUTPUT_NAME@</string>
+                    <key>sandboxSafe</key>
+                    <true/>
+                    <key>subtype</key>
+                    <string>@AUV3_SUBTYPE_CODE@</string>
+                    <key>type</key>
+                    <string>@AUV3_INSTRUMENT_TYPE@</string>
+                    <key>version</key>
+                    <integer>@AUV3_VERSION_INT@</integer>
+                    <key>tags</key>
+                    <array>
+                        <string>Synth</string>
+                    </array>
+                </dict>
+            </array>
+        </dict>
+        <key>NSExtensionPointIdentifier</key>
+        <string>com.apple.AudioUnit-UI</string>
+        <key>NSExtensionPrincipalClass</key>
+        <string>@AUV3_FACTORY_CLASS_NAME@</string>
+    </dict>
+</dict>
+</plist>

@@ -264,6 +264,14 @@ bool Library::getEntryFunction(HMODULE handle, const char *path)
 }
 #endif
 
+void Library::useStaticEntry(const clap_plugin_entry_t *entry, const char *path)
+{
+  if (!entry) return;
+  _pluginEntry = entry;
+  _selfcontained = true;
+  setupPluginsFromPluginEntry(path ? path : "");
+}
+
 void Library::setupPluginsFromPluginEntry(const char *path)
 {
   if (clap_version_is_compatible(_pluginEntry->clap_version))

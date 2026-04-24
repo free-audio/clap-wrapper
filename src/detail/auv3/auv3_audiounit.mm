@@ -20,6 +20,7 @@
 #include <vector>
 #include <map>
 #include <unordered_map>
+#include <dlfcn.h>
 
 static os_log_t _auv3Log()
 {
@@ -120,8 +121,9 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
   // Back-reference to the ObjC audio unit (weak to avoid retain cycle)
   __weak ClapAUv3AudioUnit *_audioUnit = nil;
 
-  // The NSView that the CLAP GUI is parented to (set by createGUIInView:)
-  __weak NSView *_guiParentView = nil;
+  // The native view (NSView on macOS, UIView on iOS) that the CLAP GUI
+  // is parented to. Set by createGUIInView:.
+  __weak CLAPWRAP_ViewClass *_guiParentView = nil;
 
   // The view controller that owns the GUI — needed for gui_request_resize
   // to set preferredContentSize (the only legal AUv3 host communication path).
@@ -433,10 +435,12 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
       __strong ClapAUv3ViewController *vc = _viewController;
       if (vc)
       {
-        vc.view.frame = NSMakeRect(0, 0, width, height);
+        // CGRectMake / CGSizeMake work identically on macOS and iOS;
+        // NSMakeRect / NSMakeSize are AppKit-only.
+        vc.view.frame = CGRectMake(0, 0, width, height);
 
         [vc willChangeValueForKey:@"preferredContentSize"];
-        vc.preferredContentSize = NSMakeSize(width, height);
+        vc.preferredContentSize = CGSizeMake(width, height);
         [vc didChangeValueForKey:@"preferredContentSize"];
       }
     });
@@ -711,6 +715,26 @@ static Clap::Library _library;
     AUV3LOG("init: name='%{public}s' id='%{public}s' idx=%d", _impl->_clapname.c_str(),
             _impl->_clapid.c_str(), _impl->_idx);
 
+    // When the wrapper is built with STATICALLY_LINKED_CLAP_ENTRY (iOS), the
+    // CLAP's clap_entry global is in our own binary. Wire _library to it
+    // directly so the filesystem / dlopen search below is skipped. On iOS
+    // that search would fail anyway — there is no writable CLAP path and
+    // app extensions can't dlopen arbitrary bundles.
+#if STATICALLY_LINKED_CLAP_ENTRY
+    {
+      extern const clap_plugin_entry clap_entry;
+      Dl_info dlinfo{};
+      const char *pathHint = "";
+      if (dladdr(reinterpret_cast<const void *>(&clap_entry), &dlinfo) && dlinfo.dli_fname)
+      {
+        pathHint = dlinfo.dli_fname;
+      }
+      _library.useStaticEntry(&clap_entry, pathHint);
+      AUV3LOG("init: statically-linked clap_entry path='%{public}s' plugins=%zu",
+              pathHint, _library.plugins.size());
+    }
+#endif
+
     // Load CLAP library
     if (!_library.hasEntryPoint())
     {
@@ -955,7 +979,7 @@ static Clap::Library _library;
 
 - (void)_wireParameterObserver
 {
-  __weak typeof(self) weakSelf = self;
+  __weak __typeof(self) weakSelf = self;
 
   // Register a parameter observer to obtain a token. The token is used as
   // 'originator' in setValue:originator:atHostTime:eventType: so that
@@ -969,7 +993,7 @@ static Clap::Library _library;
       }];
 
   _impl->_parameterTree.implementorValueObserver = ^(AUParameter *param, AUValue value) {
-    __strong typeof(weakSelf) strongSelf = weakSelf;
+    __strong __typeof(weakSelf) strongSelf = weakSelf;
     if (!strongSelf || !strongSelf->_impl) return;
     if (!strongSelf->_impl->_plugin || !strongSelf->_impl->_plugin->_ext._params) return;
 
@@ -1449,7 +1473,9 @@ static Clap::Library _library;
 
 // --- GUI methods for the view controller ---
 
-- (BOOL)createGUIInView:(NSView *)parentView width:(uint32_t *)outWidth height:(uint32_t *)outHeight
+- (BOOL)createGUIInView:(CLAPWRAP_ViewClass *)parentView
+                  width:(uint32_t *)outWidth
+                 height:(uint32_t *)outHeight
 {
   if (!_impl || !_impl->_plugin || !_impl->_plugin->_ext._gui) return NO;
 
@@ -1461,9 +1487,26 @@ static Clap::Library _library;
   auto *gui = _impl->_plugin->_ext._gui;
   auto *plugin = _impl->_plugin->_plugin;
 
-  if (!gui->is_api_supported(plugin, CLAP_WINDOW_API_COCOA, false)) return NO;
+  // CLAP defines _COCOA for NSView and no standard UIKit identifier. We use
+  // a private _UIKIT string (see auv3_platform.h) on iOS. Hosted plugins
+  // using clap-wrapper on iOS must recognise the same string.
+#if TARGET_OS_IPHONE
+  const char *windowApi = CLAP_WINDOW_API_UIKIT;
+#else
+  const char *windowApi = CLAP_WINDOW_API_COCOA;
+#endif
 
-  if (!gui->create(plugin, CLAP_WINDOW_API_COCOA, false)) return NO;
+  if (!gui->is_api_supported(plugin, windowApi, false))
+  {
+    AUV3ERR("createGUIInView: plugin rejected api '%{public}s'", windowApi);
+    return NO;
+  }
+
+  if (!gui->create(plugin, windowApi, false))
+  {
+    AUV3ERR("createGUIInView: gui->create failed for api '%{public}s'", windowApi);
+    return NO;
+  }
 
   gui->set_scale(plugin, 1.0);
 
@@ -1481,11 +1524,17 @@ static Clap::Library _library;
   // Resize the parent view BEFORE set_parent() so the CLAP plugin's
   // subview is created inside a properly-sized container. Without this
   // the container is 0x0 and plugins that clip to parent bounds are invisible.
-  [parentView setFrame:NSMakeRect(0, 0, w, h)];
+  [parentView setFrame:CGRectMake(0, 0, w, h)];
 
   clap_window_t window;
-  window.api = CLAP_WINDOW_API_COCOA;
+  window.api = windowApi;
+#if TARGET_OS_IPHONE
+  // CLAP's clap_window union has no UIKit-typed member. The `ptr` slot is
+  // the generic escape hatch; the hosted plugin reads it as a UIView*.
+  window.ptr = (__bridge void *)parentView;
+#else
   window.cocoa = (__bridge void *)parentView;
+#endif
   gui->set_parent(plugin, &window);
   gui->show(plugin);
 
@@ -1621,18 +1670,24 @@ static Clap::Library _library;
 @end
 
 // -----------------------------------------------------------------------
-// ClapAUv3ContainerView — custom NSView that notifies the VC when
-// it enters or leaves a window. NSViewController lifecycle methods
-// (viewDidAppear etc.) are unreliable when the host doesn't manage
-// the VC hierarchy properly. viewDidMoveToWindow always fires.
+// ClapAUv3ContainerView — custom view that notifies the VC when it enters
+// or leaves a window. AUViewController lifecycle methods (viewDidAppear
+// etc.) are unreliable when the host doesn't manage the VC hierarchy
+// properly. (view)didMoveToWindow always fires.
+//
+// macOS and iOS expose the same *semantic* hooks under different selectors:
+//   macOS NSView:  -viewDidMoveToWindow / -viewDidMoveToSuperview
+//   iOS  UIView:   -didMoveToWindow    / -didMoveToSuperview
+// UIView has no `isFlipped` (top-left is always the origin on iOS).
 // -----------------------------------------------------------------------
 
-@interface ClapAUv3ContainerView : NSView
+@interface ClapAUv3ContainerView : CLAPWRAP_ViewClass
 @property(nonatomic, weak) ClapAUv3ViewController *viewController;
 @end
 
 @implementation ClapAUv3ContainerView
 
+#if TARGET_OS_OSX
 - (BOOL)isFlipped
 {
   // Plugin GUIs expect (0,0) at top-left (flipped coordinate system).
@@ -1657,6 +1712,22 @@ static Clap::Library _library;
     [self.viewController _viewDidMoveToWindow];
   }
 }
+#else  // TARGET_OS_IPHONE
+- (void)didMoveToWindow
+{
+  [super didMoveToWindow];
+  [self.viewController _viewDidMoveToWindow];
+}
+
+- (void)didMoveToSuperview
+{
+  [super didMoveToSuperview];
+  if (self.superview && self.window)
+  {
+    [self.viewController _viewDidMoveToWindow];
+  }
+}
+#endif
 
 @end
 
@@ -1671,15 +1742,17 @@ static Clap::Library _library;
 
 - (void)loadView
 {
-  // Custom container view that detects when the view enters a window
-  // via viewDidMoveToWindow / viewDidMoveToSuperview. NSViewController
-  // lifecycle methods (viewDidAppear etc.) only fire when the VC is in
-  // the view controller hierarchy — many hosts just call addSubview:.
-  // Start with a reasonable default size. The viewbridge rejects zero-sized views.
-  // The actual size is updated from the CLAP plugin in setAudioUnit: / _createPluginGUI.
-  NSSize initialSize = NSMakeSize(400, 500);
+  // Custom container view that detects when the view enters a window via
+  // (view)didMoveToWindow / (view)didMoveToSuperview. AUViewController
+  // lifecycle methods only fire when the VC is in the VC hierarchy —
+  // many hosts just call addSubview:.
+  //
+  // Start with a reasonable default size. The viewbridge rejects
+  // zero-sized views. The real size is set in _createPluginGUI once the
+  // CLAP plugin reports its preferred dimensions.
+  CGSize initialSize = CGSizeMake(400, 500);
   ClapAUv3ContainerView *view = [[ClapAUv3ContainerView alloc]
-      initWithFrame:NSMakeRect(0, 0, initialSize.width, initialSize.height)];
+      initWithFrame:CGRectMake(0, 0, initialSize.width, initialSize.height)];
   view.viewController = self;
   view.translatesAutoresizingMaskIntoConstraints = YES;
   [self setView:view];
@@ -1710,9 +1783,9 @@ static Clap::Library _library;
       // Explicit KVO notifications — required for the remote proxy to
       // forward preferredContentSize changes across the XPC boundary
       // to the host process.
-      self.view.frame = NSMakeRect(0, 0, w, h);
+      self.view.frame = CGRectMake(0, 0, w, h);
       [self willChangeValueForKey:@"preferredContentSize"];
-      self.preferredContentSize = NSMakeSize(w, h);
+      self.preferredContentSize = CGSizeMake(w, h);
       [self didChangeValueForKey:@"preferredContentSize"];
     }
   }
@@ -1764,19 +1837,40 @@ static Clap::Library _library;
 
 // Out-of-process: the system manages the VC lifecycle properly, so
 // viewDidAppear fires when the host displays the view.
-// In-process: viewDidMoveToSuperview on the container view handles it.
+// In-process: (view)didMoveToSuperview on the container view handles it.
+// NOTE: AUViewController is NSViewController on macOS (viewDidAppear with
+// no argument) and UIViewController on iOS (viewDidAppear: takes animated).
+#if TARGET_OS_OSX
 - (void)viewDidAppear
 {
   [super viewDidAppear];
   [self _tryCreateGUI];
 }
-
-- (void)viewDidLayout
+#else
+- (void)viewDidAppear:(BOOL)animated
 {
+  [super viewDidAppear:animated];
+  [self _tryCreateGUI];
+}
+#endif
+
+// Host-driven layout propagates to the CLAP plugin's subview. macOS
+// NSViewController uses -viewDidLayout; UIViewController exposes the
+// analogous -viewDidLayoutSubviews (no super arg differences).
+#if TARGET_OS_OSX
+- (void)viewDidLayout
+#else
+- (void)viewDidLayoutSubviews
+#endif
+{
+#if TARGET_OS_OSX
   [super viewDidLayout];
+#else
+  [super viewDidLayoutSubviews];
+#endif
   if (!_guiCreated) return;
 
-  NSRect bounds = self.view.bounds;
+  CGRect bounds = self.view.bounds;
   if (bounds.size.width > 0 && bounds.size.height > 0)
   {
     // Propagate host-initiated container resize to the CLAP plugin
@@ -1786,13 +1880,14 @@ static Clap::Library _library;
     }
 
     // Ensure the CLAP plugin's subview fills the container
-    for (NSView *subview in self.view.subviews)
+    for (CLAPWRAP_ViewClass *subview in self.view.subviews)
     {
       subview.frame = bounds;
     }
   }
 }
 
+#if TARGET_OS_OSX
 - (void)viewDidDisappear
 {
   if (_guiCreated)
@@ -1802,6 +1897,17 @@ static Clap::Library _library;
   }
   [super viewDidDisappear];
 }
+#else
+- (void)viewDidDisappear:(BOOL)animated
+{
+  if (_guiCreated)
+  {
+    _guiCreated = NO;
+    [self.audioUnit destroyGUI];
+  }
+  [super viewDidDisappear:animated];
+}
+#endif
 
 - (void)dealloc
 {
