@@ -92,6 +92,58 @@ function(target_add_auv3_standalone_ios_wrapper)
             AU_MANUFACTURER_STR="${AUSAIOS_AU_MANUFACTURER}"
             )
 
+    # --- In-process AU instantiation ---
+    # On iOS 18+ third-party AUv3 extensions are filtered out of every host
+    # process except GarageBand-class Apple-blessed ones, even for the host's
+    # own embedded appex. componentsMatchingDescription: / AudioComponent-
+    # FindNext / AVAudioUnit instantiateWithComponentDescription: all return
+    # zero third-party matches. Rather than fight that sandbox, we link the
+    # AUv3 wrapper runtime + generated factory class into the host too and
+    # instantiate the factory directly as ObjC — no registry lookup.
+    #
+    # The hosted CLAP engine stays shared on disk: wrap_auv3.cmake already
+    # compiles the factory class into the .appex via configure_file, and the
+    # consuming project packages the CLAP as a .framework that both the
+    # .appex and host link against. Here we just pull the wrapper sources
+    # into the host too with the same per-plugin defines.
+    target_sources(${AUSAIOS_TARGET} PRIVATE
+            "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/wrapasauv3.mm"
+            "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv3/auv3_audiounit.mm"
+            "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv3/auv3_parameters.mm"
+            "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv3/process.mm"
+            "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/os/macos.mm")
+
+    # generated_auv3_entrypoints.hxx is produced (via configure_file on iOS)
+    # by target_add_auv3_wrapper into this directory for the .appex target.
+    # Reusing it for the host keeps one source of truth for the factory
+    # class name.
+    set(_host_auv3_gen_dir "${CMAKE_CURRENT_BINARY_DIR}/${AUSAIOS_AUV3_TARGET}-auv3-build-helper-output")
+    target_include_directories(${AUSAIOS_TARGET} PRIVATE "${_host_auv3_gen_dir}")
+
+    # clap-wrapper-auv3-lib is an INTERFACE library created by
+    # target_add_auv3_wrapper; it propagates the clap-wrapper headers and
+    # the `clap` library itself. Requires that wrapper was called on
+    # AUSAIOS_AUV3_TARGET before this function.
+    if (NOT TARGET ${AUSAIOS_AUV3_TARGET}-clap-wrapper-auv3-lib)
+        message(FATAL_ERROR
+            "clap-wrapper: target_add_auv3_wrapper must be called on "
+            "${AUSAIOS_AUV3_TARGET} before target_add_auv3_standalone_ios_wrapper")
+    endif()
+    target_link_libraries(${AUSAIOS_TARGET} PRIVATE
+            ${AUSAIOS_AUV3_TARGET}-clap-wrapper-auv3-lib)
+
+    # Reproduce wrap_auv3.cmake's factory-class-name hash so the host can
+    # NSClassFromString() the same symbol the appex exports. MD5 of
+    # manufacturer+subtype, first 8 chars, uppercased.
+    string(MD5 _host_auv3_md5_full "${AUSAIOS_AU_MANUFACTURER}${AUSAIOS_AU_SUBTYPE}")
+    string(SUBSTRING "${_host_auv3_md5_full}" 0 8 _host_auv3_md5_short)
+    string(TOUPPER "${_host_auv3_md5_short}" _host_auv3_md5_short)
+    set(_host_factory_class "ClapAUv3VC_${_host_auv3_md5_short}")
+
+    target_compile_definitions(${AUSAIOS_TARGET} PRIVATE
+            STATICALLY_LINKED_CLAP_ENTRY=1
+            AUV3_FACTORY_CLASS_NAME_STR="${_host_factory_class}")
+
     target_link_libraries(${AUSAIOS_TARGET} PRIVATE
             "-framework Foundation"
             "-framework UIKit"

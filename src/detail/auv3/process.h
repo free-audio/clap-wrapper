@@ -81,6 +81,11 @@ class ProcessAdapter
   void translateAUv3Events(const AURenderEvent *head, AUEventSampleTime bufferStartTime,
                            AVAudioFrameCount frameCount);
 
+  // Post-sort pass that guards against the AU scheduler reordering
+  // same-block NOTE_ON/NOTE_OFF pairs. See process.mm for the full
+  // rationale and behaviour.
+  void reorderSameSampleOrphanOffs(AVAudioFrameCount frameCount);
+
  public:
   const std::unordered_map<clap_id, void *> *_cookieCache = nullptr;
 

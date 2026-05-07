@@ -201,6 +201,82 @@ void ProcessAdapter::sortEventIndices()
             });
 }
 
+void ProcessAdapter::reorderSameSampleOrphanOffs(AVAudioFrameCount frameCount)
+{
+  // Apple's AU scheduler does not guarantee arrival-order delivery for
+  // events tagged AUEventSampleTimeImmediate. A very short keyboard tap
+  // (press + release inside one MIDI burst) can arrive at the plugin as
+  // [NOTE_OFF, NOTE_ON] at the same sample offset even though the hardware
+  // sent them in the opposite order. The hosted plugin then sees the
+  // NOTE_OFF first, finds no matching playing voice, drops it, then sees
+  // the NOTE_ON, starts a voice — and that voice never gets a release.
+  // User-visible symptom: stuck notes on fast taps.
+  //
+  // Fix: walk the already-sorted event list and shadow-replay the plugin's
+  // active-note set. If we see a NOTE_OFF for a key that is NOT currently
+  // active AND the immediately-following event is a same-time NOTE_ON for
+  // the same (port, channel, key), swap the two so NOTE_ON precedes
+  // NOTE_OFF, and (when frameCount allows) bump the NOTE_OFF to offset+1
+  // so downstream consumers that don't honour stable tiebreak still see
+  // the off strictly after the on.
+  //
+  // A legitimate retrigger [NOTE_OFF, NOTE_ON] for a key whose voice IS
+  // playing hits the "already active" branch and is left untouched.
+  std::vector<uint32_t> active;
+  active.reserve(16);
+
+  auto packKey = [](int16_t port, int16_t channel, int16_t key) -> uint32_t
+  {
+    return ((uint32_t)(uint16_t)port << 16) | ((uint32_t)(uint16_t)channel << 8)
+         | ((uint32_t)(uint16_t)(key & 0x7f));
+  };
+
+  for (size_t i = 0; i < _eventindices.size(); ++i)
+  {
+    auto &e = _events[_eventindices[i]];
+    if (e.header.type == CLAP_EVENT_NOTE_ON)
+    {
+      active.emplace_back(packKey(e.note.port_index, e.note.channel, e.note.key));
+      continue;
+    }
+    if (e.header.type != CLAP_EVENT_NOTE_OFF) continue;
+
+    uint32_t k = packKey(e.note.port_index, e.note.channel, e.note.key);
+    auto it = std::find(active.begin(), active.end(), k);
+    if (it != active.end())
+    {
+      // Legitimate off (or retrigger pair) — leave order alone.
+      active.erase(it);
+      continue;
+    }
+
+    // Orphan off. Only reorder if the very next event is a same-time
+    // NOTE_ON for the same key triple; that's the reordered press-release
+    // pattern. Any other orphan off (spurious off, truly unmatched) is
+    // left alone — the plugin will just drop it as before.
+    if (i + 1 >= _eventindices.size()) continue;
+    auto &next = _events[_eventindices[i + 1]];
+    if (next.header.type != CLAP_EVENT_NOTE_ON) continue;
+    if (next.header.time != e.header.time) continue;
+    uint32_t nk = packKey(next.note.port_index, next.note.channel, next.note.key);
+    if (nk != k) continue;
+
+    std::swap(_eventindices[i], _eventindices[i + 1]);
+    if (frameCount > 1 && e.header.time + 1 < frameCount)
+      e.header.time = e.header.time + 1;
+
+    PROCLOG("reorderSameSampleOrphanOffs: swapped orphan off-then-on "
+            "port=%d ch=%d key=%d on.t=%u off.t=%u",
+            (int)e.note.port_index, (int)e.note.channel, (int)e.note.key,
+            (unsigned)next.header.time, (unsigned)e.header.time);
+
+    // Re-examine position i on the next iteration — it is now the NOTE_ON,
+    // which needs to enter `active` via the normal NOTE_ON branch. The
+    // following iteration will then see the NOTE_OFF at i+1 and erase it.
+    --i;
+  }
+}
+
 void ProcessAdapter::translateAUv3Events(const AURenderEvent *head, AUEventSampleTime bufferStartTime,
                                          AVAudioFrameCount frameCount)
 {
@@ -412,8 +488,13 @@ AUAudioUnitStatus ProcessAdapter::process(AudioUnitRenderActionFlags *actionFlag
     PROCLOG("process: translated %zu events", _events.size());
   }
 #endif
-  // Sort events by timestamp
+  // Sort events by timestamp (stable in arrival order for same-time ties).
   sortEventIndices();
+
+  // Guard against the AU scheduler reordering a same-block NOTE_ON/NOTE_OFF
+  // pair into NOTE_OFF-first order, which otherwise causes stuck notes in
+  // plugins that silently drop orphan note-offs.
+  reorderSameSampleOrphanOffs(frameCount);
 
   _processData.frames_count = frameCount;
 
