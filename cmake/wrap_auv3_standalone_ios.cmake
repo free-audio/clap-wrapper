@@ -19,6 +19,12 @@ function(target_add_auv3_standalone_ios_wrapper)
             AU_TYPE
             AU_SUBTYPE
             AU_MANUFACTURER
+
+            # --- Packaging knobs (all optional) ---
+            DEVELOPMENT_TEAM       # Apple Developer team ID, applied to host + appex
+            ICON_ASSET_CATALOG     # path to a .xcassets directory; required for branding
+            APP_ICON_NAME          # image-set name inside the catalog (default "AppIcon")
+            LAUNCH_SCREEN_IMAGE    # image-set name in the catalog for UILaunchScreen
             )
     cmake_parse_arguments(AUSAIOS "" "${oneValueArgs}" "" ${ARGN})
 
@@ -62,6 +68,41 @@ function(target_add_auv3_standalone_ios_wrapper)
         set(AUSAIOS_IOS_DEPLOYMENT_TARGET "${CMAKE_OSX_DEPLOYMENT_TARGET}")
     else()
         set(AUSAIOS_IOS_DEPLOYMENT_TARGET "15.0")
+    endif()
+
+    if (NOT DEFINED AUSAIOS_APP_ICON_NAME OR "${AUSAIOS_APP_ICON_NAME}" STREQUAL "")
+        set(AUSAIOS_APP_ICON_NAME "AppIcon")
+    endif()
+
+    # --- Packaging-knob validation ---
+    # Asset catalog is optional; without it the app ships with the iOS
+    # placeholder icon. Warn loudly so consumers don't ship that by accident.
+    if (NOT DEFINED AUSAIOS_ICON_ASSET_CATALOG OR "${AUSAIOS_ICON_ASSET_CATALOG}" STREQUAL "")
+        message(WARNING
+            "clap-wrapper: ${AUSAIOS_TARGET} has no ICON_ASSET_CATALOG set — "
+            "the iOS app will ship with the system placeholder icon. "
+            "Pass ICON_ASSET_CATALOG <path-to-.xcassets> to brand it.")
+    else()
+        if (NOT EXISTS "${AUSAIOS_ICON_ASSET_CATALOG}")
+            message(FATAL_ERROR
+                "clap-wrapper: ICON_ASSET_CATALOG path does not exist: "
+                "${AUSAIOS_ICON_ASSET_CATALOG}")
+        endif()
+    endif()
+
+    if (DEFINED AUSAIOS_LAUNCH_SCREEN_IMAGE AND NOT "${AUSAIOS_LAUNCH_SCREEN_IMAGE}" STREQUAL "")
+        if (NOT DEFINED AUSAIOS_ICON_ASSET_CATALOG OR "${AUSAIOS_ICON_ASSET_CATALOG}" STREQUAL "")
+            message(FATAL_ERROR
+                "clap-wrapper: LAUNCH_SCREEN_IMAGE \"${AUSAIOS_LAUNCH_SCREEN_IMAGE}\" "
+                "is set but ICON_ASSET_CATALOG is not — the launch image must "
+                "live inside an asset catalog. Pass ICON_ASSET_CATALOG.")
+        endif()
+        set(AUSAIOS_LAUNCH_SCREEN_PLIST_BODY
+            "<key>UIImageName</key>\n        <string>${AUSAIOS_LAUNCH_SCREEN_IMAGE}</string>")
+    else()
+        # Preserve the prior default — empty UIColorName = system background.
+        set(AUSAIOS_LAUNCH_SCREEN_PLIST_BODY
+            "<key>UIColorName</key>\n        <string></string>")
     endif()
 
     message(STATUS "clap-wrapper: Adding AUv3 iOS Standalone to target ${AUSAIOS_TARGET} for '${AUSAIOS_OUTPUT_NAME}'")
@@ -170,6 +211,32 @@ function(target_add_auv3_standalone_ios_wrapper)
             XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${AUSAIOS_BUNDLE_IDENTIFIER}"
             XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
             )
+
+    # --- Signing ---
+    # Apply DEVELOPMENT_TEAM to host AND appex. They must agree or the
+    # embedded appex won't validate against the host on device install.
+    # If unset, leave the attribute alone so a global
+    # -DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=... still falls through.
+    if (DEFINED AUSAIOS_DEVELOPMENT_TEAM AND NOT "${AUSAIOS_DEVELOPMENT_TEAM}" STREQUAL "")
+        set_target_properties(${AUSAIOS_TARGET} PROPERTIES
+                XCODE_ATTRIBUTE_DEVELOPMENT_TEAM "${AUSAIOS_DEVELOPMENT_TEAM}")
+        set_target_properties(${AUSAIOS_AUV3_TARGET} PROPERTIES
+                XCODE_ATTRIBUTE_DEVELOPMENT_TEAM "${AUSAIOS_DEVELOPMENT_TEAM}")
+    endif()
+
+    # --- App icon / launch screen ---
+    # The asset catalog is added as a Resource of the host target; Xcode's
+    # asset-catalog compiler runs actool on it and injects the right
+    # CFBundleIcons / CFBundleIcons~ipad keys at build time, so no plist
+    # substitution is needed for the icon. The launch screen is plist-side
+    # only (UILaunchScreen → UIImageName is computed above).
+    if (DEFINED AUSAIOS_ICON_ASSET_CATALOG AND NOT "${AUSAIOS_ICON_ASSET_CATALOG}" STREQUAL "")
+        target_sources(${AUSAIOS_TARGET} PRIVATE "${AUSAIOS_ICON_ASSET_CATALOG}")
+        set_source_files_properties("${AUSAIOS_ICON_ASSET_CATALOG}" PROPERTIES
+                MACOSX_PACKAGE_LOCATION Resources)
+        set_target_properties(${AUSAIOS_TARGET} PROPERTIES
+                XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "${AUSAIOS_APP_ICON_NAME}")
+    endif()
 
     # --- Embed the .appex ---
     # iOS apps expose their extensions under Bundle/PlugIns/ (no "Contents/"

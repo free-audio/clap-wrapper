@@ -44,8 +44,7 @@
     </array>
     <key>UILaunchScreen</key>
     <dict>
-        <key>UIColorName</key>
-        <string></string>
+        @AUSAIOS_LAUNCH_SCREEN_PLIST_BODY@
     </dict>
     <key>UIBackgroundModes</key>
     <array>
