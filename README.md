@@ -14,8 +14,10 @@ Currently the `clap-wrapper` supports projecting a CLAP into
 
 - VST3
 - Audio Unit v2 (AUv2)
+- Audio Unit v3 (AUv3 on Mac)
 - AAX
 - A Simple Standalone
+- Audio Unit v3 (AUv3 on iOS)
 
 The `clap-wrapper` also provides a variety of deployment,
 linkage and build time options to CLAP developers.
