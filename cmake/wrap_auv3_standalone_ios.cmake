@@ -21,12 +21,16 @@ function(target_add_auv3_standalone_ios_wrapper)
             AU_MANUFACTURER
 
             # --- Packaging knobs (all optional) ---
-            DEVELOPMENT_TEAM       # Apple Developer team ID, applied to host + appex
-            ICON_ASSET_CATALOG     # path to a .xcassets directory; required for branding
-            APP_ICON_NAME          # image-set name inside the catalog (default "AppIcon")
-            LAUNCH_SCREEN_IMAGE    # image-set name in the catalog for UILaunchScreen
+            DEVELOPMENT_TEAM           # Apple Developer team ID, applied to host + appex
+            ICON_ASSET_CATALOG         # path to a .xcassets directory; required for branding
+            APP_ICON_NAME              # image-set name inside the catalog (default "AppIcon")
+            LAUNCH_SCREEN_IMAGE        # image-set name in the catalog for UILaunchScreen
+            CUSTOM_INFO_PLIST_TEMPLATE # path to a developer-supplied Info.plist.in
             )
-    cmake_parse_arguments(AUSAIOS "" "${oneValueArgs}" "" ${ARGN})
+    set(multiValueArgs
+            EXTRA_INFO_PLIST_ENTRIES   # raw <key>...</key><...>... XML, one stanza per item
+            )
+    cmake_parse_arguments(AUSAIOS "" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
     if (NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
         message(STATUS "clap-wrapper: auv3 iOS standalone is iOS-only — skipping on ${CMAKE_SYSTEM_NAME}")
@@ -105,13 +109,44 @@ function(target_add_auv3_standalone_ios_wrapper)
             "<key>UIColorName</key>\n        <string></string>")
     endif()
 
+    # --- Info.plist composition ---
+    # Two extension points:
+    #   CUSTOM_INFO_PLIST_TEMPLATE — point at a developer-maintained
+    #     Info.plist.in. The wrapper still runs configure_file with the
+    #     full set of AUSAIOS_* substitution variables, so a custom
+    #     template can opt in to whatever it needs.
+    #   EXTRA_INFO_PLIST_ENTRIES — raw XML stanzas inserted before the
+    #     closing </dict>. Each item is one stanza like
+    #     "<key>Foo</key><string>Bar</string>". Use this for one-off keys
+    #     (privacy descriptions, file-sharing flags, App Store flags)
+    #     without having to fork the template.
+    if (DEFINED AUSAIOS_CUSTOM_INFO_PLIST_TEMPLATE AND
+        NOT "${AUSAIOS_CUSTOM_INFO_PLIST_TEMPLATE}" STREQUAL "")
+        if (NOT EXISTS "${AUSAIOS_CUSTOM_INFO_PLIST_TEMPLATE}")
+            message(FATAL_ERROR
+                "clap-wrapper: CUSTOM_INFO_PLIST_TEMPLATE path does not exist: "
+                "${AUSAIOS_CUSTOM_INFO_PLIST_TEMPLATE}")
+        endif()
+        set(_plist_template "${AUSAIOS_CUSTOM_INFO_PLIST_TEMPLATE}")
+        message(STATUS "clap-wrapper: ${AUSAIOS_TARGET} using custom Info.plist template: ${_plist_template}")
+    else()
+        set(_plist_template "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/ios/auv3/Info.plist.in")
+    endif()
+
+    if (DEFINED AUSAIOS_EXTRA_INFO_PLIST_ENTRIES AND
+        NOT "${AUSAIOS_EXTRA_INFO_PLIST_ENTRIES}" STREQUAL "")
+        list(JOIN AUSAIOS_EXTRA_INFO_PLIST_ENTRIES "\n    " AUSAIOS_EXTRA_INFO_PLIST_ENTRIES)
+    else()
+        set(AUSAIOS_EXTRA_INFO_PLIST_ENTRIES "")
+    endif()
+
     message(STATUS "clap-wrapper: Adding AUv3 iOS Standalone to target ${AUSAIOS_TARGET} for '${AUSAIOS_OUTPUT_NAME}'")
 
     # --- Info.plist ---
     set(_plistoutdir "${CMAKE_CURRENT_BINARY_DIR}/${AUSAIOS_TARGET}-plist")
     file(MAKE_DIRECTORY "${_plistoutdir}")
     configure_file(
-        "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/ios/auv3/Info.plist.in"
+        "${_plist_template}"
         "${_plistoutdir}/Info.plist"
         @ONLY)
 

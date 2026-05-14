@@ -178,6 +178,7 @@ void ProcessAdapter::setupProcessing(uint32_t numInputBusses, const uint32_t *in
 
   _activeNotes.clear();
   _activeNotes.reserve(32);
+  _nextNoteId = 0;
 }
 
 void ProcessAdapter::setTransportStateBlock(AUHostTransportStateBlock __nullable block)
@@ -300,6 +301,13 @@ void ProcessAdapter::translateAUv3Events(const AURenderEvent *head, AUEventSampl
       case AURenderEventParameter:
       case AURenderEventParameterRamp:
       {
+        // AUv3 parameter events translate to CLAP_EVENT_PARAM_VALUE only.
+        // CLAP also has CLAP_EVENT_PARAM_MOD (per-event parameter modulation,
+        // optionally polyphonic via note_id) — there is no AUv3 equivalent
+        // and AU hosts never produce mod-shaped events. Plugins that declare
+        // CLAP_PARAM_IS_MODULATABLE will only receive ordinary value events
+        // here. This is a documented limitation of the AUv3 host model;
+        // there is no smart way to bridge it.
         auto &pe = event->parameter;
         PROCLOG("translateEvent: param addr=%llu value=%.4f absTime=%lld offset=%u",
                 (unsigned long long)pe.parameterAddress, (float)pe.value, (long long)pe.eventSampleTime,
@@ -347,7 +355,7 @@ void ProcessAdapter::translateAUv3Events(const AURenderEvent *head, AUEventSampl
             n.header.type = CLAP_EVENT_NOTE_ON;
             n.header.size = sizeof(clap_event_note_t);
             n.note.port_index = 0;
-            n.note.note_id = -1;
+            n.note.note_id = synthesizeNoteId();
             n.note.key = me.data[1] & 0x7F;
             n.note.velocity = (float)(me.data[2] & 0x7F) / 127.0f;
             n.note.channel = channel;
@@ -362,10 +370,12 @@ void ProcessAdapter::translateAUv3Events(const AURenderEvent *head, AUEventSampl
             n.header.type = CLAP_EVENT_NOTE_OFF;
             n.header.size = sizeof(clap_event_note_t);
             n.note.port_index = 0;
-            n.note.note_id = -1;
             n.note.key = me.data[1] & 0x7F;
             n.note.velocity = (strippedStatus == 0x08) ? (float)(me.data[2] & 0x7F) / 127.0f : 0.0f;
             n.note.channel = channel;
+            // Pair with the matching NOTE_ON's synthesized id (must run
+            // before removeFromActiveNotes drops the active record).
+            n.note.note_id = lookupNoteId(n.note.port_index, n.note.channel, n.note.key);
 
             _eventindices.emplace_back(_events.size());
             _events.emplace_back(n);
@@ -380,7 +390,8 @@ void ProcessAdapter::translateAUv3Events(const AURenderEvent *head, AUEventSampl
             n.noteexpression.port_index = 0;
             n.noteexpression.channel = channel;
             n.noteexpression.key = me.data[1] & 0x7F;
-            n.noteexpression.note_id = -1;
+            n.noteexpression.note_id =
+                lookupNoteId(n.noteexpression.port_index, n.noteexpression.channel, n.noteexpression.key);
             n.noteexpression.value = (double)(me.data[2] & 0x7F) / 127.0;
 
             _eventindices.emplace_back(_events.size());
@@ -831,6 +842,26 @@ void ProcessAdapter::removeFromActiveNotes(const clap_event_note_t *note)
       i.used = false;
     }
   }
+}
+
+int32_t ProcessAdapter::synthesizeNoteId()
+{
+  // Monotonic counter. clap_event_note_t::note_id is int32_t and -1 means
+  // wildcard; keep the synthesized value non-negative. Wrap-around at
+  // INT32_MAX is implausible (~2 billion notes per activation cycle), but
+  // we reset to 0 on overflow rather than emit a negative ID.
+  if (_nextNoteId < 0) _nextNoteId = 0;
+  return _nextNoteId++;
+}
+
+int32_t ProcessAdapter::lookupNoteId(int16_t port_index, int16_t channel, int16_t key) const
+{
+  for (const auto &i : _activeNotes)
+  {
+    if (i.used && i.port_index == port_index && i.channel == channel && i.key == key)
+      return i.note_id;
+  }
+  return -1;
 }
 
 }  // namespace Clap::AUv3

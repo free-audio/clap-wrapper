@@ -50,5 +50,6 @@
     <array>
         <string>audio</string>
     </array>
+    @AUSAIOS_EXTRA_INFO_PLIST_ENTRIES@
 </dict>
 </plist>

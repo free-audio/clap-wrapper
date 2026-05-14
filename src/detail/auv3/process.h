@@ -128,6 +128,15 @@ class ProcessAdapter
   void addToActiveNotes(const clap_event_note_t *note);
   void removeFromActiveNotes(const clap_event_note_t *note);
 
+  // AUv3 MIDI events carry no per-note identifier, so the wrapper synthesizes
+  // monotonically increasing note_ids at NOTE_ON time and pairs them back
+  // with the matching NOTE_OFF / per-key expressions via the active-notes
+  // shadow. Plugins that key voice tracking off note_id (rather than the
+  // (channel, key) pair) get a usable identity instead of -1 everywhere.
+  int32_t _nextNoteId = 0;
+  int32_t synthesizeNoteId();
+  int32_t lookupNoteId(int16_t port_index, int16_t channel, int16_t key) const;
+
   AUHostTransportStateBlock __nullable _transportStateBlock = nil;
   AUHostMusicalContextBlock __nullable _musicalContextBlock = nil;
 

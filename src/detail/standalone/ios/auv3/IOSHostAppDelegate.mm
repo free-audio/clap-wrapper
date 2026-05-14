@@ -80,7 +80,7 @@ static_assert((kMidiOutRingSize & kMidiOutRingMask) == 0,
 @property(nonatomic, strong) UIViewController *pluginViewController;
 @property(nonatomic, strong) UILabel *statusLabel;
 @property(nonatomic, strong) AVAudioEngine *audioEngine;
-@property(nonatomic, strong) AVAudioSourceNode *auSourceNode;
+@property(nonatomic, strong) NSMutableArray<AVAudioSourceNode *> *auSourceNodes;
 @property(nonatomic, assign) MIDIClientRef midiClient;
 @property(nonatomic, assign) MIDIPortRef midiInputPort;
 @property(nonatomic, assign) MIDIEndpointRef midiVirtualSource;
@@ -419,18 +419,34 @@ static void IOSHostMIDIReadProc(const MIDIPacketList *pktlist,
     NSError *err = nil;
     AVAudioSession *session = [AVAudioSession sharedInstance];
 
-    // Pin the AU's output bus to a stereo float32 format at the session's
+    // Pin every output bus to a stereo float32 format at the session's
     // current hardware rate. An AUv3 instrument's default is often mono
     // or a hardware-defined format that doesn't line up with what the
-    // engine's mainMixer wants. Forcing stereo here keeps the graph
-    // self-consistent.
-    AUAudioUnitBus *outBus = self.audioUnit.outputBusses[0];
+    // engine's mainMixer wants. For multi-output plugins (main + aux,
+    // multi-stems) we mix all busses into the single mainMixer here —
+    // a richer host with per-bus routing UI would split them.
+    //
+    // Input busses (side-chain, audio-in for effects) are intentionally
+    // left unwired: the standalone has no UI for picking an input source
+    // (mic, file, inter-app), and silently feeding them with the system
+    // mic on every effect launch would surprise users. Effect-host work
+    // is a separate scope.
     double sr = session.sampleRate > 0 ? session.sampleRate : 48000.0;
     AVAudioFormat *stereoFmt = [[AVAudioFormat alloc]
         initStandardFormatWithSampleRate:sr channels:2];
-    if (![outBus setFormat:stereoFmt error:&err])
-        NSLog(@"[ios-host] outputBus setFormat: %@", err);
-    err = nil;
+    NSUInteger outBusCount = self.audioUnit.outputBusses.count;
+    if (outBusCount == 0)
+    {
+        NSLog(@"[ios-host] AU declares no output busses — no audio graph to build");
+        return;
+    }
+    for (NSUInteger i = 0; i < outBusCount; ++i)
+    {
+        AUAudioUnitBus *bus = self.audioUnit.outputBusses[i];
+        if (![bus setFormat:stereoFmt error:&err])
+            NSLog(@"[ios-host] outputBus[%lu] setFormat: %@", (unsigned long)i, err);
+        err = nil;
+    }
 
     // AVAudioEngine can ask the source node for fairly large blocks; the
     // AU must accept at least that frame count or render fails. 4096 is
@@ -451,22 +467,27 @@ static void IOSHostMIDIReadProc(const MIDIPacketList *pktlist,
     // render cycle.
     AURenderBlock auRender = self.audioUnit.renderBlock;
 
-    AVAudioFormat *auFormat = outBus.format;
-    AVAudioSourceNode *srcNode = [[AVAudioSourceNode alloc] initWithFormat:auFormat
-        renderBlock:^OSStatus(BOOL *isSilence,
-                              const AudioTimeStamp *timestamp,
-                              AVAudioFrameCount frameCount,
-                              AudioBufferList *outputData) {
-            AudioUnitRenderActionFlags flags = 0;
-            return auRender(&flags, timestamp, frameCount, 0, outputData, NULL);
-        }];
-    self.auSourceNode = srcNode;
-
     self.audioEngine = [[AVAudioEngine alloc] init];
-    [self.audioEngine attachNode:srcNode];
-    [self.audioEngine connect:srcNode
-                           to:self.audioEngine.mainMixerNode
-                       format:auFormat];
+    self.auSourceNodes = [NSMutableArray arrayWithCapacity:outBusCount];
+
+    for (NSUInteger i = 0; i < outBusCount; ++i)
+    {
+        AVAudioFormat *auFormat = self.audioUnit.outputBusses[i].format;
+        NSInteger busIndex = (NSInteger)i;
+        AVAudioSourceNode *srcNode = [[AVAudioSourceNode alloc] initWithFormat:auFormat
+            renderBlock:^OSStatus(BOOL *isSilence,
+                                  const AudioTimeStamp *timestamp,
+                                  AVAudioFrameCount frameCount,
+                                  AudioBufferList *outputData) {
+                AudioUnitRenderActionFlags flags = 0;
+                return auRender(&flags, timestamp, frameCount, busIndex, outputData, NULL);
+            }];
+        [self.audioEngine attachNode:srcNode];
+        [self.audioEngine connect:srcNode
+                               to:self.audioEngine.mainMixerNode
+                           format:auFormat];
+        [self.auSourceNodes addObject:srcNode];
+    }
 
     if (![self.audioEngine startAndReturnError:&err])
         NSLog(@"[ios-host] AVAudioEngine start: %@", err);
@@ -475,11 +496,9 @@ static void IOSHostMIDIReadProc(const MIDIPacketList *pktlist,
 - (void)tearDownEngineGraph
 {
     if (self.audioEngine.isRunning) [self.audioEngine stop];
-    if (self.auSourceNode)
-    {
-        [self.audioEngine detachNode:self.auSourceNode];
-        self.auSourceNode = nil;
-    }
+    for (AVAudioSourceNode *node in self.auSourceNodes)
+        [self.audioEngine detachNode:node];
+    self.auSourceNodes = nil;
     self.audioEngine = nil;
     [self.audioUnit deallocateRenderResources];
 }
