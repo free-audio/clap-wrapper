@@ -14,6 +14,6 @@ bool auv2shared_mm_request_resize(const clap_window_t* win, uint32_t w, uint32_t
   auto* nsv = (NSView*)win;
   [nsv setFrame:NSMakeRect(0, 0, w, h)];
 
-  return false;
+  return true;
 }
 }  // namespace free_audio::auv2_wrapper
