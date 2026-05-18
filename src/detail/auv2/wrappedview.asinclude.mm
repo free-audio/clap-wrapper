@@ -118,7 +118,8 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
   m.ptr = self;
 
   gui->set_parent(ui._plugin->_plugin, &m);
-  gui->set_scale(ui._plugin->_plugin, 1.0);
+  // gui->set_scale is intentionally not called because
+  // AUv2 gui always uses logical size
 
   if (gui->can_resize(ui._plugin->_plugin))
   {
@@ -188,7 +189,8 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
   if (canary)
   {
     auto gui = ui._plugin->_ext._gui;
-    gui->set_scale(ui._plugin->_plugin, 1.0);
+    // gui->set_scale is intentionally not called because
+    // AUv2 gui always uses logical size
     gui->set_size(ui._plugin->_plugin, newSize.size.width, newSize.size.height);
   }
   // gui->show(ui._plugin->_plugin);
