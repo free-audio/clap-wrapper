@@ -164,7 +164,7 @@ function(make_clapfirst_plugins)
         endif()
         target_add_vst3_wrapper(TARGET ${VST3_TARGET}
                 OUTPUT_NAME "${C1ST_OUTPUT_NAME}"
-                BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFER}.vst3"
+                BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFIER}.vst3"
                 BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
                 ASSET_OUTPUT_DIRECTORY "${vod}"
                 WINDOWS_FOLDER_VST3 ${C1ST_WINDOWS_FOLDER_VST3}
@@ -184,7 +184,7 @@ function(make_clapfirst_plugins)
             target_add_auv2_wrapper(
                     TARGET ${AUV2_TARGET}
                     OUTPUT_NAME "${C1ST_OUTPUT_NAME}"
-                    BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFER}.auv2"
+                    BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFIER}.auv2"
                     BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
                     RESOURCE_DIRECTORY "${C1ST_RESOURCE_DIRECTORY}"
 
@@ -197,7 +197,7 @@ function(make_clapfirst_plugins)
             target_add_auv2_wrapper(
                     TARGET ${AUV2_TARGET}
                     OUTPUT_NAME "${C1ST_OUTPUT_NAME}"
-                    BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFER}.auv2"
+                    BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFIER}.auv2"
                     BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
                     RESOURCE_DIRECTORY "${C1ST_RESOURCE_DIRECTORY}"
 
