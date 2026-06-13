@@ -41,6 +41,7 @@
 #include "categories.h"
 #include <vector>
 #include <algorithm>
+#include <string>
 #include <clap/plugin-features.h>
 #include <pluginterfaces/base/ipluginbase.h>
 #include <pluginterfaces/vst/ivstaudioprocessor.h>
@@ -61,7 +62,7 @@ static const struct _translate
   {   CLAP_PLUGIN_FEATURE_AUDIO_EFFECT          , PlugType::kFx},
   {   CLAP_PLUGIN_FEATURE_NOTE_EFFECT           , PlugType::kInstrumentSynth}, // it seems there is no type for a sequencer etc
   {   CLAP_PLUGIN_FEATURE_DRUM                  , PlugType::kInstrumentDrum},
-  {   CLAP_PLUGIN_FEATURE_ANALYZER              , PlugType::kAnalyzer},
+  {   CLAP_PLUGIN_FEATURE_ANALYZER              , PlugType::kFxAnalyzer},
 
   // CLAP sub categories
   {   CLAP_PLUGIN_FEATURE_SYNTHESIZER           , "Synth"},
@@ -114,6 +115,25 @@ static const struct _translate
 std::string clapCategoriesToVST3(const char *const *clap_categories)
 {
   std::vector<std::string> r;
+  auto appendAttribute = [&r](const char *attribute) {
+    std::string value(attribute);
+    std::string::size_type start = 0;
+    while (start <= value.size())
+    {
+      auto end = value.find('|', start);
+      auto token = value.substr(start, end == std::string::npos ? std::string::npos : end - start);
+      if (!token.empty())
+      {
+        r.push_back(token);
+      }
+      if (end == std::string::npos)
+      {
+        break;
+      }
+      start = end + 1;
+    }
+  };
+
   for (auto f = clap_categories; f && *f; ++f)
   {
     auto it =
@@ -122,12 +142,19 @@ std::string clapCategoriesToVST3(const char *const *clap_categories)
 
     if (it != std::end(translationTable))
     {
-      r.push_back(it->vst3attribute);
+      appendAttribute(it->vst3attribute);
     }
   }
 
   // Sort and remove duplicates
-  std::sort(r.begin(), r.end());
+  std::sort(r.begin(), r.end(), [](const auto &a, const auto &b) {
+    auto priority = [](const auto &category) { return category == PlugType::kFx ? 0 : 1; };
+    if (priority(a) != priority(b))
+    {
+      return priority(a) < priority(b);
+    }
+    return a < b;
+  });
   r.erase(std::unique(r.begin(), r.end()), r.end());
 
   std::string result;
