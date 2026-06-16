@@ -115,13 +115,15 @@ static const struct _translate
 std::string clapCategoriesToVST3(const char *const *clap_categories)
 {
   std::vector<std::string> r;
-  auto appendAttribute = [&r](const char *attribute) {
+  auto appendAttribute = [&r](const char *attribute)
+  {
     std::string value(attribute);
     std::string::size_type start = 0;
     while (start <= value.size())
     {
       auto end = value.find('|', start);
-      auto token = value.substr(start, end == std::string::npos ? std::string::npos : end - start);
+      auto token =
+          value.substr(start, end == std::string::npos ? std::string::npos : end - start);
       if (!token.empty())
       {
         r.push_back(token);
@@ -136,9 +138,11 @@ std::string clapCategoriesToVST3(const char *const *clap_categories)
 
   for (auto f = clap_categories; f && *f; ++f)
   {
-    auto it =
-        std::find_if(std::begin(translationTable), std::end(translationTable), [&](const auto &entry)
-                     { return entry.clapattribute && !strcmp(entry.clapattribute, *f); });
+    auto it = std::find_if(std::begin(translationTable), std::end(translationTable),
+                           [&](const auto &entry)
+                           {
+                             return entry.clapattribute && !strcmp(entry.clapattribute, *f);
+                           });
 
     if (it != std::end(translationTable))
     {
@@ -147,14 +151,18 @@ std::string clapCategoriesToVST3(const char *const *clap_categories)
   }
 
   // Sort and remove duplicates
-  std::sort(r.begin(), r.end(), [](const auto &a, const auto &b) {
-    auto priority = [](const auto &category) { return category == PlugType::kFx ? 0 : 1; };
-    if (priority(a) != priority(b))
-    {
-      return priority(a) < priority(b);
-    }
-    return a < b;
-  });
+  std::sort(r.begin(), r.end(), [](const auto &a, const auto &b)
+            {
+              auto priority = [](const auto &category)
+              {
+                return category == PlugType::kFx ? 0 : 1;
+              };
+              if (priority(a) != priority(b))
+              {
+                return priority(a) < priority(b);
+              }
+              return a < b;
+            });
   r.erase(std::unique(r.begin(), r.end()), r.end());
 
   std::string result;
