@@ -69,6 +69,15 @@ std::vector<std::string> getArgs()
   return ::GetSystemMenu(hwnd, FALSE);
 }
 
+bool isRectOnAnyMonitor(const Position &position)
+{
+  ::RECT rect{position.x, position.y, position.x + static_cast<::LONG>(position.width),
+              position.y + static_cast<::LONG>(position.height)};
+
+  // MONITOR_DEFAULTTONULL => null when the rectangle doesn't intersect any display.
+  return ::MonitorFromRect(&rect, MONITOR_DEFAULTTONULL) != nullptr;
+}
+
 std::wstring toUTF16(std::string_view input)
 {
   std::wstring output;
@@ -607,7 +616,7 @@ void SystemMenu::populate(::HWND hwnd)
   }
 }
 
-Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin)
+Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
 {
   plugin.clap = clapPlugin;
   plugin.plugin = plugin.clap->_plugin;
@@ -665,18 +674,39 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin)
                    plugin.gui->hide(plugin.plugin);
                  }
 
-                 if (plugin.gui->can_resize(plugin.plugin))
+                 // Never push a degenerate size into the plugin GUI. A minimized window has a
+                 // 0x0 client rect; resizing the editor to that drives size-dependent drawing
+                 // to zero dimensions.
+                 if (!::IsIconic(msg.hwnd) && client.width > 0 && client.height > 0 &&
+                     plugin.gui->can_resize(plugin.plugin))
                  {
                    plugin.gui->adjust_size(plugin.plugin, &client.width, &client.height);
                    plugin.gui->set_size(plugin.plugin, client.width, client.height);
                  }
                }
 
-               position.x = windowPos->x;
-               position.y = windowPos->y;
-               position.width = windowPos->cx;
-               position.height = windowPos->cy;
+               // Only remember the restored (normal) geometry. Capturing while minimized or
+               // maximized would persist the -32000 iconic sentinel and throw the window
+               // off-screen on the next launch. GetWindowRect is the true screen rect (the
+               // WINDOWPOS x/y are unreliable when SWP_NOMOVE is set).
+               if (!::IsIconic(msg.hwnd) && !::IsZoomed(msg.hwnd))
+               {
+                 ::RECT wr{};
+                 ::GetWindowRect(msg.hwnd, &wr);
+                 position.x = wr.left;
+                 position.y = wr.top;
+                 position.width = static_cast<uint32_t>(wr.right - wr.left);
+                 position.height = static_cast<uint32_t>(wr.bottom - wr.top);
+               }
 
+               return 0;
+             });
+
+  message.on(WM_EXITSIZEMOVE,
+             [this](Message msg)
+             {
+               // Persist once a user move/resize finishes rather than on every intermediate
+               // WM_WINDOWPOSCHANGED. (Close also saves via WM_DESTROY.)
                saveSettings();
 
                return 0;
@@ -1092,10 +1122,10 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin)
 
       if (plugin.gui->can_resize(plugin.plugin))
       {
-        // We can restore size here
-        // setWindowPosition(m_window.hwnd.get(), previousWidth, previousHeight);
-        // log("x: {} y: {}", sah->position.x, sah->position.y);
-        if (position.width != 0 || position.height != 0)
+        // Only restore a saved position if it still lands on a connected monitor. Guards
+        // against off-screen/garbage values (e.g. a minimized window's -32000 sentinel
+        // persisted by an older build, or a monitor that's no longer attached).
+        if ((position.width != 0 || position.height != 0) && isRectOnAnyMonitor(position))
         {
           setPosition(position);
         }
@@ -1129,7 +1159,8 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin)
 
   sah->onRequestResize = [this](uint32_t width, uint32_t height)
   {
-    if (placement.showCmd != SW_MAXIMIZE)
+    if (placement.showCmd != SW_MAXIMIZE && placement.showCmd != SW_SHOWMINIMIZED &&
+        !::IsIconic(hwnd.get()))
     {
       adjustSize(width, height);
     }
@@ -1159,7 +1190,9 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin)
 
   startAudio();
 
-  activate();
+  // Honor the show state requested by the launcher (shortcut "Run:" / STARTUPINFO),
+  // falling back to a normal window. SW_HIDE would otherwise leave us invisible-but-running.
+  ::ShowWindow(hwnd.get(), nCmdShow == SW_HIDE ? SW_SHOWNORMAL : nCmdShow);
 }
 
 std::optional<clap_gui_resize_hints> Plugin::getResizeHints()

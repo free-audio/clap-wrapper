@@ -1,7 +1,7 @@
 #include "detail/standalone/windows/windows_standalone.h"
 
 int WINAPI wWinMain(HINSTANCE /* hInstance */, HINSTANCE /* hPrevInstance */, PWSTR /* pCmdLine */,
-                    int /* nCmdShow */)
+                    int nCmdShow)
 {
   auto coUninitialize{wil::CoInitializeEx(COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE)};
 
@@ -46,7 +46,7 @@ int WINAPI wWinMain(HINSTANCE /* hInstance */, HINSTANCE /* hPrevInstance */, PW
   auto clapPlugin{freeaudio::clap_wrapper::standalone::mainCreatePlugin(
       entry, PLUGIN_ID, PLUGIN_INDEX, static_cast<int>(argv.size()), argv.data())};
 
-  freeaudio::clap_wrapper::standalone::windows_standalone::Plugin plugin{clapPlugin};
+  freeaudio::clap_wrapper::standalone::windows_standalone::Plugin plugin{clapPlugin, nCmdShow};
 
   return freeaudio::clap_wrapper::standalone::windows_standalone::run();
 }

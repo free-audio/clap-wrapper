@@ -129,11 +129,24 @@ struct MessageHandler
 
 struct Position
 {
-  uint32_t x{0};
-  uint32_t y{0};
+  int32_t x{0};
+  int32_t y{0};
   uint32_t width{0};
   uint32_t height{0};
 };
+
+// Clamp a JSON-sourced double into int32 range before narrowing. Avoids UB when a
+// corrupt/out-of-range coordinate (e.g. a minimized window's -32000 sentinel that an
+// older build persisted as a huge unsigned value) is read back.
+inline int32_t jsonNumberToInt32(double value)
+{
+  if (value >= 2147483647.0) return 2147483647;
+  if (value <= -2147483648.0) return -2147483648;
+  return static_cast<int32_t>(value);
+}
+
+// True when the rectangle intersects a connected display.
+bool isRectOnAnyMonitor(const Position &position);
 
 struct Window
 {
@@ -336,8 +349,8 @@ struct Plugin final : public Window
           auto parsedPos{value.GetObject()};
 
           Position buffer;
-          buffer.x = static_cast<uint32_t>(parsedPos.GetNamedNumber(L"x"));
-          buffer.y = static_cast<uint32_t>(parsedPos.GetNamedNumber(L"y"));
+          buffer.x = jsonNumberToInt32(parsedPos.GetNamedNumber(L"x"));
+          buffer.y = jsonNumberToInt32(parsedPos.GetNamedNumber(L"y"));
           buffer.width = static_cast<uint32_t>(parsedPos.GetNamedNumber(L"width"));
           buffer.height = static_cast<uint32_t>(parsedPos.GetNamedNumber(L"height"));
 
@@ -368,7 +381,7 @@ struct Plugin final : public Window
     const clap_plugin_state_t *state;
   };
 
-  explicit Plugin(std::shared_ptr<Clap::Plugin> clapPlugin);
+  explicit Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow = SW_SHOWDEFAULT);
 
   std::optional<clap_gui_resize_hints> getResizeHints();
   void refreshLayout();
