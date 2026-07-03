@@ -233,7 +233,7 @@ function(make_clapfirst_plugins)
         endif()
         target_add_aax_wrapper(TARGET ${AAX_TARGET}
                 OUTPUT_NAME "${C1ST_OUTPUT_NAME}"
-                BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFER}.aaxplugin"
+                BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFIER}.aaxplugin"
                 BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
                 ASSET_OUTPUT_DIRECTORY "${vod}"
                 

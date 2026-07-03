@@ -28,7 +28,7 @@ make_clapfirst_plugins(
 
         ENTRY_SOURCE "distortion_clap_entry.cpp"
 
-        BUNDLE_IDENTIFER "org.free-audio.clap-first-bad-distortion"
+        BUNDLE_IDENTIFIER "org.free-audio.clap-first-bad-distortion"
         BUNDLE_VERSION ${PROJECT_VERSION}
 
         COPY_AFTER_BUILD FALSE
