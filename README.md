@@ -14,10 +14,9 @@ Currently the `clap-wrapper` supports projecting a CLAP into
 
 - VST3
 - Audio Unit v2 (AUv2)
-- Audio Unit v3 (AUv3 on Mac)
+- Audio Unit v3 (AUv3, on macOS and iOS)
 - AAX
 - A Simple Standalone
-- Audio Unit v3 (AUv3 on iOS)
 
 The `clap-wrapper` also provides a variety of deployment,
 linkage and build time options to CLAP developers.
@@ -32,7 +31,7 @@ will load your CLAP using a variety of techniques.
 or standalone executable which implements the format to the host
 or OS, but uses that host to load your clap.
 
-And with that, voila, your CLAP can appear in a VST3 or AUv2
+And with that, voila, your CLAP can appear in a VST3, AUv2 or AUv3
 host or can appear to be a self contained standalone executable.
 Available features in CLAP are transposed to equivalent features
 in the target format.
@@ -57,6 +56,14 @@ cmake -B build \
       -DCLAP_WRAPPER_OUTPUT_NAME="The Name of your CLAP"
 ```
 If you'd like to also build for AUv2 include `-DCLAP_WRAPPER_BUILD_AUV2=ON` and the SDK in the folder `AudioUnitSDK`.
+
+To build an AUv3 app extension include `-DCLAP_WRAPPER_BUILD_AUV3=ON`.
+AUv3 builds require the Xcode generator (`-G Xcode`) — the `.appex` is
+linked as an app-extension product and signed by Xcode; other generators
+stop at configure time with an explanatory error. In the clap-first flow,
+add `AUV3` to `PLUGIN_FORMATS` instead. On iOS the hosted CLAP is
+statically linked into the appex (single-plugin); see the wiki for the
+current AUv3 feature status.
 
 ## Licensing
 
