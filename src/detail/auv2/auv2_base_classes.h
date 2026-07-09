@@ -522,7 +522,7 @@ class WrapAsAUV2 : public ausdk::AUBase,
   {
     return false;
   }
-  void SetBypassEffect(bool bypass){};
+  void SetBypassEffect(bool bypass) {};
 
   // --------------- internals
 
