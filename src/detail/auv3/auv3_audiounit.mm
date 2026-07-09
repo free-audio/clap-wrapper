@@ -13,6 +13,7 @@
 #include "detail/clap/automation.h"
 
 #include <os/log.h>
+#include <unistd.h>
 #include <iostream>
 #include <memory>
 #include <atomic>
@@ -31,11 +32,22 @@ static os_log_t _auv3Log()
 #define AUV3LOG(...) os_log(_auv3Log(), __VA_ARGS__)
 #define AUV3ERR(...) os_log_error(_auv3Log(), __VA_ARGS__)
 
+// drainParameterQueue and the bypass setter reflect already-delivered values
+// into the AUParameter tree via setValue:originator:. The tree's
+// implementorValueObserver fires synchronously on the calling thread for
+// those sets too (originator tokens only suppress token-registered
+// observers, never the implementor hooks) — without this guard every
+// plugin-originated change would be echoed back into the plugin as a new
+// host change. thread_local so a genuine host set on another thread is
+// never suppressed.
+static thread_local bool s_suppressParamObserverEcho = false;
+
 // Forward-declare private methods used by C++ code before the @implementation
 @interface ClapAUv3AudioUnit ()
 - (void)_replaceParameterTree;
 - (void)_notifyParameterValuesChanged;
 - (void)_wireParameterObserver;
+- (void)_applyGUISizeWidth:(uint32_t)width height:(uint32_t)height;
 @end
 
 // -----------------------------------------------------------------------
@@ -87,6 +99,14 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
   std::shared_ptr<Clap::Plugin> _plugin;
   std::unique_ptr<Clap::AUv3::ProcessAdapter> _processAdapter;
   const clap_plugin_descriptor_t *_desc = nullptr;
+
+  // Render-block handshake. The render thread reaches the adapter ONLY
+  // through _processAdapterLive; deallocateRenderResources unpublishes it
+  // and then drains _renderInFlight before the adapter is freed, so a
+  // render callback overlapping deallocation can never use-after-free.
+  // seq_cst throughout — one RMW per buffer is not worth weaker ordering.
+  std::atomic<Clap::AUv3::ProcessAdapter *> _processAdapterLive{nullptr};
+  std::atomic<int> _renderInFlight{0};
 
   // Audio bus info
   struct BusInfo
@@ -458,18 +478,14 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
   {
     // Communicate size changes through the AUv3 protocol: set preferredContentSize
     // on the view controller. The host decides the final size.
+    //
+    // Go through the ObjC audio unit, captured weakly: this C++ object is
+    // owned by it, so a raw `this` in the deferred block would dangle if
+    // the AU is deallocated before the main queue runs the block.
+    __weak ClapAUv3AudioUnit *weakAU = _audioUnit;
     dispatch_async(dispatch_get_main_queue(), ^{
-      __strong ClapAUv3ViewController *vc = _viewController;
-      if (vc)
-      {
-        // CGRectMake / CGSizeMake work identically on macOS and iOS;
-        // NSMakeRect / NSMakeSize are AppKit-only.
-        vc.view.frame = CGRectMake(0, 0, width, height);
-
-        [vc willChangeValueForKey:@"preferredContentSize"];
-        vc.preferredContentSize = CGSizeMake(width, height);
-        [vc didChangeValueForKey:@"preferredContentSize"];
-      }
+      __strong ClapAUv3AudioUnit *au = weakAU;
+      if (au) [au _applyGUISizeWidth:width height:height];
     });
     return true;
   }
@@ -625,6 +641,10 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
     {
       if (!_parameterTree) continue;
 
+      // The setValue calls below re-enter implementorValueObserver on this
+      // thread — suppress the echo (see s_suppressParamObserverEcho).
+      s_suppressParamObserverEcho = true;
+
       switch (evt._type)
       {
         case queueEvent::type::editstart:
@@ -677,7 +697,58 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
           break;
         }
       }
+
+      s_suppressParamObserverEcho = false;
     }
+  }
+
+  // Deliver a single parameter value to the plugin via params->flush().
+  // Only legal while the plugin is NOT processing. The single construction
+  // point for the one-shot event list used by the observer, the bypass
+  // setter, and the post-deallocate queue drain.
+  void flushParamValueWithCookie(clap_id id, double value, void *cookie)
+  {
+    if (!_plugin || !_plugin->_ext._params) return;
+
+    clap_event_param_value_t ev = {};
+    ev.header.size = sizeof(ev);
+    ev.header.type = CLAP_EVENT_PARAM_VALUE;
+    ev.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+    ev.header.time = 0;
+    ev.header.flags = 0;
+    ev.param_id = id;
+    ev.value = value;
+    ev.port_index = -1;
+    ev.key = -1;
+    ev.channel = -1;
+    ev.note_id = -1;
+    ev.cookie = cookie;
+
+    const clap_event_header_t *evPtr = &ev.header;
+    clap_input_events_t in_events = {};
+    in_events.ctx = &evPtr;
+    in_events.size = [](const clap_input_events_t *) -> uint32_t { return 1; };
+    in_events.get = [](const clap_input_events_t *list, uint32_t) -> const clap_event_header_t *
+    { return *static_cast<const clap_event_header_t *const *>(list->ctx); };
+
+    clap_output_events_t out_events = {};
+    out_events.ctx = nullptr;
+    out_events.try_push = [](const clap_output_events_t *, const clap_event_header_t *) -> bool
+    { return true; };
+
+    auto mainGuard = _plugin->AlwaysMainThread();
+    _plugin->_ext._params->flush(_plugin->_plugin, &in_events, &out_events);
+  }
+
+  void flushParamValue(clap_id id, double value)
+  {
+    void *cookie = nullptr;
+    {
+      std::lock_guard<std::mutex> lock(_paramCacheMutex);
+      auto it = _paramCookieCache.find(id);
+      if (it != _paramCookieCache.end()) cookie = it->second;
+    }
+    flushParamValueWithCookie(id, value, cookie);
   }
 
   // --- IPlugObject ---
@@ -1028,56 +1099,41 @@ static Clap::Library _library;
     if (!strongSelf || !strongSelf->_impl) return;
     if (!strongSelf->_impl->_plugin || !strongSelf->_impl->_plugin->_ext._params) return;
 
-    // Always update the cache (and fetch the cookie in the same lock scope)
+    // Echo of a value we ourselves just applied to the tree (queue drain,
+    // bypass setter) — already delivered to the plugin; do not feed it back.
+    if (s_suppressParamObserverEcho) return;
+
+    // Always update the cache (and fetch the cookie in the same lock scope).
+    // While rendering, also queue the change for the render thread:
+    // flush() is forbidden while the plugin is processing and the adapter's
+    // event vectors are render-thread-owned, so the SPSC queue (producers
+    // serialized by this mutex) is the only legal delivery path — it is
+    // drained as input events at the top of the next render cycle. The
+    // rendering decision is made INSIDE the lock: allocate/deallocate flip
+    // _renderResourcesAllocated under the same mutex, so we can never
+    // flush while processing or queue on a freed adapter.
     clap_id pid = (clap_id)param.address;
     void *cookie = nullptr;
+    bool queuedForRender = false;
     {
       std::lock_guard<std::mutex> lock(strongSelf->_impl->_paramCacheMutex);
       strongSelf->_impl->_paramValueCache[pid] = (double)value;
       auto cookieIt = strongSelf->_impl->_paramCookieCache.find(pid);
       if (cookieIt != strongSelf->_impl->_paramCookieCache.end()) cookie = cookieIt->second;
-    }
 
-    // When render resources are allocated, parameter changes arrive via the
-    // render event list (AURenderEventParameter) — the thread-safe path.
-    // Do NOT call addParameterEvent here as it races with process() on
-    // the render thread (both touch _events/_eventindices without locking).
-    if (strongSelf->_renderResourcesAllocated) return;
+      if (strongSelf->_renderResourcesAllocated)
+      {
+        if (strongSelf->_impl->_processAdapter)
+        {
+          strongSelf->_impl->_processAdapter->queueParameterChange(pid, (double)value);
+        }
+        queuedForRender = true;
+      }
+    }
+    if (queuedForRender) return;
 
     // Non-realtime path: push directly to the CLAP plugin via flush.
-    // This is safe because flush must only be called when not processing.
-    auto *plugin = strongSelf->_impl->_plugin->_plugin;
-    auto *ext_params = strongSelf->_impl->_plugin->_ext._params;
-
-    clap_event_param_value_t ev = {};
-    ev.header.size = sizeof(ev);
-    ev.header.type = CLAP_EVENT_PARAM_VALUE;
-    ev.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-    ev.header.time = 0;
-    ev.header.flags = 0;
-    ev.param_id = pid;
-    ev.value = (double)value;
-    ev.port_index = -1;
-    ev.key = -1;
-    ev.channel = -1;
-    ev.note_id = -1;
-    ev.cookie = cookie;
-
-    // Build a single-event input list
-    const clap_event_header_t *evPtr = &ev.header;
-    clap_input_events_t in_events = {};
-    in_events.ctx = &evPtr;
-    in_events.size = [](const clap_input_events_t *) -> uint32_t { return 1; };
-    in_events.get = [](const clap_input_events_t *list, uint32_t) -> const clap_event_header_t *
-    { return *static_cast<const clap_event_header_t *const *>(list->ctx); };
-
-    clap_output_events_t out_events = {};
-    out_events.ctx = nullptr;
-    out_events.try_push = [](const clap_output_events_t *, const clap_event_header_t *) -> bool
-    { return true; };
-
-    auto mainGuard = strongSelf->_impl->_plugin->AlwaysMainThread();
-    ext_params->flush(plugin, &in_events, &out_events);
+    strongSelf->_impl->flushParamValueWithCookie(pid, (double)value, cookie);
   };
 
   // Rewire the parameter tree callbacks. The provider uses the local cache
@@ -1447,6 +1503,18 @@ static Clap::Library _library;
   // Set MIDI output block
   _impl->_processAdapter->midiOutputEventBlock = self.MIDIOutputEventBlock;
 
+  // Publish the adapter for the render block and flip the flag under the
+  // cache mutex BEFORE the plugin may start processing: producers
+  // (implementorValueObserver, bypass setter) must switch from the flush
+  // path to the render queue path first — flush during processing violates
+  // the CLAP contract. Queued changes wait in the adapter until the first
+  // render cycle. The mutex pairs with the producers' flag check.
+  _impl->_processAdapterLive.store(_impl->_processAdapter.get());
+  {
+    std::lock_guard<std::mutex> lock(_impl->_paramCacheMutex);
+    _renderResourcesAllocated = YES;
+  }
+
   // Activate the CLAP plugin
   AUV3LOG("allocateRenderResources: calling activate()");
   _impl->_plugin->activate();
@@ -1468,7 +1536,6 @@ static Clap::Library _library;
   _impl->_plugin->start_processing();
   _impl->_initialized = true;
 
-  _renderResourcesAllocated = YES;
   AUV3LOG("allocateRenderResources: completed successfully");
   return YES;
 }
@@ -1477,6 +1544,18 @@ static Clap::Library _library;
 {
   AUV3LOG("deallocateRenderResources: entered (thread=%{public}s)",
           [NSThread.currentThread.name UTF8String] ?: "unnamed");
+
+  // Unpublish the adapter, then wait for any in-flight render callback to
+  // leave before stopping the plugin and freeing the adapter. The wait is
+  // bounded by one render quantum.
+  if (_impl)
+  {
+    _impl->_processAdapterLive.store(nullptr);
+    while (_impl->_renderInFlight.load() != 0)
+    {
+      usleep(100);
+    }
+  }
 
   if (_impl && _impl->_plugin && _impl->_initialized)
   {
@@ -1488,9 +1567,33 @@ static Clap::Library _library;
     _impl->_initialized = false;
   }
 
+  if (_impl)
+  {
+    // Producers (implementorValueObserver, bypass setter) check this flag
+    // and touch the adapter under _paramCacheMutex — flip it under the
+    // same mutex so a producer can never race the adapter reset below.
+    // (The _processAdapterLive handshake above only covers the render
+    // thread.)
+    {
+      std::lock_guard<std::mutex> lock(_impl->_paramCacheMutex);
+      _renderResourcesAllocated = NO;
+    }
+
+    // Changes parked in the render queue while the last cycles ran would
+    // otherwise be lost (the cache and host UI already show them) —
+    // deliver them via flush, which is legal now that processing stopped.
+    if (_impl->_processAdapter)
+    {
+      Clap::AUv3::ProcessAdapter::QueuedParamChange qpc;
+      while (_impl->_processAdapter->dequeueParameterChange(qpc))
+      {
+        _impl->flushParamValue(qpc.id, qpc.value);
+      }
+    }
+  }
+
   AUV3LOG("deallocateRenderResources: resetting process adapter");
   _impl->_processAdapter.reset();
-  _renderResourcesAllocated = NO;
 
   AUV3LOG("deallocateRenderResources: calling [super deallocateRenderResources]");
   [super deallocateRenderResources];
@@ -1510,15 +1613,30 @@ static Clap::Library _library;
                             AUAudioFrameCount frameCount, NSInteger outputBusNumber,
                             AudioBufferList *outputData, const AURenderEvent *realtimeEventListHead,
                             AURenderPullInputBlock __unsafe_unretained pullInputBlock) {
-    if (!impl || !impl->_processAdapter) return kAudioUnitErr_Uninitialized;
+    if (!impl) return kAudioUnitErr_Uninitialized;
+
+    // Handshake with deallocateRenderResources: announce we're inside the
+    // render block, THEN check the published adapter. Deallocation nulls
+    // the pointer first and drains this counter before freeing, so either
+    // we see null here or deallocation waits for us to finish.
+    impl->_renderInFlight.fetch_add(1);
+    auto *adapter = impl->_processAdapterLive.load();
+    if (!adapter)
+    {
+      impl->_renderInFlight.fetch_sub(1);
+      return kAudioUnitErr_Uninitialized;
+    }
 
     // Force audio-thread identity for the duration of the render call.
     // In out-of-process AUv3, _main_thread_id was captured on the XPC worker
     // thread during init, so the default heuristic is wrong.
-    auto audioGuard = impl->_plugin->AlwaysAudioThread();
-
-    auto status = impl->_processAdapter->process(actionFlags, timestamp, frameCount, outputBusNumber,
-                                                 outputData, realtimeEventListHead, pullInputBlock);
+    AUAudioUnitStatus status = kAudioUnitErr_Uninitialized;
+    {
+      auto audioGuard = impl->_plugin->AlwaysAudioThread();
+      status = adapter->process(actionFlags, timestamp, frameCount, outputBusNumber, outputData,
+                                realtimeEventListHead, pullInputBlock);
+    }
+    impl->_renderInFlight.fetch_sub(1);
 
     // Do NOT dispatch on_main_thread() from the render block. Surge XT's
     // on_main_thread() acquires JUCE locks that process() also needs — dispatching
@@ -1639,6 +1757,23 @@ static Clap::Library _library;
   if (_impl) _impl->_viewController = vc;
 }
 
+// Main-queue continuation of gui_request_resize (see AUv3ImplDetail).
+- (void)_applyGUISizeWidth:(uint32_t)width height:(uint32_t)height
+{
+  if (!_impl) return;
+  __strong ClapAUv3ViewController *vc = _impl->_viewController;
+  if (vc)
+  {
+    // CGRectMake / CGSizeMake work identically on macOS and iOS;
+    // NSMakeRect / NSMakeSize are AppKit-only.
+    vc.view.frame = CGRectMake(0, 0, width, height);
+
+    [vc willChangeValueForKey:@"preferredContentSize"];
+    vc.preferredContentSize = CGSizeMake(width, height);
+    [vc didChangeValueForKey:@"preferredContentSize"];
+  }
+}
+
 // --- View controller ---
 // Override requestViewControllerWithCompletionHandler: to return the factory VC.
 // The default AUAudioUnit implementation returns nil. The extension infrastructure
@@ -1677,54 +1812,46 @@ static Clap::Library _library;
 
   double newValue = shouldBypassEffect ? 1.0 : 0.0;
 
-  // Update cache (and fetch the cookie in the same lock scope)
+  // Update cache (and fetch the cookie in the same lock scope). While
+  // rendering, route the change through the render thread's queue —
+  // flush() is forbidden while the plugin is processing. The rendering
+  // decision is made INSIDE the lock (paired with allocate/deallocate
+  // flipping the flag under the same mutex).
   void *cookie = nullptr;
+  bool queuedForRender = false;
   {
     std::lock_guard<std::mutex> lock(_impl->_paramCacheMutex);
     _impl->_paramValueCache[_impl->_bypassParamId] = newValue;
     auto cookieIt = _impl->_paramCookieCache.find(_impl->_bypassParamId);
     if (cookieIt != _impl->_paramCookieCache.end()) cookie = cookieIt->second;
+
+    if (_renderResourcesAllocated)
+    {
+      if (_impl->_processAdapter)
+      {
+        _impl->_processAdapter->queueParameterChange(_impl->_bypassParamId, newValue);
+      }
+      queuedForRender = true;
+    }
   }
 
-  // Push to the CLAP plugin via params->flush()
-  if (_impl->_plugin && _impl->_plugin->_ext._params)
+  // Push to the CLAP plugin via params->flush() (only legal while not processing)
+  if (!queuedForRender)
   {
-    auto guard = _impl->_plugin->AlwaysMainThread();
-
-    clap_event_param_value_t ev = {};
-    ev.header.size = sizeof(ev);
-    ev.header.type = CLAP_EVENT_PARAM_VALUE;
-    ev.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-    ev.header.time = 0;
-    ev.header.flags = 0;
-    ev.param_id = _impl->_bypassParamId;
-    ev.cookie = cookie;
-    ev.port_index = -1;
-    ev.key = -1;
-    ev.channel = -1;
-    ev.note_id = -1;
-    ev.value = newValue;
-
-    clap_input_events_t in_events;
-    in_events.ctx = &ev;
-    in_events.size = [](const clap_input_events_t *) -> uint32_t { return 1; };
-    in_events.get = [](const clap_input_events_t *list, uint32_t) -> const clap_event_header_t *
-    { return &static_cast<const clap_event_param_value_t *>(list->ctx)->header; };
-    clap_output_events_t out_events;
-    out_events.ctx = nullptr;
-    out_events.try_push = [](const clap_output_events_t *, const clap_event_header_t *) -> bool
-    { return false; };
-    _impl->_plugin->_ext._params->flush(_impl->_plugin->_plugin, &in_events, &out_events);
+    _impl->flushParamValueWithCookie(_impl->_bypassParamId, newValue, cookie);
   }
 
-  // Update the AUParameter in the tree so the UI stays in sync
+  // Update the AUParameter in the tree so the UI stays in sync. The set
+  // re-enters implementorValueObserver on this thread — suppress the echo.
   if (_impl->_parameterTree)
   {
     AUParameter *param =
         [_impl->_parameterTree parameterWithAddress:(AUParameterAddress)_impl->_bypassParamId];
     if (param)
     {
+      s_suppressParamObserverEcho = true;
       [param setValue:(AUValue)newValue originator:_impl->_parameterObserverToken];
+      s_suppressParamObserverEcho = false;
     }
   }
 }

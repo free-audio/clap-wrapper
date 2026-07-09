@@ -182,8 +182,17 @@ void ProcessAdapter::setupProcessing(uint32_t numInputBusses, const uint32_t *in
   _eventindices.clear();
   _eventindices.reserve(8192);
 
+  // Reserved up front so enqueueOutputEvent normally never allocates on
+  // the render thread. Should a plugin ever push more than 8192 output
+  // events in one block, we accept the (rare, one-time) growth rather
+  // than drop events — the vector never shrinks, so it amortizes to zero.
+  _outevents.clear();
+  _outevents.reserve(8192);
+
   _activeNotes.clear();
   _activeNotes.reserve(32);
+  _reorderScratch.clear();
+  _reorderScratch.reserve(128);
   _nextNoteId = 0;
 }
 
@@ -229,8 +238,12 @@ void ProcessAdapter::reorderSameSampleOrphanOffs(AVAudioFrameCount frameCount)
   //
   // A legitimate retrigger [NOTE_OFF, NOTE_ON] for a key whose voice IS
   // playing hits the "already active" branch and is left untouched.
-  std::vector<uint32_t> active;
-  active.reserve(16);
+  if (_eventindices.empty()) return;
+
+  // Reused member scratch — a local vector would malloc/free on the render
+  // thread every cycle.
+  auto &active = _reorderScratch;
+  active.clear();
 
   auto packKey = [](int16_t port, int16_t channel, int16_t key) -> uint32_t
   {
@@ -270,7 +283,19 @@ void ProcessAdapter::reorderSameSampleOrphanOffs(AVAudioFrameCount frameCount)
 
     std::swap(_eventindices[i], _eventindices[i + 1]);
     if (frameCount > 1 && e.header.time + 1 < frameCount)
+    {
       e.header.time = e.header.time + 1;
+      // The bump happens after sorting, so restore monotonicity: bubble the
+      // NOTE_OFF (now at i+1) past any remaining events still at the old
+      // time, otherwise the plugin would see an event at t+1 followed by
+      // events at t — a violation of CLAP's sorted-input contract.
+      for (size_t j = i + 1;
+           j + 1 < _eventindices.size() && _events[_eventindices[j + 1]].header.time < e.header.time;
+           ++j)
+      {
+        std::swap(_eventindices[j], _eventindices[j + 1]);
+      }
+    }
 
     PROCLOG("reorderSameSampleOrphanOffs: swapped orphan off-then-on "
             "port=%d ch=%d key=%d on.t=%u off.t=%u",
@@ -293,13 +318,31 @@ void ProcessAdapter::translateAUv3Events(const AURenderEvent *head, AUEventSampl
     memset(&n, 0, sizeof(n));
 
     // Convert AUv3 absolute sample time to CLAP buffer-relative offset.
-    // AUEventSampleTimeImmediate (0xffffffff00000000) means "now" — treat as offset 0.
+    // Events may be scheduled at AUEventSampleTimeImmediate (0xffffffff00000000,
+    // "now") PLUS an optional buffer offset in the low 32 bits — the documented
+    // AU pattern for intra-buffer immediate scheduling. As int64 that whole
+    // encoding range is [-2^32, -1], which COLLIDES with legitimate absolute
+    // times of hosts whose render timeline is negative (pre-roll/priming).
+    // Disambiguate by preferring the absolute interpretation whenever it
+    // lands inside this buffer; only then decode as Immediate+offset.
     auto absTime = event->head.eventSampleTime;
     uint32_t sampleOffset = 0;
-    if (absTime >= bufferStartTime && absTime != AUEventSampleTimeImmediate)
+    bool resolved = false;
+    if (absTime != AUEventSampleTimeImmediate)
     {
       int64_t rel = absTime - bufferStartTime;
-      sampleOffset = (rel >= 0 && rel < (int64_t)frameCount) ? (uint32_t)rel : 0;
+      if (rel >= 0 && rel < (int64_t)frameCount)
+      {
+        sampleOffset = (uint32_t)rel;
+        resolved = true;
+      }
+    }
+    if (!resolved && (uint64_t)absTime >= (uint64_t)AUEventSampleTimeImmediate)
+    {
+      uint64_t off = (uint64_t)absTime - (uint64_t)AUEventSampleTimeImmediate;
+      // Out-of-range offsets degrade to plain "now" (0) — a genuine
+      // Immediate offset is documented to be within the buffer.
+      if (off < frameCount) sampleOffset = (uint32_t)off;
     }
 
     switch (event->head.eventType)
@@ -497,15 +540,27 @@ AUAudioUnitStatus ProcessAdapter::process(AudioUnitRenderActionFlags *actionFlag
   // timestamp, so we run the full CLAP process on the first bus pulled in a
   // cycle (whichever it is), storing all output. The other buses of the same
   // cycle just copy from storage.
-  if (timestamp->mSampleTime == _lastProcessedSampleTime)
+  if (timestamp->mSampleTime == _lastProcessedSampleTime && timestamp->mHostTime == _lastProcessedHostTime)
   {
     goto copyOutput;
   }
   _lastProcessedSampleTime = timestamp->mSampleTime;
+  _lastProcessedHostTime = timestamp->mHostTime;
 
   // Clear events from previous cycle
   _events.clear();
   _eventindices.clear();
+
+  // Deliver host parameter changes queued via queueParameterChange()
+  // (AUParameter.setValue while rendering) at the top of this cycle.
+  {
+    QueuedParamChange qpc;
+    while (_hostParamChanges.pop(qpc))
+    {
+      _hostParamChangesCount.fetch_sub(1);
+      addParameterEvent(qpc.id, qpc.value, 0);
+    }
+  }
 
 #if 1
   // Translate AUv3 events to CLAP events
@@ -771,6 +826,25 @@ copyOutput:
   }
 
   return noErr;
+}
+
+void ProcessAdapter::queueParameterChange(clap_id paramId, double value)
+{
+  // fixedqueue wraps silently — a wrapped ring reads back as EMPTY,
+  // discarding everything. Producers are serialized, so the count check
+  // is race-free against other producers; dropping the newest change on a
+  // >4095-entry burst between two render cycles is the lesser evil (the
+  // wrapper's value cache already holds the latest value).
+  if (_hostParamChangesCount.load() >= kHostParamQueueSize - 1) return;
+  _hostParamChanges.push({paramId, value});
+  _hostParamChangesCount.fetch_add(1);
+}
+
+bool ProcessAdapter::dequeueParameterChange(QueuedParamChange &out)
+{
+  if (!_hostParamChanges.pop(out)) return false;
+  _hostParamChangesCount.fetch_sub(1);
+  return true;
 }
 
 void ProcessAdapter::addParameterEvent(clap_id paramId, double value, uint32_t sampleOffset)

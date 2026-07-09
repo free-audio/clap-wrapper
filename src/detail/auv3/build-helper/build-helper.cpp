@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -46,6 +47,59 @@ static std::string objcIdentifierFromString(const std::string &input)
   return buf;
 }
 
+// Escape a string for use in an XML text node. Plugin names/descriptions
+// come straight out of the CLAP descriptor — "Drums & Bass" written raw
+// produces an unparseable Info.plist and the component silently never
+// registers.
+static std::string escapeXML(const std::string &input)
+{
+  std::string out;
+  out.reserve(input.size());
+  for (char c : input)
+  {
+    switch (c)
+    {
+      case '&':
+        out += "&amp;";
+        break;
+      case '<':
+        out += "&lt;";
+        break;
+      case '>':
+        out += "&gt;";
+        break;
+      case '"':
+        out += "&quot;";
+        break;
+      case '\'':
+        out += "&apos;";
+        break;
+      default:
+        out += c;
+        break;
+    }
+  }
+  return out;
+}
+
+// Escape a string for use inside an ObjC @"..." literal in generated code.
+static std::string escapeObjCString(const std::string &input)
+{
+  std::string out;
+  out.reserve(input.size());
+  for (char c : input)
+  {
+    if (c == '\\' || c == '"') out += '\\';
+    if (c == '\n')
+    {
+      out += "\\n";
+      continue;
+    }
+    out += c;
+  }
+  return out;
+}
+
 struct auInfo
 {
   std::string name, vers, type, subt, manu, manunm, clapid, desc, clapname, bundlevers;
@@ -63,32 +117,34 @@ struct auInfo
 
   uint32_t bundleversToVersion() const
   {
+    // "major[.minor[.patch]]" -> 0x00MMmmpp. Every component including the
+    // last must be parsed — "1.2.3" is 0x010203, so each patch release
+    // yields a distinct AudioComponent version and hosts detect the update.
+    // Each component is clamped to its byte, otherwise a build-number-style
+    // patch ("1.2.300") carries into the minor byte and version ordering
+    // across releases becomes wrong.
     uint16_t rev[3]{0, 0, 0};
-    auto sum = [&]()
-    {
-      auto res = std::max((rev[0] << 16) + (rev[1] << 8) + rev[2], 1);
-      return res;
-    };
     auto uv = bundlevers;
-    for (int i = 0; i < 3; ++i)
+    for (int i = 0; i < 3 && !uv.empty(); ++i)
     {
+      rev[i] = (uint16_t)std::min(std::max(std::atoi(uv.c_str()), 0), 255);
       auto p = uv.find('.');
-      if (p == std::string::npos)
-      {
-        return sum();
-      }
-      auto sub = uv.substr(0, p);
-      rev[i] = std::atoi(sub.c_str());
+      if (p == std::string::npos) break;
       uv = uv.substr(p + 1);
     }
-    return sum();
+    return std::max((rev[0] << 16) + (rev[1] << 8) + rev[2], 1);
   }
 
   void writePListFragment(std::ostream &of, int idx) const
   {
     if (!clapid.empty())
     {
-      of << "          <!-- entry for id '" << clapid << "' / index " << idx << " -->\n";
+      // XML comments are invalidated by the sequence "--" (which escapeXML
+      // cannot represent) — break it up.
+      auto commentSafe = escapeXML(clapid);
+      size_t dd;
+      while ((dd = commentSafe.find("--")) != std::string::npos) commentSafe.replace(dd, 2, "- -");
+      of << "          <!-- entry for id '" << commentSafe << "' / index " << idx << " -->\n";
     }
     else
     {
@@ -96,28 +152,26 @@ struct auInfo
     }
     of << "          <dict>\n"
        << "            <key>name</key>\n"
-       << "            <string>" << manunm << ": " << name << "</string>\n"
+       << "            <string>" << escapeXML(manunm) << ": " << escapeXML(name) << "</string>\n"
        << "            <key>description</key>\n"
-       << "            <string>" << desc << "</string>\n"
+       << "            <string>" << escapeXML(desc) << "</string>\n"
        << "            <key>factoryFunction</key>\n"
        << "            <string>" << factoryBase() << idx << "</string>\n"
        << "            <key>manufacturer</key>\n"
-       << "            <string>" << manu << "</string>\n"
+       << "            <string>" << escapeXML(manu) << "</string>\n"
        << "            <key>subtype</key>\n"
-       << "            <string>" << subt << "</string>\n"
+       << "            <string>" << escapeXML(subt) << "</string>\n"
        << "            <key>type</key>\n"
-       << "            <string>" << type << "</string>\n"
+       << "            <string>" << escapeXML(type) << "</string>\n"
        << "            <key>version</key>\n"
        << "            <integer>" << bundleversToVersion() << "</integer>\n"
        << "            <key>sandboxSafe</key>\n"
-       << "            <true/>\n"
-       << "            <key>resourceUsage</key>\n"
-       << "            <dict>\n"
-       << "              <key>network.client</key>\n"
-       << "              <true/>\n"
-       << "              <key>temporary-exception.files.all.read-write</key>\n"
-       << "              <true/>\n"
-       << "            </dict>\n";
+       << "            <true/>\n";
+    // No resourceUsage dict by default: granting network.client or file
+    // exceptions to every wrapped plugin contradicts sandboxSafe and is
+    // grounds for App Store rejection. When a hosted CLAP genuinely needs
+    // extra sandbox powers, thread a per-plugin option through here
+    // instead of widening this default.
 
     if (!tags.empty())
     {
@@ -129,7 +183,7 @@ struct auInfo
         {
           tag[0] = std::toupper(tag[0]);
         }
-        of << "              <string>" << tag << "</string>\n";
+        of << "              <string>" << escapeXML(tag) << "</string>\n";
       }
       of << "            </array>\n";
     }
@@ -429,8 +483,11 @@ int main(int argc, char **argv)
       std::cout << "    + " << u.name << " view controller " << vcName << std::endl;
 
       // Generate a unique AUViewController subclass per plugin
-      // This class serves as both the view controller AND the AUAudioUnitFactory
-      cppf << "// ViewController/Factory for '" << u.name << "' (" << u.type << "/" << u.subt << ")\n";
+      // This class serves as both the view controller AND the AUAudioUnitFactory.
+      // Escape the comment too — a newline in a descriptor string would
+      // otherwise spill the rest of the name out of the // comment as code.
+      cppf << "// ViewController/Factory for '" << escapeObjCString(u.name) << "' ("
+           << escapeObjCString(u.type) << "/" << escapeObjCString(u.subt) << ")\n";
       cppf << "@interface " << vcName << " : ClapAUv3ViewController\n"
            << "@end\n\n";
       cppf << "@implementation " << vcName << "\n";
@@ -440,9 +497,9 @@ int main(int argc, char **argv)
           << "    ClapAUv3AudioUnit *au = [[ClapAUv3AudioUnit alloc] initWithComponentDescription:desc\n"
           << "                                                          options:0\n"
           << "                                                            error:error\n"
-          << "                                                         clapName:@\"" << u.clapname
+          << "                                                         clapName:@\"" << escapeObjCString(u.clapname)
           << "\"\n"
-          << "                                                           clapId:@\"" << u.clapid
+          << "                                                           clapId:@\"" << escapeObjCString(u.clapid)
           << "\"\n"
           << "                                                        clapIndex:" << idx << "];\n"
           << "    self.audioUnit = au;\n"

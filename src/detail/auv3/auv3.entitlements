@@ -2,17 +2,17 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <!-- Minimal default entitlements: the app sandbox is required for the
+         appex to register as an Audio Unit on macOS, and user-selected
+         file access covers preset import/export dialogs. Plugins that
+         need more (network access, specific folders) should pass their
+         own file via the ENTITLEMENTS argument of target_add_auv3_wrapper
+         rather than widening this shared default — blanket temporary
+         exceptions here are grounds for App Store rejection for every
+         wrapped plugin. -->
     <key>com.apple.security.app-sandbox</key>
-    <true/>
-    <key>com.apple.security.network.client</key>
-    <true/>
-    <key>com.apple.security.assets.music.read-write</key>
     <true/>
     <key>com.apple.security.files.user-selected.read-write</key>
     <true/>
-    <key>com.apple.security.temporary-exception.files.absolute-path.read-write</key>
-    <array>
-        <string>/</string>
-    </array>
 </dict>
 </plist>

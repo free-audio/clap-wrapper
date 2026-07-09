@@ -225,6 +225,10 @@ function(make_clapfirst_plugins)
         add_executable(${AUV3_TARGET})
         target_sources(${AUV3_TARGET} PRIVATE ${C1ST_ENTRY_SOURCE})
         target_link_libraries(${AUV3_TARGET} PRIVATE ${C1ST_IMPL_TARGET})
+        # The clap entry is statically linked into the appex via ENTRY_SOURCE,
+        # so wire the wrapper directly to that symbol instead of relying on
+        # CFBundle-based self-resolution of an MH_EXECUTE binary at runtime.
+        target_compile_definitions(${AUV3_TARGET} PRIVATE STATICALLY_LINKED_CLAP_ENTRY=1)
         if (DEFINED C1ST_AUV2_MANUFACTURER_CODE)
             target_add_auv3_wrapper(
                     TARGET ${AUV3_TARGET}
@@ -251,14 +255,20 @@ function(make_clapfirst_plugins)
         endif()
 
         if (DEFINED C1ST_ASSET_OUTPUT_DIRECTORY)
+            # The appex is an add_executable bundle — executables honor
+            # RUNTIME_OUTPUT_DIRECTORY (LIBRARY_OUTPUT_DIRECTORY is ignored
+            # and the .appex would miss the assets directory).
             set_target_properties(${AUV3_TARGET} PROPERTIES
-                    LIBRARY_OUTPUT_DIRECTORY ${C1ST_ASSET_OUTPUT_DIRECTORY})
+                    RUNTIME_OUTPUT_DIRECTORY ${C1ST_ASSET_OUTPUT_DIRECTORY})
         endif()
 
         add_dependencies(${ALL_TARGET} ${AUV3_TARGET})
 
-        # AUv3 Standalone host app (embeds the .appex)
-        if (DEFINED C1ST_AUV2_MANUFACTURER_CODE)
+        # AUv3 Standalone host app (embeds the .appex). macOS only:
+        # target_add_auv3_standalone_wrapper is the AppKit host — on iOS the
+        # separate target_add_auv3_standalone_ios_wrapper applies, which a
+        # consuming project wires up itself (it involves signing decisions).
+        if (DEFINED C1ST_AUV2_MANUFACTURER_CODE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
             set(AUV3SA_TARGET ${C1ST_TARGET_NAME}_auv3_standalone)
             message(STATUS "clap-wrapper: ClapFirst is making an AUv3 Standalone")
             add_executable(${AUV3SA_TARGET})

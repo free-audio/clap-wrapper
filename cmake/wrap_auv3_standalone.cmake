@@ -156,13 +156,10 @@ function(target_add_auv3_standalone_wrapper)
                 "${_auv3_appex_dst}"
             )
 
-    # Ad-hoc sign the embedded appex first, then the host app
-    if (NOT ${CMAKE_GENERATOR} STREQUAL "Xcode")
-        add_custom_command(TARGET ${AUSA_TARGET} POST_BUILD
-                COMMAND codesign -s - -f "${_auv3_appex_dst}"
-                COMMAND codesign -s - -f "$<TARGET_BUNDLE_DIR:${AUSA_TARGET}>"
-                COMMENT "Ad-hoc signing AUv3 standalone and embedded appex"
-                )
-    endif()
+    # No extra signing step: the copied appex keeps the entitlement-bearing
+    # signature wrap_auv3.cmake applied. (AUv3 requires the Xcode generator,
+    # so a non-Xcode re-sign branch here would be unreachable — and a plain
+    # `codesign -s -` without --entitlements would strip the app-sandbox
+    # entitlement macOS needs to register the appex.)
 
 endfunction(target_add_auv3_standalone_wrapper)

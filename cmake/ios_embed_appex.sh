@@ -28,6 +28,17 @@ HOST_DIR="$3"
 
 IDENTITY="${EXPANDED_CODE_SIGN_IDENTITY:--}"
 
+# A device build re-signed ad-hoc is rejected by installd at install time
+# with no useful diagnostic — fail here with a clear message instead.
+# (EXPANDED_CODE_SIGN_IDENTITY and PLATFORM_NAME are exported by Xcode to
+# script phases; simulator builds legitimately fall back to ad-hoc.)
+if [ "$IDENTITY" = "-" ] && [ "${PLATFORM_NAME:-}" = "iphoneos" ]; then
+    echo "error: ios_embed_appex.sh: no code-sign identity for a device build" \
+         "(EXPANDED_CODE_SIGN_IDENTITY is empty). Set DEVELOPMENT_TEAM /" \
+         "a signing identity in Xcode, or build for the simulator." >&2
+    exit 1
+fi
+
 # Clean + copy
 rm -rf "$APPEX_DST"
 mkdir -p "$(dirname "$APPEX_DST")"

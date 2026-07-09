@@ -14,6 +14,8 @@ function(target_add_auv3_wrapper)
 
             CLAP_TARGET_FOR_CONFIG
 
+            ENTITLEMENTS  # optional: per-plugin entitlements file (macOS appex signing)
+
             MACOS_EMBEDDED_CLAP_LOCATION
             MACOSX_EMBEDDED_CLAP_LOCATION
             )
@@ -128,12 +130,28 @@ function(target_add_auv3_wrapper)
         string(TOUPPER "${_csd_md5_short}" _csd_md5_short)
         set(AUV3_FACTORY_CLASS_NAME "ClapAUv3VC_${_csd_md5_short}")
 
-        # Pack dotted version into uint32 (matches bundleversToVersion).
-        set(AUV3_VERSION_INT 1)
+        # Pack dotted version into uint32 (matches bundleversToVersion,
+        # including the per-byte clamp so the packing stays ordered when a
+        # component exceeds 255).
+        set(_vmaj 0)
+        set(_vmin 0)
+        set(_vpat 0)
         if (AUV3_BUNDLE_VERSION MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)")
-            math(EXPR AUV3_VERSION_INT "(${CMAKE_MATCH_1} * 65536) + (${CMAKE_MATCH_2} * 256) + ${CMAKE_MATCH_3}")
+            set(_vmaj ${CMAKE_MATCH_1})
+            set(_vmin ${CMAKE_MATCH_2})
+            set(_vpat ${CMAKE_MATCH_3})
         elseif (AUV3_BUNDLE_VERSION MATCHES "^([0-9]+)\\.([0-9]+)")
-            math(EXPR AUV3_VERSION_INT "(${CMAKE_MATCH_1} * 65536) + (${CMAKE_MATCH_2} * 256)")
+            set(_vmaj ${CMAKE_MATCH_1})
+            set(_vmin ${CMAKE_MATCH_2})
+        endif()
+        foreach(_vc _vmaj _vmin _vpat)
+            if (${${_vc}} GREATER 255)
+                set(${_vc} 255)
+            endif()
+        endforeach()
+        math(EXPR AUV3_VERSION_INT "(${_vmaj} * 65536) + (${_vmin} * 256) + ${_vpat}")
+        if (AUV3_VERSION_INT EQUAL 0)
+            set(AUV3_VERSION_INT 1)
         endif()
 
         # The hosted CLAP's name (for Clap::getValidCLAPSearchPaths fallback)
@@ -152,6 +170,18 @@ function(target_add_auv3_wrapper)
             set(AUV3_IOS_DEPLOYMENT_TARGET "${CMAKE_OSX_DEPLOYMENT_TARGET}")
         else()
             set(AUV3_IOS_DEPLOYMENT_TARGET "15.0")
+        endif()
+
+        # The template below bakes the bundle identifier in at configure
+        # time, so the empty-identifier fallback must be resolved HERE —
+        # the shared fallback further down runs after this configure_file
+        # and would leave an empty CFBundleIdentifier in the plist while
+        # PRODUCT_BUNDLE_IDENTIFIER gets the generated default (a mismatch
+        # installd/pluginkit reject).
+        if ("${AUV3_BUNDLE_IDENTIFIER}" STREQUAL "")
+            string(MAKE_C_IDENTIFIER ${AUV3_OUTPUT_NAME} _ios_outidentifier)
+            string(REPLACE "_" "-" _ios_repout ${_ios_outidentifier})
+            set(AUV3_BUNDLE_IDENTIFIER "org.cleveraudio.wrapper.${_ios_repout}.auv3")
         endif()
 
         configure_file(
@@ -368,42 +398,26 @@ function(target_add_auv3_wrapper)
             MACOSX_BUNDLE_SHORT_VERSION_STRING ${AUV3_BUNDLE_VERSION}
             )
 
-    # The build-helper (or CMake configure_file on iOS) produces an
-    # auv3_Info.plist at build time.
+    # The build-helper (macOS) or CMake configure_file (iOS) produces
+    # auv3_Info.plist. Feed it to Xcode as the target's own INFOPLIST_FILE
+    # input: ProcessInfoPlistFile then reads OUR file whenever it (re)stamps
+    # the bundle plist and itself adds the DT* / CFBundleSupportedPlatforms
+    # keys pluginkit requires on iOS. On macOS the target dependency on the
+    # build-helper guarantees the file is written before it is read; on iOS
+    # it exists from configure time.
+    #
+    # Do NOT rewrite/merge the bundle's Info.plist POST_BUILD instead:
+    # Xcode re-runs ProcessInfoPlistFile on incremental builds when it sees
+    # its output was modified, and the scheduling between that task and
+    # script phases is not deterministic — a rewritten plist randomly loses
+    # NSExtension/AudioComponents and the appex silently stops registering.
     if (CMAKE_GENERATOR STREQUAL "Xcode")
         set_target_properties(${AUV3_TARGET} PROPERTIES
                 XCODE_PRODUCT_TYPE com.apple.product-type.app-extension
                 )
     endif()
-    if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
-        # On iOS the AUv3 keys are merged into the plist Xcode produced —
-        # pluginkit silently drops the appex from the AU catalog when the
-        # DT* / CFBundleSupportedPlatforms keys Xcode stamps in are absent,
-        # and AVAudioUnitComponentManager reports 0 matches.
-        #
-        # /usr/bin/python3 is the Apple-supplied interpreter and is stable
-        # across developers' machines; /usr/bin/env python3 can pick up a
-        # Homebrew install with broken linkage.
-        add_custom_command(TARGET ${AUV3_TARGET} POST_BUILD
-            COMMAND /usr/bin/python3
-                "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/cmake/auv3_merge_ios_plist.py"
-                "$<TARGET_BUNDLE_CONTENT_DIR:${AUV3_TARGET}>/Info.plist"
-                "${bhtgoutdir}/auv3_Info.plist"
-            COMMENT "Merging AUv3 keys into iOS Info.plist (preserving DT* / CFBundleSupportedPlatforms)")
-    else()
-        # On macOS, feed the generated plist to Xcode as the target's own
-        # INFOPLIST_FILE input. Xcode's ProcessInfoPlistFile then reads OUR
-        # file whenever it (re)stamps the bundle plist, and the target
-        # dependency on the build-helper guarantees the file is written
-        # first. Do NOT copy over the bundle's Info.plist POST_BUILD
-        # instead: Xcode re-runs ProcessInfoPlistFile on incremental builds
-        # when it sees its output was modified, and the scheduling between
-        # that task and script phases is not deterministic — the replaced
-        # plist randomly loses NSExtension/AudioComponents and the appex
-        # silently stops registering.
-        set_target_properties(${AUV3_TARGET} PROPERTIES
-                XCODE_ATTRIBUTE_INFOPLIST_FILE "${bhtgoutdir}/auv3_Info.plist")
-    endif()
+    set_target_properties(${AUV3_TARGET} PROPERTIES
+            XCODE_ATTRIBUTE_INFOPLIST_FILE "${bhtgoutdir}/auv3_Info.plist")
 
     set_target_properties(${AUV3_TARGET} PROPERTIES XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${AUV3_BUNDLE_IDENTIFIER}")
 
@@ -435,8 +449,12 @@ function(target_add_auv3_wrapper)
         # The default Xcode settings give us ad-hoc signing on the simulator
         # (no provisioning profile required).
     else()
-        # Set entitlements for sandboxing (required for AUv3 registration on macOS)
-        set(AUV3_ENTITLEMENTS "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv3/auv3.entitlements")
+        # Set entitlements for sandboxing (required for AUv3 registration on
+        # macOS). Plugins can pass their own file via ENTITLEMENTS; the
+        # shipped default is minimal (app-sandbox + user-selected files).
+        if (NOT DEFINED AUV3_ENTITLEMENTS)
+            set(AUV3_ENTITLEMENTS "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv3/auv3.entitlements")
+        endif()
 
         # For Xcode, set the entitlements via build settings
         set_target_properties(${AUV3_TARGET} PROPERTIES

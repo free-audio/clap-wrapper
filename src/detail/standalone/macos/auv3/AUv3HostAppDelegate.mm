@@ -236,12 +236,26 @@ static MIDIPortRef sMIDIInputPort = 0;
 - (void)doSetup
 {
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
-  // Request microphone permission
+  // Request microphone permission. Setup continues immediately (the TCC
+  // dialog is async), so on first launch the engine is built WITHOUT the
+  // input node — rebuild it once the user grants access, otherwise an
+  // effect processes silence until the app is relaunched.
   switch ([AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio])
   {
     case AVAuthorizationStatusNotDetermined:
       [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio
-                               completionHandler:^(BOOL granted){
+                               completionHandler:^(BOOL granted) {
+                                 if (!granted) return;
+                                 dispatch_async(dispatch_get_main_queue(), ^{
+                                   if (self->_engine && self->_avAudioUnit)
+                                   {
+                                     std::cout << "[auv3-standalone] microphone access granted — "
+                                                  "rebuilding engine with input"
+                                               << std::endl;
+                                     [self->_engine stop];
+                                     [self setupEngine];
+                                   }
+                                 });
                                }];
       break;
     default:
@@ -384,6 +398,17 @@ static MIDIPortRef sMIDIInputPort = 0;
 - (void)setupEngine
 {
   uint32_t auType = fourCCFromString(AU_TYPE_STR);
+
+  // A MIDI processor (aumi) may expose no audio output busses at all —
+  // connecting it into the audio graph would throw. Its MIDI path doesn't
+  // need the engine graph, so skip it entirely.
+  if (_avAudioUnit.AUAudioUnit.outputBusses.count == 0)
+  {
+    std::cout << "[auv3-standalone] AU has no audio output busses — skipping audio engine graph"
+              << std::endl;
+    return;
+  }
+
   BOOL wantInput = (auType == kAudioUnitType_Effect || auType == kAudioUnitType_MIDIProcessor) &&
                    _avAudioUnit.AUAudioUnit.inputBusses.count > 0;
 
