@@ -83,7 +83,7 @@ typedef union clap_multi_event
 class IMIDIOutputs
 {
  public:
-  virtual ~IMIDIOutputs() {};
+  virtual ~IMIDIOutputs(){};
   virtual void send(const clap_multi_event_t &event) = 0;
 };
 
