@@ -121,6 +121,27 @@ bool findPlugin(Clap::Library &lib, const std::string &pluginfilename)
   return false;
 }
 
+/*
+    The Steinberg APIs retain 'COM compatibility' by flipping the first pair of ints
+    in the UID. That results in CIDs which are not compatible across platforms and so
+    mac won't load a win session etc.
+
+    We apply that flip on MAC and LIN to every CID the wrapper derives. The flip is:
+    the first 8 bit endian, and then the pair of 4 bit endians.
+*/
+static void makeCIDComCompatible(TUID &lcid)
+{
+#if !COM_COMPATIBLE
+  std::swap(lcid[0], lcid[3]);
+  std::swap(lcid[1], lcid[2]);
+
+  std::swap(lcid[4], lcid[5]);
+  std::swap(lcid[6], lcid[7]);
+#else
+  (void)lcid;
+#endif
+}
+
 IPluginFactory *GetPluginFactoryEntryPoint()
 {
 #if _DEBUG
@@ -255,23 +276,7 @@ IPluginFactory *GetPluginFactoryEntryPoint()
         }
 
         memcpy(&lcid, &g, sizeof(TUID));
-
-#if !COM_COMPATIBLE
-        /*
-         * The steinberg APIs retain 'com compatability' by flipping the first pair of ints
-         * in the UID. That results in CID which are not compatbile across platforms and so
-         * mac won't load a win session etc.
-         *
-         * We apply that flip on MAC and LIN also in the wrapper here. The flip is: The first
-         * 8 bits endian, and then the pair of 4 bit endians
-         */
-
-        std::swap(lcid[0], lcid[3]);
-        std::swap(lcid[1], lcid[2]);
-
-        std::swap(lcid[4], lcid[5]);
-        std::swap(lcid[6], lcid[7]);
-#endif
+        makeCIDComCompatible(lcid);
       }
 
       // features ----------------------------------------
@@ -318,23 +323,14 @@ IPluginFactory *GetPluginFactoryEntryPoint()
     auto *compatibilityJSON = gClapLibrary.get_vst3_compatibility();
     if (compatibilityJSON && *compatibilityJSON)
     {
-      LOGDETAIL("detected extension `{}`", CLAP_PLUGIN_FACTORY_INFO_VST3_V1);
+      LOGDETAIL("registering IPluginCompatibility class");
 
       std::string compat_id(gClapLibrary.plugins[0]->id);
       compat_id.append("-compatibility");
       auto g = Crypto::create_sha1_guid_from_name(compat_id.c_str(), compat_id.size());
       TUID lcid;
       memcpy(&lcid, &g, sizeof(TUID));
-
-#if !COM_COMPATIBLE
-      // apply the same COM-compatibility flip as for the plugin CID above,
-      // so the compatibility class CID is identical across platforms
-      std::swap(lcid[0], lcid[3]);
-      std::swap(lcid[1], lcid[2]);
-
-      std::swap(lcid[4], lcid[5]);
-      std::swap(lcid[6], lcid[7]);
-#endif
+      makeCIDComCompatible(lcid);
 
       auto ptr = std::make_shared<CreationContext>();
       *ptr = {&gClapLibrary, 0,
@@ -364,6 +360,7 @@ IPluginFactory *GetPluginFactoryEntryPoint()
             auto g = Crypto::create_sha1_guid_from_name(extended_id.c_str(), extended_id.size());
             TUID lcid;
             memcpy(&lcid, &g, sizeof(TUID));
+            makeCIDComCompatible(lcid);
 
             std::string n(clapdescr->name);
 #ifdef _DEBUG
@@ -433,8 +430,11 @@ class PluginCompatibility : public Steinberg::IPluginCompatibility
   {
     FUNKNOWN_CTOR
   }
-  virtual ~PluginCompatibility(){FUNKNOWN_DTOR} Steinberg::tresult PLUGIN_API
-      getCompatibilityJSON(Steinberg::IBStream *stream) override
+  virtual ~PluginCompatibility()
+  {
+    FUNKNOWN_DTOR;
+  }
+  Steinberg::tresult PLUGIN_API getCompatibilityJSON(Steinberg::IBStream *stream) override
   {
     // the JSON5 string is written UTF-8 encoded and without a terminating zero
     Steinberg::int32 numBytesWritten = 0;

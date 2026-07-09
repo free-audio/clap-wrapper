@@ -63,8 +63,6 @@ class ProcessAdapter
 			if (value) val |= mask << pos;
 		}
 #endif
-  virtual ~ProcessAdapter();
-
   void setupProcessing(const clap_plugin_t *plugin, const clap_plugin_params_t *ext_params,
                        Steinberg::Vst::BusList &audioinputs, Steinberg::Vst::BusList &audiooutputs,
                        uint32_t numSamples, size_t numEventInputs, size_t numEventOutputs,
@@ -105,7 +103,7 @@ class ProcessAdapter
   Steinberg::Vst::BusList *_audiooutputs = nullptr;
 
   // for automation gestures
-  std::vector<clap_id> *_gesturedParameters;
+  std::vector<clap_id> *_gesturedParameters = nullptr;
 
   // for INoteExpression
   struct ActiveNote

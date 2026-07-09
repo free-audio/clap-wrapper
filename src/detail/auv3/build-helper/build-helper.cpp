@@ -7,20 +7,7 @@
 
 #include "detail/clap/fsutil.h"
 #include "detail/os/fs.h"
-
-// Fowler-Noll-Vo hash function (same as in detail/aax/util.cpp)
-// see https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function
-static uint32_t fnv1a_keogh(const char *input)
-{
-  uint32_t hash = 0x811c9dc5;
-  while (*input)
-  {
-    hash ^= *input++;
-    hash *= 0x01000193;
-    hash = (0x19660d * hash) + 0x3c6ef35f;  // LCG
-  }
-  return hash;
-}
+#include "detail/shared/util.h"
 
 // Generate a 4-character FourCC string from an arbitrary input string
 // using a deterministic hash. Same approach as AAXIDfromString.

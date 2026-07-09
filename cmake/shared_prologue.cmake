@@ -226,6 +226,8 @@ function(guarantee_clap_wrapper_shared)
             src/clap_proxy.cpp
             src/detail/shared/sha1.h
             src/detail/shared/sha1.cpp
+            src/detail/shared/util.h
+            src/detail/shared/util.cpp
             src/detail/clap/fsutil.h
             src/detail/clap/fsutil.cpp
             src/detail/clap/automation.h

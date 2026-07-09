@@ -14,10 +14,6 @@ namespace Clap
 {
 using namespace Steinberg;
 
-ProcessAdapter::~ProcessAdapter()
-{
-}
-
 void ProcessAdapter::setupProcessing(const clap_plugin_t *plugin, const clap_plugin_params_t *ext_params,
                                      Vst::BusList &audioinputs, Vst::BusList &audiooutputs,
                                      uint32_t numSamples, size_t /*numEventInputs*/,
@@ -784,8 +780,11 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t *event)
     {
       auto ev = (clap_event_param_gesture *)event;
       auto param = (Vst3Parameter *)this->parameters->getParameter(ev->param_id & 0x7FFFFFFF);
-      _gesturedParameters->push_back(param->getInfo().id);
-      if (_automation) _automation->onBeginEdit(param->getInfo().id);
+      if (param)
+      {
+        _gesturedParameters->push_back(param->getInfo().id);
+        if (_automation) _automation->onBeginEdit(param->getInfo().id);
+      }
     }
       return true;
 
@@ -794,13 +793,15 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t *event)
     {
       auto ev = (clap_event_param_gesture *)event;
       auto param = (Vst3Parameter *)this->parameters->getParameter(ev->param_id & 0x7FFFFFFF);
-
-      auto n =
-          std::remove(_gesturedParameters->begin(), _gesturedParameters->end(), param->getInfo().id);
-      if (n != _gesturedParameters->end())
+      if (param)
       {
-        _gesturedParameters->erase(n, _gesturedParameters->end());
-        if (_automation) _automation->onEndEdit(param->getInfo().id);
+        auto n =
+            std::remove(_gesturedParameters->begin(), _gesturedParameters->end(), param->getInfo().id);
+        if (n != _gesturedParameters->end())
+        {
+          _gesturedParameters->erase(n, _gesturedParameters->end());
+          if (_automation) _automation->onEndEdit(param->getInfo().id);
+        }
       }
     }
       return true;

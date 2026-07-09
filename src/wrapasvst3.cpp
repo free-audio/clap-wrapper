@@ -22,7 +22,6 @@
 #include "detail/vst3/process.h"
 #include "detail/vst3/parameter.h"
 #include "detail/clap/fsutil.h"
-#include "detail/shared/util.h"
 #include <locale>
 #include <sstream>
 
@@ -108,6 +107,8 @@ void utf8_to_utf16l(const char *utf8string, uint16_t *target, size_t targetsize)
       }
       else
       {
+        // invalid UTF-8 sequence
+        target[targetpos] = 0;
         return;
       }
     }
@@ -207,7 +208,7 @@ tresult PLUGIN_API ClapAsVst3::setActive(TBool state)
         _expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_PRESSURE,
         _expressionmap & clap_supported_note_expressions::AS_VST3_NOTE_EXPRESSION_TUNING);
 
-    // do we need this still?
+    // the freshly created ProcessAdapter needs the current bus activation states
     updateAudioBusses();
 
     if (_missedLatencyRequest)
@@ -228,6 +229,15 @@ tresult PLUGIN_API ClapAsVst3::setActive(TBool state)
     _active = false;
     delete _processAdapter;
     _processAdapter = nullptr;
+
+    // if the plugin didn't emit GESTURE_END for parameters still being edited,
+    // end those edits towards the host now - otherwise the stale ids would
+    // suppress host parameter changes after reactivation
+    for (auto id : _gesturedparameters)
+    {
+      onEndEdit(id);
+    }
+    _gesturedparameters.clear();
   }
   return super::setActive(state);
 }
@@ -397,7 +407,7 @@ tresult PLUGIN_API ClapAsVst3::setBusArrangements(Vst::SpeakerArrangement *input
           request.port_details = nullptr;
           break;
         default:
-          request.channel_count = popcount64(arrangement);
+          request.channel_count = static_cast<uint32_t>(Vst::SpeakerArr::getChannelCount(arrangement));
           request.port_type = nullptr;
           request.port_details = nullptr;
           break;
@@ -424,14 +434,16 @@ tresult PLUGIN_API ClapAsVst3::setBusArrangements(Vst::SpeakerArrangement *input
     {
       clap_audio_port_info_t info;
       _plugin->_ext._audioports->get(_plugin->_plugin, i, true, &info);
-      if (popcount64(inputs[i]) != info.channel_count) return kResultFalse;
+      if (static_cast<uint32_t>(Vst::SpeakerArr::getChannelCount(inputs[i])) != info.channel_count)
+        return kResultFalse;
     }
 
     for (int i = 0; i < numOuts; ++i)
     {
       clap_audio_port_info_t info;
       _plugin->_ext._audioports->get(_plugin->_plugin, i, false, &info);
-      if (popcount64(outputs[i]) != info.channel_count) return kResultFalse;
+      if (static_cast<uint32_t>(Vst::SpeakerArr::getChannelCount(outputs[i])) != info.channel_count)
+        return kResultFalse;
     }
   }
 
@@ -765,7 +777,17 @@ static Vst::SpeakerArrangement speakerArrFromPortType(const char *port_type, uin
       case 8:
         return Vst::SpeakerArr::k71Cine;
       default:
-        return (1 << channel_count) - 1;  // bitmask with channel_count bits set
+        // a SpeakerArrangement can hold at most 64 channels
+        if (channel_count > 64)
+        {
+          return Vst::SpeakerArr::kEmpty;
+        }
+        if (channel_count == 64)
+        {
+          return ~Vst::SpeakerArrangement{0};
+        }
+        // bitmask with channel_count bits set
+        return (Vst::SpeakerArrangement{1} << channel_count) - 1;
     }
   }
 
@@ -945,6 +967,22 @@ void ClapAsVst3::setupAudioBusses(const clap_plugin_t *plugin,
 {
   if (!audioports) return;
 
+  // removeAudioBusses() destroys the bus objects and with them the activation
+  // states the host has set via activateBus - freshly created busses are
+  // always inactive. Remember the states so busses that persist across the
+  // rebuild (by index) keep them.
+  std::vector<bool> inputsActive, outputsActive;
+  inputsActive.reserve(audioInputs.size());
+  outputsActive.reserve(audioOutputs.size());
+  for (auto i = 0U; i < audioInputs.size(); ++i)
+  {
+    inputsActive.push_back(audioInputs[i]->isActive());
+  }
+  for (auto i = 0U; i < audioOutputs.size(); ++i)
+  {
+    outputsActive.push_back(audioOutputs[i]->isActive());
+  }
+
   removeAudioBusses();
 
   auto numAudioInputs = audioports->count(plugin, true);
@@ -967,6 +1005,15 @@ void ClapAsVst3::setupAudioBusses(const clap_plugin_t *plugin,
     {
       addAudioBusFrom(&info, false);
     }
+  }
+
+  for (auto i = 0U; i < audioInputs.size() && i < inputsActive.size(); ++i)
+  {
+    audioInputs[i]->setActive(inputsActive[i]);
+  }
+  for (auto i = 0U; i < audioOutputs.size() && i < outputsActive.size(); ++i)
+  {
+    audioOutputs[i]->setActive(outputsActive[i]);
   }
 }
 
