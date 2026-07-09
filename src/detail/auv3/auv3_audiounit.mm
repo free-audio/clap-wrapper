@@ -832,8 +832,8 @@ static Clap::Library _library;
         pathHint = dlinfo.dli_fname;
       }
       _library.useStaticEntry(&clap_entry, pathHint);
-      AUV3LOG("init: statically-linked clap_entry path='%{public}s' plugins=%zu",
-              pathHint, _library.plugins.size());
+      AUV3LOG("init: statically-linked clap_entry path='%{public}s' plugins=%zu", pathHint,
+              _library.plugins.size());
     }
 #endif
 

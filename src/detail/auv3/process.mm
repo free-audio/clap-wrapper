@@ -247,8 +247,8 @@ void ProcessAdapter::reorderSameSampleOrphanOffs(AVAudioFrameCount frameCount)
 
   auto packKey = [](int16_t port, int16_t channel, int16_t key) -> uint32_t
   {
-    return ((uint32_t)(uint16_t)port << 16) | ((uint32_t)(uint16_t)channel << 8)
-         | ((uint32_t)(uint16_t)(key & 0x7f));
+    return ((uint32_t)(uint16_t)port << 16) | ((uint32_t)(uint16_t)channel << 8) |
+           ((uint32_t)(uint16_t)(key & 0x7f));
   };
 
   for (size_t i = 0; i < _eventindices.size(); ++i)
@@ -299,8 +299,8 @@ void ProcessAdapter::reorderSameSampleOrphanOffs(AVAudioFrameCount frameCount)
 
     PROCLOG("reorderSameSampleOrphanOffs: swapped orphan off-then-on "
             "port=%d ch=%d key=%d on.t=%u off.t=%u",
-            (int)e.note.port_index, (int)e.note.channel, (int)e.note.key,
-            (unsigned)next.header.time, (unsigned)e.header.time);
+            (int)e.note.port_index, (int)e.note.channel, (int)e.note.key, (unsigned)next.header.time,
+            (unsigned)e.header.time);
 
     // Re-examine position i on the next iteration — it is now the NOTE_ON,
     // which needs to enter `active` via the normal NOTE_ON branch. The
@@ -440,8 +440,8 @@ void ProcessAdapter::translateAUv3Events(const AURenderEvent *head, AUEventSampl
             n.noteexpression.port_index = 0;
             n.noteexpression.channel = channel;
             n.noteexpression.key = me.data[1] & 0x7F;
-            n.noteexpression.note_id =
-                lookupNoteId(n.noteexpression.port_index, n.noteexpression.channel, n.noteexpression.key);
+            n.noteexpression.note_id = lookupNoteId(n.noteexpression.port_index,
+                                                    n.noteexpression.channel, n.noteexpression.key);
             n.noteexpression.value = (double)(me.data[2] & 0x7F) / 127.0;
 
             _eventindices.emplace_back(_events.size());
@@ -540,7 +540,8 @@ AUAudioUnitStatus ProcessAdapter::process(AudioUnitRenderActionFlags *actionFlag
   // timestamp, so we run the full CLAP process on the first bus pulled in a
   // cycle (whichever it is), storing all output. The other buses of the same
   // cycle just copy from storage.
-  if (timestamp->mSampleTime == _lastProcessedSampleTime && timestamp->mHostTime == _lastProcessedHostTime)
+  if (timestamp->mSampleTime == _lastProcessedSampleTime &&
+      timestamp->mHostTime == _lastProcessedHostTime)
   {
     goto copyOutput;
   }
@@ -954,8 +955,7 @@ int32_t ProcessAdapter::lookupNoteId(int16_t port_index, int16_t channel, int16_
 {
   for (const auto &i : _activeNotes)
   {
-    if (i.used && i.port_index == port_index && i.channel == channel && i.key == key)
-      return i.note_id;
+    if (i.used && i.port_index == port_index && i.channel == channel && i.key == key) return i.note_id;
   }
   return -1;
 }

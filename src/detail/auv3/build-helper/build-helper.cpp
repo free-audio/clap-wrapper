@@ -497,10 +497,10 @@ int main(int argc, char **argv)
           << "    ClapAUv3AudioUnit *au = [[ClapAUv3AudioUnit alloc] initWithComponentDescription:desc\n"
           << "                                                          options:0\n"
           << "                                                            error:error\n"
-          << "                                                         clapName:@\"" << escapeObjCString(u.clapname)
-          << "\"\n"
-          << "                                                           clapId:@\"" << escapeObjCString(u.clapid)
-          << "\"\n"
+          << "                                                         clapName:@\""
+          << escapeObjCString(u.clapname) << "\"\n"
+          << "                                                           clapId:@\""
+          << escapeObjCString(u.clapid) << "\"\n"
           << "                                                        clapIndex:" << idx << "];\n"
           << "    self.audioUnit = au;\n"
           << "    return au;\n"
