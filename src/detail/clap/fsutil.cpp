@@ -239,6 +239,18 @@ const clap_plugin_info_as_vst3_t *Library::get_vst3_info(uint32_t index) const
   return nullptr;
 }
 
+// getting the compatibility information for the VST3 IPluginCompatibility interface
+const char *Library::get_vst3_compatibility() const
+{
+  // get_vst3_compatibility is only part of the factory struct since version 1
+  if (_pluginFactoryVst3Info && _pluginFactoryVst3InfoIsV1 &&
+      _pluginFactoryVst3Info->get_vst3_compatibility)
+  {
+    return _pluginFactoryVst3Info->get_vst3_compatibility(_pluginFactoryVst3Info);
+  }
+  return nullptr;
+}
+
 // getting the information for a AAX plugin at given index
 const clap_plugin_info_as_aax_t *Library::get_aax_info(uint32_t index) const
 {
@@ -287,8 +299,15 @@ void Library::setupPluginsFromPluginEntry(const char *path)
     {
       _pluginFactory =
           static_cast<const clap_plugin_factory *>(_pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_ID));
+      // prefer the newer version of the vst3 factory info, fall back to version 0
       _pluginFactoryVst3Info = static_cast<decltype(_pluginFactoryVst3Info)>(
-          _pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_VST3));
+          _pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_VST3_V1));
+      _pluginFactoryVst3InfoIsV1 = (_pluginFactoryVst3Info != nullptr);
+      if (!_pluginFactoryVst3Info)
+      {
+        _pluginFactoryVst3Info = static_cast<decltype(_pluginFactoryVst3Info)>(
+            _pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_VST3));
+      }
       _pluginFactoryAUv2Info = static_cast<decltype(_pluginFactoryAUv2Info)>(
           _pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_AUV2));
       _pluginFactoryAAXInfo = static_cast<decltype(_pluginFactoryAAXInfo)>(
@@ -301,6 +320,7 @@ void Library::setupPluginsFromPluginEntry(const char *path)
       {
         // in this case, don't trust anything from there
         _pluginFactoryVst3Info = nullptr;
+        _pluginFactoryVst3InfoIsV1 = false;
         _pluginFactoryAUv2Info = nullptr;
         _pluginFactoryARAInfo = nullptr;
       }

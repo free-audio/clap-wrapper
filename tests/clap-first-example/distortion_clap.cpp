@@ -13,6 +13,7 @@
 #include <clap/clap.h>
 #include <math.h>
 #include <assert.h>
+#include "clapwrapper/vst3.h"
 #include "distortion_clap_entry.h"
 
 static const char *features[] = {CLAP_PLUGIN_FEATURE_AUDIO_EFFECT, CLAP_PLUGIN_FEATURE_STEREO,
@@ -575,6 +576,34 @@ static const clap_plugin_factory_t s_plugin_factory = {
     plugin_factory_create_plugin,
 };
 
+///////////////////////////////////////
+// clap_plugin_factory_as_vst3 (v1)  //
+///////////////////////////////////////
+
+const char *plugin_factory_get_vst3_compatibility(const clap_plugin_factory_as_vst3 *factory)
+{
+  // the compatibility information for the VST3 IPluginCompatibility interface, a JSON5
+  // array declaring which old VST3 class ids are being replaced by this plugin.
+  // the "Old" entries here are just examples - in a real plugin, they would be the class
+  // ids of the previously released VST3 this plugin replaces.
+  return R"([
+  {
+    "New": "90DB239B463453DA9FD24049D0D8410A",
+    "Old": [
+      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", // just an example
+    ],
+  },
+])";
+}
+
+static const clap_plugin_factory_as_vst3_t s_plugin_factory_as_vst3 = {
+    nullptr,  // vendor
+    nullptr,  // vendor_url
+    nullptr,  // email_contact
+    nullptr,  // get_vst3_info
+    plugin_factory_get_vst3_compatibility,
+};
+
 bool dist_entry_init(const char *plugin_path)
 {
   // called only once, and very first
@@ -589,5 +618,9 @@ void dist_entry_deinit(void)
 const void *dist_entry_get_factory(const char *factory_id)
 {
   if (!strcmp(factory_id, CLAP_PLUGIN_FACTORY_ID)) return &s_plugin_factory;
+  // the same struct is returned for both versions of the vst3 factory info; the
+  // wrapper only reads get_vst3_compatibility when it asked for the /1 version
+  if (!strcmp(factory_id, CLAP_PLUGIN_FACTORY_INFO_VST3)) return &s_plugin_factory_as_vst3;
+  if (!strcmp(factory_id, CLAP_PLUGIN_FACTORY_INFO_VST3_V1)) return &s_plugin_factory_as_vst3;
   return nullptr;
 }

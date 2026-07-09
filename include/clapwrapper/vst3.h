@@ -24,6 +24,11 @@ extern "C"
   static const CLAP_CONSTEXPR char CLAP_PLUGIN_FACTORY_INFO_VST3[] =
       "clap.plugin-factory-info-as-vst3/0";
 
+  // version 1 of the factory extension; since this version the struct
+  // clap_plugin_factory_as_vst3 also provides get_vst3_compatibility
+  static const CLAP_CONSTEXPR char CLAP_PLUGIN_FACTORY_INFO_VST3_V1[] =
+      "clap.plugin-factory-info-as-vst3/1";
+
   // the plugin extension
   static const CLAP_CONSTEXPR char CLAP_PLUGIN_AS_VST3[] = "clap.plugin-info-as-vst3/0";
 
@@ -87,6 +92,12 @@ extern "C"
   if not provided, the wrapper code will use/generate appropriate values
 
   retrieved when asking for factory CLAP_PLUGIN_FACTORY_INFO_VST3 by clap_entry::get_factory()
+
+  the struct has been extended over time, the members below are marked with the
+  factory version in which they became available. A plugin should return the same
+  struct for all factory versions it supports; the wrapper will only access members
+  covered by the version it asked for. So to provide the newer members, return this
+  struct also for CLAP_PLUGIN_FACTORY_INFO_VST3_V1.
 */
 
   typedef struct clap_plugin_factory_as_vst3
@@ -100,6 +111,27 @@ extern "C"
     // returns nullptr if no additional information is provided or can be a nullptr itself
     const clap_plugin_info_as_vst3_t *(CLAP_ABI *get_vst3_info)(
         const clap_plugin_factory_as_vst3 *factory, uint32_t index);
+
+    // -- available since CLAP_PLUGIN_FACTORY_INFO_VST3_V1 ("clap.plugin-factory-info-as-vst3/1") --
+
+    // returns a UTF-8 encoded, JSON5 compatible string to be passed to the host through the
+    // VST3 IPluginCompatibility interface, or nullptr if there is none.
+    // the member itself can also be a nullptr.
+    //
+    // the string starts with an array of objects, each declaring which old class ids are
+    // being replaced by a class in this factory (see the VST3 SDK documentation in
+    // pluginterfaces/base/iplugincompatibility.h):
+    //
+    //   [ { "New": "<CID>", "Old": [ "<CID>", ... ] } ]
+    //
+    // each CID is the 32 character hex string of a VST3 class id as printed by the
+    // VST3 validator (see the documentation of COMPONENT_ID above to obtain it).
+    //
+    // note: if the plugin bundle contains a moduleinfo.json, hosts will ignore the
+    // IPluginCompatibility class and use the "Compatibility" section from there instead.
+    //
+    // the returned pointer must remain valid as long as the clap entrypoint is initialized.
+    const char *(CLAP_ABI *get_vst3_compatibility)(const clap_plugin_factory_as_vst3 *factory);
   } clap_plugin_factory_as_vst3_t;
 
   enum clap_supported_note_expressions

@@ -47,7 +47,9 @@
 #include "detail/shared/sha1.h"
 #include "wrapasvst3.h"
 #include "public.sdk/source/main/pluginfactory.h"
+#include "pluginterfaces/base/iplugincompatibility.h"
 #include <array>
+#include <string>
 
 using namespace Steinberg::Vst;
 
@@ -184,7 +186,9 @@ IPluginFactory *GetPluginFactoryEntryPoint()
     // override for VST3 specifics
     if (gClapLibrary._pluginFactoryVst3Info)
     {
-      LOGDETAIL("detected extension `{}`", CLAP_PLUGIN_FACTORY_INFO_VST3);
+      LOGDETAIL("detected extension `{}`", gClapLibrary._pluginFactoryVst3InfoIsV1
+                                               ? CLAP_PLUGIN_FACTORY_INFO_VST3_V1
+                                               : CLAP_PLUGIN_FACTORY_INFO_VST3);
       auto &v3 = gClapLibrary._pluginFactoryVst3Info;
       if (v3->vendor) factoryvendor = v3->vendor;
       if (v3->vendor_url) vendor_url = v3->vendor_url;
@@ -309,6 +313,28 @@ IPluginFactory *GetPluginFactoryEntryPoint()
                                     gCreationContexts.back().get());
     }
 
+    // if the CLAP provides compatibility information for the VST3 IPluginCompatibility
+    // interface, add a class of category kPluginCompatibilityClass to the factory
+    auto *compatibilityJSON = gClapLibrary.get_vst3_compatibility();
+    if (compatibilityJSON && *compatibilityJSON)
+    {
+      LOGDETAIL("detected extension `{}`", CLAP_PLUGIN_FACTORY_INFO_VST3_V1);
+
+      std::string compat_id(gClapLibrary.plugins[0]->id);
+      compat_id.append("-compatibility");
+      auto g = Crypto::create_sha1_guid_from_name(compat_id.c_str(), compat_id.size());
+      TUID lcid;
+      memcpy(&lcid, &g, sizeof(TUID));
+
+      auto ptr = std::make_shared<CreationContext>();
+      *ptr = {&gClapLibrary, 0,
+              PClassInfo2(lcid, PClassInfo::kManyInstances, kPluginCompatibilityClass, "Compatibility",
+                          0, "", factoryvendor, "", kVstVersionString)};
+      gCreationContexts.push_back(ptr);
+      gPluginFactory->registerClass(&gCreationContexts.back()->classinfo, ClapAsVst3::createInstance,
+                                    gCreationContexts.back().get());
+    }
+
     if (gClapLibrary._pluginFactoryARAInfo)
     {
       LOGINFO("creating ARA companion factories");
@@ -387,6 +413,40 @@ IMPLEMENT_FUNKNOWN_METHODS(ARAMainFactory, ARA::IMainFactory, ARA::IMainFactory:
 DEF_CLASS_IID(ARA::IMainFactory)
 
 /*
+    forwards the compatibility JSON provided by the CLAP through the
+    clap_plugin_factory_as_vst3 (version 1) extension to the host
+*/
+class PluginCompatibility : public Steinberg::IPluginCompatibility
+{
+ public:
+  PluginCompatibility(const char *json) : _json(json)
+  {
+    FUNKNOWN_CTOR
+  }
+  virtual ~PluginCompatibility(){FUNKNOWN_DTOR} Steinberg::tresult PLUGIN_API
+      getCompatibilityJSON(Steinberg::IBStream *stream) override
+  {
+    // the JSON5 string is written UTF-8 encoded and without a terminating zero
+    Steinberg::int32 numBytesWritten = 0;
+    auto len = static_cast<Steinberg::int32>(_json.size());
+    auto result = stream->write(const_cast<char *>(_json.data()), len, &numBytesWritten);
+    if (result != Steinberg::kResultOk || numBytesWritten != len)
+    {
+      return Steinberg::kResultFalse;
+    }
+    return Steinberg::kResultTrue;
+  }
+  //---Interface--------------------------------------------------------------------------
+  DECLARE_FUNKNOWN_METHODS
+
+ private:
+  std::string _json;
+};
+
+IMPLEMENT_FUNKNOWN_METHODS(PluginCompatibility, Steinberg::IPluginCompatibility,
+                           Steinberg::IPluginCompatibility::iid)
+
+/*
     creates an Instance from the creationContext.
     actually, there is always a valid entrypoint, otherwise no factory would have been provided.
 */
@@ -412,6 +472,16 @@ FUnknown *ClapAsVst3::createInstance(void *context)
       const auto ara_factory = ctx->lib->_pluginFactoryARAInfo;
       return static_cast<FUnknown *>(new ARAMainFactory(
           ara_factory->get_ara_factory(ara_factory, ctx->index), Steinberg::FUID(ctx->classinfo.cid)));
+    }
+  }
+
+  if (!strcmp(ctx->classinfo.category, kPluginCompatibilityClass))
+  {
+    LOGINFO("creating PluginCompatibility {} (#{})", ctx->classinfo.name, ctx->index);
+    auto json = ctx->lib->get_vst3_compatibility();
+    if (json)
+    {
+      return static_cast<FUnknown *>(new PluginCompatibility(json));
     }
   }
 

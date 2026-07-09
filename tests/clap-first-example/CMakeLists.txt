@@ -16,7 +16,7 @@ option(EXAMPLE_USE_WINDOWS_FOLDER "Make windows folder for this example" FALSE)
 # are all in one cpp file, but a common idiom is to have an -entry-impl file
 # separate from the rest of your clap, especially in multi-plugin claps.
 add_library(${PROJECT_NAME}-impl STATIC distortion_clap.cpp)
-target_link_libraries(${PROJECT_NAME}-impl PUBLIC clap)
+target_link_libraries(${PROJECT_NAME}-impl PUBLIC clap clap-wrapper-extensions)
 
 # AUv3 appexes can only be produced by the Xcode generator
 set(EXAMPLE_PLUGIN_FORMATS CLAP VST3 AUV2 WCLAP)
