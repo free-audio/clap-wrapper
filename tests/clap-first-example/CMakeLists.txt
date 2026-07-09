@@ -18,6 +18,12 @@ option(EXAMPLE_USE_WINDOWS_FOLDER "Make windows folder for this example" FALSE)
 add_library(${PROJECT_NAME}-impl STATIC distortion_clap.cpp)
 target_link_libraries(${PROJECT_NAME}-impl PUBLIC clap)
 
+# AUv3 appexes can only be produced by the Xcode generator
+set(EXAMPLE_PLUGIN_FORMATS CLAP VST3 AUV2 WCLAP)
+if (APPLE AND CMAKE_GENERATOR STREQUAL "Xcode")
+    list(APPEND EXAMPLE_PLUGIN_FORMATS AUV3)
+endif()
+
 # Then we use make_clapfirst_plugin, provided by the wrappers, to create the
 # project out of the impl and the cpp file which exports the entry
 make_clapfirst_plugins(
@@ -28,7 +34,7 @@ make_clapfirst_plugins(
 
         ENTRY_SOURCE "distortion_clap_entry.cpp"
 
-        BUNDLE_IDENTIFER "org.free-audio.clap-first-bad-distortion"
+        BUNDLE_IDENTIFIER "org.free-audio.clap-first-bad-distortion"
         BUNDLE_VERSION ${PROJECT_VERSION}
 
         COPY_AFTER_BUILD FALSE
@@ -36,7 +42,7 @@ make_clapfirst_plugins(
         # vst3 validator on windows needs this to be true to pass
         WINDOWS_FOLDER_VST3 ${EXAMPLE_USE_WINDOWS_FOLDER}
 
-        PLUGIN_FORMATS CLAP VST3 AUV2 AUV3 WCLAP
+        PLUGIN_FORMATS ${EXAMPLE_PLUGIN_FORMATS}
 
         ASSET_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${PROJECT_NAME}_assets
 

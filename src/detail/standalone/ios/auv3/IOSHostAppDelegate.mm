@@ -529,6 +529,14 @@ static void IOSHostMIDIReadProc(const MIDIPacketList *pktlist,
 
 - (void)handleInterruption:(NSNotification *)note
 {
+    // AVAudioSession posts on its own thread; the engine graph is owned by
+    // the main thread, so hop over before touching it.
+    if (!NSThread.isMainThread)
+    {
+        dispatch_async(dispatch_get_main_queue(), ^{ [self handleInterruption:note]; });
+        return;
+    }
+
     NSDictionary *info = note.userInfo;
     AVAudioSessionInterruptionType type = (AVAudioSessionInterruptionType)
         [info[AVAudioSessionInterruptionTypeKey] unsignedIntegerValue];
@@ -561,9 +569,11 @@ static void IOSHostMIDIReadProc(const MIDIPacketList *pktlist,
 
         // Rate may have changed during interruption (different route picked
         // up by the system). Rebuild graph if so; otherwise restart engine.
+        // A zero-output AU (MIDI effect) has no bus to compare — skip the check.
         double currentRate = [AVAudioSession sharedInstance].sampleRate;
-        AVAudioFormat *currentFmt = self.audioUnit.outputBusses[0].format;
-        if (fabs(currentRate - currentFmt.sampleRate) > 1.0)
+        AVAudioFormat *currentFmt =
+            self.audioUnit.outputBusses.count > 0 ? self.audioUnit.outputBusses[0].format : nil;
+        if (currentFmt && fabs(currentRate - currentFmt.sampleRate) > 1.0)
         {
             NSLog(@"[ios-host] sample rate changed %g -> %g; rebuilding graph",
                   currentFmt.sampleRate, currentRate);
@@ -579,6 +589,14 @@ static void IOSHostMIDIReadProc(const MIDIPacketList *pktlist,
 
 - (void)handleRouteChange:(NSNotification *)note
 {
+    // AVAudioSession posts on its own thread; the engine graph is owned by
+    // the main thread, so hop over before touching it.
+    if (!NSThread.isMainThread)
+    {
+        dispatch_async(dispatch_get_main_queue(), ^{ [self handleRouteChange:note]; });
+        return;
+    }
+
     NSDictionary *info = note.userInfo;
     AVAudioSessionRouteChangeReason reason = (AVAudioSessionRouteChangeReason)
         [info[AVAudioSessionRouteChangeReasonKey] unsignedIntegerValue];
@@ -589,8 +607,10 @@ static void IOSHostMIDIReadProc(const MIDIPacketList *pktlist,
 
     // Hardware rate change (AirPlay handoff, USB-C audio swap, etc.) — the
     // AU output bus format no longer matches reality. Rebuild graph.
-    AVAudioFormat *currentFmt = self.audioUnit.outputBusses[0].format;
-    if (fabs(session.sampleRate - currentFmt.sampleRate) > 1.0)
+    // A zero-output AU (MIDI effect) has no bus to compare — skip the check.
+    AVAudioFormat *currentFmt =
+        self.audioUnit.outputBusses.count > 0 ? self.audioUnit.outputBusses[0].format : nil;
+    if (currentFmt && fabs(session.sampleRate - currentFmt.sampleRate) > 1.0)
     {
         NSLog(@"[ios-host] route change sample rate %g -> %g; rebuilding graph",
               currentFmt.sampleRate, session.sampleRate);

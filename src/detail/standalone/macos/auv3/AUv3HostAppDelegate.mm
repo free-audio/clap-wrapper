@@ -383,27 +383,74 @@ static MIDIPortRef sMIDIInputPort = 0;
 
 - (void)setupEngine
 {
+  uint32_t auType = fourCCFromString(AU_TYPE_STR);
+  BOOL wantInput = (auType == kAudioUnitType_Effect || auType == kAudioUnitType_MIDIProcessor) &&
+                   _avAudioUnit.AUAudioUnit.inputBusses.count > 0;
+
+  // Decide whether the hardware input is usable BEFORE building the real
+  // engine. Merely accessing engine.inputNode binds the hardware input to
+  // the engine's IO unit — if input is unavailable (microphone permission
+  // not granted, no input device), connecting it throws NSException
+  // ('Input HW format is invalid' -> abort), and even an unconnected but
+  // touched input node makes engine start fail with kAudioHardwareBad-
+  // DeviceError. So: check permission first, then probe the HW format on
+  // a throwaway engine, and never touch the real engine's inputNode
+  // unless input is actually usable. Without input the AU's input pull
+  // fails and the wrapper substitutes silence, so the app still runs.
+  BOOL inputUsable = NO;
+  if (wantInput)
+  {
+    if ([AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio] ==
+        AVAuthorizationStatusAuthorized)
+    {
+      AVAudioEngine *probe = [[AVAudioEngine alloc] init];
+      AVAudioFormat *hwFormat = [probe.inputNode inputFormatForBus:0];
+      inputUsable = (hwFormat.sampleRate > 0 && hwFormat.channelCount > 0);
+      if (!inputUsable)
+      {
+        std::cout << "[auv3-standalone] WARNING: no usable input device (HW format "
+                  << hwFormat.sampleRate << " Hz / " << hwFormat.channelCount
+                  << " ch) — running with silent input" << std::endl;
+      }
+    }
+    else
+    {
+      std::cout << "[auv3-standalone] WARNING: microphone access not granted — "
+                   "running with silent input"
+                << std::endl;
+    }
+  }
+
   _engine = [[AVAudioEngine alloc] init];
   [_engine attachNode:_avAudioUnit];
 
   AVAudioNode *output = _engine.outputNode;
   AVAudioFormat *outputFormat = [output inputFormatForBus:0];
 
-  uint32_t auType = fourCCFromString(AU_TYPE_STR);
-
-  if (auType == kAudioUnitType_Effect || auType == kAudioUnitType_MIDIProcessor)
+  // AVAudioEngine throws NSException (-> abort) on invalid graph
+  // configurations instead of returning NSErrors. Convert that into a
+  // visible alert instead of a crash report.
+  @try
   {
-    // Effect: input -> AU -> output
-    AVAudioNode *input = _engine.inputNode;
-    AVAudioFormat *inputFormat = [input outputFormatForBus:0];
-
-    [_engine connect:input to:_avAudioUnit format:inputFormat];
+    if (inputUsable)
+    {
+      // Effect: input -> AU -> output
+      AVAudioNode *input = _engine.inputNode;
+      AVAudioFormat *inputFormat = [input outputFormatForBus:0];
+      [_engine connect:input to:_avAudioUnit format:inputFormat];
+    }
     [_engine connect:_avAudioUnit to:output format:outputFormat];
   }
-  else
+  @catch (NSException *e)
   {
-    // Instrument/Generator: AU -> output (no audio input needed)
-    [_engine connect:_avAudioUnit to:output format:outputFormat];
+    std::cout << "[auv3-standalone] ERROR: engine graph setup failed: " << [e.reason UTF8String]
+              << std::endl;
+    NSAlert *alert = [[NSAlert alloc] init];
+    [alert setMessageText:@"Failed to set up audio engine"];
+    [alert setInformativeText:e.reason ?: @"Invalid audio graph configuration"];
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
+    return;
   }
 
   NSError *error = nil;

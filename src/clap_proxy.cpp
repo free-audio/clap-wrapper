@@ -16,9 +16,6 @@
 #include <iostream>
 #define OutputDebugString(x) std::cout << __FILE__ << ":" << __LINE__ << " " << (x) << std::endl;
 #define OutputDebugStringA(x) std::cout << __FILE__ << ":" << __LINE__ << " " << (x) << std::endl;
-#if __has_include(<os/log.h>)
-#include <os/log.h>
-#endif
 #endif
 #if WIN
 #include <crtdbg.h>
@@ -494,15 +491,6 @@ void Plugin::log(clap_log_severity severity, const char *msg)
 #endif
 #if MAC
   fprintf(stderr, "%s\n", n.c_str());
-#if __has_include(<os/log.h>)
-  {
-    static os_log_t sPluginLog = os_log_create("org.clap-wrapper.auv3", "plugin");
-    if (severity >= CLAP_LOG_ERROR)
-      os_log_error(sPluginLog, "%{public}s", n.c_str());
-    else
-      os_log(sPluginLog, "%{public}s", n.c_str());
-  }
-#endif
 #endif
 }
 

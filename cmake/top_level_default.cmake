@@ -52,17 +52,36 @@ if (PROJECT_IS_TOP_LEVEL)
 
 	if (APPLE)
 		if (${CLAP_WRAPPER_BUILD_AUV3})
+			# One set of component codes for the appex and the standalone host —
+			# the host looks its embedded appex up via AudioComponentFindNext,
+			# so these MUST match the codes the appex registers with.
+			set(_auv3_type "aumu")
+			set(_auv3_subtype "gWrq")
+			set(_auv3_manufacturer "clAd")
+
+			# The appex and the host app need distinct bundle identifiers
+			# (identical IDs break appex registration). Keep them empty when no
+			# identifier was configured so each wrapper generates its own
+			# unique default.
+			if ("${CLAP_WRAPPER_BUNDLE_IDENTIFIER}" STREQUAL "")
+				set(_auv3_appex_id "")
+				set(_auv3_host_id "")
+			else()
+				set(_auv3_appex_id "${CLAP_WRAPPER_BUNDLE_IDENTIFIER}.auv3")
+				set(_auv3_host_id "${CLAP_WRAPPER_BUNDLE_IDENTIFIER}.auv3standalone")
+			endif()
+
 			add_executable(${pluginname}_as_auv3)
 			target_add_auv3_wrapper(
 					TARGET ${pluginname}_as_auv3
 					OUTPUT_NAME "${CLAP_WRAPPER_OUTPUT_NAME}"
-					BUNDLE_IDENTIFIER "${CLAP_WRAPPER_BUNDLE_IDENTIFIER}"
+					BUNDLE_IDENTIFIER "${_auv3_appex_id}"
 					BUNDLE_VERSION "${CLAP_WRAPPER_BUNDLE_VERSION}"
 
-					INSTRUMENT_TYPE "aumu"
+					INSTRUMENT_TYPE "${_auv3_type}"
 					MANUFACTURER_NAME "cleveraudio.org"
-					MANUFACTURER_CODE "clAd"
-					SUBTYPE_CODE "gWrq"
+					MANUFACTURER_CODE "${_auv3_manufacturer}"
+					SUBTYPE_CODE "${_auv3_subtype}"
 			)
 
 			# Embed the installed .clap into the appex so it can find the plugin at runtime
@@ -78,12 +97,12 @@ if (PROJECT_IS_TOP_LEVEL)
 			target_add_auv3_standalone_wrapper(
 					TARGET ${pluginname}_as_auv3_standalone
 					OUTPUT_NAME "${CLAP_WRAPPER_OUTPUT_NAME} AUv3"
-					BUNDLE_IDENTIFIER "${CLAP_WRAPPER_BUNDLE_IDENTIFIER}"
+					BUNDLE_IDENTIFIER "${_auv3_host_id}"
 					BUNDLE_VERSION "${CLAP_WRAPPER_BUNDLE_VERSION}"
 					AUV3_TARGET ${pluginname}_as_auv3
-					AU_TYPE "aumu"
-					AU_SUBTYPE "gWwp"
-					AU_MANUFACTURER "clAA"
+					AU_TYPE "${_auv3_type}"
+					AU_SUBTYPE "${_auv3_subtype}"
+					AU_MANUFACTURER "${_auv3_manufacturer}"
 			)
 		endif()
 	endif()

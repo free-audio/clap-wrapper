@@ -32,6 +32,14 @@ function(target_add_auv3_wrapper)
         return()
     endif()
 
+    if (NOT CMAKE_GENERATOR STREQUAL "Xcode")
+        message(FATAL_ERROR "clap-wrapper: AUv3 requires the Xcode generator (-G Xcode). "
+                "The appex must be linked as an app-extension product (entry point "
+                "_NSExtensionMain) and signed by Xcode; Ninja/Makefiles cannot produce a "
+                "loadable AUv3 appex. Remove AUV3 from PLUGIN_FORMATS (or don't set "
+                "CLAP_WRAPPER_BUILD_AUV3) when using this generator.")
+    endif()
+
     # AUv3 does NOT require the AudioUnit SDK (ausdk) - it uses AudioToolbox.framework directly
 
     if (NOT DEFINED AUV3_TARGET)
@@ -361,27 +369,18 @@ function(target_add_auv3_wrapper)
             )
 
     # The build-helper (or CMake configure_file on iOS) produces an
-    # auv3_Info.plist at build time. We splice its AUv3-specific keys
-    # (NSExtension, CFBundlePackageType=XPC!, CFBundleDisplayName) onto
-    # whatever Xcode has already placed in the bundle.
-    #
-    # Using MACOSX_BUNDLE_INFO_PLIST to feed this in up front doesn't work
-    # reliably because Xcode processes the template before the build-helper
-    # has run.
-    #
-    # On macOS we can simply overwrite the whole plist — macOS appex
-    # registration tolerates the missing DT* / CFBundleSupportedPlatforms
-    # keys that Xcode normally stamps in. On iOS it does NOT — pluginkit
-    # silently drops the appex from the AU catalog when those platform
-    # keys are absent, and AVAudioUnitComponentManager reports 0 matches.
-    # So on iOS we merge instead of replace, keeping every key Xcode
-    # produced.
+    # auv3_Info.plist at build time.
     if (CMAKE_GENERATOR STREQUAL "Xcode")
         set_target_properties(${AUV3_TARGET} PROPERTIES
                 XCODE_PRODUCT_TYPE com.apple.product-type.app-extension
                 )
     endif()
     if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        # On iOS the AUv3 keys are merged into the plist Xcode produced —
+        # pluginkit silently drops the appex from the AU catalog when the
+        # DT* / CFBundleSupportedPlatforms keys Xcode stamps in are absent,
+        # and AVAudioUnitComponentManager reports 0 matches.
+        #
         # /usr/bin/python3 is the Apple-supplied interpreter and is stable
         # across developers' machines; /usr/bin/env python3 can pick up a
         # Homebrew install with broken linkage.
@@ -392,9 +391,18 @@ function(target_add_auv3_wrapper)
                 "${bhtgoutdir}/auv3_Info.plist"
             COMMENT "Merging AUv3 keys into iOS Info.plist (preserving DT* / CFBundleSupportedPlatforms)")
     else()
-        add_custom_command(TARGET ${AUV3_TARGET} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy "${bhtgoutdir}/auv3_Info.plist" "$<TARGET_BUNDLE_CONTENT_DIR:${AUV3_TARGET}>/Info.plist"
-            COMMENT "Replacing Info.plist with build-helper generated version (contains NSExtension)")
+        # On macOS, feed the generated plist to Xcode as the target's own
+        # INFOPLIST_FILE input. Xcode's ProcessInfoPlistFile then reads OUR
+        # file whenever it (re)stamps the bundle plist, and the target
+        # dependency on the build-helper guarantees the file is written
+        # first. Do NOT copy over the bundle's Info.plist POST_BUILD
+        # instead: Xcode re-runs ProcessInfoPlistFile on incremental builds
+        # when it sees its output was modified, and the scheduling between
+        # that task and script phases is not deterministic — the replaced
+        # plist randomly loses NSExtension/AudioComponents and the appex
+        # silently stops registering.
+        set_target_properties(${AUV3_TARGET} PROPERTIES
+                XCODE_ATTRIBUTE_INFOPLIST_FILE "${bhtgoutdir}/auv3_Info.plist")
     endif()
 
     set_target_properties(${AUV3_TARGET} PROPERTIES XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${AUV3_BUNDLE_IDENTIFIER}")

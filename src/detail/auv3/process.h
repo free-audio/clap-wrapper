@@ -23,6 +23,7 @@
 #include <vector>
 #include <map>
 #include <unordered_map>
+#include <limits>
 #include "../clap/automation.h"
 
 namespace Clap::AUv3
@@ -87,7 +88,11 @@ class ProcessAdapter
   void reorderSameSampleOrphanOffs(AVAudioFrameCount frameCount);
 
  public:
-  const std::unordered_map<clap_id, void *> *_cookieCache = nullptr;
+  // Snapshot of the parameter-id → cookie map, copied at allocate time
+  // (setupProcessing lifetime). The render thread only ever reads this
+  // private copy, so main-thread cache rebuilds (param_rescan) can never
+  // race the render path.
+  std::unordered_map<clap_id, void *> _cookieCache;
 
  private:
   const clap_plugin_t *_plugin = nullptr;
@@ -145,11 +150,14 @@ class ProcessAdapter
   uint32_t _inputBufferListChannels = 0;
 
   // Multi-bus render tracking: AUv3 calls the render block once per output bus,
-  // but CLAP processes all buses in a single process() call. We process on the
-  // first bus and just copy output for subsequent buses in the same cycle.
-  uint64_t _lastProcessedSampleTime = UINT64_MAX;
+  // but CLAP processes all buses in a single process() call. We run the CLAP
+  // process on the first bus pulled in a render cycle (all pulls of one cycle
+  // share the same timestamp) and just copy stored output for the others.
+  // NaN sentinel: the first comparison is always unequal.
+  double _lastProcessedSampleTime = std::numeric_limits<double>::quiet_NaN();
   uint32_t _numMaxSamples = 0;
-  std::vector<std::vector<float>> _outputStorage;  // [bus * maxCh + ch][samples]
+  std::vector<std::vector<float>> _outputStorage;  // [_outputStorageOffset[bus] + ch][samples]
+  std::vector<uint32_t> _outputStorageOffset;      // per-bus start index into _outputStorage
 };
 
 }  // namespace Clap::AUv3

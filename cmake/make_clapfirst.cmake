@@ -76,7 +76,9 @@ function(make_clapfirst_plugins)
         if (ANY_WASM_TOOLCHAIN)
             set(C1ST_PLUGIN_FORMATS WCLAP)
         else()
-            set(C1ST_PLUGIN_FORMATS CLAP VST3 AUV2 AUV3 AAX)
+            # AUV3 is not in the default list: the AUv3 appex can only be
+            # produced by the Xcode generator, so it is explicit opt-in.
+            set(C1ST_PLUGIN_FORMATS CLAP VST3 AUV2 AAX)
         endif()
     endif()
 
@@ -168,7 +170,7 @@ function(make_clapfirst_plugins)
         endif()
         target_add_vst3_wrapper(TARGET ${VST3_TARGET}
                 OUTPUT_NAME "${C1ST_OUTPUT_NAME}"
-                BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFER}.vst3"
+                BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFIER}.vst3"
                 BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
                 ASSET_OUTPUT_DIRECTORY "${vod}"
                 WINDOWS_FOLDER_VST3 ${C1ST_WINDOWS_FOLDER_VST3}
@@ -188,7 +190,7 @@ function(make_clapfirst_plugins)
             target_add_auv2_wrapper(
                     TARGET ${AUV2_TARGET}
                     OUTPUT_NAME "${C1ST_OUTPUT_NAME}"
-                    BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFER}.auv2"
+                    BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFIER}.auv2"
                     BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
                     RESOURCE_DIRECTORY "${C1ST_RESOURCE_DIRECTORY}"
 
@@ -201,7 +203,7 @@ function(make_clapfirst_plugins)
             target_add_auv2_wrapper(
                     TARGET ${AUV2_TARGET}
                     OUTPUT_NAME "${C1ST_OUTPUT_NAME}"
-                    BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFER}.auv2"
+                    BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFIER}.auv2"
                     BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
                     RESOURCE_DIRECTORY "${C1ST_RESOURCE_DIRECTORY}"
 
@@ -227,7 +229,7 @@ function(make_clapfirst_plugins)
             target_add_auv3_wrapper(
                     TARGET ${AUV3_TARGET}
                     OUTPUT_NAME "${C1ST_OUTPUT_NAME}"
-                    BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFER}.auv3"
+                    BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFIER}.auv3"
                     BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
                     RESOURCE_DIRECTORY "${C1ST_RESOURCE_DIRECTORY}"
 
@@ -240,7 +242,7 @@ function(make_clapfirst_plugins)
             target_add_auv3_wrapper(
                     TARGET ${AUV3_TARGET}
                     OUTPUT_NAME "${C1ST_OUTPUT_NAME}"
-                    BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFER}.auv3"
+                    BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFIER}.auv3"
                     BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
                     RESOURCE_DIRECTORY "${C1ST_RESOURCE_DIRECTORY}"
 
@@ -263,7 +265,7 @@ function(make_clapfirst_plugins)
             target_add_auv3_standalone_wrapper(
                     TARGET ${AUV3SA_TARGET}
                     OUTPUT_NAME "${C1ST_OUTPUT_NAME} AUv3"
-                    BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFER}.auv3standalone"
+                    BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFIER}.auv3standalone"
                     BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
                     AUV3_TARGET ${AUV3_TARGET}
                     AU_TYPE "${C1ST_AUV2_INSTRUMENT_TYPE}"
@@ -299,7 +301,7 @@ function(make_clapfirst_plugins)
         endif()
         target_add_aax_wrapper(TARGET ${AAX_TARGET}
                 OUTPUT_NAME "${C1ST_OUTPUT_NAME}"
-                BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFER}.aaxplugin"
+                BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFIER}.aaxplugin"
                 BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
                 ASSET_OUTPUT_DIRECTORY "${vod}"
                 

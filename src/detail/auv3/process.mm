@@ -143,11 +143,17 @@ void ProcessAdapter::setupProcessing(uint32_t numInputBusses, const uint32_t *in
     _inputBufferListChannels = maxCh;
   }
 
-  // Allocate output storage for multi-bus rendering (max 8 channels per bus)
+  // Allocate output storage for multi-bus rendering, sized to the actual
+  // channel count of each bus (prefix offsets index into the flat array).
   _numMaxSamples = numMaxSamples;
-  _outputStorage.resize(_numOutputs * 8);
+  _outputStorageOffset.assign(_numOutputs + 1, 0);
+  for (uint32_t i = 0; i < _numOutputs; ++i)
+  {
+    _outputStorageOffset[i + 1] = _outputStorageOffset[i] + outputChannelCounts[i];
+  }
+  _outputStorage.resize(_outputStorageOffset[_numOutputs]);
   for (auto &buf : _outputStorage) buf.resize(numMaxSamples, 0.0f);
-  _lastProcessedSampleTime = UINT64_MAX;
+  _lastProcessedSampleTime = std::numeric_limits<double>::quiet_NaN();
 
   // Wire up CLAP process data
   _processData.audio_inputs = _input_ports;
@@ -321,7 +327,8 @@ void ProcessAdapter::translateAUv3Events(const AURenderEvent *head, AUEventSampl
         clap_id pid = (clap_id)pe.parameterAddress;
 
         // Skip unknown parameter IDs — auval sends bogus IDs to test robustness
-        if (_cookieCache && _cookieCache->find(pid) == _cookieCache->end()) break;
+        auto cookieIt = _cookieCache.find(pid);
+        if (cookieIt == _cookieCache.end()) break;
 
         n.param.param_id = pid;
         n.param.value = (double)pe.value;
@@ -329,7 +336,7 @@ void ProcessAdapter::translateAUv3Events(const AURenderEvent *head, AUEventSampl
         n.param.key = -1;
         n.param.channel = -1;
         n.param.note_id = -1;
-        n.param.cookie = _cookieCache ? _cookieCache->at(pid) : nullptr;
+        n.param.cookie = cookieIt->second;
 
         _eventindices.emplace_back(_events.size());
         _events.emplace_back(n);
@@ -477,14 +484,24 @@ AUAudioUnitStatus ProcessAdapter::process(AudioUnitRenderActionFlags *actionFlag
                                           const AURenderEvent *realtimeEventListHead,
                                           AURenderPullInputBlock __unsafe_unretained pullInputBlock)
 {
-  // AUv3 calls the render block once per output bus. CLAP processes all buses
-  // in a single process() call. We only run the full CLAP process on bus 0,
-  // storing all output. Subsequent buses just copy from storage.
+  // Never let the plugin write past the storage sized at allocate time —
+  // hosts (and auval) probing beyond maximumFramesToRender must get the
+  // documented error, not a heap overrun.
+  if (frameCount > _numMaxSamples)
+  {
+    return kAudioUnitErr_TooManyFramesToProcess;
+  }
 
-  if (outputBusNumber != 0)
+  // AUv3 calls the render block once per output bus. CLAP processes all buses
+  // in a single process() call. All pulls of one render cycle share the same
+  // timestamp, so we run the full CLAP process on the first bus pulled in a
+  // cycle (whichever it is), storing all output. The other buses of the same
+  // cycle just copy from storage.
+  if (timestamp->mSampleTime == _lastProcessedSampleTime)
   {
     goto copyOutput;
   }
+  _lastProcessedSampleTime = timestamp->mSampleTime;
 
   // Clear events from previous cycle
   _events.clear();
@@ -631,9 +648,9 @@ AUAudioUnitStatus ProcessAdapter::process(AudioUnitRenderActionFlags *actionFlag
   for (uint32_t bus = 0; bus < _numOutputs; ++bus)
   {
     uint32_t numCh = _output_ports[bus].channel_count;
-    for (uint32_t ch = 0; ch < numCh && (bus * 8 + ch) < _outputStorage.size(); ++ch)
+    for (uint32_t ch = 0; ch < numCh; ++ch)
     {
-      _output_ports[bus].data32[ch] = _outputStorage[bus * 8 + ch].data();
+      _output_ports[bus].data32[ch] = _outputStorage[_outputStorageOffset[bus] + ch].data();
     }
   }
 
@@ -731,19 +748,25 @@ AUAudioUnitStatus ProcessAdapter::process(AudioUnitRenderActionFlags *actionFlag
   _outevents.clear();
 
 copyOutput:
-  // Copy stored output to the host's output buffer for this bus
+  // Hand the stored output to the host for this bus. A null mData is the
+  // host asking the AU to provide its own buffer (auval exercises this) —
+  // point it at our storage instead of skipping the channel.
   if (outputData && outputBusNumber >= 0 && outputBusNumber < (NSInteger)_numOutputs)
   {
     uint32_t outBus = (uint32_t)outputBusNumber;
     uint32_t numCh = std::min((uint32_t)outputData->mNumberBuffers, _output_ports[outBus].channel_count);
     for (uint32_t ch = 0; ch < numCh; ++ch)
     {
-      uint32_t storageIdx = outBus * 8 + ch;
-      if (storageIdx < _outputStorage.size() && outputData->mBuffers[ch].mData)
+      auto &storage = _outputStorage[_outputStorageOffset[outBus] + ch];
+      if (outputData->mBuffers[ch].mData == nullptr)
       {
-        memcpy(outputData->mBuffers[ch].mData, _outputStorage[storageIdx].data(),
-               frameCount * sizeof(float));
+        outputData->mBuffers[ch].mData = storage.data();
       }
+      else
+      {
+        memcpy(outputData->mBuffers[ch].mData, storage.data(), frameCount * sizeof(float));
+      }
+      outputData->mBuffers[ch].mDataByteSize = frameCount * sizeof(float);
     }
   }
 
@@ -763,10 +786,9 @@ void ProcessAdapter::addParameterEvent(clap_id paramId, double value, uint32_t s
   n.param.value = value;
   n.param.param_id = paramId;
   n.param.cookie = nullptr;
-  if (_cookieCache)
   {
-    auto it = _cookieCache->find(paramId);
-    if (it != _cookieCache->end()) n.param.cookie = it->second;
+    auto it = _cookieCache.find(paramId);
+    if (it != _cookieCache.end()) n.param.cookie = it->second;
   }
   n.param.port_index = -1;
   n.param.key = -1;

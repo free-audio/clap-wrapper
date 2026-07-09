@@ -1,0 +1,136 @@
+The AUv3 resizing chain is identical regardless of whether your UI code is Swift, Objective‑C, or C++. The language only changes how you express it, not who talks to whom*.
+So here is the same architecture, but expressed in Objective‑C / C++ terms, with concrete patterns you can drop into a real AUv3 extension.
+
+🔧 Core truth: Only the AUv3 view controller communicates with the host
+
+Even in Objective‑C or C++, the chain is:
+
+UIView/NSView (your C++/ObjC UI)
+        ↓
+AUViewController (Objective‑C)
+        ↓
+Host (Logic, AUM, Cubasis…)
+Your view never talks to the host.
+Your audio unit never talks to the host.
+Only the AUv3 view controller sends size requests.
+🧩 What each component does (Objective‑C / C++ version)
+
+1) Your C++/Objective‑C UI view
+
+This is your custom rendering layer (OpenGL/Metal/C++ engine, JUCE‑like layer, etc.).
+It only:
+
+lays out its content
+computes its intrinsic size
+notifies the view controller when the size should change
+Example (Objective‑C++ view calling back):
+
+// MyPluginView.mm
+- (void)layoutSubviews {
+    [super layoutSubviews];
+
+    CGSize needed = [self computeNeededSize]; // from C++ engine
+    if (!CGSizeEqualToSize(needed, _lastReportedSize)) {
+        _lastReportedSize = needed;
+        [self.delegate pluginView:self didChangeDesiredSize:needed];
+    }
+}
+Your C++ engine can compute the size however you want.
+
+2) Your AUv3 view controller (Objective‑C)
+
+This is the only component that communicates with the host.
+
+It receives the size request from your view and updates:
+
+preferredContentSize
+optionally preferredMinimumSize
+optionally preferredMaximumSize
+Example:
+
+// MyAUViewController.mm
+- (void)pluginView:(MyPluginView*)view didChangeDesiredSize:(CGSize)newSize {
+    self.preferredContentSize = newSize;
+}
+This is the plugin → host communication.
+
+The host may accept or ignore it.
+
+3) The host
+
+The host:
+
+decides the final size
+resizes your view controller’s root view
+triggers viewWillLayoutSubviews / viewDidLayoutSubviews
+Your view controller then updates your C++ view’s frame:
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    self.pluginView.frame = self.view.bounds;
+}
+This is the host → plugin communication.
+
+🧠 Summary in C++/Objective‑C terms
+
+Component	Language	Responsibility	Talks to
+Your C++/ObjC view	C++ / ObjC++	Computes needed size, notifies controller	AUViewController
+AUv3 view controller	Objective‑C	Sets preferredContentSize	Host
+Host (DAW)	—	Decides final size, resizes container	AUViewController
+Audio Unit (AUAudioUnit)	C++ / ObjC++	No UI role	Nobody
+🧱 Minimal working Objective‑C++ pattern
+
+AUv3 View Controller
+
+@interface MyAUViewController : AUViewController <MyPluginViewDelegate>
+@property (nonatomic, strong) MyPluginView* pluginView;
+@end
+
+@implementation MyAUViewController
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+
+    self.pluginView = [[MyPluginView alloc] initWithFrame:self.view.bounds];
+    self.pluginView.delegate = self;
+    [self.view addSubview:self.pluginView];
+}
+
+- (void)pluginView:(MyPluginView*)view didChangeDesiredSize:(CGSize)newSize {
+    self.preferredContentSize = newSize;
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    self.pluginView.frame = self.view.bounds;
+}
+
+@end
+Plugin View (Objective‑C++)
+
+@implementation MyPluginView
+
+- (CGSize)computeNeededSize {
+    return _cppEngine->computeUISize(); // pure C++
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+
+    CGSize needed = [self computeNeededSize];
+    if (!CGSizeEqualToSize(needed, _lastReportedSize)) {
+        _lastReportedSize = needed;
+        [self.delegate pluginView:self didChangeDesiredSize:needed];
+    }
+}
+
+@end
+🧨 Important: C++ cannot talk to the host directly
+
+Even if your entire UI is C++:
+
+You still need an Objective‑C AUViewController subclass.
+That controller is the only legal bridge to the host.
+Everything else is internal plumbing.
+
+

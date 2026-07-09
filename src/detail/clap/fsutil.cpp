@@ -267,6 +267,13 @@ bool Library::getEntryFunction(HMODULE handle, const char *path)
 void Library::useStaticEntry(const clap_plugin_entry_t *entry, const char *path)
 {
   if (!entry) return;
+  // This is called against a process-wide Library on every plugin
+  // instantiation (and the constructor may already have wired the same
+  // entry under STATICALLY_LINKED_CLAP_ENTRY). clap_entry->init() must only
+  // run once per deinit and the descriptor list must not accumulate
+  // duplicates, so a repeated call with an already-initialized entry is a
+  // no-op. _pluginFactory is only set after a successful init.
+  if (_pluginEntry == entry && _pluginFactory) return;
   _pluginEntry = entry;
   _selfcontained = true;
   setupPluginsFromPluginEntry(path ? path : "");

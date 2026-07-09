@@ -16,6 +16,7 @@
 #include <iostream>
 #include <memory>
 #include <atomic>
+#include <mutex>
 #include <string>
 #include <vector>
 #include <map>
@@ -130,9 +131,14 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
   __weak ClapAUv3ViewController *_viewController = nil;
 
   // Cached parameter values — avoids calling params->get_value() on every
-  // provider callback (wrong thread, expensive via XPC). Updated on set/flush/process.
-  // Reads from XPC thread, writes from XPC + audio thread; aligned double is
-  // naturally atomic on arm64/x86_64 so benign race at worst (slightly stale value).
+  // provider callback (wrong thread, expensive via XPC). Updated on set/flush
+  // and, via the audio→UI queue drain, when the plugin emits parameter output
+  // events. These maps are only ever touched on the main and XPC threads —
+  // never the render thread (it reads the ProcessAdapter's private cookie
+  // snapshot instead) — and every access is serialized by _paramCacheMutex:
+  // unordered_map mutation under concurrency is bucket corruption, not a
+  // benign stale read. The mutex is never held across a plugin call.
+  std::mutex _paramCacheMutex;
   std::unordered_map<clap_id, double> _paramValueCache;
   std::unordered_map<clap_id, void *> _paramCookieCache;
 
@@ -284,9 +290,13 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
     _parameterTree = result.tree;
     _bypassParamId = result.bypassParamId;
 
-    // Populate the parameter value and cookie caches with initial values
+    // Populate the parameter value and cookie caches with initial values.
+    // Build locally, then publish under the lock so concurrent readers
+    // never see a half-built map.
     if (params)
     {
+      std::unordered_map<clap_id, double> values;
+      std::unordered_map<clap_id, void *> cookies;
       uint32_t numParams = params->count(plugin);
       for (uint32_t i = 0; i < numParams; ++i)
       {
@@ -295,12 +305,15 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
         {
           double value = 0;
           if (params->get_value(plugin, info.id, &value))
-            _paramValueCache[info.id] = value;
+            values[info.id] = value;
           else
-            _paramValueCache[info.id] = info.default_value;
-          _paramCookieCache[info.id] = info.cookie;
+            values[info.id] = info.default_value;
+          cookies[info.id] = info.cookie;
         }
       }
+      std::lock_guard<std::mutex> lock(_paramCacheMutex);
+      _paramValueCache = std::move(values);
+      _paramCookieCache = std::move(cookies);
     }
   }
 
@@ -324,15 +337,17 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
       // createParameterTree() wires a provider that calls get_value() directly,
       // which fails the thread check if called from the render thread.
       auto *cache = &_paramValueCache;
+      auto *cacheMutex = &_paramCacheMutex;
       _parameterTree.implementorValueProvider = ^AUValue(AUParameter *param) {
+        std::lock_guard<std::mutex> lock(*cacheMutex);
         auto it = cache->find((clap_id)param.address);
         if (it != cache->end()) return (AUValue)it->second;
         return (AUValue)0.0;
       };
 
-      // Refresh value and cookie caches
-      _paramValueCache.clear();
-      _paramCookieCache.clear();
+      // Refresh value and cookie caches — build locally, publish under the lock
+      std::unordered_map<clap_id, double> values;
+      std::unordered_map<clap_id, void *> cookies;
       uint32_t n = params->count(plug);
       for (uint32_t i = 0; i < n; ++i)
       {
@@ -341,11 +356,16 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
         {
           double value = 0;
           if (params->get_value(plug, info.id, &value))
-            _paramValueCache[info.id] = value;
+            values[info.id] = value;
           else
-            _paramValueCache[info.id] = info.default_value;
-          _paramCookieCache[info.id] = info.cookie;
+            values[info.id] = info.default_value;
+          cookies[info.id] = info.cookie;
         }
+      }
+      {
+        std::lock_guard<std::mutex> lock(_paramCacheMutex);
+        _paramValueCache = std::move(values);
+        _paramCookieCache = std::move(cookies);
       }
 
       // Notify AUv3 host via KVO — must be on main thread
@@ -359,16 +379,23 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
     }
     else if (flags & CLAP_PARAM_RESCAN_VALUES)
     {
-      // Just refresh cached values — tree structure is unchanged
+      // Just refresh cached values — tree structure is unchanged. Collect
+      // first so the lock is not held across get_value() calls.
+      std::vector<std::pair<clap_id, double>> values;
       uint32_t n = params->count(plug);
+      values.reserve(n);
       for (uint32_t i = 0; i < n; ++i)
       {
         clap_param_info_t info;
         if (params->get_info(plug, i, &info))
         {
           double value = 0;
-          if (params->get_value(plug, info.id, &value)) _paramValueCache[info.id] = value;
+          if (params->get_value(plug, info.id, &value)) values.emplace_back(info.id, value);
         }
+      }
+      {
+        std::lock_guard<std::mutex> lock(_paramCacheMutex);
+        for (auto &v : values) _paramValueCache[v.first] = v.second;
       }
 
       // Notify host that values changed
@@ -561,9 +588,12 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
   }
 
   // --- IAutomation ---
+  // These run on the render thread (plugin output events during process()),
+  // so they must stay realtime-safe: no logging, no locks, no map mutation.
+  // They only push to the lock-free queue; drainParameterQueue applies the
+  // value to _paramValueCache on the main queue.
   void onBeginEdit(clap_id id) override
   {
-    AUV3LOG("IAutomation::onBeginEdit(id=%u)", (unsigned)id);
     queueEvent evt;
     evt._type = queueEvent::type::editstart;
     evt._data._id = id;
@@ -572,10 +602,6 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
 
   void onPerformEdit(const clap_event_param_value_t *value) override
   {
-    AUV3LOG("IAutomation::onPerformEdit(id=%u, value=%.4f)", (unsigned)value->param_id, value->value);
-    // Update cache immediately (audio thread write, benign race with reader)
-    _paramValueCache[value->param_id] = value->value;
-
     queueEvent evt;
     evt._type = queueEvent::type::editvalue;
     evt._data._value = *value;
@@ -584,7 +610,6 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
 
   void onEndEdit(clap_id id) override
   {
-    AUV3LOG("IAutomation::onEndEdit(id=%u)", (unsigned)id);
     queueEvent evt;
     evt._type = queueEvent::type::editend;
     evt._data._id = id;
@@ -616,6 +641,12 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
         }
         case queueEvent::type::editvalue:
         {
+          // Apply the plugin-side change to the value cache here (main queue)
+          // — the render thread must not touch the map itself.
+          {
+            std::lock_guard<std::mutex> lock(_paramCacheMutex);
+            _paramValueCache[evt._data._value.param_id] = evt._data._value.value;
+          }
           AUParameter *param =
               [_parameterTree parameterWithAddress:(AUParameterAddress)evt._data._value.param_id];
           if (param)
@@ -997,8 +1028,15 @@ static Clap::Library _library;
     if (!strongSelf || !strongSelf->_impl) return;
     if (!strongSelf->_impl->_plugin || !strongSelf->_impl->_plugin->_ext._params) return;
 
-    // Always update the cache
-    strongSelf->_impl->_paramValueCache[(clap_id)param.address] = (double)value;
+    // Always update the cache (and fetch the cookie in the same lock scope)
+    clap_id pid = (clap_id)param.address;
+    void *cookie = nullptr;
+    {
+      std::lock_guard<std::mutex> lock(strongSelf->_impl->_paramCacheMutex);
+      strongSelf->_impl->_paramValueCache[pid] = (double)value;
+      auto cookieIt = strongSelf->_impl->_paramCookieCache.find(pid);
+      if (cookieIt != strongSelf->_impl->_paramCookieCache.end()) cookie = cookieIt->second;
+    }
 
     // When render resources are allocated, parameter changes arrive via the
     // render event list (AURenderEventParameter) — the thread-safe path.
@@ -1011,7 +1049,6 @@ static Clap::Library _library;
     auto *plugin = strongSelf->_impl->_plugin->_plugin;
     auto *ext_params = strongSelf->_impl->_plugin->_ext._params;
 
-    clap_id pid = (clap_id)param.address;
     clap_event_param_value_t ev = {};
     ev.header.size = sizeof(ev);
     ev.header.type = CLAP_EVENT_PARAM_VALUE;
@@ -1024,8 +1061,7 @@ static Clap::Library _library;
     ev.key = -1;
     ev.channel = -1;
     ev.note_id = -1;
-    auto cookieIt = strongSelf->_impl->_paramCookieCache.find(pid);
-    ev.cookie = (cookieIt != strongSelf->_impl->_paramCookieCache.end()) ? cookieIt->second : nullptr;
+    ev.cookie = cookie;
 
     // Build a single-event input list
     const clap_event_header_t *evPtr = &ev.header;
@@ -1049,8 +1085,10 @@ static Clap::Library _library;
   // expensive over XPC). String conversion still calls into the plugin with guards.
   auto plugin = _impl->_plugin;  // shared_ptr keeps it alive in the blocks
   auto *cache = &_impl->_paramValueCache;
+  auto *cacheMutex = &_impl->_paramCacheMutex;
 
   _impl->_parameterTree.implementorValueProvider = ^AUValue(AUParameter *param) {
+    std::lock_guard<std::mutex> lock(*cacheMutex);
     auto it = cache->find((clap_id)param.address);
     if (it != cache->end()) return (AUValue)it->second;
     return (AUValue)0.0;
@@ -1145,13 +1183,23 @@ static Clap::Library _library;
   return @[];
 }
 
+// Sample rate for time-based properties. A CLAP with no audio output ports
+// (note effect → aumi) has an empty output bus array, and indexing it raises
+// NSRangeException — fall back to the input side, then to 0 ("unknown").
+- (double)_busSampleRate
+{
+  if (self.outputBusses.count > 0) return self.outputBusses[0].format.sampleRate;
+  if (self.inputBusses.count > 0) return self.inputBusses[0].format.sampleRate;
+  return 0;
+}
+
 - (NSTimeInterval)latency
 {
   // Return the cached latency — queried on init and updated when the plugin
   // calls latency_changed(). Avoids calling into the plugin on the wrong thread.
   if (_impl && _impl->_cachedLatencySamples > 0)
   {
-    double sr = self.outputBusses[0].format.sampleRate;
+    double sr = [self _busSampleRate];
     if (sr > 0) return (double)_impl->_cachedLatencySamples / sr;
   }
   return 0;
@@ -1163,7 +1211,8 @@ static Clap::Library _library;
   {
     uint32_t samples = _impl->_plugin->_ext._tail->get(_impl->_plugin->_plugin);
     if (samples == UINT32_MAX) return INFINITY;
-    return (double)samples / self.outputBusses[0].format.sampleRate;
+    double sr = [self _busSampleRate];
+    if (sr > 0) return (double)samples / sr;
   }
   return 0;
 }
@@ -1285,20 +1334,27 @@ static Clap::Library _library;
       auto mainGuard = _impl->_plugin->AlwaysMainThread();
       _impl->_plugin->_ext._state->load(_impl->_plugin->_plugin, chunk);
 
-      // Refresh the parameter cache after state restore — all values may have changed
+      // Refresh the parameter cache after state restore — all values may have
+      // changed. Collect first so the lock is not held across get_value() calls.
       if (_impl->_plugin->_ext._params)
       {
         auto *params = _impl->_plugin->_ext._params;
         auto *plug = _impl->_plugin->_plugin;
+        std::vector<std::pair<clap_id, double>> values;
         uint32_t numParams = params->count(plug);
+        values.reserve(numParams);
         for (uint32_t i = 0; i < numParams; ++i)
         {
           clap_param_info_t info;
           if (params->get_info(plug, i, &info))
           {
             double value = 0;
-            if (params->get_value(plug, info.id, &value)) _impl->_paramValueCache[info.id] = value;
+            if (params->get_value(plug, info.id, &value)) values.emplace_back(info.id, value);
           }
+        }
+        {
+          std::lock_guard<std::mutex> lock(_impl->_paramCacheMutex);
+          for (auto &v : values) _impl->_paramValueCache[v.first] = v.second;
         }
       }
       AUV3LOG("setFullState (restore): completed");
@@ -1379,8 +1435,14 @@ static Clap::Library _library;
   _impl->_processAdapter->setTransportStateBlock(self.transportStateBlock);
   _impl->_processAdapter->setMusicalContextBlock(self.musicalContextBlock);
 
-  // Wire cookie cache for parameter events
-  _impl->_processAdapter->_cookieCache = &_impl->_paramCookieCache;
+  // Snapshot the cookie cache for the render thread. The adapter owns a
+  // private copy, so main-thread cache rebuilds can never race the render
+  // path. Cookies only change on CLAP_PARAM_RESCAN_ALL/INFO, which requires
+  // a deactivate/reactivate cycle — and that recreates this adapter anyway.
+  {
+    std::lock_guard<std::mutex> lock(_impl->_paramCacheMutex);
+    _impl->_processAdapter->_cookieCache = _impl->_paramCookieCache;
+  }
 
   // Set MIDI output block
   _impl->_processAdapter->midiOutputEventBlock = self.MIDIOutputEventBlock;
@@ -1603,6 +1665,7 @@ static Clap::Library _library;
 {
   if (!_impl || _impl->_bypassParamId == CLAP_INVALID_ID) return NO;
 
+  std::lock_guard<std::mutex> lock(_impl->_paramCacheMutex);
   auto it = _impl->_paramValueCache.find(_impl->_bypassParamId);
   if (it != _impl->_paramValueCache.end()) return it->second >= 0.5;
   return NO;
@@ -1614,8 +1677,14 @@ static Clap::Library _library;
 
   double newValue = shouldBypassEffect ? 1.0 : 0.0;
 
-  // Update cache
-  _impl->_paramValueCache[_impl->_bypassParamId] = newValue;
+  // Update cache (and fetch the cookie in the same lock scope)
+  void *cookie = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(_impl->_paramCacheMutex);
+    _impl->_paramValueCache[_impl->_bypassParamId] = newValue;
+    auto cookieIt = _impl->_paramCookieCache.find(_impl->_bypassParamId);
+    if (cookieIt != _impl->_paramCookieCache.end()) cookie = cookieIt->second;
+  }
 
   // Push to the CLAP plugin via params->flush()
   if (_impl->_plugin && _impl->_plugin->_ext._params)
@@ -1629,9 +1698,7 @@ static Clap::Library _library;
     ev.header.time = 0;
     ev.header.flags = 0;
     ev.param_id = _impl->_bypassParamId;
-    ev.cookie = _impl->_paramCookieCache.count(_impl->_bypassParamId)
-                    ? _impl->_paramCookieCache[_impl->_bypassParamId]
-                    : nullptr;
+    ev.cookie = cookie;
     ev.port_index = -1;
     ev.key = -1;
     ev.channel = -1;
