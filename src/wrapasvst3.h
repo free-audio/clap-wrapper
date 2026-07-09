@@ -155,6 +155,7 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   tresult PLUGIN_API canProcessSampleSize(int32 symbolicSampleSize) override;
   tresult PLUGIN_API setState(IBStream *state) override;
   tresult PLUGIN_API getState(IBStream *state) override;
+  tresult PLUGIN_API setComponentState(IBStream *state) override;
   uint32 PLUGIN_API getLatencySamples() override;
   uint32 PLUGIN_API getTailSamples() override;
   tresult PLUGIN_API setupProcessing(Vst::ProcessSetup &newSetup) override;

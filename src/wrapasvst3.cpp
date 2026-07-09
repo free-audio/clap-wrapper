@@ -268,6 +268,45 @@ tresult PLUGIN_API ClapAsVst3::getState(IBStream *state)
   return (_plugin->save(CLAPVST3StreamAdapter(state)) ? Steinberg::kResultOk : Steinberg::kResultFalse);
 }
 
+tresult PLUGIN_API ClapAsVst3::setComponentState(IBStream *state)
+{
+  // As a SingleComponentEffect the processor and controller are one object, so
+  // setState() has usually already restored the CLAP plugin when a host calls
+  // this. But hosts that drive the controller separately (notably Ableton Live)
+  // hand the processor state here to (re)initialize the controller's parameter
+  // view -- the EditController base returns kNotImplemented, which leaves the
+  // parameter cache at defaults: Live then displays stale values after a set
+  // reload and can write them back over the restored state.
+  //
+  // Load the handed state into the plugin (idempotent when setState already ran;
+  // covers hosts that call this first) and refresh the parameter cache from the
+  // live CLAP values, exactly like param_rescan(CLAP_PARAM_RESCAN_VALUES).
+  if (state)
+  {
+    _plugin->load(CLAPVST3StreamAdapter(state));
+  }
+  if (_plugin->_ext._params)
+  {
+    auto raise = _plugin->AlwaysMainThread();
+    auto len = parameters.getParameterCount();
+    for (decltype(len) i = 0; i < len; ++i)
+    {
+      auto p = static_cast<Vst3Parameter *>(parameters.getParameterByIndex(i));
+      if (p->isMidi) continue;
+      double val;
+      if (_plugin->_ext._params->get_value(_plugin->_plugin, p->id, &val))
+      {
+        auto newval = p->asVst3Value(val);
+        if (p->getNormalized() != newval)
+        {
+          p->setNormalized(newval);
+        }
+      }
+    }
+  }
+  return kResultOk;
+}
+
 uint32 PLUGIN_API ClapAsVst3::getLatencySamples()
 {
   if (!_plugin->_ext._latency)
