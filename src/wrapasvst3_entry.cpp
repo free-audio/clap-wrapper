@@ -332,16 +332,6 @@ IPluginFactory *GetPluginFactoryEntryPoint()
       memcpy(&lcid, &g, sizeof(TUID));
       makeCIDComCompatible(lcid);
 
-#if !COM_COMPATIBLE
-      // apply the same COM-compatibility flip as for the plugin CID above,
-      // so the compatibility class CID is identical across platforms
-      std::swap(lcid[0], lcid[3]);
-      std::swap(lcid[1], lcid[2]);
-
-      std::swap(lcid[4], lcid[5]);
-      std::swap(lcid[6], lcid[7]);
-#endif
-
       auto ptr = std::make_shared<CreationContext>();
       *ptr = {&gClapLibrary, 0,
               PClassInfo2(lcid, PClassInfo::kManyInstances, kPluginCompatibilityClass, "Compatibility",
