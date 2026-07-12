@@ -456,6 +456,12 @@ tresult PLUGIN_API ClapAsVst3::getBusArrangement(Vst::BusDirection dir, int32 in
   return super::getBusArrangement(dir, index, arr);
 }
 
+tresult PLUGIN_API ClapAsVst3::setComponentState(IBStream * /*state*/)
+{
+  // this should satisfy Hosts that want to be satisfied
+  return kResultOk;
+}
+
 IPlugView *PLUGIN_API ClapAsVst3::createView(FIDString /*name*/)
 {
   if (_plugin->_ext._gui)
