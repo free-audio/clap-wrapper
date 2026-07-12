@@ -95,7 +95,11 @@ option(CLAP_WRAPPER_BUILD_TESTS "Build test CLAP wrappers" OFF)
 
 project(clap-wrapper
 	LANGUAGES C CXX
+<<<<<<< HEAD
 	VERSION 0.15.1
+=======
+	VERSION 0.15.0
+>>>>>>> main
 	DESCRIPTION "CLAP-as-X wrappers"
 )
 set(CLAP_WRAPPER_VERSION "${PROJECT_VERSION}" CACHE STRING "Version of the wrapper project")
