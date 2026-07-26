@@ -306,6 +306,88 @@ class WrapAsAUV2 : public ausdk::AUBase,
     return noErr;  //  HandleMIDIEvent(strippedStatus, channel, inData1, inData2, inOffsetSampleFrame);
   }
 
+#if AUSDK_MIDI2_AVAILABLE
+  OSStatus MIDIEventList(UInt32 inOffsetSampleFrame,
+                         const struct MIDIEventList *eventList) override
+  {
+    // Hosts that speak MIDI 2.0 deliver input as UMP packets through
+    // MusicDeviceMIDIEventList (e.g. Logic on recent macOS). AUMIDIBase's
+    // default returns kAudio_UnimplementedError, so without this override
+    // those notes are dropped before they ever reach the CLAP plugin.
+    // Translate channel-voice packets (MIDI 1.0 mt=2 and MIDI 2.0 mt=4)
+    // onto the same addMIDIEvent path the legacy MIDIEvent entry uses.
+    if (!_processAdapter || !eventList) return noErr;
+    const MIDIEventPacket *packet = &eventList->packet[0];
+    for (UInt32 p = 0; p < eventList->numPackets; ++p)
+    {
+      const UInt32 *w = packet->words;
+      UInt32 i = 0;
+      while (i < packet->wordCount)
+      {
+        const UInt32 word = w[i];
+        const UInt32 mt = word >> 28;
+        UInt32 consumed = 1;
+        switch (mt)
+        {
+          case 0x2:  // MIDI 1.0 channel voice, one word
+          {
+            const UInt32 status = (word >> 16) & 0xFFU;
+            const UInt32 d1 = (word >> 8) & 0x7FU;
+            const UInt32 d2 = word & 0x7FU;
+            _processAdapter->addMIDIEvent(status, d1, d2, (UInt32)packet->timeStamp);
+          }
+          break;
+          case 0x4:  // MIDI 2.0 channel voice, two words
+          {
+            consumed = 2;
+            if (i + 1 >= packet->wordCount) break;
+            const UInt32 w1 = w[i + 1];
+            const UInt32 opcode = (word >> 20) & 0xFU;
+            const UInt32 chan = (word >> 16) & 0xFU;
+            const UInt32 d1 = (word >> 8) & 0x7FU;
+            if (opcode == 0x9)  // note on (16-bit velocity -> 7)
+            {
+              UInt32 v7 = (w1 >> 25) & 0x7FU;
+              if (v7 == 0) v7 = 1;  // MIDI 2 velocity 0 is a real note-on
+              _processAdapter->addMIDIEvent(0x90U | chan, d1, v7, (UInt32)packet->timeStamp);
+            }
+            else if (opcode == 0x8)  // note off
+            {
+              const UInt32 v7 = (w1 >> 25) & 0x7FU;
+              _processAdapter->addMIDIEvent(0x80U | chan, d1, v7, (UInt32)packet->timeStamp);
+            }
+            else if (opcode == 0xB)  // control change (32-bit value -> 7)
+            {
+              const UInt32 v7 = (w1 >> 25) & 0x7FU;
+              _processAdapter->addMIDIEvent(0xB0U | chan, d1, v7, (UInt32)packet->timeStamp);
+            }
+            else if (opcode == 0xE)  // pitch bend (32-bit value -> 14)
+            {
+              const UInt32 b14 = w1 >> 18;
+              _processAdapter->addMIDIEvent(0xE0U | chan, b14 & 0x7FU, (b14 >> 7) & 0x7FU,
+                                            (UInt32)packet->timeStamp);
+            }
+          }
+          break;
+          case 0x3:
+            consumed = 2;
+            break;  // data 64 (sysex7): not translated here
+          case 0x5:
+            consumed = 4;
+            break;  // data 128
+          default:
+            consumed = 1;
+            break;  // utility / system, one word
+        }
+        i += consumed;
+      }
+      packet = MIDIEventPacketNext(packet);
+    }
+    (void)inOffsetSampleFrame;
+    return noErr;
+  }
+#endif
+
   OSStatus SysEx(const UInt8 *inData, UInt32 inLength) override
   {
     return noErr;
