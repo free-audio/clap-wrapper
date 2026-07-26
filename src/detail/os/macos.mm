@@ -80,7 +80,13 @@ void MacOSHelper::attach(IPlugObject *plugobject)
     _timer =
         CFRunLoopTimerCreate(kCFAllocatorDefault, CFAbsoluteTimeGetCurrent() + (kIntervall * 0.001f),
                              kIntervall * 0.001f, 0, 0, timerCallback, &context);
-    if (_timer) CFRunLoopAddTimer(CFRunLoopGetCurrent(), _timer, kCFRunLoopCommonModes);
+    // Attach the timer to the MAIN run loop, not the current thread's: hosts
+    // may call attach() from a worker thread (e.g. Ableton Live while loading
+    // a saved set with the editor never opened). A worker thread's run loop
+    // never runs, so onIdle -- which drives host-side parameter flushes, CLAP
+    // on_main_thread callbacks and timers -- would never fire until a GUI
+    // woke the main thread. The main run loop of a UI host always runs.
+    if (_timer) CFRunLoopAddTimer(CFRunLoopGetMain(), _timer, kCFRunLoopCommonModes);
   }
   _plugs.push_back(plugobject);
 }
