@@ -307,8 +307,7 @@ class WrapAsAUV2 : public ausdk::AUBase,
   }
 
 #if AUSDK_MIDI2_AVAILABLE
-  OSStatus MIDIEventList(UInt32 inOffsetSampleFrame,
-                         const struct MIDIEventList *eventList) override
+  OSStatus MIDIEventList(UInt32 inOffsetSampleFrame, const struct MIDIEventList *eventList) override
   {
     // Hosts that speak MIDI 2.0 deliver input as UMP packets through
     // MusicDeviceMIDIEventList (e.g. Logic on recent macOS). AUMIDIBase's
