@@ -64,12 +64,14 @@ void ProcessAdapter::setupProcessing(uint32_t numInputBusses, const uint32_t *in
                                      uint32_t numOutputBusses, const uint32_t *outputChannelCounts,
                                      const clap_plugin_t *plugin, const clap_plugin_params_t *ext_params,
                                      Clap::IAutomation *automation, uint32_t numMaxSamples,
-                                     uint32_t preferredMIDIDialect)
+                                     uint32_t preferredMIDIDialect, uint32_t supportedMIDIDialects)
 {
   _plugin = plugin;
   _ext_params = ext_params;
   _automation = automation;
-  _preferred_midi_dialect = preferredMIDIDialect;
+  _preferred_midi_dialect =
+      ClapWrapper::detail::shared::chooseInputDialect(preferredMIDIDialect, supportedMIDIDialects);
+  _midi_understands_midi2 = (supportedMIDIDialects & CLAP_NOTE_DIALECT_MIDI2) != 0;
 
   // Setup silent buffers
   if (numMaxSamples > 0)
@@ -309,6 +311,115 @@ void ProcessAdapter::reorderSameSampleOrphanOffs(AVAudioFrameCount frameCount)
   }
 }
 
+void ProcessAdapter::translateMidi1Bytes(uint8_t status, uint8_t data1, uint8_t data2,
+                                         uint32_t sampleOffset)
+{
+  uint8_t strippedStatus = (status >> 4) & 0x0F;
+  uint8_t channel = status & 0x0F;
+
+  clap_multi_event_t n;
+  memset(&n, 0, sizeof(n));
+  n.header.time = sampleOffset;
+  n.header.flags = 0;
+  n.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+
+  if (_preferred_midi_dialect == CLAP_NOTE_DIALECT_CLAP)
+  {
+    if (strippedStatus == 0x09 && data2 > 0)  // Note On
+    {
+      n.header.type = CLAP_EVENT_NOTE_ON;
+      n.header.size = sizeof(clap_event_note_t);
+      n.note.port_index = 0;
+      n.note.note_id = synthesizeNoteId();
+      n.note.key = data1 & 0x7F;
+      n.note.velocity = (float)(data2 & 0x7F) / 127.0f;
+      n.note.channel = channel;
+
+      _eventindices.emplace_back(_events.size());
+      _events.emplace_back(n);
+      addToActiveNotes(&n.note);
+      return;
+    }
+    else if (strippedStatus == 0x08 || (strippedStatus == 0x09 && data2 == 0))  // Note Off
+    {
+      n.header.type = CLAP_EVENT_NOTE_OFF;
+      n.header.size = sizeof(clap_event_note_t);
+      n.note.port_index = 0;
+      n.note.key = data1 & 0x7F;
+      n.note.velocity = (strippedStatus == 0x08) ? (float)(data2 & 0x7F) / 127.0f : 0.0f;
+      n.note.channel = channel;
+      // Pair with the matching NOTE_ON's synthesized id (must run
+      // before removeFromActiveNotes drops the active record).
+      n.note.note_id = lookupNoteId(n.note.port_index, n.note.channel, n.note.key);
+
+      _eventindices.emplace_back(_events.size());
+      _events.emplace_back(n);
+      removeFromActiveNotes(&n.note);
+      return;
+    }
+    else if (strippedStatus == 0x0A)  // Poly Aftertouch → per-note PRESSURE
+    {
+      n.header.type = CLAP_EVENT_NOTE_EXPRESSION;
+      n.header.size = sizeof(clap_event_note_expression_t);
+      n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_PRESSURE;
+      n.noteexpression.port_index = 0;
+      n.noteexpression.channel = channel;
+      n.noteexpression.key = data1 & 0x7F;
+      n.noteexpression.note_id =
+          lookupNoteId(n.noteexpression.port_index, n.noteexpression.channel, n.noteexpression.key);
+      n.noteexpression.value = (double)(data2 & 0x7F) / 127.0;
+
+      _eventindices.emplace_back(_events.size());
+      _events.emplace_back(n);
+      return;
+    }
+    else if (strippedStatus == 0x0D)  // Channel Pressure → channel-wide PRESSURE
+    {
+      n.header.type = CLAP_EVENT_NOTE_EXPRESSION;
+      n.header.size = sizeof(clap_event_note_expression_t);
+      n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_PRESSURE;
+      n.noteexpression.port_index = 0;
+      n.noteexpression.channel = channel;
+      n.noteexpression.key = -1;  // wildcard: all keys on this channel
+      n.noteexpression.note_id = -1;
+      n.noteexpression.value = (double)(data1 & 0x7F) / 127.0;
+
+      _eventindices.emplace_back(_events.size());
+      _events.emplace_back(n);
+      return;
+    }
+    else if (strippedStatus == 0x0E)  // Pitch Bend → channel-wide TUNING
+    {
+      n.header.type = CLAP_EVENT_NOTE_EXPRESSION;
+      n.header.size = sizeof(clap_event_note_expression_t);
+      n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_TUNING;
+      n.noteexpression.port_index = 0;
+      n.noteexpression.channel = channel;
+      n.noteexpression.key = -1;  // wildcard: all keys on this channel
+      n.noteexpression.note_id = -1;
+      // MIDI pitch bend: 14-bit value (0-16383), center at 8192
+      // Convert to CLAP semitones: ±2 semitones (MIDI default range)
+      uint16_t bendValue = ((uint16_t)(data2 & 0x7F) << 7) | (data1 & 0x7F);
+      n.noteexpression.value = ((double)bendValue - 8192.0) / 8192.0 * 2.0;
+
+      _eventindices.emplace_back(_events.size());
+      _events.emplace_back(n);
+      return;
+    }
+  }
+
+  // Fall through for non-note MIDI or MIDI dialect preference
+  n.header.type = CLAP_EVENT_MIDI;
+  n.header.size = sizeof(clap_event_midi_t);
+  n.midi.port_index = 0;
+  n.midi.data[0] = status;
+  n.midi.data[1] = data1;
+  n.midi.data[2] = data2;
+
+  _eventindices.emplace_back(_events.size());
+  _events.emplace_back(n);
+}
+
 void ProcessAdapter::translateAUv3Events(const AURenderEvent *head, AUEventSampleTime bufferStartTime,
                                          AVAudioFrameCount frameCount)
 {
@@ -390,109 +501,7 @@ void ProcessAdapter::translateAUv3Events(const AURenderEvent *head, AUEventSampl
       {
         auto &me = event->MIDI;
         PROCLOG("translateEvent: %02x %02x %02x", (int)me.data[0], (int)me.data[1], (int)me.data[2]);
-        uint8_t status = me.data[0];
-        uint8_t strippedStatus = (status >> 4) & 0x0F;
-        uint8_t channel = status & 0x0F;
-
-        n.header.time = sampleOffset;
-        n.header.flags = 0;
-        n.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-
-        if (_preferred_midi_dialect == CLAP_NOTE_DIALECT_CLAP)
-        {
-          if (strippedStatus == 0x09 && me.data[2] > 0)  // Note On
-          {
-            n.header.type = CLAP_EVENT_NOTE_ON;
-            n.header.size = sizeof(clap_event_note_t);
-            n.note.port_index = 0;
-            n.note.note_id = synthesizeNoteId();
-            n.note.key = me.data[1] & 0x7F;
-            n.note.velocity = (float)(me.data[2] & 0x7F) / 127.0f;
-            n.note.channel = channel;
-
-            _eventindices.emplace_back(_events.size());
-            _events.emplace_back(n);
-            addToActiveNotes(&n.note);
-            break;
-          }
-          else if (strippedStatus == 0x08 || (strippedStatus == 0x09 && me.data[2] == 0))  // Note Off
-          {
-            n.header.type = CLAP_EVENT_NOTE_OFF;
-            n.header.size = sizeof(clap_event_note_t);
-            n.note.port_index = 0;
-            n.note.key = me.data[1] & 0x7F;
-            n.note.velocity = (strippedStatus == 0x08) ? (float)(me.data[2] & 0x7F) / 127.0f : 0.0f;
-            n.note.channel = channel;
-            // Pair with the matching NOTE_ON's synthesized id (must run
-            // before removeFromActiveNotes drops the active record).
-            n.note.note_id = lookupNoteId(n.note.port_index, n.note.channel, n.note.key);
-
-            _eventindices.emplace_back(_events.size());
-            _events.emplace_back(n);
-            removeFromActiveNotes(&n.note);
-            break;
-          }
-          else if (strippedStatus == 0x0A)  // Poly Aftertouch → per-note PRESSURE
-          {
-            n.header.type = CLAP_EVENT_NOTE_EXPRESSION;
-            n.header.size = sizeof(clap_event_note_expression_t);
-            n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_PRESSURE;
-            n.noteexpression.port_index = 0;
-            n.noteexpression.channel = channel;
-            n.noteexpression.key = me.data[1] & 0x7F;
-            n.noteexpression.note_id = lookupNoteId(n.noteexpression.port_index,
-                                                    n.noteexpression.channel, n.noteexpression.key);
-            n.noteexpression.value = (double)(me.data[2] & 0x7F) / 127.0;
-
-            _eventindices.emplace_back(_events.size());
-            _events.emplace_back(n);
-            break;
-          }
-          else if (strippedStatus == 0x0D)  // Channel Pressure → channel-wide PRESSURE
-          {
-            n.header.type = CLAP_EVENT_NOTE_EXPRESSION;
-            n.header.size = sizeof(clap_event_note_expression_t);
-            n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_PRESSURE;
-            n.noteexpression.port_index = 0;
-            n.noteexpression.channel = channel;
-            n.noteexpression.key = -1;  // wildcard: all keys on this channel
-            n.noteexpression.note_id = -1;
-            n.noteexpression.value = (double)(me.data[1] & 0x7F) / 127.0;
-
-            _eventindices.emplace_back(_events.size());
-            _events.emplace_back(n);
-            break;
-          }
-          else if (strippedStatus == 0x0E)  // Pitch Bend → channel-wide TUNING
-          {
-            n.header.type = CLAP_EVENT_NOTE_EXPRESSION;
-            n.header.size = sizeof(clap_event_note_expression_t);
-            n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_TUNING;
-            n.noteexpression.port_index = 0;
-            n.noteexpression.channel = channel;
-            n.noteexpression.key = -1;  // wildcard: all keys on this channel
-            n.noteexpression.note_id = -1;
-            // MIDI pitch bend: 14-bit value (0-16383), center at 8192
-            // Convert to CLAP semitones: ±2 semitones (MIDI default range)
-            uint16_t bendValue = ((uint16_t)(me.data[2] & 0x7F) << 7) | (me.data[1] & 0x7F);
-            n.noteexpression.value = ((double)bendValue - 8192.0) / 8192.0 * 2.0;
-
-            _eventindices.emplace_back(_events.size());
-            _events.emplace_back(n);
-            break;
-          }
-        }
-
-        // Fall through for non-note MIDI or MIDI dialect preference
-        n.header.type = CLAP_EVENT_MIDI;
-        n.header.size = sizeof(clap_event_midi_t);
-        n.midi.port_index = 0;
-        n.midi.data[0] = me.data[0];
-        n.midi.data[1] = me.data[1];
-        n.midi.data[2] = me.data[2];
-
-        _eventindices.emplace_back(_events.size());
-        _events.emplace_back(n);
+        translateMidi1Bytes(me.data[0], me.data[1], me.data[2], sampleOffset);
         break;
       }
 
@@ -514,8 +523,87 @@ void ProcessAdapter::translateAUv3Events(const AURenderEvent *head, AUEventSampl
         break;
       }
 
+      case AURenderEventMIDIEventList:
+      {
+        if (__builtin_available(macOS 12.0, iOS 15.0, *))
+        {
+          const MIDIEventList *evtlist = &event->MIDIEventsList.eventList;
+          const bool midi2 = (evtlist->protocol == kMIDIProtocol_2_0);
+          const MIDIEventPacket *pkt = &evtlist->packet[0];
+          for (UInt32 p = 0; p < evtlist->numPackets; ++p)
+          {
+            for (UInt32 i = 0; i < pkt->wordCount;)
+            {
+              const uint32_t w0 = pkt->words[i];
+              const uint32_t nWords = ClapWrapper::detail::shared::umpMessageWordCount(w0);
+              if (i + nWords > pkt->wordCount) break;  // truncated packet
+              const uint32_t mt = (w0 >> 28) & 0xFu;
+
+              if (midi2 && mt == 0x4u)
+              {
+                if (_midi_understands_midi2)
+                {
+                  // forward the MIDI 2.0 channel-voice message raw
+                  clap_multi_event_t m;
+                  memset(&m, 0, sizeof(m));
+                  m.header.time = sampleOffset;
+                  m.header.type = CLAP_EVENT_MIDI2;
+                  m.header.size = sizeof(clap_event_midi2_t);
+                  m.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+                  m.midi2.port_index = 0;
+                  m.midi2.data[0] = pkt->words[i];
+                  m.midi2.data[1] = (nWords > 1) ? pkt->words[i + 1] : 0;
+                  m.midi2.data[2] = (nWords > 2) ? pkt->words[i + 2] : 0;
+                  m.midi2.data[3] = (nWords > 3) ? pkt->words[i + 3] : 0;
+                  _eventindices.emplace_back(_events.size());
+                  _events.emplace_back(m);
+                }
+                else
+                {
+                  // plugin doesn't speak MIDI2: down-convert and reuse the
+                  // dialect-aware MIDI 1.0 translation
+                  uint8_t bytes[3];
+                  if (ClapWrapper::detail::shared::midi2ChannelVoiceToMidi1(&pkt->words[i], bytes) > 0)
+                    translateMidi1Bytes(bytes[0], bytes[1], bytes[2], sampleOffset);
+                }
+              }
+              else if (mt == 0x2u)
+              {
+                // MIDI 1.0 channel voice packed in one UMP word
+                translateMidi1Bytes((w0 >> 16) & 0xFF, (w0 >> 8) & 0xFF, w0 & 0xFF, sampleOffset);
+              }
+              else if (mt == 0x3u)
+              {
+                // UMP SysEx7 (may span multiple packets)
+                const uint32_t w1 = (nWords > 1) ? pkt->words[i + 1] : 0u;
+                if (_sysexReassembler.feed(w0, w1))
+                {
+                  const auto &msg = _sysexReassembler.framedMessage();
+                  _sysexBuffers.emplace_back(msg.begin(), msg.end());
+                  const auto &owned = _sysexBuffers.back();
+                  clap_multi_event_t s;
+                  memset(&s, 0, sizeof(s));
+                  s.header.time = sampleOffset;
+                  s.header.type = CLAP_EVENT_MIDI_SYSEX;
+                  s.header.size = sizeof(clap_event_midi_sysex_t);
+                  s.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+                  s.sysex.port_index = 0;
+                  s.sysex.buffer = owned.data();
+                  s.sysex.size = (uint32_t)owned.size();
+                  _eventindices.emplace_back(_events.size());
+                  _events.emplace_back(s);
+                }
+              }
+              // other message types (utility / system) are not translated
+              i += nWords;
+            }
+            pkt = MIDIEventPacketNext(pkt);
+          }
+        }
+        break;
+      }
+
       default:
-        // AURenderEventMIDIEventList (MIDI 2.0) - not yet supported
         break;
     }
   }
@@ -551,6 +639,7 @@ AUAudioUnitStatus ProcessAdapter::process(AudioUnitRenderActionFlags *actionFlag
   // Clear events from previous cycle
   _events.clear();
   _eventindices.clear();
+  _sysexBuffers.clear();
 
   // Deliver host parameter changes queued via queueParameterChange()
   // (AUParameter.setValue while rendering) at the top of this cycle.
@@ -713,95 +802,178 @@ AUAudioUnitStatus ProcessAdapter::process(AudioUnitRenderActionFlags *actionFlag
   // Process once for all buses
   _plugin->process(_plugin, &_processData);
 
-  // Process output events
-  for (auto &evt : _outevents)
+  // Process output events. Prefer the modern UMP / MIDIEventList block when the
+  // host provided one (built as protocol-1.0 UMP; the framework up-converts to the
+  // host's negotiated protocol), otherwise fall back to the legacy 3-byte block.
+  // Scoped so the earlier `goto copyOutput` (multi-bus copy path) does not jump
+  // across these initializations.
   {
-    switch (evt.header.type)
+    uint8_t umpBuffer[8192];
+    MIDIEventList *umpList = nullptr;
+    MIDIEventPacket *umpCur = nullptr;
+    bool useUMP = false;
+    if (__builtin_available(macOS 12.0, iOS 15.0, *))
     {
-      case CLAP_EVENT_PARAM_VALUE:
-        if (_automation)
-        {
-          _automation->onPerformEdit(&evt.param);
-        }
-        break;
-      case CLAP_EVENT_PARAM_GESTURE_BEGIN:
+      if (midiOutputEventListBlock)
       {
-        auto *ge = (clap_event_param_gesture *)&evt;
-        if (_automation) _automation->onBeginEdit(ge->param_id);
-        break;
+        umpList = (MIDIEventList *)umpBuffer;
+        umpCur = MIDIEventListInit(umpList, kMIDIProtocol_1_0);
+        useUMP = true;
       }
-      case CLAP_EVENT_PARAM_GESTURE_END:
-      {
-        auto *ge = (clap_event_param_gesture *)&evt;
-        if (_automation) _automation->onEndEdit(ge->param_id);
-        break;
-      }
-      case CLAP_EVENT_NOTE_ON:
-      case CLAP_EVENT_NOTE_OFF:
-      case CLAP_EVENT_MIDI:
-      {
-        if (midiOutputEventBlock)
-        {
-          if (evt.header.type == CLAP_EVENT_MIDI)
-          {
-            midiOutputEventBlock(timestamp->mSampleTime + evt.header.time, 0, 3, evt.midi.data);
-          }
-          else if (evt.header.type == CLAP_EVENT_NOTE_ON)
-          {
-            uint8_t data[3] = {(uint8_t)(0x90 | (evt.note.channel & 0x0F)),
-                               (uint8_t)(evt.note.key & 0x7F),
-                               (uint8_t)(uint8_t)(evt.note.velocity * 127.0f)};
-            midiOutputEventBlock(timestamp->mSampleTime + evt.header.time, 0, 3, data);
-          }
-          else if (evt.header.type == CLAP_EVENT_NOTE_OFF)
-          {
-            uint8_t data[3] = {(uint8_t)(0x80 | (evt.note.channel & 0x0F)),
-                               (uint8_t)(evt.note.key & 0x7F),
-                               (uint8_t)(uint8_t)(evt.note.velocity * 127.0f)};
-            midiOutputEventBlock(timestamp->mSampleTime + evt.header.time, 0, 3, data);
-          }
-        }
-        break;
-      }
-      case CLAP_EVENT_NOTE_EXPRESSION:
-      {
-        if (!midiOutputEventBlock) break;
-
-        auto &ne = evt.noteexpression;
-
-        if (ne.expression_id == CLAP_NOTE_EXPRESSION_PRESSURE && ne.key >= 0)
-        {
-          // Per-note pressure → Poly Aftertouch
-          uint8_t data[3] = {(uint8_t)(0xA0 | (ne.channel >= 0 ? ne.channel & 0x0F : 0)),
-                             (uint8_t)(ne.key & 0x7F),
-                             (uint8_t)(std::clamp(ne.value, 0.0, 1.0) * 127.0)};
-          midiOutputEventBlock(timestamp->mSampleTime + evt.header.time, 0, 3, data);
-        }
-        else if (ne.expression_id == CLAP_NOTE_EXPRESSION_PRESSURE && ne.key < 0)
-        {
-          // Channel-wide pressure → Channel Pressure
-          uint8_t data[2] = {(uint8_t)(0xD0 | (ne.channel >= 0 ? ne.channel & 0x0F : 0)),
-                             (uint8_t)(std::clamp(ne.value, 0.0, 1.0) * 127.0)};
-          midiOutputEventBlock(timestamp->mSampleTime + evt.header.time, 0, 2, data);
-        }
-        else if (ne.expression_id == CLAP_NOTE_EXPRESSION_TUNING)
-        {
-          // Tuning → Pitch Bend (±2 semitone range)
-          double normalized = std::clamp(ne.value / 2.0, -1.0, 1.0);
-          uint16_t bendValue = (uint16_t)((normalized + 1.0) * 8192.0);
-          if (bendValue > 16383) bendValue = 16383;
-          uint8_t data[3] = {(uint8_t)(0xE0 | (ne.channel >= 0 ? ne.channel & 0x0F : 0)),
-                             (uint8_t)(bendValue & 0x7F), (uint8_t)((bendValue >> 7) & 0x7F)};
-          midiOutputEventBlock(timestamp->mSampleTime + evt.header.time, 0, 3, data);
-        }
-        // Other expression types (volume, pan, vibrato, brightness) have no MIDI 1.0 equivalent
-        break;
-      }
-      default:
-        break;
     }
+
+    // Emit one MIDI 1.0 message either as an MT 0x2 UMP word or via the legacy block.
+    auto emitMidi1 = [&](AUEventSampleTime t, const uint8_t *bytes, ByteCount len)
+    {
+      if (useUMP)
+      {
+        if (__builtin_available(macOS 12.0, iOS 15.0, *))
+        {
+          if (!umpCur) return;
+          uint32_t w = ClapWrapper::detail::shared::midi1ToUmpWord(bytes[0], len > 1 ? bytes[1] : 0,
+                                                                   len > 2 ? bytes[2] : 0);
+          umpCur = MIDIEventListAdd(umpList, sizeof(umpBuffer), umpCur, (MIDITimeStamp)t, 1, &w);
+        }
+      }
+      else if (midiOutputEventBlock)
+      {
+        midiOutputEventBlock(t, 0, len, bytes);
+      }
+    };
+
+    for (auto &evt : _outevents)
+    {
+      const AUEventSampleTime t = timestamp->mSampleTime + evt.header.time;
+      switch (evt.header.type)
+      {
+        case CLAP_EVENT_PARAM_VALUE:
+          if (_automation)
+          {
+            _automation->onPerformEdit(&evt.param);
+          }
+          break;
+        case CLAP_EVENT_PARAM_GESTURE_BEGIN:
+        {
+          auto *ge = (clap_event_param_gesture *)&evt;
+          if (_automation) _automation->onBeginEdit(ge->param_id);
+          break;
+        }
+        case CLAP_EVENT_PARAM_GESTURE_END:
+        {
+          auto *ge = (clap_event_param_gesture *)&evt;
+          if (_automation) _automation->onEndEdit(ge->param_id);
+          break;
+        }
+        case CLAP_EVENT_MIDI:
+          emitMidi1(t, evt.midi.data, 3);
+          break;
+        case CLAP_EVENT_NOTE_ON:
+        {
+          uint8_t data[3] = {(uint8_t)(0x90 | (evt.note.channel & 0x0F)), (uint8_t)(evt.note.key & 0x7F),
+                             (uint8_t)(evt.note.velocity * 127.0f)};
+          emitMidi1(t, data, 3);
+          break;
+        }
+        case CLAP_EVENT_NOTE_OFF:
+        {
+          uint8_t data[3] = {(uint8_t)(0x80 | (evt.note.channel & 0x0F)), (uint8_t)(evt.note.key & 0x7F),
+                             (uint8_t)(evt.note.velocity * 127.0f)};
+          emitMidi1(t, data, 3);
+          break;
+        }
+        case CLAP_EVENT_NOTE_EXPRESSION:
+        {
+          auto &ne = evt.noteexpression;
+          if (ne.expression_id == CLAP_NOTE_EXPRESSION_PRESSURE && ne.key >= 0)
+          {
+            // Per-note pressure → Poly Aftertouch
+            uint8_t data[3] = {(uint8_t)(0xA0 | (ne.channel >= 0 ? ne.channel & 0x0F : 0)),
+                               (uint8_t)(ne.key & 0x7F),
+                               (uint8_t)(std::clamp(ne.value, 0.0, 1.0) * 127.0)};
+            emitMidi1(t, data, 3);
+          }
+          else if (ne.expression_id == CLAP_NOTE_EXPRESSION_PRESSURE && ne.key < 0)
+          {
+            // Channel-wide pressure → Channel Pressure
+            uint8_t data[2] = {(uint8_t)(0xD0 | (ne.channel >= 0 ? ne.channel & 0x0F : 0)),
+                               (uint8_t)(std::clamp(ne.value, 0.0, 1.0) * 127.0)};
+            emitMidi1(t, data, 2);
+          }
+          else if (ne.expression_id == CLAP_NOTE_EXPRESSION_TUNING)
+          {
+            // Tuning → Pitch Bend (±2 semitone range)
+            double normalized = std::clamp(ne.value / 2.0, -1.0, 1.0);
+            uint16_t bendValue = (uint16_t)((normalized + 1.0) * 8192.0);
+            if (bendValue > 16383) bendValue = 16383;
+            uint8_t data[3] = {(uint8_t)(0xE0 | (ne.channel >= 0 ? ne.channel & 0x0F : 0)),
+                               (uint8_t)(bendValue & 0x7F), (uint8_t)((bendValue >> 7) & 0x7F)};
+            emitMidi1(t, data, 3);
+          }
+          // Other expression types (volume, pan, vibrato, brightness) have no MIDI 1.0 equivalent
+          break;
+        }
+        case CLAP_EVENT_MIDI2:
+        {
+          if (useUMP)
+          {
+            if (__builtin_available(macOS 12.0, iOS 15.0, *))
+            {
+              if (umpCur)
+              {
+                uint32_t nWords = ClapWrapper::detail::shared::umpMessageWordCount(evt.midi2.data[0]);
+                umpCur = MIDIEventListAdd(umpList, sizeof(umpBuffer), umpCur, (MIDITimeStamp)t, nWords,
+                                          evt.midi2.data);
+              }
+            }
+          }
+          else
+          {
+            // no UMP output available: down-convert to MIDI 1.0
+            uint8_t bytes[3];
+            int len = ClapWrapper::detail::shared::midi2ChannelVoiceToMidi1(evt.midi2.data, bytes);
+            if (len > 0) emitMidi1(t, bytes, (ByteCount)len);
+          }
+          break;
+        }
+        case CLAP_EVENT_MIDI_SYSEX:
+        {
+          if (useUMP)
+          {
+            if (__builtin_available(macOS 12.0, iOS 15.0, *))
+            {
+              ClapWrapper::detail::shared::packSysEx7(
+                  evt.sysex.buffer, evt.sysex.size,
+                  [&](uint32_t w0, uint32_t w1)
+                  {
+                    if (!umpCur) return;
+                    uint32_t words[2] = {w0, w1};
+                    umpCur =
+                        MIDIEventListAdd(umpList, sizeof(umpBuffer), umpCur, (MIDITimeStamp)t, 2, words);
+                  });
+            }
+          }
+          else if (midiOutputEventBlock)
+          {
+            // the legacy block accepts an arbitrary-length MIDI 1.0 byte stream
+            midiOutputEventBlock(t, 0, evt.sysex.size, evt.sysex.buffer);
+          }
+          break;
+        }
+        default:
+          break;
+      }
+    }
+
+    if (useUMP)
+    {
+      if (__builtin_available(macOS 12.0, iOS 15.0, *))
+      {
+        if (umpList && umpList->numPackets > 0)
+          midiOutputEventListBlock(timestamp->mSampleTime, 0, umpList);
+      }
+    }
+    _outevents.clear();
   }
-  _outevents.clear();
 
 copyOutput:
   // Hand the stored output to the host for this bus. A null mData is the

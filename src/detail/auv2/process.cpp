@@ -1,4 +1,5 @@
 #include "process.h"
+#include "detail/shared/midi_translation.h"
 
 #include <algorithm>
 #include <cmath>
@@ -16,23 +17,6 @@ inline clap_beattime doubleToBeatTime(double t)
 inline clap_sectime doubleToSecTime(double t)
 {
   return round(t * CLAP_SECTIME_FACTOR);
-}
-
-// Decide which note dialect we feed the plugin on the input path.
-// A CLAP plugin's preferred_dialect is guaranteed to be one of its supported
-// dialects, but be defensive: if the preferred dialect is somehow not offered
-// (or no note-port info was captured), fall back to the first dialect the port
-// does support, favouring typed CLAP notes over raw MIDI.
-static uint32_t chooseInputDialect(uint32_t preferred, uint32_t supported)
-{
-  if (supported == 0) return preferred;  // no note-port info: trust preferred
-  if (supported & preferred) return preferred;
-  for (uint32_t dialect : {CLAP_NOTE_DIALECT_CLAP, CLAP_NOTE_DIALECT_MIDI, CLAP_NOTE_DIALECT_MIDI_MPE,
-                           CLAP_NOTE_DIALECT_MIDI2})
-  {
-    if (supported & dialect) return dialect;
-  }
-  return preferred;
 }
 
 ProcessAdapter::~ProcessAdapter()
@@ -70,7 +54,8 @@ void ProcessAdapter::setupProcessing(ausdk::AUScope &audioInputs, ausdk::AUScope
   _parameters = parameters;
 
   _supported_midi_dialects = supportedMIDIDialects;
-  _preferred_midi_dialect = chooseInputDialect(preferredMIDIDialect, supportedMIDIDialects);
+  _preferred_midi_dialect =
+      ClapWrapper::detail::shared::chooseInputDialect(preferredMIDIDialect, supportedMIDIDialects);
 
   _clapNumInputs = clapAudioInputs;
   _clapNumOutputs = clapAudioOutputs;
@@ -563,12 +548,58 @@ void ProcessAdapter::addMIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData
       this->_eventindices.emplace_back((this->_events.size()));
       this->_events.emplace_back(n);
       break;
+    case 0xD:  // channel pressure (2 bytes) -> channel-wide pressure expression
+      if (_preferred_midi_dialect == CLAP_NOTE_DIALECT_CLAP)
+      {
+        n.header.type = CLAP_EVENT_NOTE_EXPRESSION;
+        n.header.size = sizeof(clap_event_note_expression_t);
+        n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_PRESSURE;
+        n.noteexpression.note_id = -1;
+        n.noteexpression.port_index = 0;
+        n.noteexpression.channel = channel;
+        n.noteexpression.key = -1;                                // channel-wide (wildcard key)
+        n.noteexpression.value = 1.0 * (inData1 & 0x7F) / 127.0;  // range 0..1
+      }
+      else
+      {
+        n.header.type = CLAP_EVENT_MIDI;
+        n.header.size = sizeof(clap_event_midi_t);
+        n.midi.port_index = 0;
+        n.midi.data[0] = inStatus;
+        n.midi.data[1] = inData1;
+        n.midi.data[2] = inData2;
+      }
+      this->_eventindices.emplace_back((this->_events.size()));
+      this->_events.emplace_back(n);
+      break;
+    case 0xE:  // pitch bend -> channel-wide tuning expression (+/- 2 semitones)
+      if (_preferred_midi_dialect == CLAP_NOTE_DIALECT_CLAP)
+      {
+        const int bend14 = ((inData2 & 0x7F) << 7) | (inData1 & 0x7F);
+        n.header.type = CLAP_EVENT_NOTE_EXPRESSION;
+        n.header.size = sizeof(clap_event_note_expression_t);
+        n.noteexpression.expression_id = CLAP_NOTE_EXPRESSION_TUNING;
+        n.noteexpression.note_id = -1;
+        n.noteexpression.port_index = 0;
+        n.noteexpression.channel = channel;
+        n.noteexpression.key = -1;                                // channel-wide (wildcard key)
+        n.noteexpression.value = (bend14 - 8192) / 8192.0 * 2.0;  // semitones
+      }
+      else
+      {
+        n.header.type = CLAP_EVENT_MIDI;
+        n.header.size = sizeof(clap_event_midi_t);
+        n.midi.port_index = 0;
+        n.midi.data[0] = inStatus;
+        n.midi.data[1] = inData1;
+        n.midi.data[2] = inData2;
+      }
+      this->_eventindices.emplace_back((this->_events.size()));
+      this->_events.emplace_back(n);
+      break;
     case 0xB:  // control change
     case 0xC:  // program change (2 bytes)
-    case 0xD:  // channel pressure (2 bytes)
-    case 0xE:  // pitch bend
-      // CLAP has no generic typed event for these; forward as raw MIDI. (This
-      // matches the VST3 wrapper, which also reconstructs them as raw MIDI.)
+      // CLAP has no generic typed event for these; forward as raw MIDI.
       n.header.type = CLAP_EVENT_MIDI;
       n.header.size = sizeof(clap_event_midi_t);
 

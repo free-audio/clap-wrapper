@@ -20,12 +20,14 @@
 
 #import <AudioToolbox/AudioToolbox.h>
 #import <AVFoundation/AVFoundation.h>
+#import <CoreMIDI/CoreMIDI.h>
 #include <vector>
 #include <map>
 #include <unordered_map>
 #include <limits>
 #include "../clap/automation.h"
 #include "../shared/fixedqueue.h"
+#include "../shared/midi_translation.h"
 
 namespace Clap::AUv3
 {
@@ -36,6 +38,7 @@ typedef union clap_multi_event
   clap_event_note_t note;
   clap_event_midi_t midi;
   clap_event_midi_sysex_t sysex;
+  clap_event_midi2_t midi2;
   clap_event_param_value_t param;
   clap_event_note_expression_t noteexpression;
 } clap_multi_event_t;
@@ -52,7 +55,7 @@ class ProcessAdapter
                        uint32_t numOutputBusses, const uint32_t *outputChannelCounts,
                        const clap_plugin_t *plugin, const clap_plugin_params_t *ext_params,
                        Clap::IAutomation *automation, uint32_t numMaxSamples,
-                       uint32_t preferredMIDIDialect);
+                       uint32_t preferredMIDIDialect, uint32_t supportedMIDIDialects);
 
   // Main render call - invoked from the AUv3 internalRenderBlock.
   // Translates AUv3 events, pulls input, calls CLAP process, and writes output.
@@ -88,8 +91,18 @@ class ProcessAdapter
   // cycles ran). Only legal when the render thread is quiesced.
   bool dequeueParameterChange(QueuedParamChange &out);
 
-  // MIDI output event block (set by the AU host)
+  // MIDI output event block (set by the AU host) — legacy 3-byte MIDI 1.0 path
   AUMIDIOutputEventBlock __nullable midiOutputEventBlock;
+
+  // Modern MIDI 2.0 / Universal MIDI Packet output block (macOS 12 / iOS 15+),
+  // preferred over midiOutputEventBlock when the host provides it. Captured at
+  // allocate time like midiOutputEventBlock.
+  API_AVAILABLE(macos(12.0), ios(15.0))
+  AUMIDIEventListBlock __nullable midiOutputEventListBlock;
+
+  // Protocol the host wants our MIDI output delivered in (set from the AU's
+  // hostMIDIProtocol property). Read at render time when building the UMP output.
+  MIDIProtocolID hostMIDIProtocol = kMIDIProtocol_1_0;
 
  private:
   static uint32_t input_events_size(const struct clap_input_events *list);
@@ -102,6 +115,11 @@ class ProcessAdapter
   bool enqueueOutputEvent(const clap_event_header_t *event);
   void translateAUv3Events(const AURenderEvent *head, AUEventSampleTime bufferStartTime,
                            AVAudioFrameCount frameCount);
+
+  // Translate one MIDI 1.0 channel-voice message (3 bytes) into CLAP events using
+  // the canonical rich mapping. Shared by the legacy AURenderEventMIDI path and
+  // the MIDI 1.0 messages arriving inside a UMP AURenderEventMIDIEventList.
+  void translateMidi1Bytes(uint8_t status, uint8_t data1, uint8_t data2, uint32_t sampleOffset);
 
   // Post-sort pass that guards against the AU scheduler reordering
   // same-block NOTE_ON/NOTE_OFF pairs. See process.mm for the full
@@ -139,6 +157,14 @@ class ProcessAdapter
   std::vector<clap_multi_event_t> _outevents;
 
   uint32_t _preferred_midi_dialect = CLAP_NOTE_DIALECT_CLAP;
+  bool _midi_understands_midi2 = false;
+
+  // reassembles UMP SysEx7 across multi-packet messages on input
+  ClapWrapper::detail::shared::SysEx7Reassembler _sysexReassembler;
+  // owns the payloads referenced by CLAP_EVENT_MIDI_SYSEX events assembled from
+  // UMP for one process() cycle (clap_event_midi_sysex_t only borrows a pointer);
+  // cleared at the top of each cycle.
+  std::vector<std::vector<uint8_t>> _sysexBuffers;
 
   // Active note tracking for note expression targeting
   struct ActiveNote

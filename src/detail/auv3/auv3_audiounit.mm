@@ -119,6 +119,7 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
 
   // MIDI
   uint32_t _midi_preferred_dialect = CLAP_NOTE_DIALECT_CLAP;
+  uint32_t _midi_supported_dialects = 0;
   bool _midi_wants_midi_input = false;
   std::vector<NSString *> _midiOutputNames;
 
@@ -290,6 +291,7 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
       if (noteports->get(plugin, 0, true, &info))
       {
         _midi_preferred_dialect = info.preferred_dialect;
+        _midi_supported_dialects = info.supported_dialects;
       }
     }
 
@@ -1239,6 +1241,16 @@ static Clap::Library _library;
   return @[];
 }
 
+// Advertise the MIDI protocol we want our input delivered in. Returning
+// kMIDIProtocol_2_0 tells the host to deliver MIDI 2.0 UMP (via
+// AURenderEventMIDIEventList); we request it only when the hosted CLAP prefers
+// the MIDI2 note dialect. Otherwise MIDI 1.0 flows through the richer byte path.
+- (MIDIProtocolID)audioUnitMIDIProtocol
+{
+  if (_impl && _impl->_midi_preferred_dialect == CLAP_NOTE_DIALECT_MIDI2) return kMIDIProtocol_2_0;
+  return kMIDIProtocol_1_0;
+}
+
 // Sample rate for time-based properties. A CLAP with no audio output ports
 // (note effect → aumi) has an empty output bus array, and indexing it raises
 // NSRangeException — fall back to the input side, then to 0 ("unknown").
@@ -1485,7 +1497,7 @@ static Clap::Library _library;
       (uint32_t)inputChs.size(), inputChs.empty() ? nullptr : inputChs.data(),
       (uint32_t)outputChs.size(), outputChs.empty() ? nullptr : outputChs.data(),
       _impl->_plugin->_plugin, _impl->_plugin->_ext._params, _impl.get(), self.maximumFramesToRender,
-      _impl->_midi_preferred_dialect);
+      _impl->_midi_preferred_dialect, _impl->_midi_supported_dialects);
 
   // Set transport state and musical context blocks
   _impl->_processAdapter->setTransportStateBlock(self.transportStateBlock);
@@ -1500,8 +1512,16 @@ static Clap::Library _library;
     _impl->_processAdapter->_cookieCache = _impl->_paramCookieCache;
   }
 
-  // Set MIDI output block
+  // Set MIDI output block (legacy 3-byte path)
   _impl->_processAdapter->midiOutputEventBlock = self.MIDIOutputEventBlock;
+
+  // Modern MIDI 2.0 / UMP output block + the host's desired output protocol
+  // (macOS 12 / iOS 15+). Preferred over the legacy block when present.
+  if (__builtin_available(macOS 12.0, iOS 15.0, *))
+  {
+    _impl->_processAdapter->midiOutputEventListBlock = self.MIDIOutputEventListBlock;
+    _impl->_processAdapter->hostMIDIProtocol = self.hostMIDIProtocol;
+  }
 
   // Publish the adapter for the render block and flip the flag under the
   // cache mutex BEFORE the plugin may start processing: producers

@@ -24,6 +24,7 @@
 #include "process.h"
 #include "parameter.h"
 #include "detail/shared/fixedqueue.h"
+#include "detail/shared/midi_translation.h"
 #include "detail/os/osutil.h"
 #include "detail/clap/automation.h"
 
@@ -174,8 +175,7 @@ class MIDIOutput
     if (!_umpCurrent) return;
     if (__builtin_available(macOS 11.0, *))
     {
-      uint32_t word = (0x2u << 28) | (0x0u << 24) | (static_cast<uint32_t>(status) << 16) |
-                      (static_cast<uint32_t>(data1) << 8) | static_cast<uint32_t>(data2);
+      uint32_t word = ClapWrapper::detail::shared::midi1ToUmpWord(status, data1, data2);
       _umpCurrent = MIDIEventListAdd(_umpList, sizeof(_umpBuffer), _umpCurrent, 0, 1, &word);
     }
   }
@@ -294,147 +294,18 @@ bool MIDIOutput::addSysEx(const uint8_t *data, uint32_t size)
 #if AUSDK_MIDI2_AVAILABLE
 void MIDIOutput::appendUMPSysEx(const uint8_t *data, uint32_t size)
 {
-  // UMP SysEx7 (MT 0x3) carries the payload WITHOUT the 0xF0/0xF7 framing, up to
-  // 6 data bytes per 64-bit packet, with a status nibble marking complete/start/
-  // continue/end.
-  const uint8_t *p = data;
-  uint32_t n = size;
-  if (n > 0 && p[0] == 0xF0)
+  if (__builtin_available(macOS 11.0, *))
   {
-    ++p;
-    --n;
-  }
-  if (n > 0 && p[n - 1] == 0xF7) --n;
-
-  const uint8_t group = 0;
-  uint32_t offset = 0;
-  do
-  {
-    // stop (and drop the rest) when the list is full or was never initialized
-    // (macOS < 11): MIDIEventListAdd must not be called with a null curPacket
-    if (!_umpCurrent) return;
-    const uint32_t remaining = n - offset;
-    const uint32_t chunk = (remaining > 6) ? 6 : remaining;
-    uint8_t statusNibble;
-    if (n <= 6)
-      statusNibble = 0x0;  // complete in a single packet
-    else if (offset == 0)
-      statusNibble = 0x1;  // start
-    else if (offset + chunk >= n)
-      statusNibble = 0x3;  // end
-    else
-      statusNibble = 0x2;  // continue
-
-    uint8_t b[6] = {0, 0, 0, 0, 0, 0};
-    for (uint32_t k = 0; k < chunk; ++k) b[k] = p[offset + k];
-
-    uint32_t word0 = (0x3u << 28) | (static_cast<uint32_t>(group) << 24) |
-                     (static_cast<uint32_t>(statusNibble) << 20) | (chunk << 16) |
-                     (static_cast<uint32_t>(b[0]) << 8) | static_cast<uint32_t>(b[1]);
-    uint32_t word1 = (static_cast<uint32_t>(b[2]) << 24) | (static_cast<uint32_t>(b[3]) << 16) |
-                     (static_cast<uint32_t>(b[4]) << 8) | static_cast<uint32_t>(b[5]);
-    uint32_t words[2] = {word0, word1};
-    if (__builtin_available(macOS 11.0, *))
-    {
-      _umpCurrent = MIDIEventListAdd(_umpList, sizeof(_umpBuffer), _umpCurrent, 0, 2, words);
-    }
-
-    offset += chunk;
-  } while (offset < n);
-}
-#endif
-
-// Down-convert a single MIDI 2.0 channel-voice UMP message (MT 0x4) to a MIDI 1.0
-// 3-byte message. Returns the number of MIDI1 bytes written (0 if not convertible).
-// Wide MIDI2 values are reduced by dropping the low bits (16->7, 32->7, 32->14).
-inline int midi2ChannelVoiceToMidi1(const uint32_t data[4], uint8_t out[3])
-{
-  const uint32_t w0 = data[0];
-  const uint32_t w1 = data[1];
-  if (((w0 >> 28) & 0xFu) != 0x4u) return 0;  // only MIDI 2.0 channel voice
-
-  const uint8_t status = static_cast<uint8_t>((w0 >> 16) & 0xF0u);
-  const uint8_t channel = static_cast<uint8_t>((w0 >> 16) & 0x0Fu);
-  const uint8_t index = static_cast<uint8_t>((w0 >> 8) & 0x7Fu);  // note / cc index
-
-  switch (status)
-  {
-    case 0x80:  // note off
-    case 0x90:  // note on
-    {
-      uint8_t vel = static_cast<uint8_t>((w1 >> 16) >> 9);  // 16-bit velocity -> 7-bit
-      // MIDI 2.0 note-on keeps velocity semantics; guard against an accidental
-      // MIDI1 note-off when a non-zero MIDI2 velocity scales down to 0.
-      if (status == 0x90 && vel == 0) vel = 1;
-      out[0] = static_cast<uint8_t>(status | channel);
-      out[1] = index;
-      out[2] = vel;
-      return 3;
-    }
-    case 0xA0:  // poly pressure
-    case 0xB0:  // control change
-    {
-      out[0] = static_cast<uint8_t>(status | channel);
-      out[1] = index;
-      out[2] = static_cast<uint8_t>(w1 >> 25);  // 32-bit -> 7-bit
-      return 3;
-    }
-    case 0xC0:  // program change
-    {
-      out[0] = static_cast<uint8_t>(status | channel);
-      out[1] = static_cast<uint8_t>((w1 >> 24) & 0x7Fu);
-      out[2] = 0;
-      return 2;
-    }
-    case 0xD0:  // channel pressure
-    {
-      out[0] = static_cast<uint8_t>(status | channel);
-      out[1] = static_cast<uint8_t>(w1 >> 25);  // 32-bit -> 7-bit
-      out[2] = 0;
-      return 2;
-    }
-    case 0xE0:  // pitch bend
-    {
-      const uint32_t v14 = w1 >> 18;  // 32-bit -> 14-bit
-      out[0] = static_cast<uint8_t>(status | channel);
-      out[1] = static_cast<uint8_t>(v14 & 0x7Fu);
-      out[2] = static_cast<uint8_t>((v14 >> 7) & 0x7Fu);
-      return 3;
-    }
-    default:
-      return 0;
-  }
-}
-
-#if AUSDK_MIDI2_AVAILABLE
-// number of 32-bit words in a Universal MIDI Packet message, from the message
-// type in the high nibble of its first word (MIDI 2.0 UMP spec).
-inline uint32_t umpMessageWordCount(uint32_t word0)
-{
-  switch ((word0 >> 28) & 0xFu)
-  {
-    case 0x0:  // utility
-    case 0x1:  // system real time / common
-    case 0x2:  // MIDI 1.0 channel voice
-    case 0x6:
-    case 0x7:
-      return 1;
-    case 0x3:  // data / SysEx (64-bit)
-    case 0x4:  // MIDI 2.0 channel voice
-    case 0x8:
-    case 0x9:
-    case 0xA:
-      return 2;
-    case 0xB:
-    case 0xC:
-      return 3;
-    case 0x5:  // data (128-bit)
-    case 0xD:
-    case 0xE:
-    case 0xF:
-      return 4;
-    default:
-      return 1;
+    ClapWrapper::detail::shared::packSysEx7(
+        data, size,
+        [this](uint32_t w0, uint32_t w1)
+        {
+          // stop appending once the list is full or was never initialized
+          // (macOS < 11): MIDIEventListAdd must not be called with a null curPacket
+          if (!_umpCurrent) return;
+          uint32_t words[2] = {w0, w1};
+          _umpCurrent = MIDIEventListAdd(_umpList, sizeof(_umpBuffer), _umpCurrent, 0, 2, words);
+        });
   }
 }
 #endif
@@ -549,7 +420,7 @@ class WrapAsAUV2 : public ausdk::AUBase,
       for (UInt32 i = 0; i < pkt->wordCount;)
       {
         const uint32_t w0 = pkt->words[i];
-        const uint32_t nWords = umpMessageWordCount(w0);
+        const uint32_t nWords = ClapWrapper::detail::shared::umpMessageWordCount(w0);
         if (i + nWords > pkt->wordCount) break;  // truncated packet, stop
 
         const uint32_t mt = (w0 >> 28) & 0xFu;
@@ -567,7 +438,7 @@ class WrapAsAUV2 : public ausdk::AUBase,
             // to MIDI 1.0 and reuse the byte-based translation, which honours
             // the dialect the plugin actually asked for
             uint8_t bytes[3];
-            if (midi2ChannelVoiceToMidi1(&pkt->words[i], bytes) > 0)
+            if (ClapWrapper::detail::shared::midi2ChannelVoiceToMidi1(&pkt->words[i], bytes) > 0)
             {
               _processAdapter->addMIDIEvent(bytes[0], bytes[1], bytes[2], offset);
             }
@@ -594,32 +465,15 @@ class WrapAsAUV2 : public ausdk::AUBase,
     return noErr;
   }
 
-  // Reassemble a UMP SysEx7 packet stream into a single CLAP SysEx event. The
-  // status nibble marks complete(0)/start(1)/continue(2)/end(3); data bytes are
-  // accumulated and, on complete/end, wrapped in 0xF0/0xF7 to match our CLAP
-  // SysEx convention before delivery.
+  // Reassemble a UMP SysEx7 packet stream into a single CLAP SysEx event using the
+  // shared reassembler; on a complete message it is already framed with 0xF0/0xF7.
   void handleUMPSysEx7(uint32_t w0, uint32_t w1, UInt32 offset)
   {
     if (!_processAdapter) return;
-    const uint8_t statusNibble = (w0 >> 20) & 0xFu;
-    const uint8_t numBytes = (w0 >> 16) & 0xFu;
-    const uint8_t bytes[6] = {
-        static_cast<uint8_t>((w0 >> 8) & 0xFFu),  static_cast<uint8_t>(w0 & 0xFFu),
-        static_cast<uint8_t>((w1 >> 24) & 0xFFu), static_cast<uint8_t>((w1 >> 16) & 0xFFu),
-        static_cast<uint8_t>((w1 >> 8) & 0xFFu),  static_cast<uint8_t>(w1 & 0xFFu)};
-
-    if (statusNibble == 0x0 || statusNibble == 0x1) _sysexAssembly.clear();
-    for (uint8_t k = 0; k < numBytes && k < 6; ++k) _sysexAssembly.push_back(bytes[k]);
-
-    if (statusNibble == 0x0 || statusNibble == 0x3)
+    if (_sysexReassembler.feed(w0, w1))
     {
-      std::vector<uint8_t> msg;
-      msg.reserve(_sysexAssembly.size() + 2);
-      msg.push_back(0xF0);
-      msg.insert(msg.end(), _sysexAssembly.begin(), _sysexAssembly.end());
-      msg.push_back(0xF7);
+      const auto &msg = _sysexReassembler.framedMessage();
       _processAdapter->addSysExEvent(msg.data(), static_cast<uint32_t>(msg.size()), offset);
-      _sysexAssembly.clear();
     }
   }
 #endif
@@ -891,8 +745,8 @@ class WrapAsAUV2 : public ausdk::AUBase,
   // rolling counter feeding the NoteInstanceID/note_id handed out by StartNote
   int32_t _noteInstanceCounter = 0;
 #if AUSDK_MIDI2_AVAILABLE
-  // accumulates UMP SysEx7 payload bytes across multi-packet messages on input
-  std::vector<uint8_t> _sysexAssembly;
+  // reassembles UMP SysEx7 across multi-packet messages on input
+  ClapWrapper::detail::shared::SysEx7Reassembler _sysexReassembler;
 #endif
   // std::vector<clap_note_port_info_t> _midi_outports_info;
 

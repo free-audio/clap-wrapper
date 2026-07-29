@@ -1690,7 +1690,7 @@ void WrapAsAUV2::send(const Clap::AUv2::clap_multi_event_t &event)
       // legacy callback and the UMP EventList path (which the framework then
       // up-converts to the host's negotiated protocol).
       uint8_t bytes[3];
-      if (midi2ChannelVoiceToMidi1(event.midi2.data, bytes) > 0)
+      if (ClapWrapper::detail::shared::midi2ChannelVoiceToMidi1(event.midi2.data, bytes) > 0)
       {
         auto portid = event.midi2.port_index;
         for (auto &i : _midi_outports)
