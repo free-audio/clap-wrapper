@@ -168,9 +168,16 @@ class MIDIOutput
   // wrap a MIDI 1.0 channel-voice message into one MT 0x2 UMP word
   void appendUMP1(uint8_t status, uint8_t data1, uint8_t data2)
   {
-    uint32_t word = (0x2u << 28) | (0x0u << 24) | (static_cast<uint32_t>(status) << 16) |
-                    (static_cast<uint32_t>(data1) << 8) | static_cast<uint32_t>(data2);
-    _umpCurrent = MIDIEventListAdd(_umpList, sizeof(_umpBuffer), _umpCurrent, 0, 1, &word);
+    // _umpCurrent is null when running on macOS < 11 (the list is never
+    // initialized there) and once the list is full (MIDIEventListAdd returns
+    // nullptr and must not be called with a null curPacket) - drop the event.
+    if (!_umpCurrent) return;
+    if (__builtin_available(macOS 11.0, *))
+    {
+      uint32_t word = (0x2u << 28) | (0x0u << 24) | (static_cast<uint32_t>(status) << 16) |
+                      (static_cast<uint32_t>(data1) << 8) | static_cast<uint32_t>(data2);
+      _umpCurrent = MIDIEventListAdd(_umpList, sizeof(_umpBuffer), _umpCurrent, 0, 1, &word);
+    }
   }
   // pack a SysEx payload (0xF0/0xF7 framing stripped) into MT 0x3 SysEx7 packets
   void appendUMPSysEx(const uint8_t *data, uint32_t size);
@@ -193,8 +200,13 @@ MIDIOutput::MIDIOutput(int auport, const clap_note_port_info &info) : _info(info
   _current = MIDIPacketListInit(_midiPacketList);
   _numEvents = 0;
 #if AUSDK_MIDI2_AVAILABLE
-  _umpList = (MIDIEventList *)_umpBuffer;
-  _umpCurrent = MIDIEventListInit(_umpList, kMIDIProtocol_1_0);
+  // on macOS < 11 the CoreMIDI EventList API is unavailable; _umpList and
+  // _umpCurrent stay null and every UMP append becomes a no-op
+  if (__builtin_available(macOS 11.0, *))
+  {
+    _umpList = (MIDIEventList *)_umpBuffer;
+    _umpCurrent = MIDIEventListInit(_umpList, kMIDIProtocol_1_0);
+  }
 #endif
 }
 
@@ -203,7 +215,10 @@ void MIDIOutput::clear()
   _current = MIDIPacketListInit(_midiPacketList);
   _numEvents = 0;
 #if AUSDK_MIDI2_AVAILABLE
-  _umpCurrent = MIDIEventListInit(_umpList, kMIDIProtocol_1_0);
+  if (__builtin_available(macOS 11.0, *))
+  {
+    if (_umpList) _umpCurrent = MIDIEventListInit(_umpList, kMIDIProtocol_1_0);
+  }
 #endif
 }
 
@@ -295,6 +310,9 @@ void MIDIOutput::appendUMPSysEx(const uint8_t *data, uint32_t size)
   uint32_t offset = 0;
   do
   {
+    // stop (and drop the rest) when the list is full or was never initialized
+    // (macOS < 11): MIDIEventListAdd must not be called with a null curPacket
+    if (!_umpCurrent) return;
     const uint32_t remaining = n - offset;
     const uint32_t chunk = (remaining > 6) ? 6 : remaining;
     uint8_t statusNibble;
@@ -316,12 +334,77 @@ void MIDIOutput::appendUMPSysEx(const uint8_t *data, uint32_t size)
     uint32_t word1 = (static_cast<uint32_t>(b[2]) << 24) | (static_cast<uint32_t>(b[3]) << 16) |
                      (static_cast<uint32_t>(b[4]) << 8) | static_cast<uint32_t>(b[5]);
     uint32_t words[2] = {word0, word1};
-    _umpCurrent = MIDIEventListAdd(_umpList, sizeof(_umpBuffer), _umpCurrent, 0, 2, words);
+    if (__builtin_available(macOS 11.0, *))
+    {
+      _umpCurrent = MIDIEventListAdd(_umpList, sizeof(_umpBuffer), _umpCurrent, 0, 2, words);
+    }
 
     offset += chunk;
   } while (offset < n);
 }
 #endif
+
+// Down-convert a single MIDI 2.0 channel-voice UMP message (MT 0x4) to a MIDI 1.0
+// 3-byte message. Returns the number of MIDI1 bytes written (0 if not convertible).
+// Wide MIDI2 values are reduced by dropping the low bits (16->7, 32->7, 32->14).
+inline int midi2ChannelVoiceToMidi1(const uint32_t data[4], uint8_t out[3])
+{
+  const uint32_t w0 = data[0];
+  const uint32_t w1 = data[1];
+  if (((w0 >> 28) & 0xFu) != 0x4u) return 0;  // only MIDI 2.0 channel voice
+
+  const uint8_t status = static_cast<uint8_t>((w0 >> 16) & 0xF0u);
+  const uint8_t channel = static_cast<uint8_t>((w0 >> 16) & 0x0Fu);
+  const uint8_t index = static_cast<uint8_t>((w0 >> 8) & 0x7Fu);  // note / cc index
+
+  switch (status)
+  {
+    case 0x80:  // note off
+    case 0x90:  // note on
+    {
+      uint8_t vel = static_cast<uint8_t>((w1 >> 16) >> 9);  // 16-bit velocity -> 7-bit
+      // MIDI 2.0 note-on keeps velocity semantics; guard against an accidental
+      // MIDI1 note-off when a non-zero MIDI2 velocity scales down to 0.
+      if (status == 0x90 && vel == 0) vel = 1;
+      out[0] = static_cast<uint8_t>(status | channel);
+      out[1] = index;
+      out[2] = vel;
+      return 3;
+    }
+    case 0xA0:  // poly pressure
+    case 0xB0:  // control change
+    {
+      out[0] = static_cast<uint8_t>(status | channel);
+      out[1] = index;
+      out[2] = static_cast<uint8_t>(w1 >> 25);  // 32-bit -> 7-bit
+      return 3;
+    }
+    case 0xC0:  // program change
+    {
+      out[0] = static_cast<uint8_t>(status | channel);
+      out[1] = static_cast<uint8_t>((w1 >> 24) & 0x7Fu);
+      out[2] = 0;
+      return 2;
+    }
+    case 0xD0:  // channel pressure
+    {
+      out[0] = static_cast<uint8_t>(status | channel);
+      out[1] = static_cast<uint8_t>(w1 >> 25);  // 32-bit -> 7-bit
+      out[2] = 0;
+      return 2;
+    }
+    case 0xE0:  // pitch bend
+    {
+      const uint32_t v14 = w1 >> 18;  // 32-bit -> 14-bit
+      out[0] = static_cast<uint8_t>(status | channel);
+      out[1] = static_cast<uint8_t>(v14 & 0x7Fu);
+      out[2] = static_cast<uint8_t>((v14 >> 7) & 0x7Fu);
+      return 3;
+    }
+    default:
+      return 0;
+  }
+}
 
 #if AUSDK_MIDI2_AVAILABLE
 // number of 32-bit words in a Universal MIDI Packet message, from the message
@@ -472,8 +555,23 @@ class WrapAsAUV2 : public ausdk::AUBase,
         const uint32_t mt = (w0 >> 28) & 0xFu;
         if (midi2 && mt == 0x4u)
         {
-          // MIDI 2.0 channel voice message
-          _processAdapter->addMIDI2Event(&pkt->words[i], nWords, offset);
+          if (_midi_understands_midi2)
+          {
+            // MIDI 2.0 channel voice message, forwarded raw
+            _processAdapter->addMIDI2Event(&pkt->words[i], nWords, offset);
+          }
+          else
+          {
+            // the plugin's note port never declared the MIDI2 dialect (a host
+            // ignoring our advertised protocol can still send it): down-convert
+            // to MIDI 1.0 and reuse the byte-based translation, which honours
+            // the dialect the plugin actually asked for
+            uint8_t bytes[3];
+            if (midi2ChannelVoiceToMidi1(&pkt->words[i], bytes) > 0)
+            {
+              _processAdapter->addMIDIEvent(bytes[0], bytes[1], bytes[2], offset);
+            }
+          }
         }
         else if (mt == 0x2u)
         {
@@ -505,12 +603,10 @@ class WrapAsAUV2 : public ausdk::AUBase,
     if (!_processAdapter) return;
     const uint8_t statusNibble = (w0 >> 20) & 0xFu;
     const uint8_t numBytes = (w0 >> 16) & 0xFu;
-    const uint8_t bytes[6] = {static_cast<uint8_t>((w0 >> 8) & 0xFFu),
-                              static_cast<uint8_t>(w0 & 0xFFu),
-                              static_cast<uint8_t>((w1 >> 24) & 0xFFu),
-                              static_cast<uint8_t>((w1 >> 16) & 0xFFu),
-                              static_cast<uint8_t>((w1 >> 8) & 0xFFu),
-                              static_cast<uint8_t>(w1 & 0xFFu)};
+    const uint8_t bytes[6] = {
+        static_cast<uint8_t>((w0 >> 8) & 0xFFu),  static_cast<uint8_t>(w0 & 0xFFu),
+        static_cast<uint8_t>((w1 >> 24) & 0xFFu), static_cast<uint8_t>((w1 >> 16) & 0xFFu),
+        static_cast<uint8_t>((w1 >> 8) & 0xFFu),  static_cast<uint8_t>(w1 & 0xFFu)};
 
     if (statusNibble == 0x0 || statusNibble == 0x1) _sysexAssembly.clear();
     for (uint8_t k = 0; k < numBytes && k < 6; ++k) _sysexAssembly.push_back(bytes[k]);

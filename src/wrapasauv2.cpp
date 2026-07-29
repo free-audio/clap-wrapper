@@ -1156,9 +1156,9 @@ OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags &inFlags, const AudioTime
           if (_midioutput_hosteventlistblock)
           {
             auto evtlist = i->getMIDIEventList();
-            [[maybe_unused]] OSStatus result = _midioutput_hosteventlistblock(
-                static_cast<AUEventSampleTime>(inTimeStamp.mSampleTime),
-                static_cast<uint8_t>(i->_auport), evtlist);
+            [[maybe_unused]] OSStatus result =
+                _midioutput_hosteventlistblock(static_cast<AUEventSampleTime>(inTimeStamp.mSampleTime),
+                                               static_cast<uint8_t>(i->_auport), evtlist);
             assert(result == noErr);
           }
           else
@@ -1463,7 +1463,10 @@ bool WrapAsAUV2::ValidFormat(AudioUnitScope inScope, AudioUnitElement inElement,
   const auto &cache = (inScope == kAudioUnitScope_Input) ? _inputPortCache : _outputPortCache;
   if (inElement >= cache.size())
   {
-    return false;
+    // The placeholder silent output bus of a note-only plugin (see
+    // PostConstructor) has no CLAP port behind it; accept any format there so
+    // hosts can still change the sample rate / channel count on that bus.
+    return (inScope == kAudioUnitScope_Output && cache.empty() && inElement == 0);
   }
   return inNewFormat.mChannelsPerFrame == cache[inElement].channelCount;
 }
@@ -1596,71 +1599,6 @@ UInt32 WrapAsAUV2::GetAudioChannelLayout(AudioUnitScope scope, AudioUnitElement 
   return Base::GetAudioChannelLayout(scope, element, outLayoutPtr, outWritable);
 }
 
-namespace
-{
-// Down-convert a single MIDI 2.0 channel-voice UMP message (MT 0x4) to a MIDI 1.0
-// 3-byte message. Returns the number of MIDI1 bytes written (0 if not convertible).
-// Wide MIDI2 values are reduced by dropping the low bits (16->7, 32->7, 32->14).
-int midi2ChannelVoiceToMidi1(const uint32_t data[4], uint8_t out[3])
-{
-  const uint32_t w0 = data[0];
-  const uint32_t w1 = data[1];
-  if (((w0 >> 28) & 0xFu) != 0x4u) return 0;  // only MIDI 2.0 channel voice
-
-  const uint8_t status = static_cast<uint8_t>((w0 >> 16) & 0xF0u);
-  const uint8_t channel = static_cast<uint8_t>((w0 >> 16) & 0x0Fu);
-  const uint8_t index = static_cast<uint8_t>((w0 >> 8) & 0x7Fu);  // note / cc index
-
-  switch (status)
-  {
-    case 0x80:  // note off
-    case 0x90:  // note on
-    {
-      uint8_t vel = static_cast<uint8_t>((w1 >> 16) >> 9);  // 16-bit velocity -> 7-bit
-      // MIDI 2.0 note-on keeps velocity semantics; guard against an accidental
-      // MIDI1 note-off when a non-zero MIDI2 velocity scales down to 0.
-      if (status == 0x90 && vel == 0) vel = 1;
-      out[0] = static_cast<uint8_t>(status | channel);
-      out[1] = index;
-      out[2] = vel;
-      return 3;
-    }
-    case 0xA0:  // poly pressure
-    case 0xB0:  // control change
-    {
-      out[0] = static_cast<uint8_t>(status | channel);
-      out[1] = index;
-      out[2] = static_cast<uint8_t>(w1 >> 25);  // 32-bit -> 7-bit
-      return 3;
-    }
-    case 0xC0:  // program change
-    {
-      out[0] = static_cast<uint8_t>(status | channel);
-      out[1] = static_cast<uint8_t>((w1 >> 24) & 0x7Fu);
-      out[2] = 0;
-      return 2;
-    }
-    case 0xD0:  // channel pressure
-    {
-      out[0] = static_cast<uint8_t>(status | channel);
-      out[1] = static_cast<uint8_t>(w1 >> 25);  // 32-bit -> 7-bit
-      out[2] = 0;
-      return 2;
-    }
-    case 0xE0:  // pitch bend
-    {
-      const uint32_t v14 = w1 >> 18;  // 32-bit -> 14-bit
-      out[0] = static_cast<uint8_t>(status | channel);
-      out[1] = static_cast<uint8_t>(v14 & 0x7Fu);
-      out[2] = static_cast<uint8_t>((v14 >> 7) & 0x7Fu);
-      return 3;
-    }
-    default:
-      return 0;
-  }
-}
-}  // namespace
-
 void WrapAsAUV2::send(const Clap::AUv2::clap_multi_event_t &event)
 {
   // port index maps back to MIDI out
@@ -1718,8 +1656,7 @@ void WrapAsAUV2::send(const Clap::AUv2::clap_multi_event_t &event)
         if (v < 0.0) v = 0.0;
         if (v > 1.0) v = 1.0;
         uint8_t bytes[3] = {static_cast<uint8_t>(0xA0u | (ne.channel & 0x0F)),
-                            static_cast<uint8_t>(ne.key & 0x7F),
-                            static_cast<uint8_t>(v * 127.0)};
+                            static_cast<uint8_t>(ne.key & 0x7F), static_cast<uint8_t>(v * 127.0)};
         auto portid = ne.port_index;
         for (auto &i : _midi_outports)
         {

@@ -27,8 +27,8 @@ static uint32_t chooseInputDialect(uint32_t preferred, uint32_t supported)
 {
   if (supported == 0) return preferred;  // no note-port info: trust preferred
   if (supported & preferred) return preferred;
-  for (uint32_t dialect : {CLAP_NOTE_DIALECT_CLAP, CLAP_NOTE_DIALECT_MIDI,
-                           CLAP_NOTE_DIALECT_MIDI_MPE, CLAP_NOTE_DIALECT_MIDI2})
+  for (uint32_t dialect : {CLAP_NOTE_DIALECT_CLAP, CLAP_NOTE_DIALECT_MIDI, CLAP_NOTE_DIALECT_MIDI_MPE,
+                           CLAP_NOTE_DIALECT_MIDI2})
   {
     if (supported & dialect) return dialect;
   }
@@ -367,7 +367,7 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t *event)
       _midiouts->send(*nevt);
       return true;
     }
-      break;
+    break;
     case CLAP_EVENT_PARAM_VALUE:
     {
       auto ev = (clap_event_param_value *)event;
@@ -411,14 +411,14 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t *event)
       _midiouts->send(*nevt);
       return true;
     }
-      break;
+    break;
     case CLAP_EVENT_MIDI2:
     {
       auto nevt = reinterpret_cast<const clap_multi_event_t *>(event);
       _midiouts->send(*nevt);
       return true;
     }
-      break;
+    break;
     default:
       break;
   }
