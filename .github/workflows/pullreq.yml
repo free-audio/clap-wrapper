@@ -53,7 +53,7 @@ jobs:
 
       - name: Build project
         run: |
-          cmake -S . -B ./build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCLAP_SDK_ROOT=deps/clap -DVST3_SDK_ROOT=deps/vst3sdk -DAAX_SDK_ROOT=deps/aax -DCLAP_WRAPPER_OUTPUT_NAME=testplug
+          cmake -S . -B ./build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCLAP_SDK_ROOT=deps/clap -DVST3_SDK_ROOT=deps/vst3sdk -DAAX_SDK_ROOT=deps/aax -DCLAP_WRAPPER_BUILD_AAX=TRUE -DCLAP_WRAPPER_OUTPUT_NAME=testplug
           cmake --build ./build --config Debug
 
       - name: Show Build Results

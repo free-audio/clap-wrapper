@@ -29,6 +29,7 @@
 #include <AudioToolbox/AudioUnitUtilities.h>
 #include <AudioUnit/AUComponent.h>
 #include "../clap/automation.h"
+#include "../shared/midi_translation.h"
 #include "parameter.h"
 #include <map>
 
@@ -175,8 +176,9 @@ class ProcessAdapter
 
   // owns the payloads referenced by CLAP_EVENT_MIDI_SYSEX events for the
   // duration of one process() cycle (clap_event_midi_sysex_t only borrows a
-  // pointer). Cleared together with _events at the end of each cycle.
-  std::vector<std::vector<uint8_t>> _sysexBuffers;
+  // pointer). Reset together with _events at the end of each cycle; buffers
+  // are pooled so steady-state cycles do not allocate on the audio thread.
+  ClapWrapper::detail::shared::SysExBufferPool _sysexBuffers;
 
   std::vector<clap_multi_event_t> _outevents;
 

@@ -224,6 +224,9 @@ void MIDIOutput::clear()
 
 bool MIDIOutput::addNoteOn(uint8_t channel, uint8_t note, uint8_t velocity)
 {
+  // once the list is full MIDIPacketListAdd returns nullptr; it must never be
+  // called with a null curPacket, so further events this block are dropped
+  if (!_current) return false;
   uint8_t ev[3] = {static_cast<uint8_t>((uint8_t)0x90u | (channel & 0xF)),
                    static_cast<uint8_t>((note & 0x7F)), static_cast<uint8_t>((velocity & 0x7F))};
   _current = MIDIPacketListAdd(_midiPacketList, sizeof(_buffer), _current, 0, 3, (Byte *)ev);
@@ -235,6 +238,7 @@ bool MIDIOutput::addNoteOn(uint8_t channel, uint8_t note, uint8_t velocity)
 }
 bool MIDIOutput::addNoteOff(uint8_t channel, uint8_t note, uint8_t velocity)
 {
+  if (!_current) return false;
   uint8_t ev[3] = {static_cast<uint8_t>((uint8_t)0x80u | (channel & 0xF)),
                    static_cast<uint8_t>((note & 0x7F)), static_cast<uint8_t>((velocity & 0x7F))};
   _current = MIDIPacketListAdd(_midiPacketList, sizeof(_buffer), _current, 0, 3, (Byte *)ev);
@@ -247,6 +251,7 @@ bool MIDIOutput::addNoteOff(uint8_t channel, uint8_t note, uint8_t velocity)
 
 bool MIDIOutput::addMIDI3Byte(const uint8_t *threebytes)
 {
+  if (!_current) return false;
   auto cmd = (threebytes[0] >> 4) & 0xFu;
   switch (cmd)
   {
@@ -277,7 +282,7 @@ bool MIDIOutput::addMIDI3Byte(const uint8_t *threebytes)
 
 bool MIDIOutput::addSysEx(const uint8_t *data, uint32_t size)
 {
-  if (!data || size == 0) return false;
+  if (!_current || !data || size == 0) return false;
   // MIDIPacketListAdd splits the payload across packets as needed, but the
   // whole list is still bounded by our fixed _buffer; very long SysEx that does
   // not fit is dropped (returns nullptr). The CLAP buffer already contains the
@@ -408,7 +413,7 @@ class WrapAsAUV2 : public ausdk::AUBase,
   // are forwarded raw as CLAP_EVENT_MIDI2 (for plugins that prefer MIDI2); MIDI
   // 1.0 messages reuse the byte-based translation so they pick up the note /
   // note-expression handling of the MIDI1 path.
-  OSStatus MIDIEventList(UInt32 /*inOffsetSampleFrame*/, const struct MIDIEventList *evtlist) override
+  OSStatus MIDIEventList(UInt32 inOffsetSampleFrame, const struct MIDIEventList *evtlist) override
   {
     if (!_processAdapter || !evtlist) return noErr;
 
@@ -416,7 +421,9 @@ class WrapAsAUV2 : public ausdk::AUBase,
     const MIDIEventPacket *pkt = &evtlist->packet[0];
     for (UInt32 p = 0; p < evtlist->numPackets; ++p)
     {
-      const UInt32 offset = static_cast<UInt32>(pkt->timeStamp);
+      // MusicDevice.h: each event's sample offset is inOffsetSampleFrame plus
+      // the packet's timeStamp (itself a sample offset within the render cycle)
+      const UInt32 offset = inOffsetSampleFrame + static_cast<UInt32>(pkt->timeStamp);
       for (UInt32 i = 0; i < pkt->wordCount;)
       {
         const uint32_t w0 = pkt->words[i];
@@ -769,8 +776,13 @@ class WrapAsAUV2 : public ausdk::AUBase,
   // ------------- for the MIDI output
   AUMIDIOutputCallbackStruct _midioutput_hostcallback = {nullptr, nullptr};
 #if AUSDK_MIDI2_AVAILABLE
-  // modern MIDI 2.0 / UMP output path (preferred by the host over the callback above)
-  AUMIDIEventListBlock _midioutput_hosteventlistblock = nullptr;
+  // modern MIDI 2.0 / UMP output path (preferred by the host over the callback
+  // above). Atomic because a host may install or clear the block while Render is
+  // invoking it on the audio thread; replaced blocks are parked in
+  // _retiredEventListBlocks instead of being released under the render thread's
+  // feet, and drained in deactivateCLAP()/~WrapAsAUV2 when no render can run.
+  std::atomic<AUMIDIEventListBlock> _midioutput_hosteventlistblock{nullptr};
+  std::vector<AUMIDIEventListBlock> _retiredEventListBlocks;
   MIDIProtocolID _host_midi_protocol = kMIDIProtocol_1_0;
 #endif
 

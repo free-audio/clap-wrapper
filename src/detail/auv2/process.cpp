@@ -57,9 +57,6 @@ void ProcessAdapter::setupProcessing(ausdk::AUScope &audioInputs, ausdk::AUScope
   _preferred_midi_dialect =
       ClapWrapper::detail::shared::chooseInputDialect(preferredMIDIDialect, supportedMIDIDialects);
 
-  _clapNumInputs = clapAudioInputs;
-  _clapNumOutputs = clapAudioOutputs;
-
   _midiouts = midiouts;
 
   // rewrite the buffer structures
@@ -78,6 +75,14 @@ void ProcessAdapter::setupProcessing(ausdk::AUScope &audioInputs, ausdk::AUScope
 
   _numInputs = _audioInputScope->GetNumberOfElements();
   _numOutputs = _audioOutputScope->GetNumberOfElements();
+
+  // Never hand the plugin more ports than _input_ports/_output_ports have
+  // elements: the AU element counts were fixed at PostConstructor, while the
+  // CLAP counts are re-queried on every (re)activation — a plugin that rescans
+  // its audio ports while deactivated could otherwise make process() index past
+  // the allocation, or receive a null pointer with a non-zero count.
+  _clapNumInputs = std::min(clapAudioInputs, _numInputs);
+  _clapNumOutputs = std::min(clapAudioOutputs, _numOutputs);
 
   // The plugin is handed its own declared port counts, which may be fewer than
   // the AU-scope element counts (a note-only plugin gets a placeholder silent AU
@@ -156,6 +161,7 @@ void ProcessAdapter::setupProcessing(ausdk::AUScope &audioInputs, ausdk::AUScope
   _events.reserve(8192);
   _eventindices.clear();
   _eventindices.reserve(_events.capacity());
+  _sysexBuffers.prepare(16);
 
   _out_events.ctx = this;
 
@@ -183,6 +189,20 @@ void ProcessAdapter::sortEventIndices()
 
 void ProcessAdapter::process(ProcessData &data)
 {
+  // CLAP requires event times within [0, frames_count); a host stamping
+  // MIDIEventList packets with out-of-range timestamps (e.g. mach host time
+  // instead of sample offsets) would otherwise make plugins that index their
+  // buffers by event time read out of bounds — clamp into the block.
+  if (data.numSamples > 0)
+  {
+    for (auto &e : _events)
+    {
+      if (e.header.time >= data.numSamples)
+      {
+        e.header.time = data.numSamples - 1;
+      }
+    }
+  }
   sortEventIndices();
   _processData.frames_count = data.numSamples;
   _transport.flags = 0;
@@ -293,7 +313,7 @@ void ProcessAdapter::process(ProcessData &data)
   // clean up and prepare the events for the next cycle
   _events.clear();
   _eventindices.clear();
-  _sysexBuffers.clear();
+  _sysexBuffers.reset();
 }
 
 uint32_t ProcessAdapter::input_events_size(const struct clap_input_events *list)
@@ -476,7 +496,8 @@ void ProcessAdapter::addMIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData
     case 8:  // note off
     case 9:  // note on
     {
-      const bool noteOn = (strippedStatus == 9);
+      // MIDI 1.0 running-status convention: a note-on with velocity 0 is a note-off
+      const bool noteOn = (strippedStatus == 9) && ((inData2 & 0x7F) != 0);
       switch (_preferred_midi_dialect)
       {
         case CLAP_NOTE_DIALECT_CLAP:
@@ -648,8 +669,7 @@ void ProcessAdapter::addSysExEvent(const uint8_t *data, uint32_t length, UInt32 
   bool live = (inOffsetSampleFrame & kMusicDeviceSampleFrameMask_IsScheduled) != 0;
 
   // keep the payload alive until the plugin consumes it during process()
-  _sysexBuffers.emplace_back(data, data + length);
-  const auto &owned = _sysexBuffers.back();
+  const auto &owned = _sysexBuffers.acquire(data, length);
 
   clap_multi_event n;
   n.header.time = deltaFrames;

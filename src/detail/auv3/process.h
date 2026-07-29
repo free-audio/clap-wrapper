@@ -100,8 +100,10 @@ class ProcessAdapter
   API_AVAILABLE(macos(12.0), ios(15.0))
   AUMIDIEventListBlock __nullable midiOutputEventListBlock;
 
-  // Protocol the host wants our MIDI output delivered in (set from the AU's
-  // hostMIDIProtocol property). Read at render time when building the UMP output.
+  // Protocol the host negotiated via the AU's hostMIDIProtocol property. The
+  // UMP output list is deliberately always built as protocol-1.0 — the
+  // framework up-converts it to this protocol; kept for future native
+  // MIDI 2.0 output.
   MIDIProtocolID hostMIDIProtocol = kMIDIProtocol_1_0;
 
  private:
@@ -163,8 +165,14 @@ class ProcessAdapter
   ClapWrapper::detail::shared::SysEx7Reassembler _sysexReassembler;
   // owns the payloads referenced by CLAP_EVENT_MIDI_SYSEX events assembled from
   // UMP for one process() cycle (clap_event_midi_sysex_t only borrows a pointer);
-  // cleared at the top of each cycle.
-  std::vector<std::vector<uint8_t>> _sysexBuffers;
+  // reset at the top of each cycle. Pooled, so steady-state cycles do not
+  // allocate on the render thread.
+  ClapWrapper::detail::shared::SysExBufferPool _sysexBuffers;
+  // owns the payloads of CLAP_EVENT_MIDI_SYSEX events the plugin pushed to the
+  // output queue: the plugin only guarantees the buffer during try_push, but
+  // _outevents is drained after process() returns; reset together with
+  // _outevents. Pooled like _sysexBuffers.
+  ClapWrapper::detail::shared::SysExBufferPool _sysexOutBuffers;
 
   // Active note tracking for note expression targeting
   struct ActiveNote

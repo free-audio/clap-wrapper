@@ -190,6 +190,8 @@ void ProcessAdapter::setupProcessing(uint32_t numInputBusses, const uint32_t *in
   // than drop events — the vector never shrinks, so it amortizes to zero.
   _outevents.clear();
   _outevents.reserve(8192);
+  _sysexBuffers.prepare(16);
+  _sysexOutBuffers.prepare(16);
 
   _activeNotes.clear();
   _activeNotes.reserve(32);
@@ -579,8 +581,7 @@ void ProcessAdapter::translateAUv3Events(const AURenderEvent *head, AUEventSampl
                 if (_sysexReassembler.feed(w0, w1))
                 {
                   const auto &msg = _sysexReassembler.framedMessage();
-                  _sysexBuffers.emplace_back(msg.begin(), msg.end());
-                  const auto &owned = _sysexBuffers.back();
+                  const auto &owned = _sysexBuffers.acquire(msg.data(), (uint32_t)msg.size());
                   clap_multi_event_t s;
                   memset(&s, 0, sizeof(s));
                   s.header.time = sampleOffset;
@@ -639,7 +640,7 @@ AUAudioUnitStatus ProcessAdapter::process(AudioUnitRenderActionFlags *actionFlag
   // Clear events from previous cycle
   _events.clear();
   _eventindices.clear();
-  _sysexBuffers.clear();
+  _sysexBuffers.reset();
 
   // Deliver host parameter changes queued via queueParameterChange()
   // (AUParameter.setValue while rendering) at the top of this cycle.
@@ -823,7 +824,11 @@ AUAudioUnitStatus ProcessAdapter::process(AudioUnitRenderActionFlags *actionFlag
     }
 
     // Emit one MIDI 1.0 message either as an MT 0x2 UMP word or via the legacy block.
-    auto emitMidi1 = [&](AUEventSampleTime t, const uint8_t *bytes, ByteCount len)
+    // `off` is the sample offset within this render cycle: MIDIEventList packet
+    // timestamps are offsets relative to the AudioTimeStamp the list block is
+    // invoked with (AudioUnitProperties.h), while the legacy 3-byte block takes
+    // absolute sample time.
+    auto emitMidi1 = [&](uint32_t off, const uint8_t *bytes, ByteCount len)
     {
       if (useUMP)
       {
@@ -832,18 +837,18 @@ AUAudioUnitStatus ProcessAdapter::process(AudioUnitRenderActionFlags *actionFlag
           if (!umpCur) return;
           uint32_t w = ClapWrapper::detail::shared::midi1ToUmpWord(bytes[0], len > 1 ? bytes[1] : 0,
                                                                    len > 2 ? bytes[2] : 0);
-          umpCur = MIDIEventListAdd(umpList, sizeof(umpBuffer), umpCur, (MIDITimeStamp)t, 1, &w);
+          umpCur = MIDIEventListAdd(umpList, sizeof(umpBuffer), umpCur, (MIDITimeStamp)off, 1, &w);
         }
       }
       else if (midiOutputEventBlock)
       {
-        midiOutputEventBlock(t, 0, len, bytes);
+        midiOutputEventBlock(timestamp->mSampleTime + off, 0, len, bytes);
       }
     };
 
     for (auto &evt : _outevents)
     {
-      const AUEventSampleTime t = timestamp->mSampleTime + evt.header.time;
+      const uint32_t off = evt.header.time;
       switch (evt.header.type)
       {
         case CLAP_EVENT_PARAM_VALUE:
@@ -865,74 +870,40 @@ AUAudioUnitStatus ProcessAdapter::process(AudioUnitRenderActionFlags *actionFlag
           break;
         }
         case CLAP_EVENT_MIDI:
-          emitMidi1(t, evt.midi.data, 3);
+          emitMidi1(off, evt.midi.data, 3);
           break;
         case CLAP_EVENT_NOTE_ON:
         {
           uint8_t data[3] = {(uint8_t)(0x90 | (evt.note.channel & 0x0F)), (uint8_t)(evt.note.key & 0x7F),
                              (uint8_t)(evt.note.velocity * 127.0f)};
-          emitMidi1(t, data, 3);
+          emitMidi1(off, data, 3);
           break;
         }
         case CLAP_EVENT_NOTE_OFF:
         {
           uint8_t data[3] = {(uint8_t)(0x80 | (evt.note.channel & 0x0F)), (uint8_t)(evt.note.key & 0x7F),
                              (uint8_t)(evt.note.velocity * 127.0f)};
-          emitMidi1(t, data, 3);
+          emitMidi1(off, data, 3);
           break;
         }
         case CLAP_EVENT_NOTE_EXPRESSION:
         {
-          auto &ne = evt.noteexpression;
-          if (ne.expression_id == CLAP_NOTE_EXPRESSION_PRESSURE && ne.key >= 0)
-          {
-            // Per-note pressure → Poly Aftertouch
-            uint8_t data[3] = {(uint8_t)(0xA0 | (ne.channel >= 0 ? ne.channel & 0x0F : 0)),
-                               (uint8_t)(ne.key & 0x7F),
-                               (uint8_t)(std::clamp(ne.value, 0.0, 1.0) * 127.0)};
-            emitMidi1(t, data, 3);
-          }
-          else if (ne.expression_id == CLAP_NOTE_EXPRESSION_PRESSURE && ne.key < 0)
-          {
-            // Channel-wide pressure → Channel Pressure
-            uint8_t data[2] = {(uint8_t)(0xD0 | (ne.channel >= 0 ? ne.channel & 0x0F : 0)),
-                               (uint8_t)(std::clamp(ne.value, 0.0, 1.0) * 127.0)};
-            emitMidi1(t, data, 2);
-          }
-          else if (ne.expression_id == CLAP_NOTE_EXPRESSION_TUNING)
-          {
-            // Tuning → Pitch Bend (±2 semitone range)
-            double normalized = std::clamp(ne.value / 2.0, -1.0, 1.0);
-            uint16_t bendValue = (uint16_t)((normalized + 1.0) * 8192.0);
-            if (bendValue > 16383) bendValue = 16383;
-            uint8_t data[3] = {(uint8_t)(0xE0 | (ne.channel >= 0 ? ne.channel & 0x0F : 0)),
-                               (uint8_t)(bendValue & 0x7F), (uint8_t)((bendValue >> 7) & 0x7F)};
-            emitMidi1(t, data, 3);
-          }
-          // Other expression types (volume, pan, vibrato, brightness) have no MIDI 1.0 equivalent
+          // Pressure maps to poly/channel aftertouch and tuning to pitch bend;
+          // expressions MIDI 1.0 cannot represent (volume/pan/vibrato/…) are dropped.
+          uint8_t data[3];
+          int len = ClapWrapper::detail::shared::noteExpressionToMidi1(evt.noteexpression, data);
+          if (len > 0) emitMidi1(off, data, (ByteCount)len);
           break;
         }
         case CLAP_EVENT_MIDI2:
         {
-          if (useUMP)
-          {
-            if (__builtin_available(macOS 12.0, iOS 15.0, *))
-            {
-              if (umpCur)
-              {
-                uint32_t nWords = ClapWrapper::detail::shared::umpMessageWordCount(evt.midi2.data[0]);
-                umpCur = MIDIEventListAdd(umpList, sizeof(umpBuffer), umpCur, (MIDITimeStamp)t, nWords,
-                                          evt.midi2.data);
-              }
-            }
-          }
-          else
-          {
-            // no UMP output available: down-convert to MIDI 1.0
-            uint8_t bytes[3];
-            int len = ClapWrapper::detail::shared::midi2ChannelVoiceToMidi1(evt.midi2.data, bytes);
-            if (len > 0) emitMidi1(t, bytes, (ByteCount)len);
-          }
+          // The output list is declared kMIDIProtocol_1_0, and MT-0x4 words are
+          // only valid in a MIDI 2.0 protocol stream — down-convert for both
+          // delivery paths; the framework up-converts the list to the host's
+          // negotiated protocol.
+          uint8_t bytes[3];
+          int len = ClapWrapper::detail::shared::midi2ChannelVoiceToMidi1(evt.midi2.data, bytes);
+          if (len > 0) emitMidi1(off, bytes, (ByteCount)len);
           break;
         }
         case CLAP_EVENT_MIDI_SYSEX:
@@ -948,14 +919,14 @@ AUAudioUnitStatus ProcessAdapter::process(AudioUnitRenderActionFlags *actionFlag
                     if (!umpCur) return;
                     uint32_t words[2] = {w0, w1};
                     umpCur =
-                        MIDIEventListAdd(umpList, sizeof(umpBuffer), umpCur, (MIDITimeStamp)t, 2, words);
+                        MIDIEventListAdd(umpList, sizeof(umpBuffer), umpCur, (MIDITimeStamp)off, 2, words);
                   });
             }
           }
           else if (midiOutputEventBlock)
           {
             // the legacy block accepts an arbitrary-length MIDI 1.0 byte stream
-            midiOutputEventBlock(t, 0, evt.sysex.size, evt.sysex.buffer);
+            midiOutputEventBlock(timestamp->mSampleTime + off, 0, evt.sysex.size, evt.sysex.buffer);
           }
           break;
         }
@@ -973,6 +944,7 @@ AUAudioUnitStatus ProcessAdapter::process(AudioUnitRenderActionFlags *actionFlag
       }
     }
     _outevents.clear();
+    _sysexOutBuffers.reset();
   }
 
 copyOutput:
@@ -1079,6 +1051,13 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t *event)
   {
     clap_multi_event_t e;
     memcpy(&e, event, event->size);
+    if (event->space_id == CLAP_CORE_EVENT_SPACE_ID && event->type == CLAP_EVENT_MIDI_SYSEX)
+    {
+      // the sysex payload is only valid during try_push — take an owning copy
+      // into a pooled buffer (steady state does not allocate)
+      if (!e.sysex.buffer || e.sysex.size == 0) return true;  // empty message, nothing to deliver
+      e.sysex.buffer = _sysexOutBuffers.acquire(e.sysex.buffer, e.sysex.size).data();
+    }
     _outevents.emplace_back(e);
     return true;
   }

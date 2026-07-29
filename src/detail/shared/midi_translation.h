@@ -144,6 +144,51 @@ inline int midi2ChannelVoiceToMidi1(const uint32_t data[4], uint8_t out[3])
   }
 }
 
+// Down-convert a CLAP note-expression event to a single MIDI 1.0 channel-voice
+// message: PRESSURE with a key maps to polyphonic key pressure (0xA0), channel-wide
+// PRESSURE (key < 0) to channel pressure (0xD0), and TUNING to pitch bend (0xE0,
+// the conventional ±2 semitone range). Returns the number of MIDI1 bytes written
+// (2 or 3), or 0 for expressions with no MIDI 1.0 equivalent (volume, pan,
+// vibrato, brightness, …).
+inline int noteExpressionToMidi1(const clap_event_note_expression_t &ne, uint8_t out[3])
+{
+  const uint8_t channel = static_cast<uint8_t>(ne.channel >= 0 ? ne.channel & 0x0F : 0);
+  switch (ne.expression_id)
+  {
+    case CLAP_NOTE_EXPRESSION_PRESSURE:
+    {
+      double v = ne.value;
+      if (v < 0.0) v = 0.0;
+      if (v > 1.0) v = 1.0;
+      if (ne.key >= 0)
+      {
+        out[0] = static_cast<uint8_t>(0xA0u | channel);
+        out[1] = static_cast<uint8_t>(ne.key & 0x7F);
+        out[2] = static_cast<uint8_t>(v * 127.0);
+        return 3;
+      }
+      out[0] = static_cast<uint8_t>(0xD0u | channel);
+      out[1] = static_cast<uint8_t>(v * 127.0);
+      out[2] = 0;
+      return 2;
+    }
+    case CLAP_NOTE_EXPRESSION_TUNING:
+    {
+      double normalized = ne.value / 2.0;
+      if (normalized < -1.0) normalized = -1.0;
+      if (normalized > 1.0) normalized = 1.0;
+      uint32_t bend = static_cast<uint32_t>((normalized + 1.0) * 8192.0);
+      if (bend > 16383u) bend = 16383u;
+      out[0] = static_cast<uint8_t>(0xE0u | channel);
+      out[1] = static_cast<uint8_t>(bend & 0x7Fu);
+      out[2] = static_cast<uint8_t>((bend >> 7) & 0x7Fu);
+      return 3;
+    }
+    default:
+      return 0;
+  }
+}
+
 // Pack a SysEx payload into MT 0x3 UMP SysEx7 packets. The 0xF0/0xF7 framing is
 // stripped (UMP SysEx7 carries only the content bytes), up to 6 bytes per 64-bit
 // packet, with a status nibble marking complete(0)/start(1)/continue(2)/end(3).
@@ -240,6 +285,42 @@ class SysEx7Reassembler
  private:
   std::vector<uint8_t> _content;
   std::vector<uint8_t> _framed;
+};
+
+// Per-cycle pool of byte buffers owning SysEx payloads (clap_event_midi_sysex_t
+// only borrows a pointer). acquire() copies into a recycled buffer whose heap
+// capacity survives reset(), so steady-state audio-thread use does not allocate;
+// the pool only grows when one cycle holds more SysEx messages than any before.
+// Handed-out payload pointers stay valid while the pool grows: growth moves the
+// inner vector objects, never their heap storage.
+class SysExBufferPool
+{
+ public:
+  // pre-size the pool (never shrinks) and mark all entries free
+  void prepare(size_t entries)
+  {
+    if (_buffers.size() < entries) _buffers.resize(entries);
+    _used = 0;
+  }
+
+  // copy a payload into the next free buffer and return it
+  const std::vector<uint8_t> &acquire(const uint8_t *data, uint32_t size)
+  {
+    if (_used == _buffers.size()) _buffers.emplace_back();
+    auto &b = _buffers[_used++];
+    b.assign(data, data + size);
+    return b;
+  }
+
+  // mark all entries free without releasing their storage
+  void reset()
+  {
+    _used = 0;
+  }
+
+ private:
+  std::vector<std::vector<uint8_t>> _buffers;
+  size_t _used = 0;
 };
 
 }  // namespace ClapWrapper::detail::shared

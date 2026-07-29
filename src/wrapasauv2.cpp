@@ -157,11 +157,9 @@ WrapAsAUV2::WrapAsAUV2(AUV2_Type type, const std::string &clapname, const std::s
 WrapAsAUV2::~WrapAsAUV2()
 {
 #if AUSDK_MIDI2_AVAILABLE
-  if (_midioutput_hosteventlistblock)
-  {
-    Block_release(_midioutput_hosteventlistblock);
-    _midioutput_hosteventlistblock = nullptr;
-  }
+  if (auto blk = _midioutput_hosteventlistblock.exchange(nullptr)) Block_release(blk);
+  for (auto blk : _retiredEventListBlocks) Block_release(blk);
+  _retiredEventListBlocks.clear();
 #endif
   if (_plugin)
   {
@@ -930,19 +928,21 @@ OSStatus WrapAsAUV2::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         break;
 #if AUSDK_MIDI2_AVAILABLE
       case kAudioUnitProperty_MIDIOutputEventListCallback:
+      {
         if (inDataSize < sizeof(AUMIDIEventListBlock)) return kAudioUnitErr_InvalidPropertyValue;
-        if (_midioutput_hosteventlistblock)
-        {
-          Block_release(_midioutput_hosteventlistblock);
-          _midioutput_hosteventlistblock = nullptr;
-        }
+        AUMIDIEventListBlock newblk = nullptr;
         if (inData)
         {
           auto blk = *static_cast<const AUMIDIEventListBlock *>(inData);
-          if (blk) _midioutput_hosteventlistblock = Block_copy(blk);
+          if (blk) newblk = Block_copy(blk);
         }
+        // Render may be invoking the current block on the audio thread right now:
+        // swap atomically and retire the old block instead of releasing it here.
+        // Retired blocks are released in deactivateCLAP()/~WrapAsAUV2.
+        auto oldblk = _midioutput_hosteventlistblock.exchange(newblk);
+        if (oldblk) _retiredEventListBlocks.push_back(oldblk);
         return noErr;
-        break;
+      }
       case kAudioUnitProperty_HostMIDIProtocol:
         if (inDataSize < sizeof(SInt32)) return kAudioUnitErr_InvalidPropertyValue;
         _host_midi_protocol = static_cast<MIDIProtocolID>(*static_cast<const SInt32 *>(inData));
@@ -1101,6 +1101,14 @@ void WrapAsAUV2::deactivateCLAP()
     _plugin->deactivate();
   }
   _midioutput_hostcallback = {nullptr, nullptr};
+#if AUSDK_MIDI2_AVAILABLE
+  // No render can run once the AU is uninitialized: drop the event-list block
+  // too (a stale block would shadow a legacy callback installed on the next
+  // initialization) and release everything retired by SetProperty swaps.
+  if (auto blk = _midioutput_hosteventlistblock.exchange(nullptr)) Block_release(blk);
+  for (auto blk : _retiredEventListBlocks) Block_release(blk);
+  _retiredEventListBlocks.clear();
+#endif
 }
 
 OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags &inFlags, const AudioTimeStamp &inTimeStamp,
@@ -1153,12 +1161,13 @@ OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags &inFlags, const AudioTime
         {
 #if AUSDK_MIDI2_AVAILABLE
           // prefer the modern UMP/EventList path when the host provided one
-          if (_midioutput_hosteventlistblock)
+          // (load once: SetProperty may swap the block concurrently)
+          if (auto evtblock = _midioutput_hosteventlistblock.load())
           {
             auto evtlist = i->getMIDIEventList();
             [[maybe_unused]] OSStatus result =
-                _midioutput_hosteventlistblock(static_cast<AUEventSampleTime>(inTimeStamp.mSampleTime),
-                                               static_cast<uint8_t>(i->_auport), evtlist);
+                evtblock(static_cast<AUEventSampleTime>(inTimeStamp.mSampleTime),
+                         static_cast<uint8_t>(i->_auport), evtlist);
             assert(result == noErr);
           }
           else
@@ -1646,18 +1655,12 @@ void WrapAsAUV2::send(const Clap::AUv2::clap_multi_event_t &event)
     break;
     case CLAP_EVENT_NOTE_EXPRESSION:
     {
-      // Only the expressions MIDI 1.0 can represent are down-converted; the
-      // rest (volume/pan/tuning/vibrato/…) have no per-note MIDI1 equivalent
-      // and are dropped. Pressure maps to polyphonic key pressure (0xA0).
-      const auto &ne = event.noteexpression;
-      if (ne.expression_id == CLAP_NOTE_EXPRESSION_PRESSURE && ne.key >= 0 && ne.channel >= 0)
+      // Pressure maps to poly/channel aftertouch and tuning to pitch bend;
+      // expressions MIDI 1.0 cannot represent (volume/pan/vibrato/…) are dropped.
+      uint8_t bytes[3];
+      if (ClapWrapper::detail::shared::noteExpressionToMidi1(event.noteexpression, bytes) > 0)
       {
-        double v = ne.value;
-        if (v < 0.0) v = 0.0;
-        if (v > 1.0) v = 1.0;
-        uint8_t bytes[3] = {static_cast<uint8_t>(0xA0u | (ne.channel & 0x0F)),
-                            static_cast<uint8_t>(ne.key & 0x7F), static_cast<uint8_t>(v * 127.0)};
-        auto portid = ne.port_index;
+        auto portid = event.noteexpression.port_index;
         for (auto &i : _midi_outports)
         {
           if (i->_info.id == portid)
