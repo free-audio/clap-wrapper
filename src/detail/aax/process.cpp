@@ -7,6 +7,7 @@
 #include "../shared/midi_translation.h"
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 namespace
 {
@@ -97,7 +98,8 @@ void AAXProcessAdapter::setupProcessing(const clap_plugin_t *plugin, double samp
                                         const clap_plugin_audio_ports *ext_audio,
                                         Clap::IAutomation *automation,
                                         std::vector<clap_id> &gesturedparameters,
-                                        ParamChangeQueue &inqueue, uint32_t midiportid, bool preferMIDI)
+                                        ParamChangeQueue &inqueue, uint32_t midiportid, bool preferMIDI,
+                                        uint32_t placeholderInChannels, uint32_t placeholderOutChannels)
 {
   _plugin = plugin;
   _ext_param = ext_param;
@@ -107,6 +109,9 @@ void AAXProcessAdapter::setupProcessing(const clap_plugin_t *plugin, double samp
 
   _midi_first_portid = midiportid;
   _midi_prefer_mididialect = preferMIDI;
+
+  _placeholderInChannels = placeholderInChannels;
+  _placeholderOutChannels = placeholderOutChannels;
 
   // other needed references like buffers, MIDINodes etc. are passed
   // via the SAAX_Wrapper_AlgorithmicContext to the process function
@@ -384,6 +389,25 @@ void AAXProcessAdapter::process(SAAX_Wrapper_AlgorithmicContext *context)
       // until the next event or variation in audio input.
     case CLAP_PROCESS_SLEEP:
       break;
+  }
+
+  // Placeholder-stem passthrough: for a pure-MIDI CLAP the component still
+  // carries an AAX audio bus but the CLAP has no audio ports, so it never wrote
+  // the output. Copy the AAX input straight to the output (silence if there is
+  // no matching input channel) so the MIDI-effect insert is audio-transparent,
+  // matching the AAX SDK's DemoMIDI_Transpose.
+  if (_placeholderOutChannels > 0)
+  {
+    const int32_t numSamples = *(context->mNumSamples);
+    for (uint32_t ch = 0; ch < _placeholderOutChannels; ++ch)
+    {
+      float *out = context->mAudioOutputs ? context->mAudioOutputs[ch] : nullptr;
+      if (!out) continue;
+      if (ch < _placeholderInChannels && context->mAudioInputs && context->mAudioInputs[ch])
+        memcpy(out, context->mAudioInputs[ch], sizeof(float) * (size_t)numSamples);
+      else
+        memset(out, 0, sizeof(float) * (size_t)numSamples);
+    }
   }
 
   // Outgoing MIDI was already posted to _outputNode from enqueueOutputEvent()
