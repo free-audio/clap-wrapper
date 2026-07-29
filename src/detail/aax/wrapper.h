@@ -131,6 +131,17 @@ class AAXProcessAdapter
   void addToActiveNotes(const clap_event_note *note);
   void removeFromActiveNotes(const clap_event_note *note);
 
+  // Post a single MIDI 1.0 message (up to 3 bytes) to the AAX local MIDI
+  // output node, filtered to the channel-voice messages Pro Tools routes out
+  // of a plug-in. No-op when the plugin declares no MIDI out (node is a
+  // placeholder / nullptr). Called from enqueueOutputEvent while the plugin
+  // is inside process() and _outputNode is valid.
+  void postMIDI1(uint32_t timestamp, const uint8_t *bytes, uint32_t length);
+
+  // Post a (possibly long) SysEx message as a series of <=4-byte AAX packets
+  // sharing one timestamp. Best-effort: Pro Tools does not route plug-in SysEx.
+  void postSysEx(uint32_t timestamp, const uint8_t *data, uint32_t size);
+
   // the functions for the event list callback
   static uint32_t CLAP_ABI input_events_size(const struct clap_input_events *list);
   static const clap_event_header_t *CLAP_ABI input_events_get(const struct clap_input_events *list,
@@ -139,6 +150,11 @@ class AAXProcessAdapter
   // MIDI
   uint32_t _midi_first_portid = 0;
   bool _midi_prefer_mididialect = true;
+
+  // Local MIDI output node for the current process() call, captured from the
+  // AAX algorithm context. Only valid for the duration of process(); reset to
+  // nullptr afterwards so a stale node can never be posted to.
+  AAX_IMIDINode *_outputNode = nullptr;
 };
 
 AAX_Result GetEffectDescriptions(AAX_ICollection *outDescriptions);

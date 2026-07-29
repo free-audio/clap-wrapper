@@ -161,6 +161,7 @@ static void DescribeAlgorithmComponent(AAX_IComponentDescriptor *outDesc,
   // Register MIDI nodes. To avoid context corruption, register small blocks of private data for fields where a node is not needed
   AAX_CFieldIndex globalNodeID = AAX_FIELD_INDEX(SAAX_Wrapper_AlgorithmicContext, mGlobalNode);
   AAX_CFieldIndex localInputNodeID = AAX_FIELD_INDEX(SAAX_Wrapper_AlgorithmicContext, mInputNode);
+  AAX_CFieldIndex localOutputNodeID = AAX_FIELD_INDEX(SAAX_Wrapper_AlgorithmicContext, mOutputNode);
   AAX_CFieldIndex transportNodeID = AAX_FIELD_INDEX(SAAX_Wrapper_AlgorithmicContext, mTransportNode);
 
   // Global MIDI node — not currently used
@@ -186,11 +187,16 @@ static void DescribeAlgorithmComponent(AAX_IComponentDescriptor *outDesc,
   if (businfo.has_midi_out)
   {
     if (aax_plugin_info && aax_plugin_info->midi_out_name)
-      err = outDesc->AddMIDINode(localInputNodeID, AAX_eMIDINodeType_LocalOutput,
+      err = outDesc->AddMIDINode(localOutputNodeID, AAX_eMIDINodeType_LocalOutput,
                                  aax_plugin_info->midi_out_name, aax_plugin_info->midi_out_channel_mask);
     else
-      err = outDesc->AddMIDINode(localInputNodeID, AAX_eMIDINodeType_LocalOutput,
+      err = outDesc->AddMIDINode(localOutputNodeID, AAX_eMIDINodeType_LocalOutput,
                                  businfo.midi_out_name.c_str(), 0xFFFF);
+  }
+  else
+  {
+    err = outDesc->AddPrivateData(localOutputNodeID, sizeof(float),
+                                  AAX_ePrivateDataOptions_DefaultOptions);
   }
 
   if (true)  // setupInfo.mNeedsTransport)
