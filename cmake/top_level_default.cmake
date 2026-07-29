@@ -9,8 +9,12 @@ if (PROJECT_IS_TOP_LEVEL)
 	string(MAKE_C_IDENTIFIER ${CLAP_WRAPPER_OUTPUT_NAME} pluginname)
 
 
-	if (CLAP_WRAPPER_CAN_BUILD_AAX)
-		    # Link the actual plugin library
+	# AAX is opt-in like AUv2/AUv3, and only available where the platform/toolchain
+	# supports it (macOS and non-ARM MSVC Windows, never Linux). Requiring both the
+	# opt-in and the capability avoids fetching the AAX SDK when it was not asked for.
+	if (CLAP_WRAPPER_BUILD_AAX)
+		if (CLAP_WRAPPER_CAN_BUILD_AAX)
+			# Link the actual plugin library
 			add_library(${pluginname}_as_aax MODULE)
 			target_add_aax_wrapper(
 					TARGET ${pluginname}_as_aax
@@ -18,6 +22,10 @@ if (PROJECT_IS_TOP_LEVEL)
 					BUNDLE_IDENTIFIER "${CLAP_WRAPPER_BUNDLE_IDENTIFIER}"
 					BUNDLE_VERSION "${CLAP_WRAPPER_BUNDLE_VERSION}"
 			)
+		else()
+			message(WARNING "clap-wrapper: CLAP_WRAPPER_BUILD_AAX was requested but AAX is not "
+					"supported on this platform/toolchain - skipping the AAX wrapper")
+		endif()
 	endif()
 
 	# Link the actual plugin library
