@@ -76,6 +76,7 @@ typedef union clap_multi_event
   clap_event_note_t note;
   clap_event_midi_t midi;
   clap_event_midi_sysex_t sysex;
+  clap_event_midi2_t midi2;
   clap_event_param_value_t param;
   clap_event_note_expression_t noteexpression;
 } clap_multi_event_t;
@@ -93,13 +94,23 @@ class ProcessAdapter
   void setupProcessing(ausdk::AUScope &audioInputs, ausdk::AUScope &audioOutputs,
                        const clap_plugin_t *plugin, const clap_plugin_params_t *ext_params,
                        Clap::IAutomation *automationInterface, ParameterTree *parameters,
-                       IMIDIOutputs *midiouts, uint32_t numMaxSamples, uint32_t preferredMIDIDialect);
+                       IMIDIOutputs *midiouts, uint32_t numMaxSamples, uint32_t preferredMIDIDialect,
+                       uint32_t supportedMIDIDialects, uint32_t clapAudioInputs,
+                       uint32_t clapAudioOutputs);
 
   void process(ProcessData &data);  // AU Data
   void flush();
 
   // interface for AUv2 wrapper:
   void addMIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData2, UInt32 inOffsetSampleFrame);
+  // a single MIDI 2.0 Universal MIDI Packet message (1..4 words) forwarded raw
+  void addMIDI2Event(const uint32_t *words, uint32_t nWords, UInt32 inOffsetSampleFrame);
+  void addSysExEvent(const uint8_t *data, uint32_t length, UInt32 inOffsetSampleFrame);
+  // MusicDevice extended-note API. note_id doubles as the AU NoteInstanceID and
+  // embeds the MIDI key in its low 7 bits; pitch may be fractional.
+  void startNote(int32_t note_id, int16_t channel, float pitch, float velocity,
+                 UInt32 inOffsetSampleFrame);
+  void stopNote(int32_t note_id, int16_t channel, UInt32 inOffsetSampleFrame);
   void addParameterEvent(const clap_param_info_t &info, double value, uint32_t inOffsetSampleFrame);
   // void startNote()
   ~ProcessAdapter();
@@ -140,8 +151,13 @@ class ProcessAdapter
   };
   std::vector<ActiveNote> _activeNotes;
 
+  // number of AU-scope audio elements (may exceed the CLAP port counts when we
+  // present a placeholder silent bus for a note-only plugin)
   uint32_t _numInputs = 0;
   uint32_t _numOutputs = 0;
+  // the plugin's actually-declared CLAP audio port counts (what we hand the plugin)
+  uint32_t _clapNumInputs = 0;
+  uint32_t _clapNumOutputs = 0;
 
   clap_audio_buffer_t *_input_ports = nullptr;
   clap_audio_buffer_t *_output_ports = nullptr;
@@ -157,9 +173,18 @@ class ProcessAdapter
   std::vector<clap_multi_event_t> _events;
   std::vector<size_t> _eventindices;
 
+  // owns the payloads referenced by CLAP_EVENT_MIDI_SYSEX events for the
+  // duration of one process() cycle (clap_event_midi_sysex_t only borrows a
+  // pointer). Cleared together with _events at the end of each cycle.
+  std::vector<std::vector<uint8_t>> _sysexBuffers;
+
   std::vector<clap_multi_event_t> _outevents;
 
+  // the effective note dialect fed to the plugin on the MIDI input path
+  // (the plugin's preferred_dialect, validated against its supported_dialects)
   uint32_t _preferred_midi_dialect = CLAP_NOTE_DIALECT_CLAP;
+  // the full set of dialects the plugin's input note port advertises
+  uint32_t _supported_midi_dialects = CLAP_NOTE_DIALECT_CLAP;
 
   Clap::IAutomation *_automation = nullptr;
   ParameterTree *_parameters = nullptr;
