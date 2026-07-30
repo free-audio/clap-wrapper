@@ -1552,8 +1552,8 @@ void WrapAsAUV2::PostConstructor()
       clap_audio_port_info inf;
       ap->get(pl, i, true, &inf);
       _inputPortCache.push_back({inf.channel_count, (inf.flags & CLAP_AUDIO_PORT_IS_MAIN) != 0});
-      auto b = CFStringCreateWithCString(nullptr, inf.name, kCFStringEncodingUTF8);
-      Inputs().GetElement(i)->SetName(b);
+      // SetNumberOfElements resets the bus, reapply the configuration.
+      addInputBus(i, &inf);
 
       /*
       AudioChannelLayout layout;
@@ -1571,8 +1571,8 @@ void WrapAsAUV2::PostConstructor()
       clap_audio_port_info inf;
       ap->get(pl, i, false, &inf);
       _outputPortCache.push_back({inf.channel_count, (inf.flags & CLAP_AUDIO_PORT_IS_MAIN) != 0});
-      auto b = CFStringCreateWithCString(nullptr, inf.name, kCFStringEncodingUTF8);
-      Outputs().GetElement(i)->SetName(b);
+      // SetNumberOfElements resets the bus, reapply the configuration.
+      addOutputBus(i, &inf);
 
       /*
       AudioChannelLayout layout;
