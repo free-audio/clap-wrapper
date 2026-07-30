@@ -80,7 +80,7 @@ void MacOSHelper::attach(IPlugObject *plugobject)
     _timer =
         CFRunLoopTimerCreate(kCFAllocatorDefault, CFAbsoluteTimeGetCurrent() + (kIntervall * 0.001f),
                              kIntervall * 0.001f, 0, 0, timerCallback, &context);
-    if (_timer) CFRunLoopAddTimer(CFRunLoopGetCurrent(), _timer, kCFRunLoopCommonModes);
+    if (_timer) CFRunLoopAddTimer(CFRunLoopGetMain(), _timer, kCFRunLoopCommonModes);
   }
   _plugs.push_back(plugobject);
 }
