@@ -1457,6 +1457,16 @@ OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
   return noErr;
 }
 
+bool WrapAsAUV2::isEffectFacade()
+{
+  // Both scopes are placeholder-only (no CLAP audio ports behind them, yet an AU
+  // element exists). PostConstructor only adds a placeholder input bus for effect
+  // component types, so this identifies an effect (aufx) facade for a plugin that
+  // declares no audio ports at all.
+  return _inputPortCache.empty() && _outputPortCache.empty() && Inputs().GetNumberOfElements() > 0 &&
+         Outputs().GetNumberOfElements() > 0;
+}
+
 bool WrapAsAUV2::ValidFormat(AudioUnitScope inScope, AudioUnitElement inElement,
                              const AudioStreamBasicDescription &inNewFormat)
 {
@@ -1472,10 +1482,22 @@ bool WrapAsAUV2::ValidFormat(AudioUnitScope inScope, AudioUnitElement inElement,
   const auto &cache = (inScope == kAudioUnitScope_Input) ? _inputPortCache : _outputPortCache;
   if (inElement >= cache.size())
   {
-    // The placeholder silent output bus of a note-only plugin (see
-    // PostConstructor) has no CLAP port behind it; accept any format there so
-    // hosts can still change the sample rate / channel count on that bus.
-    return (inScope == kAudioUnitScope_Output && cache.empty() && inElement == 0);
+    // A placeholder silent bus (input or output) added in PostConstructor has no
+    // CLAP port behind it. Only element 0 of a scope with no CLAP ports exists.
+    if (!(cache.empty() && inElement == 0)) return false;
+
+    // When BOTH scopes are placeholders the unit is an effect facade for a
+    // plugin that declares no audio ports at all (see PostConstructor). Advertise
+    // a fixed stereo layout and reject other channel counts, so auval / hosts
+    // treat it as a plain stereo unit and don't init it into inconsistent
+    // configurations. For a note device's lone silent output placeholder we stay
+    // permissive so hosts may freely set the sample rate / channel count on that
+    // unused bus (the channel count is all we gate here).
+    if (isEffectFacade())
+    {
+      return inNewFormat.mChannelsPerFrame == kPlaceholderFacadeChannels;
+    }
+    return true;
   }
   return inNewFormat.mChannelsPerFrame == cache[inElement].channelCount;
 }
@@ -1494,7 +1516,15 @@ UInt32 WrapAsAUV2::SupportedNumChannels(const AUChannelInfo **outInfo)
 {
   // Built from the PostConstructor snapshot rather than a live port scan (see
   // ValidFormat) so this is safe to call while the plugin is active.
-  if (cinfo.empty() && !_outputPortCache.empty())
+  if (cinfo.empty() && isEffectFacade())
+  {
+    // No CLAP audio ports at all: advertise the fixed stereo in/out layout of the
+    // placeholder busses so auval / hosts treat this as a plain stereo unit.
+    cinfo.emplace_back();
+    cinfo.back().inChannels = kPlaceholderFacadeChannels;
+    cinfo.back().outChannels = kPlaceholderFacadeChannels;
+  }
+  else if (cinfo.empty() && !_outputPortCache.empty())
   {
     std::set<int> inSets, outSets;
 
@@ -1598,6 +1628,27 @@ void WrapAsAUV2::PostConstructor()
     Outputs().SetNumberOfElements(1);
     Outputs().GetElement(0)->SetName(CFSTR("Output"));
     LOGINFO("[clap-wrapper] PostConstructor: added placeholder silent output bus");
+  }
+
+  // Symmetric case for inputs: an effect with no audio input ports is not a valid
+  // AudioUnit — auval / Logic require an input element on which a format can be
+  // set, and reject the unit otherwise (e.g. a utility plugin that declares
+  // clap.audio-ports but reports zero ports in both directions). Present a
+  // placeholder silent input bus in that case. This must only be done for effect
+  // component types (aufx / aumf): instruments and generators (aumu) and note
+  // effects (aumi) legitimately have no audio input, and the AU type — not the
+  // presence of note ports — is what hosts key on (a generator has neither audio
+  // nor note input). As with the output, the CLAP is still told its true (zero)
+  // input-port count during processing, so no input buffers are handed to a
+  // plugin that did not declare them.
+  const auto auType = GetComponentDescription().componentType;
+  const bool isEffectType = (auType == kAudioUnitType_Effect) || (auType == kAudioUnitType_MusicEffect);
+  if (isEffectType && Inputs().GetNumberOfElements() == 0)
+  {
+    SetNumberOfElements(kAudioUnitScope_Input, 1);
+    Inputs().SetNumberOfElements(1);
+    Inputs().GetElement(0)->SetName(CFSTR("Input"));
+    LOGINFO("[clap-wrapper] PostConstructor: added placeholder silent input bus");
   }
 }
 

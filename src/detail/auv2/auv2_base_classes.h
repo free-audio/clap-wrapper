@@ -365,6 +365,14 @@ class WrapAsAUV2 : public ausdk::AUBase,
   UInt32 SupportedNumChannels(const AUChannelInfo **outInfo) override;
   bool ValidFormat(AudioUnitScope inScope, AudioUnitElement inElement,
                    const AudioStreamBasicDescription &inNewFormat) override;
+
+  // channel count presented by the placeholder busses of an effect facade (a
+  // plugin that declares no audio ports at all - see PostConstructor).
+  static constexpr UInt32 kPlaceholderFacadeChannels = 2;
+  // true when both audio scopes are placeholder-only, i.e. the wrapped CLAP
+  // declares no audio input and no audio output ports and we present a silent
+  // stereo in/out facade so the unit is a valid aufx.
+  bool isEffectFacade();
   OSStatus ChangeStreamFormat(AudioUnitScope inScope, AudioUnitElement inElement,
                               const AudioStreamBasicDescription &inPrevFormat,
                               const AudioStreamBasicDescription &inNewFormat) override;
