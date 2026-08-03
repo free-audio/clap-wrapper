@@ -62,10 +62,10 @@ void ProcessAdapter::setupProcessing(ausdk::AUScope &audioInputs, ausdk::AUScope
   if (numMaxSamples > 0)
   {
     delete[] _silent_input;
-    _silent_input = new float[numMaxSamples];
+    _silent_input = new float[numMaxSamples]{};
 
     delete[] _silent_output;
-    _silent_output = new float[numMaxSamples];
+    _silent_output = new float[numMaxSamples]{};
   }
 
   _numInputs = _audioInputScope->GetNumberOfElements();
