@@ -417,6 +417,8 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   // the queue from audiothread to UI thread
   ClapWrapper::detail::shared::fixedqueue<queueEvent, 8192> _queueToUI;
 
+  bool _param_rescan_has_been_called{false};
+
   // for IMidiMapping
   bool _useIMidiMapping = false;
   Vst::ParamID _IMidiMappingIDs[16][Vst::ControllerNumbers::kCountCtrlNumber] =
