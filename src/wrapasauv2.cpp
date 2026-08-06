@@ -354,7 +354,11 @@ void WrapAsAUV2::setupParameters(const clap_plugin_t *plugin, const clap_plugin_
   auto guarantee_mainthread = _plugin->AlwaysMainThread();
   // creating parameters.
 
-  _clumps.reset();
+  // Held for the whole rebuild, so that a host reading kAudioUnitProperty_ParameterInfo
+  // on its own thread sees the tree either before or after this, never during.
+  std::lock_guard<std::mutex> guard(_paramTreeMutex);
+
+  // _clumps is not cleared here, and cannot be -- see the note on the class.
   _orderedParameterList.clear();
   _paramOrderingProvided = false;
   _bypassParamID = CLAP_INVALID_ID;
@@ -433,6 +437,13 @@ void WrapAsAUV2::setupParameters(const clap_plugin_t *plugin, const clap_plugin_
           else
           {
             piter->second->updateInfo(_plugin->_plugin, p, paraminfo);
+          }
+          // Assign the clump id here rather than leaving it to GetParameterInfo,
+          // so that the ids follow parameter order and are settled before the
+          // host is told there is anything to read.
+          if (paraminfo.module[0] != 0)
+          {
+            _clumps.addClump(paraminfo.module);
           }
           if (paraminfo.flags & CLAP_PARAM_IS_BYPASS)
           {
@@ -522,6 +533,10 @@ OSStatus WrapAsAUV2::GetParameterInfo(AudioUnitScope inScope, AudioUnitParameter
   // const uint64_t stdflag = kAudioUnitParameterFlag_IsReadable | kAudioUnitParameterFlag_IsWritable;
   if (inScope == kAudioUnitScope_Global)
   {
+    // A host may ask from any thread while setupParameters() is rebuilding the
+    // tree on the main one -- the CFRetain below used to race the CFRelease in
+    // Parameter::updateInfo().
+    std::lock_guard<std::mutex> guard(_paramTreeMutex);
     auto pi = _parametertree.find(inParameterID);
     if (pi != _parametertree.end())
     {
@@ -579,12 +594,22 @@ void WrapAsAUV2::SetBypassEffect(bool bypass)
   _isBypassed = bypass;
   if (_bypassParamID != CLAP_INVALID_ID)
   {
-    auto p = _parametertree.find(_bypassParamID);
-    if (p != _parametertree.end())
+    // The value is copied out under the lock rather than the call being made
+    // under it: SetParameter reaches the process adapter, which must not wait on
+    // the main thread's rebuild.
+    std::optional<double> value;
     {
-      const auto &info = p->second->info();
-      SetParameter(_bypassParamID, kAudioUnitScope_Global, 0, bypass ? info.max_value : info.min_value,
-                   0);
+      std::lock_guard<std::mutex> guard(_paramTreeMutex);
+      auto p = _parametertree.find(_bypassParamID);
+      if (p != _parametertree.end())
+      {
+        const auto &info = p->second->info();
+        value = bypass ? info.max_value : info.min_value;
+      }
+    }
+    if (value)
+    {
+      SetParameter(_bypassParamID, kAudioUnitScope_Global, 0, *value, 0);
     }
   }
 }
@@ -595,11 +620,25 @@ OSStatus WrapAsAUV2::CopyClumpName(AudioUnitScope inScope, UInt32 inClumpID, UIn
   if (outClumpName == nullptr) return kAudioUnitErr_InvalidParameter;
   if (inScope == kAudioUnitScope_Global)
   {
+    // By value: the map this came out of belongs to the main thread and may be
+    // rewritten the moment the lock inside getClump() is dropped.
     auto p = _clumps.getClump(inClumpID);
     if (p)
     {
-      auto const len = std::min(strlen(p), (size_t)inDesiredNameLength);
-      *outClumpName = CFStringCreateWithBytes(NULL, (const UInt8 *)p, len, kCFStringEncodingUTF8, false);
+      // A desired length of zero means "no limit", not "the empty string". The
+      // SDK clamps kAudioUnitParameterName_Full (-1) to zero on the way in, and
+      // that is how a host asks for the untruncated name.
+      auto len = p->size();
+      if (inDesiredNameLength > 0)
+      {
+        len = std::min(len, (size_t)inDesiredNameLength);
+      }
+      auto name =
+          CFStringCreateWithBytes(NULL, (const UInt8 *)p->data(), len, kCFStringEncodingUTF8, false);
+      // Truncation can land in the middle of a UTF-8 sequence, which fails the
+      // conversion; a null here with noErr would be released by the host.
+      if (name == nullptr) return kAudioUnitErr_InvalidPropertyValue;
+      *outClumpName = name;
       return noErr;
     }
   }
@@ -1285,16 +1324,23 @@ void WrapAsAUV2::onIdle()
         Globals()->SetParameter(e._data._id, e._data._value.value);
         if (e._data._id == _bypassParamID)
         {
-          auto p = _parametertree.find(_bypassParamID);
-          if (p != _parametertree.end())
+          // Decided under the lock, announced outside it: PropertyChanged runs
+          // the host's listeners synchronously and they are free to come back in
+          // through the property getters.
+          std::optional<bool> bypassed;
           {
-            const auto &info = p->second->info();
-            const bool bypassed = (e._data._value.value >= 0.5 * (info.min_value + info.max_value));
-            if (bypassed != _isBypassed)
+            std::lock_guard<std::mutex> guard(_paramTreeMutex);
+            auto p = _parametertree.find(_bypassParamID);
+            if (p != _parametertree.end())
             {
-              _isBypassed = bypassed;
-              PropertyChanged(kAudioUnitProperty_BypassEffect, kAudioUnitScope_Global, 0);
+              const auto &info = p->second->info();
+              bypassed = (e._data._value.value >= 0.5 * (info.min_value + info.max_value));
             }
+          }
+          if (bypassed && *bypassed != _isBypassed)
+          {
+            _isBypassed = *bypassed;
+            PropertyChanged(kAudioUnitProperty_BypassEffect, kAudioUnitScope_Global, 0);
           }
         }
         AudioUnitEvent myEvent;
