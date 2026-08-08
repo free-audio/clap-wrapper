@@ -5,7 +5,9 @@
 # PlugIns/ and, at launch, instantiates the AU by AudioComponentDescription
 # and presents the plugin's UIViewController as the root VC.
 #
-# Intended for development/testing — not App-Store-ready.
+# For an instrument this app is a shippable standalone synth (audio out,
+# MIDI in/out, plugin UI, icon/launch-screen knobs below). Effects are not
+# covered: no audio input bus is wired up, see the note in the sources.
 
 function(target_add_auv3_standalone_ios_wrapper)
     set(oneValueArgs
