@@ -271,13 +271,14 @@ tresult PLUGIN_API ClapAsVst3::canProcessSampleSize(int32 symbolicSampleSize)
 tresult PLUGIN_API ClapAsVst3::setState(IBStream *state)
 {
   auto raise = _plugin->AlwaysMainThread();
-  _param_rescan_has_been_called = false;  // detect rescan/reload during load
+  // a plugin may request a value rescan from within load(), which syncs the values for us
+  _paramValuesSyncedDuringLoad = false;
 
   auto result =
       (_plugin->load(CLAPVST3StreamAdapter(state)) ? Steinberg::kResultOk : Steinberg::kResultFalse);
 
   // if the state was loaded correctly, values must be updated
-  if (result == kResultOk && !_param_rescan_has_been_called)
+  if (result == kResultOk && !_paramValuesSyncedDuringLoad)
   {
     syncParameterValuesFromClap();
   }
@@ -1244,13 +1245,14 @@ void ClapAsVst3::param_rescan(clap_param_rescan_flags flags)
 
   if (vstflags == 0) return;
 
-  // check this in ::setState
-  _param_rescan_has_been_called = true;
+  // every path from here on syncs the values, which ::setState relies on -
+  // keep this assignment below the early-out above
+  _paramValuesSyncedDuringLoad = true;
 
   // update parameter values in our own tree
   syncParameterValuesFromClap();
 
-  if (flags & CLAP_PARAM_RESCAN_INFO)
+  if ((flags & CLAP_PARAM_RESCAN_INFO) && _plugin->_ext._params)
   {
     // In this case, the name and module can also change.
     // For now, don't rebuild the unit tree with modules but
@@ -1268,7 +1270,9 @@ void ClapAsVst3::param_rescan(clap_param_rescan_flags flags)
     }
   }
 
-  this->componentHandler->restartComponent(vstflags);
+  // a plugin can request a rescan from within state load(), which a host may
+  // call before it hands us the component handler
+  if (this->componentHandler) this->componentHandler->restartComponent(vstflags);
 }
 
 void ClapAsVst3::param_clear(clap_id param, clap_param_clear_flags flags)

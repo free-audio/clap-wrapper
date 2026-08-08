@@ -421,7 +421,8 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   // the queue from audiothread to UI thread
   ClapWrapper::detail::shared::fixedqueue<queueEvent, 8192> _queueToUI;
 
-  bool _param_rescan_has_been_called{false};
+  // set by param_rescan() whenever it syncs values, cleared and checked by setState()
+  bool _paramValuesSyncedDuringLoad{false};
 
   // for IMidiMapping
   bool _useIMidiMapping = false;
