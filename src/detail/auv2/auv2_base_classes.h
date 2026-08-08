@@ -20,6 +20,9 @@
 #include <iostream>
 #include <memory>
 #include <map>
+#include <mutex>
+#include <optional>
+#include <string>
 
 #include "process.h"
 #include "parameter.h"
@@ -87,38 +90,54 @@ class ValueEvent : public queueEvent
   }
 };
 
+/*
+ * The parameter group names, by the clump id the host sees in
+ * AudioUnitParameterInfo::clumpID.
+ *
+ * Guarded, and answering by value, because the two sides of this are on
+ * different threads. setupParameters() fills it on the main thread; the host
+ * reads it back through kAudioUnitProperty_ParameterClumpName while building its
+ * parameter tree, which it is free to do wherever it likes -- Logic uses a
+ * parameterTreeBuilderQueue of its own, asynchronously with respect to the
+ * property change that asked for the rebuild. Handing out a const char* into the
+ * map was therefore a use-after-free, and it was reachable by changing presets
+ * with audio running: the next rescan cleared the map while the host was reading
+ * from it.
+ *
+ * There is deliberately no way to empty it. Clump ids outlive the rescan that
+ * minted them -- the host keeps the one it read from AudioUnitParameterInfo and
+ * asks for its name whenever it likes -- so renumbering is what made them wrong,
+ * and clearing is what made them dangerous. addClump() dedupes, so the map
+ * converges on the module paths the plugin reports and stops growing.
+ */
 class Clumps
 {
  public:
-  void reset();
   UInt32 addClump(const char *fullpath);
-  const char *getClump(UInt32 id);
+  std::optional<std::string> getClump(UInt32 id) const;
 
  private:
+  mutable std::mutex _mutex;
   UInt32 _lastclump = 0;
   std::map<std::string, UInt32> _clumps;
 };
 
-void Clumps::reset()
+inline std::optional<std::string> Clumps::getClump(UInt32 id) const
 {
-  _clumps.clear();
-  _lastclump = 0;
-}
-
-const char *Clumps::getClump(UInt32 id)
-{
+  std::lock_guard<std::mutex> guard(_mutex);
   for (const auto &c : _clumps)
   {
     if (c.second == id)
     {
-      return c.first.c_str();
+      return c.first;
     }
   }
-  return nullptr;
+  return std::nullopt;
 }
 
-UInt32 Clumps::addClump(const char *fullpath)
+inline UInt32 Clumps::addClump(const char *fullpath)
 {
+  std::lock_guard<std::mutex> guard(_mutex);
   auto r = _clumps.find(fullpath);
   if (r == _clumps.end())
   {
@@ -771,6 +790,11 @@ class WrapAsAUV2 : public ausdk::AUBase,
   bool _midi_dualscheduling_mode = false;
 #endif
   std::map<uint32_t, std::unique_ptr<Clap::AUv2::Parameter>> _parametertree;
+  // Between setupParameters() on the main thread and the host's property getters,
+  // which arrive on whichever thread the host builds its parameter tree on. Not
+  // taken by the audio thread: SetParameter() and the process adapter read the
+  // tree under render and must not block. See the note on Clumps above.
+  std::mutex _paramTreeMutex;
   std::vector<AudioUnitParameterID> _orderedParameterList;
   bool _paramOrderingProvided{false};
   Clumps _clumps;

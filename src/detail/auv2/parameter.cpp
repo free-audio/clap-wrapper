@@ -19,6 +19,13 @@ void Parameter::updateInfo(const clap_plugin_t *plugin, const clap_plugin_params
   }
   _info = i;
   _cfstring = CFStringCreateWithCString(NULL, _info.name, kCFStringEncodingUTF8);
+  if (_cfstring == nullptr)
+  {
+    // A name that is not valid UTF-8 fails the conversion, and the wrapper hands
+    // this string to the host with a CFRetain and releases it in the destructor:
+    // neither survives a null. Latin-1 accepts any byte, so it always answers.
+    _cfstring = CFStringCreateWithCString(NULL, _info.name, kCFStringEncodingISOLatin1);
+  }
 
   const auto &info = _info;
   AudioUnitParameterOptions flags = 0;
@@ -70,7 +77,10 @@ void Parameter::updateInfo(const clap_plugin_t *plugin, const clap_plugin_params
 }
 Parameter::~Parameter()
 {
-  CFRelease(_cfstring);
+  if (_cfstring)
+  {
+    CFRelease(_cfstring);
+  }
 }
 
 }  // namespace Clap::AUv2
