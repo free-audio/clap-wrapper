@@ -912,15 +912,15 @@ AUAudioUnitStatus ProcessAdapter::process(AudioUnitRenderActionFlags *actionFlag
           {
             if (__builtin_available(macOS 12.0, iOS 15.0, *))
             {
-              ClapWrapper::detail::shared::packSysEx7(
-                  evt.sysex.buffer, evt.sysex.size,
-                  [&](uint32_t w0, uint32_t w1)
-                  {
-                    if (!umpCur) return;
-                    uint32_t words[2] = {w0, w1};
-                    umpCur =
-                        MIDIEventListAdd(umpList, sizeof(umpBuffer), umpCur, (MIDITimeStamp)off, 2, words);
-                  });
+              ClapWrapper::detail::shared::packSysEx7(evt.sysex.buffer, evt.sysex.size,
+                                                      [&](uint32_t w0, uint32_t w1)
+                                                      {
+                                                        if (!umpCur) return;
+                                                        uint32_t words[2] = {w0, w1};
+                                                        umpCur = MIDIEventListAdd(
+                                                            umpList, sizeof(umpBuffer), umpCur,
+                                                            (MIDITimeStamp)off, 2, words);
+                                                      });
             }
           }
           else if (midiOutputEventBlock)
