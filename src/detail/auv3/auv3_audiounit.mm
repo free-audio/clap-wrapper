@@ -2003,6 +2003,10 @@ static Clap::Library _library;
       [self didChangeValueForKey:@"preferredContentSize"];
     }
   }
+  else
+  {
+    _guiCreated = NO;
+  }
 }
 
 // Convergence point for GUI creation. Called from multiple triggers:
