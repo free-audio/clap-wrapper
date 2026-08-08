@@ -13,6 +13,8 @@
 #pragma GCC diagnostic pop
 #endif
 
+#include <exception>
+
 #include "standalone_host.h"
 #include "entry.h"
 
@@ -86,19 +88,35 @@ std::tuple<unsigned int, unsigned int, int32_t> StandaloneHost::getDefaultAudioI
 }
 void StandaloneHost::startAudioThread()
 {
-  guaranteeRtAudioDAC();
+  try
+  {
+    guaranteeRtAudioDAC();
 
-  if (startupAudioSet)
-  {
-    auto in = startAudioIn;
-    auto out = startAudioOut;
-    auto sr = startSampleRate;
-    startAudioThreadOn(in, 2, in > 0 && numAudioInputs > 0, out, 2, out > 0 && numAudioOutputs > 0, sr);
+    if (startupAudioSet)
+    {
+      auto in = startAudioIn;
+      auto out = startAudioOut;
+      auto sr = startSampleRate;
+      startAudioThreadOn(in, 2, in > 0 && numAudioInputs > 0, out, 2, out > 0 && numAudioOutputs > 0,
+                         sr);
+    }
+    else
+    {
+      auto [in, out, sr] = getDefaultAudioInOutSampleRate();
+      startAudioThreadOn(in, 2, numAudioInputs > 0, out, 2, numAudioOutputs > 0, sr);
+    }
   }
-  else
+  catch (const std::exception &e)
   {
-    auto [in, out, sr] = getDefaultAudioInOutSampleRate();
-    startAudioThreadOn(in, 2, numAudioInputs > 0, out, 2, numAudioOutputs > 0, sr);
+    // Device enumeration itself can throw when nothing usable is attached
+    LOGINFO("[ERROR] Exception while setting up audio : '{}'", e.what());
+    if (displayAudioError) displayAudioError(e.what());
+  }
+  catch (...)
+  {
+    // winrt/COM errors don't derive from std::exception
+    LOGINFO("[ERROR] Unknown exception while setting up audio");
+    if (displayAudioError) displayAudioError("Unknown error while setting up audio");
   }
 }
 
@@ -169,6 +187,33 @@ std::vector<uint32_t> StandaloneHost::getBufferSizes()
 void StandaloneHost::startAudioThreadOn(unsigned int inputDeviceID, uint32_t inputChannels,
                                         bool useInput, unsigned int outputDeviceID,
                                         uint32_t outputChannels, bool useOutput, int32_t reqSampleRate)
+{
+  // Backends can throw when no usable device is present. Letting that escape
+  // would leave the standalone half-started, so trap it here; the plugin simply
+  // stays deactivated and the app runs on without audio.
+  try
+  {
+    startAudioThreadOnImpl(inputDeviceID, inputChannels, useInput, outputDeviceID, outputChannels,
+                           useOutput, reqSampleRate);
+  }
+  catch (const std::exception &e)
+  {
+    LOGINFO("[ERROR] Exception starting audio : '{}'", e.what());
+    deactivatePlugin();
+    if (displayAudioError) displayAudioError(e.what());
+  }
+  catch (...)
+  {
+    LOGINFO("[ERROR] Unknown exception starting audio");
+    deactivatePlugin();
+    if (displayAudioError) displayAudioError("Unknown error while starting audio");
+  }
+}
+
+void StandaloneHost::startAudioThreadOnImpl(unsigned int inputDeviceID, uint32_t inputChannels,
+                                            bool useInput, unsigned int outputDeviceID,
+                                            uint32_t outputChannels, bool useOutput,
+                                            int32_t reqSampleRate)
 {
   guaranteeRtAudioDAC();
 
@@ -257,7 +302,12 @@ void StandaloneHost::startAudioThreadOn(unsigned int inputDeviceID, uint32_t inp
     return;
   }
 
-  activatePlugin(sampleRate, 1, currentBufferSize * 2);
+  if (!activatePlugin(sampleRate, 1, currentBufferSize * 2))
+  {
+    LOGINFO("[ERROR] Plugin activation failed; not starting the audio stream");
+    rtaDac->closeStream();
+    return;
+  }
 
   LOGDETAIL("RtAudio Attached Devices");
   if (useOutput)

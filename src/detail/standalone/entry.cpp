@@ -145,7 +145,7 @@ int mainFinish()
       LOGINFO("[WARNING] No Standalone Settings Path; not streaming");
     }
 
-    plugin->deactivate();
+    standaloneHost->deactivatePlugin();
   }
   plugin.reset();
   standaloneHost.reset();

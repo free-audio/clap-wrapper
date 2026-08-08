@@ -45,6 +45,8 @@ std::optional<fs::path> getStandaloneSettingsPath()
 
 StandaloneHost::~StandaloneHost()
 {
+  // safety net for shutdown paths which don't run through mainFinish
+  deactivatePlugin();
 }
 
 void StandaloneHost::setupAudioBusses(const clap_plugin_t *plugin,
@@ -364,23 +366,44 @@ bool StandaloneHost::tryLoadStandaloneAndPluginSettings(const fs::path &fromDir,
   return true;
 }
 
-void StandaloneHost::activatePlugin(int32_t sr, int32_t minBlock, int32_t maxBlock)
+bool StandaloneHost::activatePlugin(int32_t sr, int32_t minBlock, int32_t maxBlock)
 {
-  if (isActive)
-  {
-    clapPlugin->stop_processing();
-    clapPlugin->deactivate();
-    isActive = false;
-  }
+  if (!clapPlugin) return false;
+
+  deactivatePlugin();
 
   LOGINFO("Activating plugin : sampleRate={} blockBounds={} to {}", sr, minBlock, maxBlock);
   clapPlugin->setSampleRate(sr);
   clapPlugin->setBlockSizes(minBlock, maxBlock);
-  clapPlugin->activate();
+  if (!clapPlugin->activate())
+  {
+    LOGINFO("[ERROR] Plugin activate() failed; plugin remains deactivated");
+    return false;
+  }
+  isActive = true;
 
   clapPlugin->start_processing();
+  isProcessing = true;
 
-  isActive = true;
+  return true;
+}
+
+void StandaloneHost::deactivatePlugin()
+{
+  // activate/deactivate has to stay balanced, so only ever deactivate what we
+  // know we activated. Without an audio device the plugin never gets activated
+  // at all, and the shutdown path would otherwise deactivate it regardless.
+  if (!clapPlugin || !isActive) return;
+
+  if (isProcessing)
+  {
+    clapPlugin->stop_processing();
+    isProcessing = false;
+  }
+
+  LOGINFO("Deactivating plugin");
+  clapPlugin->deactivate();
+  isActive = false;
 }
 
 }  // namespace freeaudio::clap_wrapper::standalone
