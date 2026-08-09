@@ -379,6 +379,7 @@ function(make_clapfirst_plugins)
                         OUTPUT_NAME "${saname}"
                         STATICALLY_LINKED_CLAP_ENTRY TRUE
                         PLUGIN_ID "${clapid}"
+                        BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFIER}.standalone"
                         MACOS_ICON "${C1ST_STANDALONE_MACOS_ICON}"
                         WINDOWS_ICON "${C1ST_STANDALONE_WINDOWS_ICON}"
                         RESOURCE_DIRECTORY "${C1ST_RESOURCE_DIRECTORY}"

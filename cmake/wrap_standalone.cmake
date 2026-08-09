@@ -39,6 +39,12 @@ function(target_add_standalone_wrapper)
         set(SA_OUTPUT_NAME ${SA_TARGET})
     endif()
 
+    if (NOT DEFINED SA_BUNDLE_IDENTIFIER)
+        # What Info.plist.in used to hardcode. Kept as the default so a caller
+        # that does not pass one keeps the identifier it already shipped.
+        set(SA_BUNDLE_IDENTIFIER "${SA_OUTPUT_NAME}.standalone")
+    endif()
+
     if (NOT DEFINED SA_WINDOWS_ICON)
         set(SA_WINDOWS_ICON "")
     endif()
@@ -100,11 +106,13 @@ function(target_add_standalone_wrapper)
                 BUNDLE_EXTENSION app
                 OUTPUT_NAME ${SA_OUTPUT_NAME}
                 MACOSX_BUNDLE_BUNDLE_NAME ${SA_OUTPUT_NAME}
+                MACOSX_BUNDLE_GUI_IDENTIFIER "${SA_BUNDLE_IDENTIFIER}"
                 MACOSX_BUNDLE_SHORT_VERSION_STRING ${SA_BUNDLE_VERSION}
                 MACOSX_BUNDLE_LONG_VERSION_STRING ${SA_BUNDLE_VERSION}
                 MACOSX_BUNDLE_BUNDLE_VERSION ${SA_BUNDLE_VERSION}
                 MACOSX_BUNDLE TRUE
                 MACOSX_BUNDLE_INFO_PLIST ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/macos/Info.plist.in
+                XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${SA_BUNDLE_IDENTIFIER}"
                 RESOURCE "${GEN_XIB}"
                 )
 
