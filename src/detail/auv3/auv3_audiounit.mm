@@ -1769,7 +1769,15 @@ static Clap::Library _library;
 {
   if (!_impl || !_impl->_plugin || !_impl->_plugin->_ext._gui) return NO;
   auto mainGuard = _impl->_plugin->AlwaysMainThread();
-  return _impl->_plugin->_ext._gui->set_size(_impl->_plugin->_plugin, width, height) ? YES : NO;
+
+  // CLAP contract: a host must pass set_size a size the plugin agreed to.
+  // Container bounds are arbitrary (rotation, split view), so run them
+  // through adjust_size first — a fixed-aspect plugin snaps them here, and
+  // strict clap-helpers builds treat an unadjusted set_size as host
+  // misbehaviour.
+  auto *gui = _impl->_plugin->_ext._gui;
+  if (gui->adjust_size) gui->adjust_size(_impl->_plugin->_plugin, &width, &height);
+  return gui->set_size(_impl->_plugin->_plugin, width, height) ? YES : NO;
 }
 
 - (void)setViewController:(ClapAUv3ViewController *)vc
