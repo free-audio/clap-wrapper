@@ -36,6 +36,13 @@ typedef NSView CLAPWRAP_ViewClass;
 
 // Private CLAP window-API identifier for UIKit. Kept in sync with the
 // constant of the same name in the hosted plugin's editor code.
+//
+// Newer CLAP declares CLAP_WINDOW_API_UIKIT as a variable in ext/gui.h; if
+// this macro is defined before that header is parsed, it rewrites the
+// declaration into garbage. Parse the header first — it is #pragma once, so
+// it will not be parsed again after the macro exists.
+#include <clap/clap.h>
+
 #ifndef CLAP_WINDOW_API_UIKIT
 #define CLAP_WINDOW_API_UIKIT "uikit"
 #endif
