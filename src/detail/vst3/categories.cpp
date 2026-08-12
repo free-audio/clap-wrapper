@@ -22,15 +22,21 @@
 
       Fx|Modulation|Flanger
 
-    Also the "Fx" could be added multiple times, duplicates will be automatically removed before creating
-    the VST3 category string without changing the order.
+    A VST3 attribute in the table can be a combination itself (like `Fx|Analyzer`), those are split
+    up into their tokens, so the "Fx" can be added multiple times - duplicates are removed before
+    creating the VST3 category string.
 
     Note that most VST3 hosts will use the first token (like `Fx` or `Instrument`) to locate the plugin
     in a specific location and the second token (like `Synth` as a sub menu category in selection menus).
+    The tokens therefore keep the order of your CLAP features, with two exceptions: a main category
+    (`Fx` or `Instrument`) is always moved to the front and tokens which describe a trait rather than
+    a category (`OnlyARA`, `External`, ...) are always moved to the end, because neither of them may
+    take the sub menu slot. Everything in between is up to you - make sure that the most important
+    sub category comes first in your CLAP descriptor.
 
-    Additionally, the Steinberg::PClassInfo struct reserves 128 bytes for the subcategory string, so any
-    category string that exceeds this limit won't be added anymore and no further strings will be added.
-    Make sure that the two most important categories are always at the beginning of your CLAP descriptor.
+    Additionally, the Steinberg::PClassInfo struct reserves 128 bytes for the subcategory string
+    (including its terminating zero), so any category that does not fit in anymore is dropped and no
+    further categories will be added - which drops the least important ones for the same reason.
 
     Note: If you as a plugin developer want to set the VST3 categories explicitely, you can use the
     CLAP_PLUGIN_AS_VST3 extension (see clap-wrapper/include/clapwrapper/vst3.h) to explicitely set
@@ -41,6 +47,8 @@
 #include "categories.h"
 #include <vector>
 #include <algorithm>
+#include <string>
+#include <cstring>
 #include <clap/plugin-features.h>
 #include <pluginterfaces/base/ipluginbase.h>
 #include <pluginterfaces/vst/ivstaudioprocessor.h>
@@ -61,7 +69,10 @@ static const struct _translate
   {   CLAP_PLUGIN_FEATURE_AUDIO_EFFECT          , PlugType::kFx},
   {   CLAP_PLUGIN_FEATURE_NOTE_EFFECT           , PlugType::kInstrumentSynth}, // it seems there is no type for a sequencer etc
   {   CLAP_PLUGIN_FEATURE_DRUM                  , PlugType::kInstrumentDrum},
-  {   CLAP_PLUGIN_FEATURE_ANALYZER              , PlugType::kAnalyzer},
+  // kAnalyzer alone ("Analyzer") is documented as "not selectable as insert plug-in", so a CLAP
+  // analyzer would not be loadable in some hosts at all - kFxAnalyzer ("Fx|Analyzer") is the
+  // insertable variant and still carries the analyzer sub category
+  {   CLAP_PLUGIN_FEATURE_ANALYZER              , PlugType::kFxAnalyzer},
 
   // CLAP sub categories
   {   CLAP_PLUGIN_FEATURE_SYNTHESIZER           , "Synth"},
@@ -102,8 +113,8 @@ static const struct _translate
   {   CLAP_PLUGIN_FEATURE_MIXING                , "Mixing"},
   {   CLAP_PLUGIN_FEATURE_MASTERING             , "Mastering"},
 
-/*{   CLAP_PLUGIN_FEATURE_ARA_SUPPORTED         , "OnlyARA" }, this is indicated by a missing factory in VST3 */
-  {   CLAP_PLUGIN_FEATURE_ARA_REQUIRED          , "OnlyARA" },
+/*{   CLAP_PLUGIN_FEATURE_ARA_SUPPORTED         , PlugType::kOnlyARA }, this is indicated by a missing factory in VST3 */
+  {   CLAP_PLUGIN_FEATURE_ARA_REQUIRED          , PlugType::kOnlyARA },
 
   {   "external"                                , "External"},
 
@@ -111,39 +122,88 @@ static const struct _translate
 };
 // clang-format on
 
+// the main categories - a VST3 has to start with one of these to be filed correctly by a host
+static const char *const leadingCategories[] = {PlugType::kFx, PlugType::kInstrument};
+
+// these describe a property of the plugin instead of a category, so they must never end up in
+// the sub menu slot right behind the main category
+static const char *const trailingCategories[] = {PlugType::kOnlyARA,      PlugType::kOnlyOfflineProcess,
+                                                 PlugType::kOnlyRealTime, PlugType::kMono,
+                                                 PlugType::kStereo,       "External"};
+
+static int categoryRank(const std::string &category)
+{
+  for (const auto *c : leadingCategories)
+  {
+    if (category == c) return 0;
+  }
+  for (const auto *c : trailingCategories)
+  {
+    if (category == c) return 2;
+  }
+  return 1;
+}
+
 std::string clapCategoriesToVST3(const char *const *clap_categories)
 {
-  std::vector<std::string> r;
+  std::vector<std::string> tokens;
+
+  // a VST3 attribute can be a combination itself (like `Fx|Analyzer`), so it is split up into its
+  // tokens here - otherwise they could neither be ordered nor deduplicated. A token is added in
+  // the order it was encountered and only once, so the first CLAP feature asking for it decides
+  // its position.
+  auto addTokens = [&tokens](const char *vst3attribute)
+  {
+    std::string attribute(vst3attribute);
+    for (std::string::size_type pos = 0; pos < attribute.size();)
+    {
+      auto end = attribute.find('|', pos);
+      if (end == std::string::npos) end = attribute.size();
+      if (end > pos)
+      {
+        std::string token(attribute, pos, end - pos);
+        if (std::find(tokens.begin(), tokens.end(), token) == tokens.end())
+        {
+          tokens.push_back(std::move(token));
+        }
+      }
+      pos = end + 1;
+    }
+  };
+
   for (auto f = clap_categories; f && *f; ++f)
   {
-    auto it =
-        std::find_if(std::begin(translationTable), std::end(translationTable), [&](const auto &entry)
-                     { return entry.clapattribute && !strcmp(entry.clapattribute, *f); });
-
-    if (it != std::end(translationTable))
+    // a CLAP feature can appear more than once in the table to contribute additional VST3 tokens
+    for (const auto &entry : translationTable)
     {
-      r.push_back(it->vst3attribute);
+      if (entry.clapattribute && !strcmp(entry.clapattribute, *f))
+      {
+        addTokens(entry.vst3attribute);
+      }
     }
   }
 
-  // Sort and remove duplicates
-  std::sort(r.begin(), r.end());
-  r.erase(std::unique(r.begin(), r.end()), r.end());
+  // Move the main categories to the front and the traits to the back. The sort is stable, so
+  // everything in between stays in the order the CLAP descriptor listed its features in.
+  std::stable_sort(tokens.begin(), tokens.end(), [](const std::string &a, const std::string &b)
+                   { return categoryRank(a) < categoryRank(b); });
+
+  // the subcategory field is a fixed size buffer which has to hold the terminating zero as well
+  constexpr std::string::size_type maxLength = Steinberg::PClassInfo2::kSubCategoriesSize - 1;
 
   std::string result;
-  for (auto &i : r)
+  for (const auto &token : tokens)
   {
-    if (result.size() + i.size() <= Steinberg::PClassInfo2::kSubCategoriesSize)
+    std::string::size_type separator = result.empty() ? 0 : 1;
+    if (result.size() + separator + token.size() > maxLength)
     {
-      result.append(i);
-      result.append("|");
-    }
-    else
-    {
-      result.append("*");
       break;
     }
+    if (separator != 0)
+    {
+      result.append("|");
+    }
+    result.append(token);
   }
-  result.pop_back();
   return result;
 }

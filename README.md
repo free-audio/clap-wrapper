@@ -61,9 +61,23 @@ To build an AUv3 app extension include `-DCLAP_WRAPPER_BUILD_AUV3=ON`.
 AUv3 builds require the Xcode generator (`-G Xcode`) — the `.appex` is
 linked as an app-extension product and signed by Xcode; other generators
 stop at configure time with an explanatory error. In the clap-first flow,
-add `AUV3` to `PLUGIN_FORMATS` instead. On iOS the hosted CLAP is
-statically linked into the appex (single-plugin); see the wiki for the
-current AUv3 feature status.
+add `AUV3` to `PLUGIN_FORMATS` instead. See the wiki for the current AUv3
+feature status.
+
+On **iOS** the AUv3 app extension is the only available format, and it
+places two requirements on your CLAP:
+
+- it must be linked **statically** into the appex (iOS app extensions
+  cannot load a `.clap` at runtime), so the clap-first layout is required
+  and one appex hosts exactly one plugin;
+- its GUI must support the `CLAP_WINDOW_API_UIKIT` (`"uikit"`) window API
+  and attach to the `UIView` it is given — there is no `NSView` on iOS.
+  That constant needs CLAP 1.2.8 or newer.
+
+The appex ships inside a containing app, and for an instrument that app
+is a complete standalone synth you can release.
+
+See [docs/ios.md](docs/ios.md) for the full iOS instructions.
 
 ## Licensing
 

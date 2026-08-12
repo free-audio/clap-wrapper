@@ -266,6 +266,11 @@ struct StandaloneHost : Clap::IHost
                           int32_t sampleRate);
   void stopAudioThread();
 
+  // the actual work of startAudioThreadOn, wrapped there by an exception guard
+  void startAudioThreadOnImpl(unsigned int inputDeviceID, uint32_t inputChannels, bool useInput,
+                              unsigned int outputDeviceID, uint32_t outputChannels, bool useOutput,
+                              int32_t sampleRate);
+
   bool startupAudioSet{false};
   unsigned int startAudioIn{0}, startAudioOut{0};
   int startSampleRate{0};
@@ -277,8 +282,13 @@ struct StandaloneHost : Clap::IHost
     startSampleRate = sr;
   }
 
-  void activatePlugin(int32_t sr, int32_t minBlock, int32_t maxBlock);
+  // returns true if the plugin is activated and processing afterwards
+  bool activatePlugin(int32_t sr, int32_t minBlock, int32_t maxBlock);
+  // no-op unless activatePlugin() succeeded before, so the plugin never sees
+  // an unbalanced deactivate()
+  void deactivatePlugin();
   bool isActive{false};
+  bool isProcessing{false};
 
   std::vector<RtAudio::Api> getCompiledApi();
   std::vector<RtAudio::DeviceInfo> getInputAudioDevices();

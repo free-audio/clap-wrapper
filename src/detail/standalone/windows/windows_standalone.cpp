@@ -1013,8 +1013,9 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                      ClapWrapper::detail::shared::SpinLockGuard g(sah->processLock);
                      sah->running = false;
                    }
-                   sah->activatePlugin(sah->currentSampleRate, 1, sah->currentBufferSize * 2);
-                   sah->running = true;
+                   // stay stopped if the plugin refused to reactivate
+                   sah->running =
+                       sah->activatePlugin(sah->currentSampleRate, 1, sah->currentBufferSize * 2);
                  }
                }
 
@@ -1259,7 +1260,7 @@ void Plugin::refreshApis()
 
   for (auto &api : sah->getCompiledApi())
   {
-    settings.api.add(sah->rtaDac->getApiDisplayName(api));
+    settings.api.add(RtAudio::getApiDisplayName(api));
   }
 }
 
@@ -1381,8 +1382,10 @@ bool Plugin::loadSettings()
       if (auto parsed{settings.json.TryParse(buffer, settings.json)}; parsed)
       {
         sah->audioApiName = settings.get<std::string>("audioApiName");
-        sah->audioApi = sah->rtaDac->getCompiledApiByName(sah->audioApiName);
-        sah->audioApiDisplayName = sah->rtaDac->getApiDisplayName(sah->audioApi);
+        // These are static on RtAudio - we run before any RtAudio instance exists,
+        // so they must not be reached through sah->rtaDac, which is still null here.
+        sah->audioApi = RtAudio::getCompiledApiByName(sah->audioApiName);
+        sah->audioApiDisplayName = RtAudio::getApiDisplayName(sah->audioApi);
         sah->audioInputDeviceID = static_cast<unsigned int>(settings.get<double>("audioInputDeviceID"));
         sah->audioOutputDeviceID =
             static_cast<unsigned int>(settings.get<double>("audioOutputDeviceID"));

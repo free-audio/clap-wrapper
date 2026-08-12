@@ -46,9 +46,9 @@
       ClapWrapper::detail::shared::SpinLockGuard g(standaloneHost->processLock);
       standaloneHost->running = false;
     }
-    standaloneHost->activatePlugin(standaloneHost->currentSampleRate, 1,
-                                   standaloneHost->currentBufferSize * 2);
-    standaloneHost->running = true;
+    // stay stopped if the plugin refused to reactivate
+    standaloneHost->running = standaloneHost->activatePlugin(standaloneHost->currentSampleRate, 1,
+                                                             standaloneHost->currentBufferSize * 2);
   }
 }
 

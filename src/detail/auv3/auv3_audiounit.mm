@@ -1687,9 +1687,8 @@ static Clap::Library _library;
   auto *gui = _impl->_plugin->_ext._gui;
   auto *plugin = _impl->_plugin->_plugin;
 
-  // CLAP defines _COCOA for NSView and no standard UIKit identifier. We use
-  // a private _UIKIT string (see auv3_platform.h) on iOS. Hosted plugins
-  // using clap-wrapper on iOS must recognise the same string.
+  // NSView is _COCOA, UIView is _UIKIT. A hosted plugin must support the
+  // UIKit api to show a UI on iOS.
 #if TARGET_OS_IPHONE
   const char *windowApi = CLAP_WINDOW_API_UIKIT;
 #else
