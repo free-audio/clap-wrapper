@@ -10,7 +10,13 @@ extern bool fillAudioUnitCocoaView(AudioUnitCocoaViewInfo *viewInfo, std::shared
 namespace free_audio::auv2_wrapper
 {
 
-Clap::Library _library;  // holds the library with plugins
+// Holds the library with plugins. Intentionally never destroyed: at process
+// exit dyld finalizes the hosted .clap before this binary, so running
+// clap_entry.deinit() from a static destructor reaches into a plugin whose
+// own statics are already gone and aborts the host. AUv2 has no
+// module-unload hook to release it from, so it is leaked and the OS reclaims
+// it. See the same note in wrapasvst3_entry.cpp.
+Clap::Library &_library = *new Clap::Library();
 
 #if 0
 --- 8< ---

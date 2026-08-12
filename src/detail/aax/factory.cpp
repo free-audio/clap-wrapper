@@ -5,7 +5,10 @@
 
 namespace CLAPAAX
 {
-static Clap::Library gClapLibrary;
+// Intentionally never destroyed - see the note in wrapasvst3_entry.cpp: at
+// process exit the hosted .clap is finalized before this binary, so calling
+// clap_entry.deinit() from a static destructor aborts the host.
+static Clap::Library &gClapLibrary = *new Clap::Library();
 
 bool findPlugin(Clap::Library &lib, const std::string &pluginfilename)
 {

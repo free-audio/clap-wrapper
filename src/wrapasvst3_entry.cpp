@@ -1,3 +1,7 @@
+// Must precede every include: moduleinit.h below resolves
+// std::numeric_limits<>::max(), which the windows.h `max` macro breaks.
+#define NOMINMAX 1
+
 /*
     CLAP AS VST3 - Entrypoint
 
@@ -47,6 +51,7 @@
 #include "detail/shared/sha1.h"
 #include "wrapasvst3.h"
 #include "public.sdk/source/main/pluginfactory.h"
+#include "public.sdk/source/main/moduleinit.h"
 #include "pluginterfaces/base/iplugincompatibility.h"
 #include <array>
 #include <string>
@@ -70,6 +75,37 @@ struct CreationContext
   int index = 0;
   PClassInfo2 classinfo;
 };
+
+// The hosted CLAP outlives static destruction on purpose.
+//
+// A CLAP is a separate binary that dyld loaded after this one, so at process
+// exit it is finalized *first*. Releasing the library from a static destructor
+// therefore calls clap_entry.deinit() into a plugin whose own statics are
+// already gone - locking a std::mutex that has been through
+// pthread_mutex_destroy throws std::system_error out of a noexcept destructor
+// and the host aborts after it has already done its work.
+//
+// Instead the library is leaked at exit (the OS reclaims it anyway) and
+// released from a VST3 module terminator, which the SDK runs from
+// DeinitModule() on a genuine module unload - a plugin rescan, say - while
+// every image involved is still alive.
+namespace
+{
+Clap::Library *gHostedClapLibrary = nullptr;
+
+Clap::Library &hostedClapLibrary()
+{
+  if (!gHostedClapLibrary) gHostedClapLibrary = new Clap::Library();
+  return *gHostedClapLibrary;
+}
+
+static Steinberg::ModuleTerminator gReleaseHostedClapLibrary(
+    []()
+    {
+      delete gHostedClapLibrary;
+      gHostedClapLibrary = nullptr;
+    });
+}  // namespace
 
 bool findPlugin(Clap::Library &lib, const std::string &pluginfilename)
 {
@@ -153,7 +189,8 @@ IPluginFactory *GetPluginFactoryEntryPoint()
 #endif
 
   // static IPtr<Steinberg::CPluginFactory> gPluginFactory = nullptr;
-  static Clap::Library gClapLibrary;
+  // Never destroyed by static destruction - see gHostedClapLibrary.
+  auto &gClapLibrary = hostedClapLibrary();
 
   static std::vector<std::shared_ptr<CreationContext>> gCreationContexts;
 
