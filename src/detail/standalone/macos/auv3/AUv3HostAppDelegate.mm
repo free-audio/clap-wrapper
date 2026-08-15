@@ -243,6 +243,7 @@ static MIDIPortRef sMIDIInputPort = 0;
   switch ([AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio])
   {
     case AVAuthorizationStatusNotDetermined:
+    {
       [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio
                                completionHandler:^(BOOL granted) {
                                  if (!granted) return;
@@ -258,6 +259,7 @@ static MIDIPortRef sMIDIInputPort = 0;
                                  });
                                }];
       break;
+    }
     default:
       break;
   }
