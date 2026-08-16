@@ -128,7 +128,10 @@
     sz.width = w;
     sz.height = h;
     [[self window] setContentSize:sz];
-    return false;
+    // The size was accepted -- it has just been applied. Returning false said the
+    // opposite, and a plugin that believed it left its own GUI a size behind the
+    // window it is drawn in. Windows answers true from the same place.
+    return true;
   };
 
   if (plugin->_ext._gui)
