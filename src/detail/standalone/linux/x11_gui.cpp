@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <cerrno>
 #include <algorithm>
+#include <atomic>
 #include <string>
 
 #include "x11_gui.h"
@@ -25,12 +26,20 @@ int x11ErrorHandler(Display *d, XErrorEvent *e)
 {
   // Xlib's default handler exits the process on any protocol error. A plugin
   // asking X11 for something it won't do shouldn't take the audio with it.
+  // Errors arrive on whichever thread talked to X, and a plugin can generate
+  // them per repaint, so this is capped rather than unbounded.
+  static std::atomic<int> reported{0};
+  constexpr int maxReported{20};
+
+  auto n = ++reported;
+  if (n > maxReported) return 0;
+
   char buf[512]{};
   XGetErrorText(d, e->error_code, buf, sizeof(buf) - 1);
   LOGINFO("[ERROR] X11 protocol error : {} (request {}.{})", buf, (int)e->request_code,
           (int)e->minor_code);
-  fprintf(stderr, "[ERROR] X11 protocol error: %s (request %d.%d)\n", buf, (int)e->request_code,
-          (int)e->minor_code);
+  fprintf(stderr, "[ERROR] X11 protocol error: %s (request %d.%d)%s\n", buf, (int)e->request_code,
+          (int)e->minor_code, (n == maxReported) ? " (further X11 errors will not be reported)" : "");
   fflush(stderr);
   return 0;
 }
@@ -310,6 +319,9 @@ void X11Gui::destroyGui()
 }
 void X11Gui::shutdown()
 {
+  // destroyGui() clears `window`, so keep hold of it to tear down after
+  auto ourWindow = window;
+
   // only destroy a GUI we got as far as creating
   destroyGui();
 
@@ -318,9 +330,9 @@ void X11Gui::shutdown()
     close(epoll_fd);
     epoll_fd = -1;
   }
-  if (display && window > 0)
+  if (display && ourWindow > 0)
   {
-    XDestroyWindow(display, window);
+    XDestroyWindow(display, ourWindow);
     XFlush(display);
   }
   if (display)

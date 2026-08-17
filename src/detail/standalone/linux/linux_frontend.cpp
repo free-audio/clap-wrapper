@@ -13,6 +13,7 @@
 #include <mutex>
 #include <set>
 #include <string>
+#include <system_error>
 #include <thread>
 #include <vector>
 
@@ -152,30 +153,40 @@ void runDialogDetached(std::vector<std::string> command)
   // the child rather than leaving a zombie and then lets the next error
   // through. posix_spawn (not fork) because we may well be on RtAudio's
   // stream thread.
-  std::thread(
-      [command = std::move(command)]()
-      {
-        std::vector<char *> argv;
-        argv.reserve(command.size() + 1);
-        for (auto &c : command) argv.push_back(const_cast<char *>(c.c_str()));
-        argv.push_back(nullptr);
+  try
+  {
+    std::thread(
+        [command = std::move(command)]()
+        {
+          std::vector<char *> argv;
+          argv.reserve(command.size() + 1);
+          for (auto &c : command) argv.push_back(const_cast<char *>(c.c_str()));
+          argv.push_back(nullptr);
 
-        pid_t pid{0};
-        auto err = posix_spawn(&pid, argv[0], nullptr, nullptr, argv.data(), environ);
-        if (err != 0)
-        {
-          LOGINFO("[ERROR] Unable to spawn '{}' : {}", command[0], strerror(err));
-        }
-        else
-        {
-          int status{0};
-          while (waitpid(pid, &status, 0) < 0 && errno == EINTR)
+          pid_t pid{0};
+          auto err = posix_spawn(&pid, argv[0], nullptr, nullptr, argv.data(), environ);
+          if (err != 0)
           {
+            LOGINFO("[ERROR] Unable to spawn '{}' : {}", command[0], strerror(err));
           }
-        }
-        dialogGate().release();
-      })
-      .detach();
+          else
+          {
+            int status{0};
+            while (waitpid(pid, &status, 0) < 0 && errno == EINTR)
+            {
+            }
+          }
+          dialogGate().release();
+        })
+        .detach();
+  }
+  catch (const std::system_error &e)
+  {
+    // Out of threads. The message is already on stderr, which is the part that
+    // matters; just don't leave the gate closed against the next one.
+    LOGINFO("[ERROR] Unable to start the dialog thread : {}", e.what());
+    dialogGate().release();
+  }
 }
 
 /*
