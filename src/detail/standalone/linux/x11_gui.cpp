@@ -403,22 +403,52 @@ bool X11Gui::unregister_timer(clap_id tid)
   return true;
 }
 
-bool X11Gui::register_fd(int fd, clap_posix_fd_flags_t iflags)
+uint32_t X11Gui::epollFlagsFor(clap_posix_fd_flags_t iflags)
 {
-  int flags{0};
+  uint32_t flags{0};
   if (iflags & CLAP_POSIX_FD_READ) flags = flags | EPOLLIN;
   if (iflags & CLAP_POSIX_FD_WRITE) flags = flags | EPOLLOUT;
   if (iflags & CLAP_POSIX_FD_ERROR) flags = flags | EPOLLERR;
+  return flags;
+}
 
-  epoll_event event;
-  event.events = flags;
+bool X11Gui::register_fd(int fd, clap_posix_fd_flags_t iflags)
+{
+  if (epoll_fd < 0) return false;
+
+  epoll_event event{};
+  event.events = epollFlagsFor(iflags);
   event.data.fd = fd;
   if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event) == -1)
   {
-    LOGINFO("Unable to register plugin provided fd");
+    LOGINFO("[ERROR] Unable to register plugin provided fd : {}", strerror(errno));
     return false;
   }
   registeredFds[fd] = iflags;
+  return true;
+}
+
+bool X11Gui::modify_fd(int fd, clap_posix_fd_flags_t iflags)
+{
+  if (epoll_fd < 0) return false;
+
+  auto pos = registeredFds.find(fd);
+  if (pos == registeredFds.end())
+  {
+    LOGINFO("[ERROR] modify_fd on unregistered fd {}", fd);
+    return false;
+  }
+
+  epoll_event event{};
+  event.events = epollFlagsFor(iflags);
+  event.data.fd = fd;
+  if (epoll_ctl(epoll_fd, EPOLL_CTL_MOD, fd, &event) == -1)
+  {
+    LOGINFO("[ERROR] epoll_ctl EPOLL_CTL_MOD failed for fd {} : {}", fd, strerror(errno));
+    return false;
+  }
+
+  pos->second = iflags;
   return true;
 }
 

@@ -26,7 +26,10 @@ struct X11Gui
   bool unregister_timer(clap_id tid);
 
   bool register_fd(int fd, clap_posix_fd_flags_t flags);
+  bool modify_fd(int fd, clap_posix_fd_flags_t flags);
   bool unregister_fd(int fd);
+
+  static uint32_t epollFlagsFor(clap_posix_fd_flags_t flags);
 
   freeaudio::clap_wrapper::standalone::StandaloneHost *standaloneHost{nullptr};
 

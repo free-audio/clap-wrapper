@@ -249,7 +249,7 @@ const char *StandaloneHost::host_get_name()
 bool StandaloneHost::register_timer(uint32_t period_ms, clap_id *timer_id)
 {
 #if LIN && CLAP_WRAPPER_STANDALONE_X11
-  assert(x11Gui);
+  if (!x11Gui) return false;
   return x11Gui->register_timer(period_ms, timer_id);
 #else
   return false;
@@ -258,7 +258,7 @@ bool StandaloneHost::register_timer(uint32_t period_ms, clap_id *timer_id)
 bool StandaloneHost::unregister_timer(clap_id timer_id)
 {
 #if LIN && CLAP_WRAPPER_STANDALONE_X11
-  assert(x11Gui);
+  if (!x11Gui) return false;
   return x11Gui->unregister_timer(timer_id);
 #else
   return false;
@@ -268,6 +268,7 @@ bool StandaloneHost::unregister_timer(clap_id timer_id)
 bool StandaloneHost::register_fd(int fd, clap_posix_fd_flags_t flags)
 {
 #if LIN && CLAP_WRAPPER_STANDALONE_X11
+  if (!x11Gui) return false;
   return x11Gui->register_fd(fd, flags);
 #else
   return false;
@@ -275,11 +276,17 @@ bool StandaloneHost::register_fd(int fd, clap_posix_fd_flags_t flags)
 }
 bool StandaloneHost::modify_fd(int fd, clap_posix_fd_flags_t flags)
 {
-  return true;
+#if LIN && CLAP_WRAPPER_STANDALONE_X11
+  if (!x11Gui) return false;
+  return x11Gui->modify_fd(fd, flags);
+#else
+  return false;
+#endif
 }
 bool StandaloneHost::unregister_fd(int fd)
 {
 #if LIN && CLAP_WRAPPER_STANDALONE_X11
+  if (!x11Gui) return false;
   return x11Gui->unregister_fd(fd);
 #else
   return false;
