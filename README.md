@@ -91,16 +91,25 @@ settings window; `--help` lists everything, and the useful ones are:
 --no-input               output only, even for a plugin with an audio input
 --sample-rate <hz>
 --buffer-size <frames>
+--midi-input <spec>      a port name, part of one, or an index; repeatable
+--no-midi                bind no MIDI input at all
 --no-gui                 run without a window; end it with ^C
 --list-apis              backends this build has, and what each one can see
 --list-devices           audio devices for the chosen (or default) api
---list-midi-inputs       MIDI input ports; all of them are bound
+--list-midi-inputs       MIDI input ports, and which ones would be opened
 ```
 
-Device *names* are the thing to pass: the numeric ids RtAudio reports are
-per-run handles, not stable identifiers. A name is matched exactly if it can
-be and otherwise as a unique fragment, so `--output-device HDMI` will usually
-do.
+Device and port *names* are the thing to pass: the numeric ids RtAudio reports
+are per-run handles, not stable identifiers — the same card can be `[130]` in
+one listing and `[131]` in the next. A name is matched exactly if it can be and
+otherwise as a unique fragment, so `--output-device HDMI` will usually do.
+
+Every MIDI input port is opened unless `--midi-input` names the ones you want.
+
+These flags are overrides on top of the persisted standalone settings, and are
+not written back to them: a flag configures one run. A device, rate or port
+which was named and does not exist is a startup error (exit 5) rather than
+something quietly replaced with a default.
 
 By default the standalone prefers PulseAudio, then JACK, then ALSA, taking the
 first which actually has a device — RtAudio's own order would settle on raw

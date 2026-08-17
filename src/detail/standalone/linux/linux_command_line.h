@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 /*
  * The Linux standalone is configured from the command line rather than from a
@@ -16,12 +17,18 @@
  *   --no-input               open output only, even for a plugin with an input
  *   --sample-rate <hz>
  *   --buffer-size <frames>
+ *   --midi-input <spec>      port name (or part of one), repeatable
+ *   --no-midi                bind no MIDI input at all
  *   --no-gui                 run without a window
  *   --list-apis              what this build can talk to, and what it can see
  *   --list-devices           audio devices for the chosen (or default) api
- *   --list-midi-inputs       MIDI input ports, all of which get bound
+ *   --list-midi-inputs       MIDI input ports
  *   --version
  *   --help
+ *
+ * These are overrides layered on top of the persisted standalone settings, which
+ * on Linux are a hand-editable key=value file (see standalone_settings.h). What
+ * the command line sets is not written back: a flag configures one run.
  */
 namespace freeaudio::clap_wrapper::standalone::linux_standalone
 {
@@ -35,8 +42,10 @@ struct CommandLineOptions
   int bufferSize{0};  // 0 for the shared default
   bool noGui{false};
 
-  // whether anything here needs to override the host's startup defaults
-  bool anyAudioOverride() const;
+  // Empty means every port, which is what a standalone did before ports could be
+  // named at all; noMidi is the different thing of deliberately wanting none.
+  std::vector<std::string> midiInputs;
+  bool noMidi{false};
 };
 
 enum class CommandLineResult
@@ -54,10 +63,15 @@ CommandLineResult parseCommandLine(int argc, char **argv, const std::string &pro
                                    CommandLineOptions &opts);
 
 /*
- * Hand the audio choices to the standalone host. Must be called after the audio
- * api is selected and before audio starts. False means a device or rate the
- * user asked for doesn't exist, which is a startup error rather than something
- * to paper over with a default.
+ * Select the backend, layer the command line over the persisted settings, and
+ * start MIDI and audio - the sequence mainStartAudio() runs on the platforms
+ * whose settings come from a window instead. Must be called after the plugin
+ * exists, since that is what names the settings file and what says how many
+ * audio busses there are.
+ *
+ * False means a device or port the user asked for doesn't exist, which is a
+ * startup error rather than something to paper over with a default. The message
+ * is already on stderr.
  */
-bool applyCommandLineOptions(const CommandLineOptions &opts);
+bool configureAndStartAudio(const CommandLineOptions &opts);
 }  // namespace freeaudio::clap_wrapper::standalone::linux_standalone

@@ -241,9 +241,26 @@ void selectAudioApi(const std::string &requestedName)
 {
   auto host = getStandaloneHost();
 
-  if (!requestedName.empty() && lowercased(requestedName) != "auto")
+  // Record what we settled on where the settings layer looks for it, so that the
+  // shared applyAudioSettings() - which selects the API from this name - agrees
+  // with the choice made here instead of re-deciding it.
+  auto adopt = [host](RtAudio::Api api)
   {
-    auto api = resolveAudioApiName(requestedName);
+    host->setAudioApi(api);
+    host->settings.audioApiName = host->audioApiName;
+  };
+
+  // The command line wins; then whatever the settings file asked for; then the
+  // preference order below.
+  auto wanted = requestedName;
+  if (wanted.empty() || lowercased(wanted) == "auto")
+  {
+    wanted = host->settings.audioApiName;
+  }
+
+  if (!wanted.empty() && lowercased(wanted) != "auto")
+  {
+    auto api = resolveAudioApiName(wanted);
     if (api == RtAudio::Api::UNSPECIFIED)
     {
       std::string available;
@@ -255,11 +272,11 @@ void selectAudioApi(const std::string &requestedName)
       fprintf(stderr,
               "[ERROR] This build has no audio API called '%s'. Available: %s. Falling back to "
               "the default order.\n",
-              requestedName.c_str(), available.c_str());
+              wanted.c_str(), available.c_str());
     }
     else
     {
-      host->setAudioApi(api);
+      adopt(api);
       LOGINFO("Audio API (requested) : {}", RtAudio::getApiDisplayName(api));
       fprintf(stderr, "[INFO] audio api: %s\n", RtAudio::getApiDisplayName(api).c_str());
 
@@ -287,7 +304,7 @@ void selectAudioApi(const std::string &requestedName)
     if (!have(pref)) continue;
     if (!apiHasOutputDevices(pref)) continue;
 
-    host->setAudioApi(pref);
+    adopt(pref);
     LOGINFO("Audio API : {}", RtAudio::getApiDisplayName(pref));
     fprintf(stderr, "[INFO] audio api: %s\n", RtAudio::getApiDisplayName(pref).c_str());
     return;

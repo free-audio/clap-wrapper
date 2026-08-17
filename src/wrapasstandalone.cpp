@@ -89,17 +89,6 @@ int main(int argc, char **argv)
 #if LIN
   // stderr always, plus a zenity/kdialog box when the session has one
   freeaudio::clap_wrapper::standalone::linux_standalone::installAudioErrorReporter();
-
-  // Before any audio starts: RtAudio would otherwise settle on raw ALSA even on
-  // a PipeWire box, because ALSA always has devices and it probes that first
-  freeaudio::clap_wrapper::standalone::linux_standalone::selectAudioApi(clOptions.audioApi);
-
-  // A device or rate the user asked for and which doesn't exist is a startup
-  // error, not something to quietly substitute a default for
-  if (!freeaudio::clap_wrapper::standalone::linux_standalone::applyCommandLineOptions(clOptions))
-  {
-    return 5;
-  }
 #endif
 
   std::string pid{PLUGIN_ID};
@@ -117,7 +106,20 @@ int main(int argc, char **argv)
     return 4;
   }
 
+#if LIN
+  // The command line is the settings UI on Linux, so the frontend drives the
+  // startup sequence rather than mainStartAudio(), which would load the settings
+  // file over the top of what was asked for on the command line. A device, rate
+  // or port the user named and which doesn't exist is a startup error, not
+  // something to quietly substitute a default for.
+  if (!freeaudio::clap_wrapper::standalone::linux_standalone::configureAndStartAudio(clOptions))
+  {
+    freeaudio::clap_wrapper::standalone::mainFinish();
+    return 5;
+  }
+#else
   freeaudio::clap_wrapper::standalone::mainStartAudio();
+#endif
 
 #if LIN && CLAP_WRAPPER_STANDALONE_X11
   x11Gui.setPlugin(plugin);

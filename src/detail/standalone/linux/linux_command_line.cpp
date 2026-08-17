@@ -15,7 +15,6 @@
 #endif
 
 #include "RtAudio.h"
-#include "RtMidi.h"
 
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
@@ -61,6 +60,12 @@ void usage(const std::string &programName)
           "  --sample-rate <hz>       Default: whatever the device is running at.\n"
           "  --buffer-size <frames>   Default: 256.\n"
           "\n"
+          "MIDI:\n"
+          "  --midi-input <spec>      Port name, part of a name, or an index from\n"
+          "                           --list-midi-inputs. Repeat it for more than one\n"
+          "                           port. Default: every port is bound.\n"
+          "  --no-midi                Bind no MIDI input at all.\n"
+          "\n"
           "Window:\n"
           "  --no-gui                 Run without a window. Audio, MIDI and the plugin's\n"
           "                           own timers still run; end it with ^C.\n"
@@ -68,13 +73,16 @@ void usage(const std::string &programName)
           "Information:\n"
           "  --list-apis              Audio backends this build has, and what each sees.\n"
           "  --list-devices           Audio devices for the chosen (or default) api.\n"
-          "  --list-midi-inputs       MIDI input ports. All of them are bound.\n"
+          "  --list-midi-inputs       MIDI input ports, and which ones would be opened.\n"
           "  --version\n"
           "  --help\n"
           "\n"
-          "Device names are the stable way to name a device: the numeric ids are handles\n"
-          "which can differ between runs. A name is matched exactly if it can be, and\n"
-          "otherwise as a unique fragment, so --output-device HDMI is usually enough.\n",
+          "Device and port names are the stable way to name one: the numeric ids are\n"
+          "handles which can differ between runs. A name is matched exactly if it can be,\n"
+          "and otherwise as a unique fragment, so --output-device HDMI is usually enough.\n"
+          "\n"
+          "These options override the persisted settings for this run only; they are not\n"
+          "written back to the settings file.\n",
           programName.c_str(), programName.c_str());
 }
 
@@ -172,33 +180,48 @@ void listDevices(const std::string &requestedApi)
   }
 }
 
-void listMidiInputs()
+bool resolveMidiPort(const std::vector<std::string> &ports, const std::string &spec,
+                     std::string &resolved);
+
+void listMidiInputs(const CommandLineOptions &opts)
 {
-  try
+  auto ports = getStandaloneHost()->getMidiPortNames();
+
+  if (opts.noMidi)
+    fprintf(stdout, "MIDI input ports (--no-midi, so none is opened):\n");
+  else if (opts.midiInputs.empty())
+    fprintf(stdout, "MIDI input ports (all are opened):\n");
+  else
+    fprintf(stdout, "MIDI input ports ('*' marks the ones --midi-input picks):\n");
+
+  if (ports.empty()) fprintf(stdout, "  (none)\n");
+
+  // Resolve the selection here too, so --list-midi-inputs is also how you check
+  // that what you are about to pass actually matches something
+  std::vector<std::string> selected;
+  for (const auto &spec : opts.midiInputs)
   {
-    RtMidiIn midiIn;
-    auto n = midiIn.getPortCount();
-    fprintf(stdout, "MIDI input ports (all are bound):\n");
-    if (n == 0) fprintf(stdout, "  (none)\n");
-    for (unsigned int i = 0; i < n; ++i)
-    {
-      fprintf(stdout, "  [%u] %s\n", i, midiIn.getPortName(i).c_str());
-    }
+    std::string name;
+    if (resolveMidiPort(ports, spec, name)) selected.push_back(name);
   }
-  catch (RtMidiError &e)
+
+  for (unsigned int i = 0; i < ports.size(); ++i)
   {
-    fprintf(stderr, "[ERROR] Unable to enumerate MIDI inputs : %s\n", e.getMessage().c_str());
+    auto picked = std::find(selected.begin(), selected.end(), ports[i]) != selected.end();
+    fprintf(stdout, "  %s [%u] %s\n", picked ? "*" : " ", i, ports[i].c_str());
   }
 }
 
 /*
  * Resolve what the user typed against the devices the host's own RtAudio
- * instance can see. RtAudio 6 device ids are per-instance handles rather than
- * stable identifiers, which is why a name is the better thing to pass and why
- * this resolves at startup rather than storing an id.
+ * instance can see, and yield the device's *name*: that is what the settings
+ * layer stores and matches on, because RtAudio 6 device ids are per-instance
+ * enumeration handles rather than stable identifiers. Ids are still accepted as
+ * input, since --list-devices prints them, but they are never carried further
+ * than this function.
  */
 bool resolveDevice(const std::vector<RtAudio::DeviceInfo> &devices, const std::string &spec,
-                   bool forInput, unsigned int &resolved)
+                   bool forInput, std::string &resolved)
 {
   auto what = forInput ? "input" : "output";
 
@@ -216,7 +239,7 @@ bool resolveDevice(const std::vector<RtAudio::DeviceInfo> &devices, const std::s
     {
       if (d.ID == asId)
       {
-        resolved = d.ID;
+        resolved = d.name;
         return true;
       }
     }
@@ -230,7 +253,7 @@ bool resolveDevice(const std::vector<RtAudio::DeviceInfo> &devices, const std::s
   {
     if (lower(d.name) == needle)
     {
-      resolved = d.ID;
+      resolved = d.name;
       return true;
     }
   }
@@ -243,7 +266,7 @@ bool resolveDevice(const std::vector<RtAudio::DeviceInfo> &devices, const std::s
 
   if (partial.size() == 1)
   {
-    resolved = partial.front()->ID;
+    resolved = partial.front()->name;
     return true;
   }
   if (partial.empty())
@@ -261,12 +284,173 @@ bool resolveDevice(const std::vector<RtAudio::DeviceInfo> &devices, const std::s
   complain("matches more than one device: " + matches);
   return false;
 }
-}  // namespace
 
-bool CommandLineOptions::anyAudioOverride() const
+/*
+ * The same resolution for MIDI, against the port names RtMidi reports. The index
+ * accepted here is the position in that list - which is what --list-midi-inputs
+ * prints - and is no more stable across a reboot than an audio device id is.
+ */
+bool resolveMidiPort(const std::vector<std::string> &ports, const std::string &spec,
+                     std::string &resolved)
 {
-  return noInput || !inputDevice.empty() || !outputDevice.empty() || sampleRate > 0 || bufferSize > 0;
+  auto complain = [&](const std::string &why)
+  {
+    fprintf(stderr, "[ERROR] MIDI input '%s': %s\n", spec.c_str(), why.c_str());
+    fprintf(stderr, "        Available MIDI inputs:\n");
+    if (ports.empty()) fprintf(stderr, "          (none)\n");
+    for (unsigned int i = 0; i < ports.size(); ++i)
+    {
+      fprintf(stderr, "          [%u] %s\n", i, ports[i].c_str());
+    }
+  };
+
+  if (isAllDigits(spec))
+  {
+    auto idx = strtoul(spec.c_str(), nullptr, 10);
+    if (idx < ports.size())
+    {
+      resolved = ports[idx];
+      return true;
+    }
+    complain("no port with that index");
+    return false;
+  }
+
+  auto needle = lower(spec);
+
+  for (const auto &port : ports)
+  {
+    if (lower(port) == needle)
+    {
+      resolved = port;
+      return true;
+    }
+  }
+
+  std::vector<const std::string *> partial;
+  for (const auto &port : ports)
+  {
+    if (lower(port).find(needle) != std::string::npos) partial.push_back(&port);
+  }
+
+  if (partial.size() == 1)
+  {
+    resolved = *partial.front();
+    return true;
+  }
+  if (partial.empty())
+  {
+    complain("no such port");
+    return false;
+  }
+
+  std::string matches;
+  for (auto *port : partial)
+  {
+    if (!matches.empty()) matches += ", ";
+    matches += "'" + *port + "'";
+  }
+  complain("matches more than one port: " + matches);
+  return false;
 }
+
+/*
+ * Layer the command line over whatever the settings file said. Everything lands
+ * in host->settings rather than in the host's live audio fields, so that the
+ * shared applyAudioSettings() does the API-then-device ordering exactly once and
+ * we are not maintaining a second copy of it here.
+ */
+bool overlayCommandLine(const CommandLineOptions &opts)
+{
+  auto host = getStandaloneHost();
+  auto &settings = host->settings;
+
+  if (opts.noInput)
+  {
+    // Leave the device name alone: not using the input is a different thing from
+    // forgetting which input was configured.
+    settings.audioInputUsed = false;
+  }
+  else if (!opts.inputDevice.empty())
+  {
+    if (!resolveDevice(host->getInputAudioDevices(), opts.inputDevice, true, settings.inputDeviceName))
+    {
+      return false;
+    }
+    settings.audioInputUsed = true;
+  }
+
+  if (!opts.outputDevice.empty())
+  {
+    if (!resolveDevice(host->getOutputAudioDevices(), opts.outputDevice, false,
+                       settings.outputDeviceName))
+    {
+      return false;
+    }
+    settings.audioOutputUsed = true;
+  }
+
+  if (opts.sampleRate > 0)
+  {
+    settings.sampleRate = opts.sampleRate;
+  }
+
+  if (opts.bufferSize > 0)
+  {
+    constexpr int minBuffer{16}, maxBuffer{8192};
+    auto frames = std::clamp(opts.bufferSize, minBuffer, maxBuffer);
+    if (frames != opts.bufferSize)
+    {
+      fprintf(stderr, "[WARNING] Buffer size %d is outside %d-%d frames; using %d\n", opts.bufferSize,
+              minBuffer, maxBuffer, frames);
+    }
+    // The requested size. RtAudio writes back what it actually granted.
+    settings.bufferSize = (uint32_t)frames;
+  }
+
+  if (opts.noMidi)
+  {
+    // An empty list with bindAll off is the deliberate "no MIDI input" case
+    settings.midiBindAllPorts = false;
+    settings.midiPortNames.clear();
+  }
+  else if (!opts.midiInputs.empty())
+  {
+    auto ports = host->getMidiPortNames();
+    std::vector<std::string> names;
+    for (const auto &spec : opts.midiInputs)
+    {
+      std::string name;
+      if (!resolveMidiPort(ports, spec, name)) return false;
+      if (std::find(names.begin(), names.end(), name) == names.end()) names.push_back(name);
+    }
+    settings.midiBindAllPorts = false;
+    settings.midiPortNames = names;
+  }
+
+  return true;
+}
+
+/*
+ * startAudioThreadOnImpl silently substitutes the device's preferred rate for one
+ * it doesn't offer. That is the right thing to do, but not silently when the user
+ * named the rate on the command line.
+ */
+void warnIfRateSubstituted(int requestedRate)
+{
+  auto host = getStandaloneHost();
+  if (!host->audioOutputUsed || !host->isKnownDevice(host->audioOutputDeviceID)) return;
+
+  auto info = host->deviceInfoFor(host->audioOutputDeviceID);
+  const auto &rates = info.sampleRates;
+  if (std::find(rates.begin(), rates.end(), (unsigned int)requestedRate) != rates.end()) return;
+
+  fprintf(stderr,
+          "[WARNING] '%s' does not offer %d Hz (it offers %s); the device's own rate will be "
+          "used instead\n",
+          info.name.c_str(), requestedRate, ratesToString(rates).c_str());
+}
+}  // namespace
 
 CommandLineResult parseCommandLine(int argc, char **argv, const std::string &programName,
                                    CommandLineOptions &opts)
@@ -344,6 +528,10 @@ CommandLineResult parseCommandLine(int argc, char **argv, const std::string &pro
     {
       opts.noInput = true;
     }
+    else if (arg == "--no-midi")
+    {
+      opts.noMidi = true;
+    }
     else if (arg == "--no-gui")
     {
       opts.noGui = true;
@@ -359,6 +547,13 @@ CommandLineResult parseCommandLine(int argc, char **argv, const std::string &pro
     else if (name == "--output-device")
     {
       if (!valueFor(i, arg, name, opts.outputDevice)) return CommandLineResult::exitError;
+    }
+    else if (name == "--midi-input")
+    {
+      // Repeatable, so this appends rather than assigns
+      std::string spec;
+      if (!valueFor(i, arg, name, spec)) return CommandLineResult::exitError;
+      opts.midiInputs.push_back(spec);
     }
     else if (name == "--sample-rate")
     {
@@ -402,82 +597,72 @@ CommandLineResult parseCommandLine(int argc, char **argv, const std::string &pro
     return CommandLineResult::exitError;
   }
 
+  if (opts.noMidi && !opts.midiInputs.empty())
+  {
+    fprintf(stderr, "[ERROR] --no-midi and --midi-input contradict each other\n");
+    return CommandLineResult::exitError;
+  }
+
   if (wantApis || wantDevices || wantMidi)
   {
     if (wantApis) listApis();
     if (wantApis && (wantDevices || wantMidi)) fprintf(stdout, "\n");
     if (wantDevices) listDevices(opts.audioApi);
     if (wantDevices && wantMidi) fprintf(stdout, "\n");
-    if (wantMidi) listMidiInputs();
+    if (wantMidi) listMidiInputs(opts);
     return CommandLineResult::exitOk;
   }
 
   return CommandLineResult::run;
 }
 
-bool applyCommandLineOptions(const CommandLineOptions &opts)
+bool configureAndStartAudio(const CommandLineOptions &opts)
 {
-  if (!opts.anyAudioOverride()) return true;
-
   auto host = getStandaloneHost();
 
-  // Anything not named on the command line keeps the default it would have had
-  auto [defaultIn, defaultOut, defaultRate] = host->getDefaultAudioInOutSampleRate();
-  auto in = defaultIn;
-  auto out = defaultOut;
-  auto rate = (opts.sampleRate > 0) ? opts.sampleRate : defaultRate;
+  // The persisted settings are the baseline the flags override. This is the load
+  // startAudioThread() would do for itself; we do it here because the overrides
+  // have to go on top of it, and a second load down there would undo them.
+  host->loadStandaloneSettings();
 
-  if (opts.noInput)
-  {
-    // The shared layer reads a device of 0 as 'no input'
-    in = 0;
-  }
-  else if (!opts.inputDevice.empty())
-  {
-    if (!resolveDevice(host->getInputAudioDevices(), opts.inputDevice, true, in)) return false;
-  }
+  // The backend has to be chosen before any device is named: a device name is
+  // resolved against one particular backend's enumeration.
+  selectAudioApi(opts.audioApi);
 
-  if (!opts.outputDevice.empty())
-  {
-    if (!resolveDevice(host->getOutputAudioDevices(), opts.outputDevice, false, out)) return false;
-  }
+  if (!overlayCommandLine(opts)) return false;
 
-  if (opts.sampleRate > 0)
+  try
   {
-    // startAudioThreadOn falls back to the device's preferred rate if this one
-    // isn't offered, which is a silent substitution unless we say something
-    try
-    {
-      auto info = host->rtaDac->getDeviceInfo(out);
-      auto &rates = info.sampleRates;
-      if (std::find(rates.begin(), rates.end(), (unsigned int)opts.sampleRate) == rates.end())
-      {
-        fprintf(stderr,
-                "[WARNING] '%s' does not offer %d Hz (it offers %s); the device's own rate will "
-                "be used instead\n",
-                info.name.c_str(), opts.sampleRate, ratesToString(rates).c_str());
-      }
-    }
-    catch (...)
-    {
-    }
+    host->applyAudioSettings();
+  }
+  catch (const std::exception &e)
+  {
+    // Enumeration itself throws when there is nothing usable attached. That is
+    // not a startup failure: the plugin, its GUI and MIDI all still work, so say
+    // so and carry on without audio.
+    reportError("Unable to configure audio", e.what());
+    return true;
   }
 
-  host->setStartupAudio(in, out, rate);
+  if (opts.sampleRate > 0) warnIfRateSubstituted(opts.sampleRate);
 
-  if (opts.bufferSize > 0)
+  // A rate of zero means "whatever the device is running at", so ask for that
+  // rather than leaving it to startAudioThreadOnImpl, which substitutes the
+  // device's *preferred* rate - not the same number on a Pulse or PipeWire graph
+  // which has been moved off its default.
+  if (host->currentSampleRate <= 0 && host->audioOutputUsed &&
+      host->isKnownDevice(host->audioOutputDeviceID))
   {
-    constexpr int minBuffer{16}, maxBuffer{8192};
-    auto frames = std::clamp(opts.bufferSize, minBuffer, maxBuffer);
-    if (frames != opts.bufferSize)
-    {
-      fprintf(stderr, "[WARNING] Buffer size %d is outside %d-%d frames; using %d\n", opts.bufferSize,
-              minBuffer, maxBuffer, frames);
-    }
-    // the shared layer treats this as the requested size and RtAudio writes
-    // back what it actually got
-    host->currentBufferSize = (uint32_t)frames;
+    auto info = host->deviceInfoFor(host->audioOutputDeviceID);
+    auto rate = info.currentSampleRate ? info.currentSampleRate : info.preferredSampleRate;
+    host->currentSampleRate = (int32_t)rate;
   }
+
+  host->startMIDIThread();
+  host->startAudioThreadOn(host->audioInputDeviceID, host->deviceInputChannels,
+                           host->audioInputUsed && host->numAudioInputs > 0, host->audioOutputDeviceID,
+                           host->deviceOutputChannels,
+                           host->audioOutputUsed && host->numAudioOutputs > 0, host->currentSampleRate);
 
   return true;
 }

@@ -62,7 +62,11 @@ bool quitRequested();
  *
  * requestedName names a backend explicitly: 'alsa', 'pulse', 'jack',
  * 'pipewire' as an alias for pulse, or 'auto' for the order above. An unknown
- * one is reported and falls back to that order.
+ * one is reported and falls back to that order. With no request, a backend named
+ * in the persisted settings is used before the order above is consulted.
+ *
+ * The chosen name is written into the host's settings, which is where the shared
+ * applyAudioSettings() reads the API from.
  */
 void selectAudioApi(const std::string &requestedName = {});
 
@@ -78,4 +82,5 @@ std::vector<RtAudio::Api> compiledAudioApis();
  * or a signal arrived. For the case where there is no GUI runloop to sit in.
  */
 void waitForQuit();
+
 }  // namespace freeaudio::clap_wrapper::standalone::linux_standalone
