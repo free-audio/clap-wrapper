@@ -15,6 +15,12 @@
 // an [NSApplicationMain ] and so on depending on platform
 int main(int argc, char **argv)
 {
+#if LIN
+  // Before anything else, so that a ^C during startup still unwinds through
+  // shutdown rather than dropping the process where it stands
+  freeaudio::clap_wrapper::standalone::linux_standalone::installSignalHandlers();
+#endif
+
   const clap_plugin_entry *entry{nullptr};
 #ifdef STATICALLY_LINKED_CLAP_ENTRY
   extern const clap_plugin_entry clap_entry;
@@ -75,6 +81,10 @@ int main(int argc, char **argv)
   x11Gui.setPlugin(plugin);
   x11Gui.runloop();
   x11Gui.shutdown();
+#elif LIN
+  // No GUI compiled in, so idle here until the host winds down or a signal
+  // arrives. mainWait() would not notice the signal.
+  freeaudio::clap_wrapper::standalone::linux_standalone::waitForQuit();
 #else
   freeaudio::clap_wrapper::standalone::mainWait();
 #endif

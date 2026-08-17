@@ -1,10 +1,12 @@
 #include "linux_frontend.h"
 
+#include <csignal>
 #include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
 #include <cerrno>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -15,6 +17,8 @@
 #include <vector>
 
 #include "detail/standalone/standalone_details.h"
+#include "detail/standalone/standalone_host.h"
+#include "detail/standalone/entry.h"
 
 extern char **environ;
 
@@ -22,6 +26,19 @@ namespace freeaudio::clap_wrapper::standalone::linux_standalone
 {
 namespace
 {
+volatile sig_atomic_t quitFlag{0};
+
+extern "C" void requestQuitHandler(int sig)
+{
+  if (quitFlag)
+  {
+    // We already asked nicely once and we're still here, so the orderly path is
+    // evidently stuck. _exit is async-signal-safe; exit() is not.
+    _exit(128 + sig);
+  }
+  quitFlag = 1;
+}
+
 bool isExecutable(const std::string &p)
 {
   return !p.empty() && access(p.c_str(), X_OK) == 0;
@@ -159,6 +176,43 @@ void runDialogDetached(std::vector<std::string> command)
       .detach();
 }
 }  // namespace
+
+void installSignalHandlers()
+{
+  struct sigaction sa;
+  memset(&sa, 0, sizeof(sa));
+  sa.sa_handler = requestQuitHandler;
+  sigemptyset(&sa.sa_mask);
+  // Deliberately not SA_RESTART, so a blocking epoll_wait/read sees EINTR and
+  // the runloop gets a chance to notice
+  sa.sa_flags = 0;
+
+  for (auto sig : {SIGINT, SIGTERM, SIGHUP})
+  {
+    if (sigaction(sig, &sa, nullptr) != 0)
+    {
+      LOGINFO("[ERROR] Unable to install handler for signal {} : {}", sig, strerror(errno));
+    }
+  }
+
+  // A dead X11 or audio server socket should be an error we handle, not a death
+  // sentence delivered mid-shutdown
+  signal(SIGPIPE, SIG_IGN);
+}
+
+bool quitRequested()
+{
+  return quitFlag != 0;
+}
+
+void waitForQuit()
+{
+  auto sah = getStandaloneHost();
+  while (sah->running && !quitRequested())
+  {
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  }
+}
 
 void reportError(const std::string &title, const std::string &message)
 {

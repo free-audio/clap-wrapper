@@ -21,4 +21,19 @@ namespace freeaudio::clap_wrapper::standalone::linux_standalone
  * desktop in prompts. stderr always gets everything.
  */
 void reportError(const std::string &title, const std::string &message);
+
+/*
+ * Ask for an orderly shutdown on SIGINT/SIGTERM/SIGHUP rather than dying where
+ * we stand: the runloops poll quitRequested(), so ^C unwinds through the normal
+ * path which stops audio, saves settings and destroys the plugin. A second
+ * signal exits immediately, in case that path is itself wedged.
+ */
+void installSignalHandlers();
+bool quitRequested();
+
+/*
+ * Idle until the standalone is asked to stop - either the host stopped running
+ * or a signal arrived. For the case where there is no GUI runloop to sit in.
+ */
+void waitForQuit();
 }  // namespace freeaudio::clap_wrapper::standalone::linux_standalone

@@ -13,6 +13,7 @@
 #include <algorithm>
 
 #include "x11_gui.h"
+#include "linux_frontend.h"
 #include <sys/epoll.h>
 
 namespace freeaudio::clap_wrapper::standalone::linux_standalone
@@ -28,6 +29,7 @@ void X11Gui::initialize(freeaudio::clap_wrapper::standalone::StandaloneHost *sah
             disp ? disp : "(DISPLAY not set)");
     exit(1);
   }
+  standaloneHost = sah;
   sah->x11Gui = this;
   sah->onRequestResize = [this](int w, int h) { return resetSizeTo(w, h); };
   epoll_fd = epoll_create1(EPOLL_CLOEXEC);
@@ -37,23 +39,35 @@ void X11Gui::initialize(freeaudio::clap_wrapper::standalone::StandaloneHost *sah
   }
 }
 
+bool X11Gui::keepRunning() const
+{
+  if (!runloopRunning) return false;
+  if (quitRequested()) return false;
+  if (standaloneHost && !standaloneHost->running) return false;
+  return true;
+}
+
 void X11Gui::runloop()
 {
-  if (!display || window == 0 || epoll_fd < 0)
+  runloopRunning = true;
+
+  if (epoll_fd < 0)
   {
-    // no gui. Only way to kill us is with a signal.
-    while (true)
+    // Nothing to dispatch and nothing to draw, so just idle. This used to be a
+    // 'while (true) sleep' which honoured nothing at all and could only be
+    // ended by killing the process outright.
+    while (keepRunning())
     {
-      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
     return;
   }
+
   XEvent e;
   struct epoll_event events[maxEpollEvents];
-  bool running{true};
-  while (running)
+  while (keepRunning())
   {
-    while (XPending(display))
+    while (display && XPending(display))
     {
       XNextEvent(display, &e);
       switch (e.type)
@@ -76,44 +90,49 @@ void X11Gui::runloop()
           // 3. Check if the message is the delete request
           if ((Atom)(e.xclient.data.l[0]) == wmDeleteMessage)
           {
-            running = false;
+            runloopRunning = false;
           }
           break;
         }
       }
     }
+    if (!keepRunning()) break;
+
     // Poll for both X11 events and timer events
-    int num{0};
-    if (running) num = epoll_wait(epoll_fd, events, maxEpollEvents, 50);
+    auto num = epoll_wait(epoll_fd, events, maxEpollEvents, 50);
 
-    if (num > 0)
+    if (num < 0)
     {
-      for (int i = 0; i < num; ++i)
+      if (errno == EINTR) continue;  // a signal; keepRunning() will sort it out
+      LOGINFO("[ERROR] epoll_wait failed : {}", strerror(errno));
+      break;
+    }
+
+    for (int i = 0; i < num; ++i)
+    {
+      auto fd = events[i].data.fd;
+      auto tfd = fdToTimerId.find(fd);
+      auto pfd = registeredFds.find(fd);
+
+      if (tfd != fdToTimerId.end())
       {
-        auto fd = events[i].data.fd;
-        auto tfd = fdToTimerId.find(fd);
-        auto pfd = registeredFds.find(fd);
+        // The timerfd sits in a level-triggered epoll, so it has to be drained
+        // here. Skipping the read leaves it permanently readable and epoll_wait
+        // then returns immediately forever, spinning a core at 100%.
+        uint64_t expirations{0};
+        auto rd = ::read(fd, &expirations, sizeof(expirations));
+        (void)rd;
 
-        if (tfd != fdToTimerId.end())
+        if (plugin && plugin->_ext._timer)
         {
-          // The timerfd sits in a level-triggered epoll, so it has to be drained
-          // here. Skipping the read leaves it permanently readable and epoll_wait
-          // then returns immediately forever, spinning a core at 100%.
-          uint64_t expirations{0};
-          auto rd = ::read(fd, &expirations, sizeof(expirations));
-          (void)rd;
-
-          if (plugin && plugin->_ext._timer)
-          {
-            plugin->_ext._timer->on_timer(plugin->_plugin, tfd->second);
-          }
+          plugin->_ext._timer->on_timer(plugin->_plugin, tfd->second);
         }
-        if (pfd != registeredFds.end())
+      }
+      if (pfd != registeredFds.end())
+      {
+        if (plugin && plugin->_ext._posixfd)
         {
-          if (plugin && plugin->_ext._posixfd)
-          {
-            plugin->_ext._posixfd->on_fd(plugin->_plugin, fd, pfd->second);
-          }
+          plugin->_ext._posixfd->on_fd(plugin->_plugin, fd, pfd->second);
         }
       }
     }
