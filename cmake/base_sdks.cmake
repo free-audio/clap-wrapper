@@ -433,6 +433,74 @@ function(guarantee_rtaudio)
         set(RTAUDIO_API_JACK FALSE CACHE STRING "No jack by default on macos")
     endif()
 
+    if (UNIX AND NOT APPLE)
+        # Which RtAudio backends the standalone ends up with was an invisible
+        # function of which dev packages the build machine happened to have -
+        # which is how CI came to ship Linux binaries with no PulseAudio, and so
+        # no PipeWire either, leaving raw ALSA as the only option. Decide it
+        # explicitly, surface it as options, and say what we decided.
+        find_package(PkgConfig QUIET)
+        set(_cw_pulse_avail FALSE)
+        set(_cw_jack_avail FALSE)
+        if (PKG_CONFIG_FOUND)
+            pkg_check_modules(CW_PULSE QUIET libpulse-simple)
+            pkg_check_modules(CW_JACK QUIET jack)
+            if (CW_PULSE_FOUND)
+                set(_cw_pulse_avail TRUE)
+            endif()
+            if (CW_JACK_FOUND)
+                set(_cw_jack_avail TRUE)
+            endif()
+        endif()
+
+        # An RTAUDIO_API_* already in the cache is a consumer being explicit, so
+        # let that be the default of our option rather than overriding it
+        if (DEFINED RTAUDIO_API_PULSE)
+            set(_cw_pulse_default ${RTAUDIO_API_PULSE})
+        else()
+            set(_cw_pulse_default ${_cw_pulse_avail})
+        endif()
+        if (DEFINED RTAUDIO_API_JACK)
+            set(_cw_jack_default ${RTAUDIO_API_JACK})
+        else()
+            set(_cw_jack_default ${_cw_jack_avail})
+        endif()
+        if (DEFINED RTAUDIO_API_ALSA)
+            set(_cw_alsa_default ${RTAUDIO_API_ALSA})
+        else()
+            set(_cw_alsa_default TRUE)
+        endif()
+
+        option(CLAP_WRAPPER_STANDALONE_LINUX_ALSA
+                "Standalone: build the RtAudio ALSA backend" ${_cw_alsa_default})
+        option(CLAP_WRAPPER_STANDALONE_LINUX_PULSE
+                "Standalone: build the RtAudio PulseAudio backend, which is also how you reach PipeWire" ${_cw_pulse_default})
+        option(CLAP_WRAPPER_STANDALONE_LINUX_JACK
+                "Standalone: build the RtAudio JACK backend" ${_cw_jack_default})
+
+        set(RTAUDIO_API_ALSA ${CLAP_WRAPPER_STANDALONE_LINUX_ALSA} CACHE BOOL "clap-wrapper: RtAudio ALSA backend" FORCE)
+        set(RTAUDIO_API_PULSE ${CLAP_WRAPPER_STANDALONE_LINUX_PULSE} CACHE BOOL "clap-wrapper: RtAudio PulseAudio backend" FORCE)
+        set(RTAUDIO_API_JACK ${CLAP_WRAPPER_STANDALONE_LINUX_JACK} CACHE BOOL "clap-wrapper: RtAudio JACK backend" FORCE)
+
+        if (CLAP_WRAPPER_STANDALONE_LINUX_PULSE AND NOT _cw_pulse_avail)
+            message(WARNING "clap-wrapper: the PulseAudio backend is enabled but pkg-config cannot find "
+                    "libpulse-simple, so expect a link error. Install libpulse-dev (debian/ubuntu) or "
+                    "pulseaudio-libs-devel (fedora), or configure with -DCLAP_WRAPPER_STANDALONE_LINUX_PULSE=OFF")
+        elseif (NOT CLAP_WRAPPER_STANDALONE_LINUX_PULSE)
+            message(WARNING "clap-wrapper: building the standalone with no PulseAudio backend, and so no "
+                    "PipeWire either - it will fall back to raw ALSA. Install libpulse-dev (debian/ubuntu) "
+                    "or pulseaudio-libs-devel (fedora) and reconfigure.")
+        endif()
+
+        if (NOT CLAP_WRAPPER_STANDALONE_LINUX_JACK)
+            message(STATUS "clap-wrapper: building the standalone with no JACK backend. Install libjack-dev "
+                    "(or libjack-jackd2-dev) and reconfigure if you want one.")
+        endif()
+
+        message(STATUS "clap-wrapper: standalone Linux audio backends: "
+                "alsa=${CLAP_WRAPPER_STANDALONE_LINUX_ALSA} pulse=${CLAP_WRAPPER_STANDALONE_LINUX_PULSE} jack=${CLAP_WRAPPER_STANDALONE_LINUX_JACK}")
+    endif()
+
     if (NOT "${RTAUDIO_SDK_ROOT}" STREQUAL "")
         # Use the provided root
     elseif (${CLAP_WRAPPER_DOWNLOAD_DEPENDENCIES})

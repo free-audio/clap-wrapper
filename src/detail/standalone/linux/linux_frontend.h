@@ -1,6 +1,18 @@
 #pragma once
 
 #include <string>
+#include <vector>
+
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wall"  // other peoples errors are outside my scope
+#endif
+
+#include "RtAudio.h"
+
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
 
 /*
  * Bits of the Linux standalone which are not the X11 GUI: telling the user
@@ -36,6 +48,30 @@ void installAudioErrorReporter();
  */
 void installSignalHandlers();
 bool quitRequested();
+
+/*
+ * Choose the audio backend and hand it to the host.
+ *
+ * RtAudio's own probe order is ALSA, then JACK, then Pulse, first-non-empty
+ * wins - and ALSA always has devices, so JACK and Pulse are never reached even
+ * when they are compiled in. On a stock PipeWire desktop that means the
+ * standalone talks to raw ALSA and never touches the PipeWire graph. So: prefer
+ * Pulse (which is how you reach PipeWire - RtAudio 6 has no native PipeWire
+ * backend), then JACK, then ALSA, taking the first which actually has an output
+ * device.
+ *
+ * requestedName names a backend explicitly: 'alsa', 'pulse', 'jack',
+ * 'pipewire' as an alias for pulse, or 'auto' for the order above. An unknown
+ * one is reported and falls back to that order.
+ */
+void selectAudioApi(const std::string &requestedName = {});
+
+// UNSPECIFIED for an empty/'auto' name, and also for one this build does not
+// have
+RtAudio::Api resolveAudioApiName(const std::string &name);
+
+// the backends this build was compiled with, for help and error text
+std::vector<RtAudio::Api> compiledAudioApis();
 
 /*
  * Idle until the standalone is asked to stop - either the host stopped running

@@ -73,6 +73,10 @@ int main(int argc, char **argv)
 #if LIN
   // stderr always, plus a zenity/kdialog box when the session has one
   freeaudio::clap_wrapper::standalone::linux_standalone::installAudioErrorReporter();
+
+  // Before any audio starts: RtAudio would otherwise settle on raw ALSA even on
+  // a PipeWire box, because ALSA always has devices and it probes that first
+  freeaudio::clap_wrapper::standalone::linux_standalone::selectAudioApi();
 #endif
 
   std::string pid{PLUGIN_ID};

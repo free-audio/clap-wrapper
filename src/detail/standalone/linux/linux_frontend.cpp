@@ -16,6 +16,8 @@
 #include <thread>
 #include <vector>
 
+#include <algorithm>
+
 #include "detail/standalone/standalone_details.h"
 #include "detail/standalone/standalone_host.h"
 #include "detail/standalone/entry.h"
@@ -175,7 +177,105 @@ void runDialogDetached(std::vector<std::string> command)
       })
       .detach();
 }
+
+/*
+ * A backend with no output device is a backend whose server isn't running -
+ * an unstarted JACK, or Pulse on a box with neither PulseAudio nor PipeWire.
+ * The probe swallows errors: 'not available' is an answer, not a failure.
+ */
+bool apiHasOutputDevices(RtAudio::Api api)
+{
+  try
+  {
+    RtAudio probe(api, [](RtAudioErrorType, const std::string &) {});
+    for (auto id : probe.getDeviceIds())
+    {
+      if (probe.getDeviceInfo(id).outputChannels > 0) return true;
+    }
+  }
+  catch (...)
+  {
+  }
+  return false;
+}
+
+std::string lowercased(const std::string &s)
+{
+  std::string r{s};
+  std::transform(r.begin(), r.end(), r.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+  return r;
+}
 }  // namespace
+
+std::vector<RtAudio::Api> compiledAudioApis()
+{
+  std::vector<RtAudio::Api> res;
+  RtAudio::getCompiledApi(res);
+  return res;
+}
+
+RtAudio::Api resolveAudioApiName(const std::string &name)
+{
+  auto lower = lowercased(name);
+  if (lower.empty() || lower == "auto" || lower == "default") return RtAudio::Api::UNSPECIFIED;
+
+  // RtAudio 6 has no native PipeWire backend; its Pulse backend is how you get
+  // at a PipeWire graph, and 'pipewire' is what a user will reasonably type
+  if (lower == "pipewire" || lower == "pw") lower = "pulse";
+
+  return RtAudio::getCompiledApiByName(lower);
+}
+
+void selectAudioApi(const std::string &requestedName)
+{
+  auto host = getStandaloneHost();
+
+  if (!requestedName.empty() && lowercased(requestedName) != "auto")
+  {
+    auto api = resolveAudioApiName(requestedName);
+    if (api == RtAudio::Api::UNSPECIFIED)
+    {
+      std::string available;
+      for (auto a : compiledAudioApis())
+      {
+        if (!available.empty()) available += ", ";
+        available += RtAudio::getApiName(a);
+      }
+      reportError("Unknown audio API", "This build has no audio API called '" + requestedName +
+                                           "'. Available: " + available +
+                                           ". Falling back to the default order.");
+    }
+    else
+    {
+      host->setAudioApi(api);
+      LOGINFO("Audio API (requested) : {}", RtAudio::getApiDisplayName(api));
+      fprintf(stderr, "[INFO] audio api: %s\n", RtAudio::getApiDisplayName(api).c_str());
+      return;
+    }
+  }
+
+  auto compiled = compiledAudioApis();
+  auto have = [&compiled](RtAudio::Api a)
+  { return std::find(compiled.begin(), compiled.end(), a) != compiled.end(); };
+
+  for (auto pref : {RtAudio::Api::LINUX_PULSE, RtAudio::Api::UNIX_JACK, RtAudio::Api::LINUX_ALSA,
+                    RtAudio::Api::LINUX_OSS})
+  {
+    if (!have(pref)) continue;
+    if (!apiHasOutputDevices(pref)) continue;
+
+    host->setAudioApi(pref);
+    LOGINFO("Audio API : {}", RtAudio::getApiDisplayName(pref));
+    fprintf(stderr, "[INFO] audio api: %s\n", RtAudio::getApiDisplayName(pref).c_str());
+    return;
+  }
+
+  // Nothing we prefer had a device. Leave the host unspecified and let RtAudio
+  // make its own choice, so a backend we didn't think of still gets a chance.
+  reportError("No audio backend",
+              "None of the audio backends this build has - which is where PulseAudio, PipeWire, "
+              "JACK and ALSA would appear - reported an output device. Letting RtAudio choose.");
+}
 
 void installAudioErrorReporter()
 {
