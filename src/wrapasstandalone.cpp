@@ -71,14 +71,8 @@ int main(int argc, char **argv)
   }
 
 #if LIN
-  // Without this every RtAudio failure is silent and the app just runs with no
-  // sound. reportError writes stderr always, and puts up a zenity/kdialog box
-  // if the desktop has one.
-  freeaudio::clap_wrapper::standalone::getStandaloneHost()->displayAudioError =
-      [](const std::string &msg)
-  {
-    freeaudio::clap_wrapper::standalone::linux_standalone::reportError("Unable to configure audio", msg);
-  };
+  // stderr always, plus a zenity/kdialog box when the session has one
+  freeaudio::clap_wrapper::standalone::linux_standalone::installAudioErrorReporter();
 #endif
 
   std::string pid{PLUGIN_ID};

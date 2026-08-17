@@ -177,6 +177,12 @@ void runDialogDetached(std::vector<std::string> command)
 }
 }  // namespace
 
+void installAudioErrorReporter()
+{
+  getStandaloneHost()->displayAudioError = [](const std::string &msg)
+  { reportError("Unable to configure audio", msg); };
+}
+
 void installSignalHandlers()
 {
   struct sigaction sa;

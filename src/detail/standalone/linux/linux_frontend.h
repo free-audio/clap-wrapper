@@ -23,6 +23,12 @@ namespace freeaudio::clap_wrapper::standalone::linux_standalone
 void reportError(const std::string &title, const std::string &message);
 
 /*
+ * Point the standalone host's audio error reporting at reportError. Without
+ * this every RtAudio failure is silent and the app just runs with no sound.
+ */
+void installAudioErrorReporter();
+
+/*
  * Ask for an orderly shutdown on SIGINT/SIGTERM/SIGHUP rather than dying where
  * we stand: the runloops poll quitRequested(), so ^C unwinds through the normal
  * path which stops audio, saves settings and destroys the plugin. A second
