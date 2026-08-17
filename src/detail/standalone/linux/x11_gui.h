@@ -12,9 +12,9 @@ namespace freeaudio::clap_wrapper::standalone::linux_standalone
 {
 struct X11Gui
 {
-  // false if there is no usable display; audio and timers still run, we just
-  // never get a window
-  bool initialize(freeaudio::clap_wrapper::standalone::StandaloneHost *);
+  // false if there is no usable display, or none was wanted; audio, MIDI and
+  // plugin timers all still run, we just never get a window
+  bool initialize(freeaudio::clap_wrapper::standalone::StandaloneHost *, bool wantWindow = true);
   void setPlugin(std::shared_ptr<Clap::Plugin>);
   void runloop();
   void shutdown();

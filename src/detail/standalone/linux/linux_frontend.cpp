@@ -241,15 +241,27 @@ void selectAudioApi(const std::string &requestedName)
         if (!available.empty()) available += ", ";
         available += RtAudio::getApiName(a);
       }
-      reportError("Unknown audio API", "This build has no audio API called '" + requestedName +
-                                           "'. Available: " + available +
-                                           ". Falling back to the default order.");
+      fprintf(stderr,
+              "[ERROR] This build has no audio API called '%s'. Available: %s. Falling back to "
+              "the default order.\n",
+              requestedName.c_str(), available.c_str());
     }
     else
     {
       host->setAudioApi(api);
       LOGINFO("Audio API (requested) : {}", RtAudio::getApiDisplayName(api));
       fprintf(stderr, "[INFO] audio api: %s\n", RtAudio::getApiDisplayName(api).c_str());
+
+      // Say this plainly here: what the user gets otherwise is RtAudio's
+      // "deviceId argument not found" from somewhere deep in the open
+      if (!apiHasOutputDevices(api))
+      {
+        fprintf(stderr,
+                "[WARNING] The %s backend reports no output devices. If it needs a server "
+                "running - JACK, PulseAudio, PipeWire - start it, or choose another with "
+                "--audio-api.\n",
+                RtAudio::getApiDisplayName(api).c_str());
+      }
       return;
     }
   }

@@ -36,7 +36,7 @@ int x11ErrorHandler(Display *d, XErrorEvent *e)
 }
 }  // namespace
 
-bool X11Gui::initialize(freeaudio::clap_wrapper::standalone::StandaloneHost *sah)
+bool X11Gui::initialize(freeaudio::clap_wrapper::standalone::StandaloneHost *sah, bool wantWindow)
 {
   standaloneHost = sah;
   sah->x11Gui = this;
@@ -48,6 +48,13 @@ bool X11Gui::initialize(freeaudio::clap_wrapper::standalone::StandaloneHost *sah
   if (epoll_fd < 0)
   {
     LOGINFO("[ERROR] Unable to create epoll : {}", strerror(errno));
+  }
+
+  if (!wantWindow)
+  {
+    // --no-gui. The epoll above still dispatches the plugin's timers and fds.
+    LOGINFO("Running without a window by request");
+    return false;
   }
 
   XInitThreads();

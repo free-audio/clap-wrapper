@@ -9,6 +9,7 @@
 
 #if LIN
 #include "detail/standalone/linux/linux_frontend.h"
+#include "detail/standalone/linux/linux_command_line.h"
 #endif
 
 // For now just a simple main. In the future this will branch out to
@@ -19,6 +20,20 @@ int main(int argc, char **argv)
   // Before anything else, so that a ^C during startup still unwinds through
   // shutdown rather than dropping the process where it stands
   freeaudio::clap_wrapper::standalone::linux_standalone::installSignalHandlers();
+
+  freeaudio::clap_wrapper::standalone::linux_standalone::CommandLineOptions clOptions;
+  {
+    using namespace freeaudio::clap_wrapper::standalone::linux_standalone;
+    switch (parseCommandLine(argc, argv, OUTPUT_NAME, clOptions))
+    {
+      case CommandLineResult::exitOk:
+        return 0;
+      case CommandLineResult::exitError:
+        return 2;
+      case CommandLineResult::run:
+        break;
+    }
+  }
 #endif
 
   auto fatalError = [](const std::string &msg)
@@ -59,9 +74,10 @@ int main(int argc, char **argv)
 #if LIN && CLAP_WRAPPER_STANDALONE_X11
   freeaudio::clap_wrapper::standalone::linux_standalone::X11Gui x11Gui{};
 
-  // A false here means we have no display. That is not fatal: audio, MIDI and
-  // plugin timers all still run, we just never show a window.
-  x11Gui.initialize(freeaudio::clap_wrapper::standalone::getStandaloneHost());
+  // A false here means we have no display, or --no-gui was passed. That is not
+  // fatal: audio, MIDI and plugin timers all still run, we just never show a
+  // window.
+  x11Gui.initialize(freeaudio::clap_wrapper::standalone::getStandaloneHost(), !clOptions.noGui);
 #endif
 
   if (!entry)
@@ -76,7 +92,14 @@ int main(int argc, char **argv)
 
   // Before any audio starts: RtAudio would otherwise settle on raw ALSA even on
   // a PipeWire box, because ALSA always has devices and it probes that first
-  freeaudio::clap_wrapper::standalone::linux_standalone::selectAudioApi();
+  freeaudio::clap_wrapper::standalone::linux_standalone::selectAudioApi(clOptions.audioApi);
+
+  // A device or rate the user asked for and which doesn't exist is a startup
+  // error, not something to quietly substitute a default for
+  if (!freeaudio::clap_wrapper::standalone::linux_standalone::applyCommandLineOptions(clOptions))
+  {
+    return 5;
+  }
 #endif
 
   std::string pid{PLUGIN_ID};

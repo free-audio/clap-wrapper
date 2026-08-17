@@ -186,7 +186,8 @@ function(target_add_standalone_wrapper)
         find_package(Threads REQUIRED)
         target_link_libraries(${salib} PUBLIC Threads::Threads)
         target_sources(${salib} PRIVATE
-                ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/linux/linux_frontend.cpp)
+                ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/linux/linux_frontend.cpp
+                ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/linux/linux_command_line.cpp)
 
         if (CLAP_WRAPPER_STANDALONE_X11_GUI)
             # Rather than linking a bare 'X11' and letting a missing libx11-dev

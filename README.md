@@ -79,6 +79,47 @@ is a complete standalone synth you can release.
 
 See [docs/ios.md](docs/ios.md) for the full iOS instructions.
 
+### The Linux standalone
+
+The Linux standalone is configured from the command line rather than from a
+settings window; `--help` lists everything, and the useful ones are:
+
+```
+--audio-api <name>       alsa, pulse, jack, pipewire (an alias for pulse), auto
+--output-device <spec>   a device name, part of one, or an id from --list-devices
+--input-device <spec>
+--no-input               output only, even for a plugin with an audio input
+--sample-rate <hz>
+--buffer-size <frames>
+--no-gui                 run without a window; end it with ^C
+--list-apis              backends this build has, and what each one can see
+--list-devices           audio devices for the chosen (or default) api
+--list-midi-inputs       MIDI input ports; all of them are bound
+```
+
+Device *names* are the thing to pass: the numeric ids RtAudio reports are
+per-run handles, not stable identifiers. A name is matched exactly if it can
+be and otherwise as a unique fragment, so `--output-device HDMI` will usually
+do.
+
+By default the standalone prefers PulseAudio, then JACK, then ALSA, taking the
+first which actually has a device — RtAudio's own order would settle on raw
+ALSA every time, since ALSA always has devices. PulseAudio is also how a
+PipeWire graph is reached: RtAudio 6.0.1 has no native PipeWire backend, and
+`--audio-api pipewire` is an alias for `pulse` for that reason.
+
+Which backends are available is a build-time decision, reported at configure
+time and controlled by `CLAP_WRAPPER_STANDALONE_LINUX_ALSA`, `_PULSE` and
+`_JACK`. They default to what pkg-config can find, so **install
+`libpulse-dev` before configuring** or the build has no PulseAudio and hence
+no PipeWire. `CLAP_WRAPPER_STANDALONE_LINUX_JACK` wants `libjack-dev`.
+
+The GUI is X11, which is how it appears under XWayland too; there is no
+native Wayland support yet. `-DCLAP_WRAPPER_STANDALONE_X11_GUI=OFF` builds a
+standalone with no window and no X11 dependency at all, and needs
+`libx11-dev` when it is on. SIGINT/SIGTERM shut the standalone down in order,
+and a second one exits immediately.
+
 ## Licensing
 
 The `clap-wrapper` project is released under the MIT license.
