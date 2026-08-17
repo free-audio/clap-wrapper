@@ -17,7 +17,7 @@ struct X11Gui
   void runloop();
   void shutdown();
 
-  bool register_timer(int period_ms, clap_id *tid);
+  bool register_timer(uint32_t period_ms, clap_id *tid);
   bool unregister_timer(clap_id tid);
 
   bool register_fd(int fd, clap_posix_fd_flags_t flags);

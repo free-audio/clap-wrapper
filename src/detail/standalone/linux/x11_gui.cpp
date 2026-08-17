@@ -9,6 +9,8 @@
 #include <poll.h>
 #include <string.h>
 #include <cstdint>
+#include <cerrno>
+#include <algorithm>
 
 #include "x11_gui.h"
 #include <sys/epoll.h>
@@ -94,14 +96,21 @@ void X11Gui::runloop()
 
         if (tfd != fdToTimerId.end())
         {
-          if (plugin->_ext._timer)
+          // The timerfd sits in a level-triggered epoll, so it has to be drained
+          // here. Skipping the read leaves it permanently readable and epoll_wait
+          // then returns immediately forever, spinning a core at 100%.
+          uint64_t expirations{0};
+          auto rd = ::read(fd, &expirations, sizeof(expirations));
+          (void)rd;
+
+          if (plugin && plugin->_ext._timer)
           {
             plugin->_ext._timer->on_timer(plugin->_plugin, tfd->second);
           }
         }
         if (pfd != registeredFds.end())
         {
-          if (plugin->_ext._posixfd)
+          if (plugin && plugin->_ext._posixfd)
           {
             plugin->_ext._posixfd->on_fd(plugin->_plugin, fd, pfd->second);
           }
@@ -182,21 +191,47 @@ void X11Gui::shutdown()
 
 int X11Gui::nextTimerId{2112};
 
-bool X11Gui::register_timer(int period_ms, clap_id *tid)
+bool X11Gui::register_timer(uint32_t period_ms, clap_id *tid)
 {
-  int tfd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC);
+  if (epoll_fd < 0)
+  {
+    LOGINFO("[ERROR] register_timer with no epoll");
+    return false;
+  }
+
+  // A zero period would spin the runloop, so 'as fast as you can' becomes 1ms.
+  // An hour is well past any plausible redraw or housekeeping timer.
+  auto period = std::clamp(period_ms, (uint32_t)1, (uint32_t)(60 * 60 * 1000));
+
+  int tfd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
+  if (tfd < 0)
+  {
+    LOGINFO("[ERROR] timerfd_create failed : {}", strerror(errno));
+    return false;
+  }
+
+  // tv_nsec has to stay below 1e9, so a period of a second or more belongs in
+  // tv_sec. Stuffing it all into tv_nsec is EINVAL and the timer never fires.
   struct itimerspec ts;
   memset(&ts, 0, sizeof(ts));
-  ts.it_interval.tv_nsec = period_ms * 1e6;  // Repeat every 1s
-  ts.it_value.tv_nsec = period_ms * 1e6;     // First expiry in 1s
-  timerfd_settime(tfd, 0, &ts, NULL);
+  ts.it_interval.tv_sec = (time_t)(period / 1000);
+  ts.it_interval.tv_nsec = (long)(period % 1000) * 1000000L;
+  ts.it_value = ts.it_interval;
 
-  epoll_event event;
+  if (timerfd_settime(tfd, 0, &ts, nullptr) < 0)
+  {
+    LOGINFO("[ERROR] timerfd_settime failed for a {}ms timer : {}", period, strerror(errno));
+    close(tfd);
+    return false;
+  }
+
+  epoll_event event{};
   event.events = EPOLLIN;
   event.data.fd = tfd;
   if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, tfd, &event) == -1)
   {
-    LOGINFO("Unable to register timer epoll");
+    LOGINFO("[ERROR] Unable to register timer epoll : {}", strerror(errno));
+    close(tfd);
     return false;
   }
 
