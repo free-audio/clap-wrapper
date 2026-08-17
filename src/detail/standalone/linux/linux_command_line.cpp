@@ -28,13 +28,6 @@ namespace freeaudio::clap_wrapper::standalone::linux_standalone
 {
 namespace
 {
-std::string lower(const std::string &s)
-{
-  std::string r{s};
-  std::transform(r.begin(), r.end(), r.begin(), [](unsigned char c) { return (char)std::tolower(c); });
-  return r;
-}
-
 bool isAllDigits(const std::string &s)
 {
   return !s.empty() &&
@@ -113,22 +106,11 @@ void listApis()
   {
     if (api == RtAudio::Api::RTAUDIO_DUMMY) continue;
 
-    // Count what each one can see: a backend with no devices is one whose
-    // server isn't running, which is worth saying out loud
+    // Count what each one can see: a backend with no devices is one whose server
+    // isn't running, which is worth saying out loud. Same probe the automatic
+    // selection uses, so the two cannot disagree.
     unsigned int outs{0}, ins{0};
-    try
-    {
-      RtAudio probe(api, [](RtAudioErrorType, const std::string &) {});
-      for (auto id : probe.getDeviceIds())
-      {
-        auto info = probe.getDeviceInfo(id);
-        if (info.outputChannels > 0) outs++;
-        if (info.inputChannels > 0) ins++;
-      }
-    }
-    catch (...)
-    {
-    }
+    probeApiDeviceCounts(api, outs, ins);
 
     fprintf(stdout, "  %-8s %-12s %u output, %u input device(s)%s\n", RtAudio::getApiName(api).c_str(),
             RtAudio::getApiDisplayName(api).c_str(), outs, ins,
@@ -180,8 +162,15 @@ void listDevices(const std::string &requestedApi)
   }
 }
 
+bool resolveByNameOrNumber(const std::vector<std::string> &names, const std::vector<unsigned int> &ids,
+                           const std::string &spec, const std::string &what, std::string &resolved);
+
+// MIDI ports have no ids, so the number in a spec is the position in the list
 bool resolveMidiPort(const std::vector<std::string> &ports, const std::string &spec,
-                     std::string &resolved);
+                     std::string &resolved)
+{
+  return resolveByNameOrNumber(ports, {}, spec, "MIDI input", resolved);
+}
 
 void listMidiInputs(const CommandLineOptions &opts)
 {
@@ -213,124 +202,66 @@ void listMidiInputs(const CommandLineOptions &opts)
 }
 
 /*
- * Resolve what the user typed against the devices the host's own RtAudio
- * instance can see, and yield the device's *name*: that is what the settings
- * layer stores and matches on, because RtAudio 6 device ids are per-instance
- * enumeration handles rather than stable identifiers. Ids are still accepted as
- * input, since --list-devices prints them, but they are never carried further
- * than this function.
+ * Match what the user typed against a list of names: an exact name, a unique
+ * fragment of one, or a number.
+ *
+ * The number means different things for the two kinds of list, so `ids` says
+ * which: non-empty, it holds the RtAudio device id for each name - the number
+ * --list-devices prints - and the spec is matched against those; empty, the
+ * number is a position in the list, which is how MIDI ports are numbered.
+ *
+ * What comes back is always a *name*, because that is what the settings layer
+ * stores and matches on: RtAudio 6 device ids are per-instance enumeration
+ * handles, not stable identifiers, and the same card really does come out as
+ * [130] in one listing and [131] in the next. Failure puts the reason and the
+ * available names on stderr.
  */
-bool resolveDevice(const std::vector<RtAudio::DeviceInfo> &devices, const std::string &spec,
-                   bool forInput, std::string &resolved)
+bool resolveByNameOrNumber(const std::vector<std::string> &names, const std::vector<unsigned int> &ids,
+                           const std::string &spec, const std::string &what, std::string &resolved)
 {
-  auto what = forInput ? "input" : "output";
+  auto numberFor = [&](size_t i) { return ids.empty() ? (unsigned long)i : (unsigned long)ids[i]; };
 
   auto complain = [&](const std::string &why)
   {
-    fprintf(stderr, "[ERROR] %s audio device '%s': %s\n", what, spec.c_str(), why.c_str());
-    fprintf(stderr, "        Available %s devices:\n", what);
-    for (const auto &d : devices) fprintf(stderr, "          [%u] %s\n", d.ID, d.name.c_str());
+    fprintf(stderr, "[ERROR] %s '%s': %s\n", what.c_str(), spec.c_str(), why.c_str());
+    fprintf(stderr, "        Available %ss:\n", what.c_str());
+    if (names.empty()) fprintf(stderr, "          (none)\n");
+    for (size_t i = 0; i < names.size(); ++i)
+    {
+      fprintf(stderr, "          [%lu] %s\n", numberFor(i), names[i].c_str());
+    }
   };
 
   if (isAllDigits(spec))
   {
-    auto asId = (unsigned int)strtoul(spec.c_str(), nullptr, 10);
-    for (const auto &d : devices)
+    auto asNumber = strtoul(spec.c_str(), nullptr, 10);
+    for (size_t i = 0; i < names.size(); ++i)
     {
-      if (d.ID == asId)
+      if (numberFor(i) == asNumber)
       {
-        resolved = d.name;
+        resolved = names[i];
         return true;
       }
     }
-    complain("no device with that id");
+    complain(ids.empty() ? "nothing has that index" : "nothing has that id");
     return false;
   }
 
-  auto needle = lower(spec);
+  auto needle = lowercased(spec);
 
-  for (const auto &d : devices)
+  for (const auto &name : names)
   {
-    if (lower(d.name) == needle)
+    if (lowercased(name) == needle)
     {
-      resolved = d.name;
-      return true;
-    }
-  }
-
-  std::vector<const RtAudio::DeviceInfo *> partial;
-  for (const auto &d : devices)
-  {
-    if (lower(d.name).find(needle) != std::string::npos) partial.push_back(&d);
-  }
-
-  if (partial.size() == 1)
-  {
-    resolved = partial.front()->name;
-    return true;
-  }
-  if (partial.empty())
-  {
-    complain("no such device");
-    return false;
-  }
-
-  std::string matches;
-  for (auto *d : partial)
-  {
-    if (!matches.empty()) matches += ", ";
-    matches += "'" + d->name + "'";
-  }
-  complain("matches more than one device: " + matches);
-  return false;
-}
-
-/*
- * The same resolution for MIDI, against the port names RtMidi reports. The index
- * accepted here is the position in that list - which is what --list-midi-inputs
- * prints - and is no more stable across a reboot than an audio device id is.
- */
-bool resolveMidiPort(const std::vector<std::string> &ports, const std::string &spec,
-                     std::string &resolved)
-{
-  auto complain = [&](const std::string &why)
-  {
-    fprintf(stderr, "[ERROR] MIDI input '%s': %s\n", spec.c_str(), why.c_str());
-    fprintf(stderr, "        Available MIDI inputs:\n");
-    if (ports.empty()) fprintf(stderr, "          (none)\n");
-    for (unsigned int i = 0; i < ports.size(); ++i)
-    {
-      fprintf(stderr, "          [%u] %s\n", i, ports[i].c_str());
-    }
-  };
-
-  if (isAllDigits(spec))
-  {
-    auto idx = strtoul(spec.c_str(), nullptr, 10);
-    if (idx < ports.size())
-    {
-      resolved = ports[idx];
-      return true;
-    }
-    complain("no port with that index");
-    return false;
-  }
-
-  auto needle = lower(spec);
-
-  for (const auto &port : ports)
-  {
-    if (lower(port) == needle)
-    {
-      resolved = port;
+      resolved = name;
       return true;
     }
   }
 
   std::vector<const std::string *> partial;
-  for (const auto &port : ports)
+  for (const auto &name : names)
   {
-    if (lower(port).find(needle) != std::string::npos) partial.push_back(&port);
+    if (lowercased(name).find(needle) != std::string::npos) partial.push_back(&name);
   }
 
   if (partial.size() == 1)
@@ -340,18 +271,34 @@ bool resolveMidiPort(const std::vector<std::string> &ports, const std::string &s
   }
   if (partial.empty())
   {
-    complain("no such port");
+    complain("nothing matches that name");
     return false;
   }
 
   std::string matches;
-  for (auto *port : partial)
+  for (auto *name : partial)
   {
     if (!matches.empty()) matches += ", ";
-    matches += "'" + *port + "'";
+    matches += "'" + *name + "'";
   }
-  complain("matches more than one port: " + matches);
+  complain("matches more than one: " + matches);
   return false;
+}
+
+// The audio side of the above, which is the one with ids to carry
+bool resolveAudioDevice(const std::vector<RtAudio::DeviceInfo> &devices, const std::string &spec,
+                        bool forInput, std::string &resolved)
+{
+  std::vector<std::string> names;
+  std::vector<unsigned int> ids;
+  for (const auto &d : devices)
+  {
+    names.push_back(d.name);
+    ids.push_back(d.ID);
+  }
+
+  return resolveByNameOrNumber(names, ids, spec, forInput ? "input audio device" : "output audio device",
+                               resolved);
 }
 
 /*
@@ -373,7 +320,8 @@ bool overlayCommandLine(const CommandLineOptions &opts)
   }
   else if (!opts.inputDevice.empty())
   {
-    if (!resolveDevice(host->getInputAudioDevices(), opts.inputDevice, true, settings.inputDeviceName))
+    if (!resolveAudioDevice(host->getInputAudioDevices(), opts.inputDevice, true,
+                            settings.inputDeviceName))
     {
       return false;
     }
@@ -382,8 +330,8 @@ bool overlayCommandLine(const CommandLineOptions &opts)
 
   if (!opts.outputDevice.empty())
   {
-    if (!resolveDevice(host->getOutputAudioDevices(), opts.outputDevice, false,
-                       settings.outputDeviceName))
+    if (!resolveAudioDevice(host->getOutputAudioDevices(), opts.outputDevice, false,
+                            settings.outputDeviceName))
     {
       return false;
     }
@@ -576,18 +524,11 @@ CommandLineResult parseCommandLine(int argc, char **argv, const std::string &pro
     }
   }
 
-  if (!opts.audioApi.empty() && lower(opts.audioApi) != "auto" && lower(opts.audioApi) != "default" &&
+  if (!opts.audioApi.empty() && lowercased(opts.audioApi) != "auto" && lowercased(opts.audioApi) != "default" &&
       resolveAudioApiName(opts.audioApi) == RtAudio::Api::UNSPECIFIED)
   {
-    std::string available;
-    for (auto a : compiledAudioApis())
-    {
-      if (a == RtAudio::Api::RTAUDIO_DUMMY) continue;
-      if (!available.empty()) available += ", ";
-      available += RtAudio::getApiName(a);
-    }
     fprintf(stderr, "[ERROR] No audio api called '%s' in this build. Available: %s\n",
-            opts.audioApi.c_str(), available.c_str());
+            opts.audioApi.c_str(), compiledAudioApiNames().c_str());
     return CommandLineResult::exitError;
   }
 

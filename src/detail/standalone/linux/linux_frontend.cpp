@@ -194,23 +194,14 @@ void runDialogDetached(std::vector<std::string> command)
 /*
  * A backend with no output device is a backend whose server isn't running -
  * an unstarted JACK, or Pulse on a box with neither PulseAudio nor PipeWire.
- * The probe swallows errors: 'not available' is an answer, not a failure.
  */
 bool apiHasOutputDevices(RtAudio::Api api)
 {
-  try
-  {
-    RtAudio probe(api, [](RtAudioErrorType, const std::string &) {});
-    for (auto id : probe.getDeviceIds())
-    {
-      if (probe.getDeviceInfo(id).outputChannels > 0) return true;
-    }
-  }
-  catch (...)
-  {
-  }
-  return false;
+  unsigned int outputs{0}, inputs{0};
+  probeApiDeviceCounts(api, outputs, inputs);
+  return outputs > 0;
 }
+}  // namespace
 
 std::string lowercased(const std::string &s)
 {
@@ -218,7 +209,39 @@ std::string lowercased(const std::string &s)
   std::transform(r.begin(), r.end(), r.begin(), [](unsigned char c) { return (char)std::tolower(c); });
   return r;
 }
-}  // namespace
+
+void probeApiDeviceCounts(RtAudio::Api api, unsigned int &outputs, unsigned int &inputs)
+{
+  outputs = 0;
+  inputs = 0;
+
+  try
+  {
+    RtAudio probe(api, [](RtAudioErrorType, const std::string &) {});
+    for (auto id : probe.getDeviceIds())
+    {
+      auto info = probe.getDeviceInfo(id);
+      if (info.outputChannels > 0) outputs++;
+      if (info.inputChannels > 0) inputs++;
+    }
+  }
+  catch (...)
+  {
+    // 'not available' is an answer, not a failure
+  }
+}
+
+std::string compiledAudioApiNames()
+{
+  std::string res;
+  for (auto api : compiledAudioApis())
+  {
+    if (api == RtAudio::Api::RTAUDIO_DUMMY) continue;
+    if (!res.empty()) res += ", ";
+    res += RtAudio::getApiName(api);
+  }
+  return res;
+}
 
 std::vector<RtAudio::Api> compiledAudioApis()
 {
@@ -265,12 +288,7 @@ void selectAudioApi(const std::string &requestedName)
     auto api = resolveAudioApiName(wanted);
     if (api == RtAudio::Api::UNSPECIFIED)
     {
-      std::string available;
-      for (auto a : compiledAudioApis())
-      {
-        if (!available.empty()) available += ", ";
-        available += RtAudio::getApiName(a);
-      }
+      auto available = compiledAudioApiNames();
       fprintf(stderr,
               "[ERROR] This build has no audio API called '%s'. Available: %s. Falling back to "
               "the default order.\n",

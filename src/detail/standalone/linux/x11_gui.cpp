@@ -583,11 +583,9 @@ void X11Gui::handleConfigure(int w, int h)
   if ((int)aw != w || (int)ah != h)
   {
     // The plugin snapped to a size of its own, so make the window agree. The
-    // ConfigureNotify that follows matches lastWidth/lastHeight, so this
-    // settles rather than ping-ponging.
-    lastWidth = (int)aw;
-    lastHeight = (int)ah;
-    XResizeWindow(display, window, aw, ah);
+    // ConfigureNotify which follows matches the size resetSizeTo() records, so
+    // this settles rather than ping-ponging.
+    resetSizeTo((int)aw, (int)ah);
   }
 }
 };  // namespace freeaudio::clap_wrapper::standalone::linux_standalone

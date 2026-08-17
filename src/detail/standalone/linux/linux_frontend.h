@@ -77,6 +77,19 @@ RtAudio::Api resolveAudioApiName(const std::string &name);
 // the backends this build was compiled with, for help and error text
 std::vector<RtAudio::Api> compiledAudioApis();
 
+// those backends as 'alsa, jack, pulse', which is what error text wants
+std::string compiledAudioApiNames();
+
+/*
+ * How many devices a backend can see, probed on an RtAudio of its own so the
+ * host's instance is left alone. Errors are swallowed: a backend whose server
+ * isn't running answers zero, which is an answer rather than a failure.
+ */
+void probeApiDeviceCounts(RtAudio::Api api, unsigned int &outputs, unsigned int &inputs);
+
+// tolower over a whole string, since every name here is matched case-insensitively
+std::string lowercased(const std::string &s);
+
 /*
  * Idle until the standalone is asked to stop - either the host stopped running
  * or a signal arrived. For the case where there is no GUI runloop to sit in.
