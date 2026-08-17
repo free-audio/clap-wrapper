@@ -44,8 +44,19 @@ struct X11Gui
 
   bool resetSizeTo(int w, int h);
 
+  // WM size hints from the plugin's resize hints, rather than pinning
+  // min == max == current for everything
+  void applySizeHints(int w, int h);
+  // a user (or WM) resize of our window, handed on to the plugin
+  void handleConfigure(int w, int h);
+
+  static constexpr uint32_t maxWindowDim{16384};
   static bool isSaneSize(uint32_t w, uint32_t h);
   void destroyGui();
+
+  // last size we know the window to have, so our own resizes don't echo back
+  // into the plugin
+  int lastWidth{-1}, lastHeight{-1};
 
   std::map<int, clap_id> fdToTimerId;
   std::map<clap_id, int> timerIdToFd;

@@ -121,6 +121,14 @@ void X11Gui::runloop()
           }
         }
         break;
+        case ConfigureNotify:
+        {
+          if (e.xconfigure.window == window)
+          {
+            handleConfigure(e.xconfigure.width, e.xconfigure.height);
+          }
+        }
+        break;
         case ClientMessage:
         {
           // 3. Check if the message is the delete request
@@ -255,7 +263,10 @@ void X11Gui::setPlugin(std::shared_ptr<Clap::Plugin> p)
   }
 
   XStoreName(display, window, plugin->_plugin->desc->name);
-  XSelectInput(display, window, InputOutput | StructureNotifyMask);
+  // StructureNotify for map and resize, Exposure so a damaged window can be
+  // asked to redraw. This used to pass InputOutput, which is a window class
+  // rather than an event mask and happens to equal KeyPressMask.
+  XSelectInput(display, window, StructureNotifyMask | ExposureMask);
 
   // Get window clsoed notifications
   wmDeleteMessage = XInternAtom(display, "WM_DELETE_WINDOW", False);
@@ -278,7 +289,7 @@ void X11Gui::setPlugin(std::shared_ptr<Clap::Plugin> p)
 
 bool X11Gui::isSaneSize(uint32_t w, uint32_t h)
 {
-  return w > 0 && h > 0 && w <= 16384 && h <= 16384;
+  return w > 0 && h > 0 && w <= maxWindowDim && h <= maxWindowDim;
 }
 
 void X11Gui::destroyGui()
@@ -430,19 +441,104 @@ bool X11Gui::unregister_fd(int fd)
 bool X11Gui::resetSizeTo(int w, int h)
 {
   if (!display || window == 0) return false;
-  XResizeWindow(display, window, w, h);
+  if (w <= 0 || h <= 0) return false;
 
-  XSizeHints *hints = XAllocSizeHints();
-  hints->flags = PMinSize | PMaxSize;
-  hints->min_width = w;
-  hints->max_width = w;
-  hints->min_height = h;
-  hints->max_height = h;
+  XResizeWindow(display, window, (unsigned int)w, (unsigned int)h);
 
-  // Apply hints to the window
-  XSetWMNormalHints(display, window, hints);
-  XFree(hints);
+  // we asked for this, so don't hand the resulting ConfigureNotify back to the
+  // plugin as if the user had done it
+  lastWidth = w;
+  lastHeight = h;
+
+  applySizeHints(w, h);
 
   return true;
+}
+
+void X11Gui::applySizeHints(int w, int h)
+{
+  bool hResize{false}, vResize{false}, keepAspect{false};
+  int aspectW{0}, aspectH{0};
+
+  if (guiCreated && plugin && plugin->_ext._gui)
+  {
+    auto ui = plugin->_ext._gui;
+    hResize = vResize = ui->can_resize(plugin->_plugin);
+
+    if (hResize)
+    {
+      clap_gui_resize_hints_t rh{};
+      if (ui->get_resize_hints && ui->get_resize_hints(plugin->_plugin, &rh))
+      {
+        hResize = rh.can_resize_horizontally;
+        vResize = rh.can_resize_vertically;
+        if (rh.preserve_aspect_ratio && rh.aspect_ratio_width > 0 && rh.aspect_ratio_height > 0)
+        {
+          keepAspect = true;
+          aspectW = (int)rh.aspect_ratio_width;
+          aspectH = (int)rh.aspect_ratio_height;
+        }
+      }
+    }
+  }
+
+  XSizeHints *hints = XAllocSizeHints();
+  if (!hints) return;
+
+  // A fixed axis is pinned min == max. A resizable one gets a floor and no
+  // practical ceiling: pinning both axes regardless of can_resize(), which is
+  // what this used to do, makes user resize impossible.
+  constexpr int minDim{64};
+  hints->flags = PMinSize | PMaxSize;
+  hints->min_width = hResize ? std::min(minDim, w) : w;
+  hints->max_width = hResize ? (int)maxWindowDim : w;
+  hints->min_height = vResize ? std::min(minDim, h) : h;
+  hints->max_height = vResize ? (int)maxWindowDim : h;
+
+  if (keepAspect)
+  {
+    hints->flags |= PAspect;
+    hints->min_aspect.x = aspectW;
+    hints->min_aspect.y = aspectH;
+    hints->max_aspect.x = aspectW;
+    hints->max_aspect.y = aspectH;
+  }
+
+  XSetWMNormalHints(display, window, hints);
+  XFree(hints);
+}
+
+void X11Gui::handleConfigure(int w, int h)
+{
+  if (w <= 0 || h <= 0) return;
+  if (w == lastWidth && h == lastHeight) return;  // our own resize coming back
+
+  lastWidth = w;
+  lastHeight = h;
+
+  if (!guiCreated || !plugin || !plugin->_ext._gui) return;
+
+  auto ui = plugin->_ext._gui;
+  auto pl = plugin->_plugin;
+  if (!ui->can_resize(pl)) return;  // a fixed size GUI has nothing to say here
+
+  uint32_t aw{(uint32_t)w}, ah{(uint32_t)h};
+  if (!ui->adjust_size(pl, &aw, &ah) || !isSaneSize(aw, ah))
+  {
+    aw = (uint32_t)w;
+    ah = (uint32_t)h;
+  }
+
+  ui->set_size(pl, aw, ah);
+
+  if ((int)aw != w || (int)ah != h)
+  {
+    // The plugin snapped to a size of its own, so make the window agree. The
+    // ConfigureNotify that follows matches lastWidth/lastHeight, so this
+    // settles rather than ping-ponging.
+    lastWidth = (int)aw;
+    lastHeight = (int)ah;
+    XResizeWindow(display, window, aw, ah);
+  }
 }
 };  // namespace freeaudio::clap_wrapper::standalone::linux_standalone
