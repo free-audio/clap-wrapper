@@ -129,6 +129,12 @@ standalone with no window and no X11 dependency at all, and needs
 `libx11-dev` when it is on. SIGINT/SIGTERM shut the standalone down in order,
 and a second one exits immediately.
 
+Shutdown also has a five second watchdog, because it can wedge somewhere we
+cannot reach: RtAudio's ALSA backend holds the stream mutex across the blocking
+`snd_pcm_readi()` of a duplex stream, so if the capture side stops producing —
+which a PipeWire or dmix capture device does readily — nothing can stop the
+stream and the process would otherwise have to be killed by hand.
+
 ## Licensing
 
 The `clap-wrapper` project is released under the MIT license.

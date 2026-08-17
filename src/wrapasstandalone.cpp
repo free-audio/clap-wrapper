@@ -124,15 +124,28 @@ int main(int argc, char **argv)
 #if LIN && CLAP_WRAPPER_STANDALONE_X11
   x11Gui.setPlugin(plugin);
   x11Gui.runloop();
+
+  // Everything from here is teardown, and teardown can wedge in the audio
+  // backend where we cannot reach it - a standalone which will not quit when
+  // asked has to be killed by hand. So give the orderly path a budget. It has to
+  // be comfortably more than the two seconds quiesceProcessing() spends waiting
+  // for the audio callback to acknowledge the stop.
+  freeaudio::clap_wrapper::standalone::linux_standalone::armShutdownWatchdog(5);
+
   x11Gui.shutdown();
 #elif LIN
   // No GUI compiled in, so idle here until the host winds down or a signal
   // arrives. mainWait() would not notice the signal.
   freeaudio::clap_wrapper::standalone::linux_standalone::waitForQuit();
+  freeaudio::clap_wrapper::standalone::linux_standalone::armShutdownWatchdog(5);
 #else
   freeaudio::clap_wrapper::standalone::mainWait();
 #endif
 
   plugin = nullptr;
   freeaudio::clap_wrapper::standalone::mainFinish();
+
+#if LIN
+  freeaudio::clap_wrapper::standalone::linux_standalone::shutdownFinished();
+#endif
 }

@@ -5,6 +5,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <atomic>
 #include <cerrno>
 #include <chrono>
 #include <cstdio>
@@ -30,6 +31,7 @@ namespace freeaudio::clap_wrapper::standalone::linux_standalone
 namespace
 {
 volatile sig_atomic_t quitFlag{0};
+std::atomic<bool> shutdownDone{false};
 
 extern "C" void requestQuitHandler(int sig)
 {
@@ -358,6 +360,46 @@ void waitForQuit()
   {
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
+}
+
+void armShutdownWatchdog(int seconds)
+{
+  if (seconds <= 0) return;
+
+  try
+  {
+    std::thread(
+        [seconds]()
+        {
+          for (int i = 0; i < seconds * 20 && !shutdownDone; ++i)
+          {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+          }
+
+          if (shutdownDone) return;
+
+          fprintf(stderr,
+                  "[ERROR] Shutdown did not complete within %d seconds - almost certainly the "
+                  "audio backend refusing to release the stream - so exiting anyway.\n",
+                  seconds);
+          fflush(stderr);
+
+          // Not exit(): the wedged thread holds locks that static destructors
+          // would want, and we are here precisely because waiting did not work.
+          _exit(0);
+        })
+        .detach();
+  }
+  catch (const std::system_error &e)
+  {
+    // No thread to be had. Nothing to do but let the shutdown take its chances.
+    LOGINFO("[ERROR] Unable to start the shutdown watchdog : '{}'", e.what());
+  }
+}
+
+void shutdownFinished()
+{
+  shutdownDone = true;
 }
 
 void reportError(const std::string &title, const std::string &message)

@@ -83,4 +83,21 @@ std::vector<RtAudio::Api> compiledAudioApis();
  */
 void waitForQuit();
 
+/*
+ * Start a detached timer which ends the process outright if the teardown which
+ * follows has not finished within seconds.
+ *
+ * This exists because of an RtAudio/ALSA deadlock we cannot reach from here:
+ * RtApiAlsa::callbackEvent() takes the stream mutex and holds it across the
+ * blocking snd_pcm_readi() of a duplex stream, while RtApiAlsa::stopStream()
+ * wants that same mutex. If the capture side has stopped producing - which a
+ * PipeWire or dmix capture device does readily - the read never returns, the
+ * mutex is never released and stopping the stream blocks for ever. Both ^C and
+ * closing the window then leave a process which has to be killed.
+ *
+ * So: give the orderly shutdown a fixed budget and take the exit if it overruns.
+ * shutdownFinished() cancels the timer.
+ */
+void armShutdownWatchdog(int seconds);
+void shutdownFinished();
 }  // namespace freeaudio::clap_wrapper::standalone::linux_standalone
