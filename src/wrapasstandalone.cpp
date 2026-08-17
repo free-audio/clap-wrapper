@@ -7,6 +7,10 @@
 #include "detail/standalone/linux/x11_gui.h"
 #endif
 
+#if LIN
+#include "detail/standalone/linux/linux_frontend.h"
+#endif
+
 // For now just a simple main. In the future this will branch out to
 // an [NSApplicationMain ] and so on depending on platform
 int main(int argc, char **argv)
@@ -48,6 +52,17 @@ int main(int argc, char **argv)
     std::cerr << "Clap Standalone: No Entry as configured" << std::endl;
     return 3;
   }
+
+#if LIN
+  // Without this every RtAudio failure is silent and the app just runs with no
+  // sound. reportError writes stderr always, and puts up a zenity/kdialog box
+  // if the desktop has one.
+  freeaudio::clap_wrapper::standalone::getStandaloneHost()->displayAudioError =
+      [](const std::string &msg)
+  {
+    freeaudio::clap_wrapper::standalone::linux_standalone::reportError("Unable to configure audio", msg);
+  };
+#endif
 
   std::string pid{PLUGIN_ID};
   int pindex{PLUGIN_INDEX};

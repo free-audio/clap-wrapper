@@ -175,6 +175,13 @@ function(target_add_standalone_wrapper)
         target_sources(${SA_TARGET} PRIVATE
                 ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/wrapasstandalone.cpp)
 
+        # Not the GUI: error reporting and orderly shutdown, needed with or
+        # without X11
+        find_package(Threads REQUIRED)
+        target_link_libraries(${salib} PUBLIC Threads::Threads)
+        target_sources(${salib} PRIVATE
+                ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/linux/linux_frontend.cpp)
+
         message(STATUS "clap-wrapper: Using Standalone X11 gui for CLAP Wrapper")
         target_link_libraries(${salib} PUBLIC X11)
         target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_X11)
