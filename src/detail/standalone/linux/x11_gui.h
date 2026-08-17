@@ -12,7 +12,9 @@ namespace freeaudio::clap_wrapper::standalone::linux_standalone
 {
 struct X11Gui
 {
-  void initialize(freeaudio::clap_wrapper::standalone::StandaloneHost *);
+  // false if there is no usable display; audio and timers still run, we just
+  // never get a window
+  bool initialize(freeaudio::clap_wrapper::standalone::StandaloneHost *);
   void setPlugin(std::shared_ptr<Clap::Plugin>);
   void runloop();
   void shutdown();
@@ -32,6 +34,8 @@ struct X11Gui
   Window window{0};
   Atom wmDeleteMessage{0};
   bool runloopRunning{false};
+  // so shutdown() only destroys a GUI we actually created
+  bool guiCreated{false};
 
   int epoll_fd{-1};
   static constexpr size_t maxEpollEvents{256};
@@ -39,6 +43,9 @@ struct X11Gui
   std::shared_ptr<Clap::Plugin> plugin{nullptr};
 
   bool resetSizeTo(int w, int h);
+
+  static bool isSaneSize(uint32_t w, uint32_t h);
+  void destroyGui();
 
   std::map<int, clap_id> fdToTimerId;
   std::map<clap_id, int> timerIdToFd;

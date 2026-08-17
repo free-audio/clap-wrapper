@@ -21,6 +21,15 @@ int main(int argc, char **argv)
   freeaudio::clap_wrapper::standalone::linux_standalone::installSignalHandlers();
 #endif
 
+  auto fatalError = [](const std::string &msg)
+  {
+#if LIN
+    freeaudio::clap_wrapper::standalone::linux_standalone::reportError("Unable to start", msg);
+#else
+    std::cerr << "Clap Standalone: " << msg << std::endl;
+#endif
+  };
+
   const clap_plugin_entry *entry{nullptr};
 #ifdef STATICALLY_LINKED_CLAP_ENTRY
   extern const clap_plugin_entry clap_entry;
@@ -50,12 +59,14 @@ int main(int argc, char **argv)
 #if LIN && CLAP_WRAPPER_STANDALONE_X11
   freeaudio::clap_wrapper::standalone::linux_standalone::X11Gui x11Gui{};
 
+  // A false here means we have no display. That is not fatal: audio, MIDI and
+  // plugin timers all still run, we just never show a window.
   x11Gui.initialize(freeaudio::clap_wrapper::standalone::getStandaloneHost());
 #endif
 
   if (!entry)
   {
-    std::cerr << "Clap Standalone: No Entry as configured" << std::endl;
+    fatalError("No CLAP entry as configured. Is the plugin installed?");
     return 3;
   }
 
@@ -75,6 +86,16 @@ int main(int argc, char **argv)
 
   auto plugin =
       freeaudio::clap_wrapper::standalone::mainCreatePlugin(entry, pid, pindex, 1, (char **)argv);
+  if (!plugin)
+  {
+    // Everything downstream of here dereferences this, so stop now rather than
+    // crashing in the GUI handshake
+    fatalError("Unable to create the plugin" + (pid.empty() ? std::string() : " '" + pid + "'") +
+               ". See the log for details.");
+    freeaudio::clap_wrapper::standalone::mainFinish();
+    return 4;
+  }
+
   freeaudio::clap_wrapper::standalone::mainStartAudio();
 
 #if LIN && CLAP_WRAPPER_STANDALONE_X11
