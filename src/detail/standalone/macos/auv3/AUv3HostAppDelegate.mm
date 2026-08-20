@@ -426,8 +426,9 @@ static MIDIPortRef sMIDIInputPort = 0;
     return;
   }
 
-  AVAudioFormat *adapted = [[AVAudioFormat alloc] initStandardFormatWithSampleRate:sourceFormat.sampleRate
-                                                                         channels:auChannels];
+  AVAudioFormat *adapted =
+      [[AVAudioFormat alloc] initStandardFormatWithSampleRate:sourceFormat.sampleRate
+                                                     channels:auChannels];
   AVAudioMixerNode *adapter = [[AVAudioMixerNode alloc] init];
   [_engine attachNode:adapter];  // the engine keeps attached nodes alive
 
