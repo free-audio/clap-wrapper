@@ -306,11 +306,8 @@ static MIDIPortRef sMIDIInputPort = 0;
   if (!appexBundle)
   {
     std::cout << "[auv3-standalone] ERROR: No embedded appex found" << std::endl;
-    NSAlert *alert = [[NSAlert alloc] init];
-    [alert setMessageText:@"Failed to load Audio Unit"];
-    [alert setInformativeText:@"No embedded .appex found in PlugIns directory"];
-    [alert addButtonWithTitle:@"OK"];
-    [alert runModal];
+    [self reportError:@"Failed to load Audio Unit"
+              details:@"No embedded .appex found in PlugIns directory"];
     return;
   }
 
@@ -322,11 +319,7 @@ static MIDIPortRef sMIDIInputPort = 0;
   {
     NSString *msg = error ? error.localizedDescription : @"Unknown error creating AU from appex";
     std::cout << "[auv3-standalone] ERROR: " << [msg UTF8String] << std::endl;
-    NSAlert *alert = [[NSAlert alloc] init];
-    [alert setMessageText:@"Failed to load Audio Unit"];
-    [alert setInformativeText:msg];
-    [alert addButtonWithTitle:@"OK"];
-    [alert runModal];
+    [self reportError:@"Failed to load Audio Unit" details:msg];
     return;
   }
 
@@ -347,11 +340,7 @@ static MIDIPortRef sMIDIInputPort = 0;
   {
     NSString *msg = error ? error.localizedDescription : @"Unknown error";
     std::cout << "[auv3-standalone] ERROR: Failed to instantiate AU: " << [msg UTF8String] << std::endl;
-    NSAlert *alert = [[NSAlert alloc] init];
-    [alert setMessageText:@"Failed to load Audio Unit"];
-    [alert setInformativeText:msg];
-    [alert addButtonWithTitle:@"OK"];
-    [alert runModal];
+    [self reportError:@"Failed to load Audio Unit" details:msg];
     return;
   }
 
@@ -396,6 +385,68 @@ static MIDIPortRef sMIDIInputPort = 0;
 // ---------------------------------------------------------------------------
 #pragma mark - AVAudioEngine
 // ---------------------------------------------------------------------------
+
+// Surface a setup failure without stalling setup. A modal alert run inline
+// blocks the main run loop, so everything after it — the view controller
+// request in particular, which needs a main-queue turn — never happens and the
+// window stays empty. Defer it instead.
+- (void)reportError:(NSString *)message details:(NSString *)details
+{
+  dispatch_async(dispatch_get_main_queue(), ^{
+    NSAlert *alert = [[NSAlert alloc] init];
+    [alert setMessageText:message];
+    [alert setInformativeText:details ?: @""];
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
+  });
+}
+
+// Connect two nodes across a possible channel-count mismatch.
+//
+// The device decides the hardware format — a mono built-in input is normal —
+// while an AU bus accepts only what the plugin declares: a CLAP plugin with a
+// stereo port refuses a 1-channel format, and -setFormat: then fails with
+// kAudioUnitErr_FormatNotSupported (-10868), taking the whole graph down.
+// AVAudioEngine's implicit converters change sample rate and layout but not
+// channel count; a mixer node does, so insert one when the counts differ.
+- (void)connectNode:(AVAudioNode *)source
+                 to:(AVAudioNode *)destination
+       sourceFormat:(AVAudioFormat *)sourceFormat
+           busIndex:(NSUInteger)busIndex
+            isInput:(BOOL)destinationIsAU
+{
+  AUAudioUnitBusArray *busses =
+      destinationIsAU ? _avAudioUnit.AUAudioUnit.inputBusses : _avAudioUnit.AUAudioUnit.outputBusses;
+  AVAudioFormat *auFormat = busIndex < busses.count ? busses[busIndex].format : nil;
+  AVAudioChannelCount auChannels = auFormat.channelCount;
+
+  if (!auFormat || auChannels == sourceFormat.channelCount)
+  {
+    [_engine connect:source to:destination format:sourceFormat];
+    return;
+  }
+
+  AVAudioFormat *adapted = [[AVAudioFormat alloc] initStandardFormatWithSampleRate:sourceFormat.sampleRate
+                                                                         channels:auChannels];
+  AVAudioMixerNode *adapter = [[AVAudioMixerNode alloc] init];
+  [_engine attachNode:adapter];  // the engine keeps attached nodes alive
+
+  if (destinationIsAU)
+  {
+    [_engine connect:source to:adapter format:sourceFormat];
+    [_engine connect:adapter to:destination format:adapted];
+  }
+  else
+  {
+    [_engine connect:source to:adapter format:adapted];
+    [_engine connect:adapter to:destination format:sourceFormat];
+  }
+
+  std::cout << "[auv3-standalone] channel count mismatch on AU "
+            << (destinationIsAU ? "input" : "output") << " bus " << busIndex << ": device has "
+            << sourceFormat.channelCount << " ch, AU wants " << auChannels << " ch — inserted a mixer"
+            << std::endl;
+}
 
 - (void)setupEngine
 {
@@ -464,19 +515,16 @@ static MIDIPortRef sMIDIInputPort = 0;
       // Effect: input -> AU -> output
       AVAudioNode *input = _engine.inputNode;
       AVAudioFormat *inputFormat = [input outputFormatForBus:0];
-      [_engine connect:input to:_avAudioUnit format:inputFormat];
+      [self connectNode:input to:_avAudioUnit sourceFormat:inputFormat busIndex:0 isInput:YES];
     }
-    [_engine connect:_avAudioUnit to:output format:outputFormat];
+    [self connectNode:_avAudioUnit to:output sourceFormat:outputFormat busIndex:0 isInput:NO];
   }
   @catch (NSException *e)
   {
     std::cout << "[auv3-standalone] ERROR: engine graph setup failed: " << [e.reason UTF8String]
               << std::endl;
-    NSAlert *alert = [[NSAlert alloc] init];
-    [alert setMessageText:@"Failed to set up audio engine"];
-    [alert setInformativeText:e.reason ?: @"Invalid audio graph configuration"];
-    [alert addButtonWithTitle:@"OK"];
-    [alert runModal];
+    [self reportError:@"Failed to set up audio engine"
+              details:e.reason ?: @"Invalid audio graph configuration"];
     return;
   }
 
@@ -486,11 +534,7 @@ static MIDIPortRef sMIDIInputPort = 0;
     std::cout << "[auv3-standalone] ERROR: Failed to start engine: " <<
         [error.localizedDescription UTF8String] << std::endl;
 
-    NSAlert *alert = [[NSAlert alloc] init];
-    [alert setMessageText:@"Failed to start audio engine"];
-    [alert setInformativeText:error.localizedDescription];
-    [alert addButtonWithTitle:@"OK"];
-    [alert runModal];
+    [self reportError:@"Failed to start audio engine" details:error.localizedDescription];
   }
   else
   {

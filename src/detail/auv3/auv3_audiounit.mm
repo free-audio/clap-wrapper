@@ -144,8 +144,16 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
   __weak ClapAUv3AudioUnit *_audioUnit = nil;
 
   // The native view (NSView on macOS, UIView on iOS) that the CLAP GUI
-  // is parented to. Set by createGUIInView:.
+  // is parented to. Set by parentGUIInView:.
   __weak CLAPWRAP_ViewClass *_guiParentView = nil;
+
+  // CLAP GUI state. The GUI is created (gui->create) as soon as anything needs
+  // the plugin's size — AUv3 asks for it before the view has a window — and
+  // parented (gui->set_parent) only once the view actually enters one.
+  bool _guiCreated = false;
+  bool _guiShown = false;
+  uint32_t _guiWidth = 0;
+  uint32_t _guiHeight = 0;
 
   // The view controller that owns the GUI — needed for gui_request_resize
   // to set preferredContentSize (the only legal AUv3 host communication path).
@@ -778,6 +786,19 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
 // process exit the hosted .clap is finalized before this binary, so calling
 // clap_entry.deinit() from a static destructor aborts the host.
 static Clap::Library &_library = *new Clap::Library();
+
+// The CLAP window api this platform embeds into. NSView is _COCOA, UIView is
+// _UIKIT — a hosted plugin must support the UIKit api to show a UI on iOS.
+#if TARGET_OS_IPHONE
+static const char *const _windowApi = CLAP_WINDOW_API_UIKIT;
+#else
+static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
+#endif
+
+// Private view controller method called from the audio unit below.
+@interface ClapAUv3ViewController (SizePublishing)
+- (void)_publishSizeWidth:(uint32_t)width height:(uint32_t)height;
+@end
 
 // -----------------------------------------------------------------------
 // ClapAUv3AudioUnit implementation
@@ -1676,11 +1697,16 @@ static Clap::Library &_library = *new Clap::Library();
 
 // --- GUI methods for the view controller ---
 
-- (BOOL)createGUIInView:(CLAPWRAP_ViewClass *)parentView
-                  width:(uint32_t *)outWidth
-                 height:(uint32_t *)outHeight
+- (BOOL)prepareGUIAndReturnWidth:(uint32_t *)outWidth height:(uint32_t *)outHeight
 {
   if (!_impl || !_impl->_plugin || !_impl->_plugin->_ext._gui) return NO;
+
+  if (_impl->_guiCreated)
+  {
+    if (outWidth) *outWidth = _impl->_guiWidth;
+    if (outHeight) *outHeight = _impl->_guiHeight;
+    return YES;
+  }
 
   // In out-of-process AUv3, _main_thread_id was captured on the XPC worker
   // thread during init, so the CLAP proxy doesn't recognize the actual main
@@ -1690,23 +1716,15 @@ static Clap::Library &_library = *new Clap::Library();
   auto *gui = _impl->_plugin->_ext._gui;
   auto *plugin = _impl->_plugin->_plugin;
 
-  // NSView is _COCOA, UIView is _UIKIT. A hosted plugin must support the
-  // UIKit api to show a UI on iOS.
-#if TARGET_OS_IPHONE
-  const char *windowApi = CLAP_WINDOW_API_UIKIT;
-#else
-  const char *windowApi = CLAP_WINDOW_API_COCOA;
-#endif
-
-  if (!gui->is_api_supported(plugin, windowApi, false))
+  if (!gui->is_api_supported(plugin, _windowApi, false))
   {
-    AUV3ERR("createGUIInView: plugin rejected api '%{public}s'", windowApi);
+    AUV3ERR("prepareGUI: plugin rejected api '%{public}s'", _windowApi);
     return NO;
   }
 
-  if (!gui->create(plugin, windowApi, false))
+  if (!gui->create(plugin, _windowApi, false))
   {
-    AUV3ERR("createGUIInView: gui->create failed for api '%{public}s'", windowApi);
+    AUV3ERR("prepareGUI: gui->create failed for api '%{public}s'", _windowApi);
     return NO;
   }
 
@@ -1723,13 +1741,36 @@ static Clap::Library &_library = *new Clap::Library();
   // Confirm the size to the plugin (matches VST3/AUv2 pattern).
   gui->set_size(plugin, w, h);
 
+  _impl->_guiCreated = true;
+  _impl->_guiWidth = w;
+  _impl->_guiHeight = h;
+
+  if (outWidth) *outWidth = w;
+  if (outHeight) *outHeight = h;
+
+  return YES;
+}
+
+- (BOOL)parentGUIInView:(CLAPWRAP_ViewClass *)parentView
+{
+  if (!_impl || !_impl->_plugin || !_impl->_plugin->_ext._gui) return NO;
+  if (!_impl->_guiCreated) return NO;
+
+  auto mainGuard = _impl->_plugin->AlwaysMainThread();
+
+  auto *gui = _impl->_plugin->_ext._gui;
+  auto *plugin = _impl->_plugin->_plugin;
+
   // Resize the parent view BEFORE set_parent() so the CLAP plugin's
   // subview is created inside a properly-sized container. Without this
   // the container is 0x0 and plugins that clip to parent bounds are invisible.
-  [parentView setFrame:CGRectMake(0, 0, w, h)];
+  if (_impl->_guiWidth > 0 && _impl->_guiHeight > 0)
+  {
+    [parentView setFrame:CGRectMake(0, 0, _impl->_guiWidth, _impl->_guiHeight)];
+  }
 
   clap_window_t window;
-  window.api = windowApi;
+  window.api = _windowApi;
 #if TARGET_OS_IPHONE
   // CLAP's clap_window union has no UIKit-typed member. The `ptr` slot is
   // the generic escape hatch; the hosted plugin reads it as a UIView*.
@@ -1739,9 +1780,7 @@ static Clap::Library &_library = *new Clap::Library();
 #endif
   gui->set_parent(plugin, &window);
   gui->show(plugin);
-
-  if (outWidth) *outWidth = w;
-  if (outHeight) *outHeight = h;
+  _impl->_guiShown = true;
 
   // Update the IHost gui_request_resize to notify the view controller
   _impl->_guiParentView = parentView;
@@ -1752,10 +1791,15 @@ static Clap::Library &_library = *new Clap::Library();
 - (void)destroyGUI
 {
   if (!_impl || !_impl->_plugin || !_impl->_plugin->_ext._gui) return;
+  if (!_impl->_guiCreated) return;
 
   auto mainGuard = _impl->_plugin->AlwaysMainThread();
-  _impl->_plugin->_ext._gui->hide(_impl->_plugin->_plugin);
+  // Only hide what was shown: the GUI may have been created purely to answer a
+  // size query and never parented.
+  if (_impl->_guiShown) _impl->_plugin->_ext._gui->hide(_impl->_plugin->_plugin);
   _impl->_plugin->_ext._gui->destroy(_impl->_plugin->_plugin);
+  _impl->_guiCreated = false;
+  _impl->_guiShown = false;
   _impl->_guiParentView = nil;
   _impl->_viewController = nil;
 }
@@ -1791,17 +1835,10 @@ static Clap::Library &_library = *new Clap::Library();
 - (void)_applyGUISizeWidth:(uint32_t)width height:(uint32_t)height
 {
   if (!_impl) return;
+  _impl->_guiWidth = width;
+  _impl->_guiHeight = height;
   __strong ClapAUv3ViewController *vc = _impl->_viewController;
-  if (vc)
-  {
-    // CGRectMake / CGSizeMake work identically on macOS and iOS;
-    // NSMakeRect / NSMakeSize are AppKit-only.
-    vc.view.frame = CGRectMake(0, 0, width, height);
-
-    [vc willChangeValueForKey:@"preferredContentSize"];
-    vc.preferredContentSize = CGSizeMake(width, height);
-    [vc didChangeValueForKey:@"preferredContentSize"];
-  }
+  if (vc) [vc _publishSizeWidth:width height:height];
 }
 
 // --- View controller ---
@@ -1959,28 +1996,56 @@ static Clap::Library &_library = *new Clap::Library();
 // ClapAUv3ViewController implementation (also serves as AUAudioUnitFactory)
 // -----------------------------------------------------------------------
 
+// The viewbridge rejects zero-sized views, so the view is born with this
+// placeholder. It only ever reaches a host that has no plugin GUI to ask about.
+static const CGSize kClapAUv3PlaceholderSize = {400, 500};
+
 @implementation ClapAUv3ViewController
 {
-  BOOL _guiCreated;
+  // The CLAP GUI exists (gui->create succeeded). Independent of _guiParented:
+  // AUv3 wants the plugin's size before the view has a window, so the GUI is
+  // created as soon as the size is needed and parented later.
+  BOOL _guiPrepared;
+  // The CLAP GUI is embedded in our view and shown (set_parent + show).
+  BOOL _guiParented;
+  // Re-entrancy guard: publishing preferredContentSize can come back into the
+  // getter through KVO observers.
+  BOOL _preparing;
+  // _pluginSize holds the plugin's own size. AppKit's stored property is only
+  // a mirror of it: -setView: overwrites the property with the view's frame, so
+  // the ivar is the source of truth the getter answers from.
+  BOOL _sizeKnown;
+  CGSize _pluginSize;
+  // We already tried to create the audio unit ourselves (see _bootstrapAudioUnit).
+  BOOL _bootstrapAttempted;
 }
 
 - (void)loadView
 {
+  // Ask the plugin before the view exists. The host reads preferredContentSize
+  // as soon as the view controller is vended — before the view has a window —
+  // and the viewbridge doesn't forward later changes; -setView: also overwrites
+  // preferredContentSize with the view's frame. So the view has to be born at
+  // the right size. Create the audio unit ourselves if the host hasn't got
+  // round to the factory method yet.
+  [self _bootstrapAudioUnit];
+  [self _ensureGUIPrepared];
+
   // Custom container view that detects when the view enters a window via
   // (view)didMoveToWindow / (view)didMoveToSuperview. AUViewController
   // lifecycle methods only fire when the VC is in the VC hierarchy —
-  // many hosts just call addSubview:.
-  //
-  // Start with a reasonable default size. The viewbridge rejects
-  // zero-sized views. The real size is set in _createPluginGUI once the
-  // CLAP plugin reports its preferred dimensions.
-  CGSize initialSize = CGSizeMake(400, 500);
+  // many hosts just call addSubview:. The viewbridge rejects zero-sized views,
+  // hence the placeholder when the plugin has no GUI to ask about.
+  CGSize initialSize = _sizeKnown ? _pluginSize : kClapAUv3PlaceholderSize;
   ClapAUv3ContainerView *view = [[ClapAUv3ContainerView alloc]
       initWithFrame:CGRectMake(0, 0, initialSize.width, initialSize.height)];
   view.viewController = self;
   view.translatesAutoresizingMaskIntoConstraints = YES;
   [self setView:view];
   self.preferredContentSize = initialSize;
+
+  AUV3LOG("loadView: view %dx%d (plugin size known=%d)", (int)initialSize.width, (int)initialSize.height,
+          _sizeKnown ? 1 : 0);
 }
 
 - (void)setAudioUnit:(ClapAUv3AudioUnit *)audioUnit
@@ -1989,48 +2054,178 @@ static Clap::Library &_library = *new Clap::Library();
   // Establish the back-reference so the AU can return us from
   // requestViewControllerWithCompletionHandler:
   if (audioUnit) audioUnit->_factoryViewController = self;
+
+  // The viewbridge can load the view before the factory method runs, in which
+  // case loadView had no plugin to ask. Now there is one. Out-of-process this
+  // runs on an XPC worker thread, and everything below — view access included —
+  // is main thread only.
+  if (audioUnit)
+  {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      if (self.isViewLoaded) [self _ensureGUIPrepared];
+    });
+  }
 }
 
-- (void)_createPluginGUI
+// A 4-character-code Info.plist string ("aufx") as an OSType.
+static BOOL clapAUv3FourCC(id value, OSType *outCode)
 {
-  if (!self.audioUnit) return;
+  if (![value isKindOfClass:NSString.class]) return NO;
+  const char *chars = [(NSString *)value UTF8String];
+  if (!chars || strlen(chars) != 4) return NO;
+  *outCode = ((OSType)(uint8_t)chars[0] << 24) | ((OSType)(uint8_t)chars[1] << 16) |
+             ((OSType)(uint8_t)chars[2] << 8) | (OSType)(uint8_t)chars[3];
+  return YES;
+}
 
-  // Establish the back-reference so gui_request_resize can reach this VC
+// Our own entry in the appex's AudioComponents array — the one whose
+// factoryFunction names this class.
+- (BOOL)_ownComponentDescription:(AudioComponentDescription *)outDesc
+{
+  NSDictionary *extension =
+      [[NSBundle bundleForClass:[self class]] objectForInfoDictionaryKey:@"NSExtension"];
+  NSArray *components = extension[@"NSExtensionAttributes"][@"AudioComponents"];
+  NSString *className = NSStringFromClass([self class]);
+
+  for (id entry in components)
+  {
+    if (![entry isKindOfClass:NSDictionary.class]) continue;
+    NSDictionary *component = entry;
+    if (![className isEqualToString:component[@"factoryFunction"]]) continue;
+
+    AudioComponentDescription desc = {};
+    if (!clapAUv3FourCC(component[@"type"], &desc.componentType)) return NO;
+    if (!clapAUv3FourCC(component[@"subtype"], &desc.componentSubType)) return NO;
+    if (!clapAUv3FourCC(component[@"manufacturer"], &desc.componentManufacturer)) return NO;
+    *outDesc = desc;
+    return YES;
+  }
+  return NO;
+}
+
+// Out-of-process AUv3: the viewbridge loads our view from inside
+// -beginRequestWithExtensionContext:, before the host has asked the factory for
+// an audio unit, and it captures preferredContentSize as the view is vended —
+// nothing published afterwards reaches the host process. So the plugin has to
+// exist by then. Create the audio unit ourselves and hand that same instance to
+// the host when it does ask (the generated factory method is idempotent).
+// JUCE's AUv3 wrapper solves it the same way, from -loadView.
+- (void)_bootstrapAudioUnit
+{
+  if (self.audioUnit || _bootstrapAttempted) return;
+  _bootstrapAttempted = YES;
+  AUV3LOG("bootstrap: creating the audio unit ourselves (no host factory call yet)");
+
+  AudioComponentDescription desc = {};
+  if (![self _ownComponentDescription:&desc])
+  {
+    AUV3ERR("bootstrap: no AudioComponents entry for %{public}s",
+            NSStringFromClass([self class]).UTF8String);
+    return;
+  }
+
+  NSError *error = nil;
+  if (![self createAudioUnitWithComponentDescription:desc error:&error])
+  {
+    AUV3ERR("bootstrap: audio unit creation failed: %{public}s",
+            error ? error.localizedDescription.UTF8String : "unknown error");
+  }
+}
+
+// AUv3's only channel for a plugin-declared window size is this view
+// controller's preferredContentSize (plus the view's frame), and hosts read it
+// before the view is ever put into a window. CLAP can answer that early: once
+// plugin->init() has run, gui->create() is the only precondition for
+// get_size() — set_parent() and show() come afterwards (see clap/ext/gui.h).
+// So create the GUI here and keep it until the view goes away.
+- (BOOL)_ensureGUIPrepared
+{
+  if (_guiPrepared) return YES;
+  if (_preparing) return NO;
+  if (!self.audioUnit) return NO;  // factory hasn't run yet — setAudioUnit: retries
+
+  if (!NSThread.isMainThread)
+  {
+    // gui->create() builds a native view and preferredContentSize is an AppKit
+    // property — both main thread only. Out-of-process AUv3 calls into us from
+    // XPC worker threads, so hand the work over and let this read fall back to
+    // the placeholder; the KVO notification carries the real size shortly after.
+    AUV3LOG("_ensureGUIPrepared: off main thread, deferring");
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [self _ensureGUIPrepared];
+    });
+    return NO;
+  }
+
+  _preparing = YES;
+
+  // gui_request_resize can fire from inside gui->create(), so establish the
+  // back-reference first.
   [self.audioUnit setViewController:self];
 
   uint32_t w = 0, h = 0;
-  if ([self.audioUnit createGUIInView:self.view width:&w height:&h])
-  {
-    AUV3LOG("GUI created, size=%ux%u", w, h);
-    if (w > 0 && h > 0)
-    {
-      // Explicit KVO notifications — required for the remote proxy to
-      // forward preferredContentSize changes across the XPC boundary
-      // to the host process.
-      self.view.frame = CGRectMake(0, 0, w, h);
-      [self willChangeValueForKey:@"preferredContentSize"];
-      self.preferredContentSize = CGSizeMake(w, h);
-      [self didChangeValueForKey:@"preferredContentSize"];
-    }
-  }
-  else
-  {
-    _guiCreated = NO;
-  }
+  const BOOL created = [self.audioUnit prepareGUIAndReturnWidth:&w height:&h];
+  _preparing = NO;
+
+  if (!created) return NO;  // no gui extension, or the plugin refused the api
+
+  _guiPrepared = YES;
+  AUV3LOG("GUI created, size=%ux%u", w, h);
+  if (w > 0 && h > 0) [self _publishSizeWidth:w height:h];
+  return YES;
 }
 
-// Convergence point for GUI creation. Called from multiple triggers:
+// Tell the host how big the plugin wants to be. Also called by the audio unit
+// when the plugin itself requests a resize.
+- (void)_publishSizeWidth:(uint32_t)width height:(uint32_t)height
+{
+  // CGRectMake / CGSizeMake work identically on macOS and iOS;
+  // NSMakeRect / NSMakeSize are AppKit-only.
+  _pluginSize = CGSizeMake(width, height);
+  _sizeKnown = YES;
+
+  // Before the view exists there is nothing to resize and nobody observing —
+  // loadView applies the size when it builds the view.
+  if (!self.isViewLoaded) return;
+
+  self.view.frame = CGRectMake(0, 0, width, height);
+
+  // Explicit KVO notifications — required for the remote proxy to
+  // forward preferredContentSize changes across the XPC boundary
+  // to the host process.
+  [self willChangeValueForKey:@"preferredContentSize"];
+  self.preferredContentSize = _pluginSize;
+  [self didChangeValueForKey:@"preferredContentSize"];
+}
+
+- (CGSize)preferredContentSize
+{
+  // Some hosts read the size before they ever touch .view — our own AUv3
+  // standalone does (AUv3HostAppDelegate.mm). Make the first read the real one.
+  if (!_sizeKnown)
+  {
+    [self _bootstrapAudioUnit];
+    [self _ensureGUIPrepared];
+  }
+  // Answer from the plugin, not from AppKit's stored property: -setView:
+  // overwrites that with the view's frame.
+  return _sizeKnown ? _pluginSize : [super preferredContentSize];
+}
+
+// Convergence point for embedding the GUI. Called from multiple triggers:
 // - viewDidMoveToWindow / viewDidMoveToSuperview (in-process)
 // - viewDidAppear (out-of-process)
-// Creates the GUI once all preconditions are met. Guarded by _guiCreated.
+// Parents the GUI once all preconditions are met. Guarded by _guiParented.
 - (void)_tryCreateGUI
 {
-  if (_guiCreated) return;
+  if (_guiParented) return;
   if (!self.audioUnit) return;
   if (!self.isViewLoaded || !self.view.window) return;
 
-  _guiCreated = YES;
-  [self _createPluginGUI];
+  // Normally a no-op — the GUI already exists from the size query.
+  if (![self _ensureGUIPrepared]) return;
+
+  if ([self.audioUnit parentGUIInView:self.view]) _guiParented = YES;
 }
 
 // Called by ClapAUv3ContainerView when the view enters or leaves a window.
@@ -2044,22 +2239,26 @@ static Clap::Library &_library = *new Clap::Library();
   }
   else
   {
-    if (_guiCreated)
-    {
-      _guiCreated = NO;
-      [self.audioUnit destroyGUI];
-    }
+    [self _destroyGUI];
   }
+}
+
+// Drop the CLAP GUI. The last published size stays in preferredContentSize —
+// the host asked for the size the plugin wants, and that hasn't changed.
+- (void)_destroyGUI
+{
+  if (!_guiPrepared) return;
+  _guiPrepared = NO;
+  _guiParented = NO;
+  [self.audioUnit destroyGUI];
 }
 
 - (void)viewDidLoad
 {
   [super viewDidLoad];
-  // Try to create the GUI early so preferredContentSize is set BEFORE
-  // the host reads it via requestViewControllerWithCompletionHandler:.
-  // For out-of-process AUv3, the proxy doesn't forward property changes,
-  // so the host only sees the value that was set at VC creation time.
-  // If gui->create() blocks (JUCE plugins), viewDidAppear handles it later.
+  // loadView already created the GUI and published its size. If the view is
+  // already in a window (LoadInProcess), parent it right away; otherwise
+  // viewDidAppear / (view)didMoveToWindow does it later.
   [self _tryCreateGUI];
 }
 
@@ -2096,7 +2295,7 @@ static Clap::Library &_library = *new Clap::Library();
 #else
   [super viewDidLayoutSubviews];
 #endif
-  if (!_guiCreated) return;
+  if (!_guiParented) return;
 
   CGRect bounds = self.view.bounds;
   if (bounds.size.width > 0 && bounds.size.height > 0)
@@ -2118,32 +2317,20 @@ static Clap::Library &_library = *new Clap::Library();
 #if TARGET_OS_OSX
 - (void)viewDidDisappear
 {
-  if (_guiCreated)
-  {
-    _guiCreated = NO;
-    [self.audioUnit destroyGUI];
-  }
+  [self _destroyGUI];
   [super viewDidDisappear];
 }
 #else
 - (void)viewDidDisappear:(BOOL)animated
 {
-  if (_guiCreated)
-  {
-    _guiCreated = NO;
-    [self.audioUnit destroyGUI];
-  }
+  [self _destroyGUI];
   [super viewDidDisappear:animated];
 }
 #endif
 
 - (void)dealloc
 {
-  if (_guiCreated)
-  {
-    [self.audioUnit destroyGUI];
-    _guiCreated = NO;
-  }
+  [self _destroyGUI];
 }
 
 // --- AUAudioUnitFactory ---

@@ -481,6 +481,9 @@ int main(int argc, char **argv)
       cppf
           << "- (AUAudioUnit *)createAudioUnitWithComponentDescription:(AudioComponentDescription)desc\n"
           << "                                                   error:(NSError **)error {\n"
+          << "    // The view controller may have created it already, to answer a size\n"
+          << "    // query before the host got here (see -_bootstrapAudioUnit).\n"
+          << "    if (self.audioUnit) return self.audioUnit;\n"
           << "    ClapAUv3AudioUnit *au = [[ClapAUv3AudioUnit alloc] initWithComponentDescription:desc\n"
           << "                                                          options:0\n"
           << "                                                            error:error\n"

@@ -13,6 +13,9 @@
 @implementation @AUV3_FACTORY_CLASS_NAME@
 - (AUAudioUnit *)createAudioUnitWithComponentDescription:(AudioComponentDescription)desc
                                                    error:(NSError **)error {
+    // The view controller may have created it already, to answer a size
+    // query before the host got here (see -_bootstrapAudioUnit).
+    if (self.audioUnit) return self.audioUnit;
     ClapAUv3AudioUnit *au = [[ClapAUv3AudioUnit alloc] initWithComponentDescription:desc
                                                           options:0
                                                             error:error

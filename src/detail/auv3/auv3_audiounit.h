@@ -52,12 +52,18 @@
                                       clapId:(NSString *)clapId
                                    clapIndex:(int)clapIndex;
 
-// Called by the view controller to create/attach the CLAP GUI to a parent view.
+// Called by the view controller to create the CLAP GUI and learn how big it
+// wants to be. Deliberately separate from parenting: CLAP allows get_size()
+// once gui->create() has run, before set_parent() (clap/ext/gui.h), and AUv3
+// needs the size before the view has a window to parent into.
 // Returns YES if the CLAP plugin has a GUI and it was successfully created.
+// Idempotent — repeated calls just hand back the size.
+- (BOOL)prepareGUIAndReturnWidth:(uint32_t *)outWidth height:(uint32_t *)outHeight;
+
+// Called by the view controller once the view has a window: embeds the
+// already-created CLAP GUI and shows it. Returns NO if the GUI wasn't prepared.
 // parentView is an NSView on macOS and a UIView on iOS (see auv3_platform.h).
-- (BOOL)createGUIInView:(CLAPWRAP_ViewClass *)parentView
-                  width:(uint32_t *)outWidth
-                 height:(uint32_t *)outHeight;
+- (BOOL)parentGUIInView:(CLAPWRAP_ViewClass *)parentView;
 
 // Called by the view controller when the view is being torn down.
 - (void)destroyGUI;
