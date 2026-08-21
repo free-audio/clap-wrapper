@@ -683,6 +683,7 @@ void WrapAsAUV2::Cleanup()
     }
   }
   deactivateCLAP();
+  releaseHostMIDIOutput();
   Base::Cleanup();
 }
 
@@ -1145,6 +1146,14 @@ void WrapAsAUV2::deactivateCLAP()
     _plugin->stop_processing();
     _plugin->deactivate();
   }
+}
+
+// Only when the AU itself is going away. A restart the plugin asked for cycles
+// the CLAP underneath a still-initialized AU, and the host does not reinstall
+// what it handed us through SetProperty -- so dropping these there would lose
+// MIDI output for the rest of the session.
+void WrapAsAUV2::releaseHostMIDIOutput()
+{
   _midioutput_hostcallback = {nullptr, nullptr};
 #if AUSDK_MIDI2_AVAILABLE
   // No render can run once the AU is uninitialized: drop the event-list block
@@ -1160,6 +1169,7 @@ OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags &inFlags, const AudioTime
                             UInt32 inFrames)
 {
   assert(inFlags == 0);
+  ClapWrapper::detail::shared::SpinLockGuard processGuard(_processLock);
   if (_initialized && (inFlags == 0))
   {
     // do the render dance
@@ -1368,6 +1378,32 @@ void WrapAsAUV2::onIdle()
     {
       auto guarantee_mainthread = _plugin->AlwaysMainThread();
       _plugin->_plugin->on_main_thread(_plugin->_plugin);
+    }
+  }
+
+  if (_requestRestart.exchange(false) && _plugin)
+  {
+    // AU has no host-facing "reinitialize me", but it needs none: the wrapper
+    // owns the CLAP's activate/deactivate itself, so it can cycle it underneath
+    // a still-initialized AU. The standalone does the same thing.
+    auto guarantee_mainthread = _plugin->AlwaysMainThread();
+
+    // The lock is held only long enough to close the door, not across the
+    // rebuild. Render holds it for its whole body, so once it is acquired no
+    // render is inside the process adapter; clearing _initialized under it
+    // keeps the ones that follow out while the plugin is torn down and stood
+    // back up. Those renders return without touching the buffers, exactly as
+    // they do before the AU is initialized.
+    bool wasInitialized;
+    {
+      ClapWrapper::detail::shared::SpinLockGuard processGuard(_processLock);
+      wasInitialized = _initialized.exchange(false);
+    }
+
+    if (wasInitialized)
+    {
+      deactivateCLAP();
+      activateCLAP();
     }
   }
 }
