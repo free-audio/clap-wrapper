@@ -1340,7 +1340,10 @@ void ClapAsVst3::latency_changed()
 void ClapAsVst3::tail_changed()
 {
   // TODO: this could also be kIoChanged, we have to check this
-  this->componentHandler->restartComponent(Vst::RestartFlags::kLatencyChanged);
+  // a plugin can report a tail change from within state load(), which a host may
+  // call before it hands us the component handler - as param_rescan guards for
+  if (this->componentHandler)
+    this->componentHandler->restartComponent(Vst::RestartFlags::kLatencyChanged);
 }
 
 void ClapAsVst3::mark_dirty()
