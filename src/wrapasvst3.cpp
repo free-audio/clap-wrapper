@@ -213,6 +213,10 @@ tresult PLUGIN_API ClapAsVst3::setActive(TBool state)
 
     if (_missedLatencyRequest)
     {
+      // cleared here, not just in getLatencySamples(): a host that does not answer
+      // the restart by re-querying the latency would otherwise leave the flag set
+      // and get a fresh kLatencyChanged out of every later setActive(true).
+      _missedLatencyRequest = false;
       latency_changed();
     }
 
