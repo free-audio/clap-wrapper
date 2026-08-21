@@ -138,6 +138,8 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
   std::string _hostname = "CLAP-as-AUv3";
   std::atomic<bool> _initialized{false};
   std::atomic_bool _requestUICallback{false};
+  // set by mark_dirty(), serviced by the idle timer
+  std::atomic_bool _requestMarkDirty{false};
   dispatch_source_t _idleTimer = nullptr;
 
   // Back-reference to the ObjC audio unit (weak to avoid retain cycle)
@@ -184,6 +186,13 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
   void mark_dirty() override
   {
     AUV3LOG("IHost::mark_dirty() called");
+    // AUAudioUnit has no dirty flag. The nearest equivalent is a KVO
+    // notification on fullState, which AUAudioUnit.h documents as bridged to
+    // the v2 property kAudioUnitProperty_ClassInfo. Deferred to the idle timer
+    // so that a host reacting to it by reading the state cannot re-enter the
+    // plugin from inside the call that reported dirty, and so bursts collapse
+    // into one notification per tick.
+    _requestMarkDirty = true;
   }
   void restartPlugin() override
   {
@@ -218,6 +227,25 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
       // Fire CLAP timers — safe while processing since timer callbacks
       // run on the main thread, not the audio thread.
       self->fireTimers();
+
+      // Tell the host that the state it last read is stale. Serviced even
+      // while processing: no CLAP plugin call is made here.
+      if (self->_requestMarkDirty.exchange(false))
+      {
+        ClapAUv3AudioUnit *au = self->_audioUnit;
+        if (au)
+        {
+          // Both keys cross the appex XPC boundary: a v3 host sees the KVO,
+          // and a v2-API host receives the bridged kAudioUnitProperty_ClassInfo
+          // / kAudioUnitProperty_ClassInfoFromDocument notification. Note that
+          // AudioToolbox also emits allParameterValues alongside these keys, so
+          // a host may re-read parameter values as a side effect.
+          [au willChangeValueForKey:@"fullState"];
+          [au didChangeValueForKey:@"fullState"];
+          [au willChangeValueForKey:@"fullStateForDocument"];
+          [au didChangeValueForKey:@"fullStateForDocument"];
+        }
+      }
 
       // Do NOT call on_main_thread() while the plugin is processing.
       // JUCE's on_main_thread() acquires locks that process() also needs —

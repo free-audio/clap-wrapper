@@ -1361,6 +1361,14 @@ void WrapAsAUV2::onIdle()
     }
   }
 
+  if (_requestMarkDirty.exchange(false))
+  {
+    // The plugin's state no longer matches what the host last read. Apple's
+    // v2->v3 bridge turns this into a KVO notification on the AUAudioUnit's
+    // fullState, so v3 hosts hear it too.
+    PropertyChanged(kAudioUnitProperty_ClassInfo, kAudioUnitScope_Global, 0);
+  }
+
   if (_requestUICallback)
   {
     _requestUICallback = false;
