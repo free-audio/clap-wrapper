@@ -17,6 +17,7 @@
 #include "osutil.h"
 #include <vector>
 #include <iostream>
+#include <chrono>
 #include <dlfcn.h>
 
 #include "detail/os/fs.h"
@@ -117,7 +118,13 @@ void detach(IPlugObject *plugobject)
 
 uint64_t getTickInMS()
 {
-  return (::clock() * 1000) / CLOCKS_PER_SEC;
+  // Wall-clock milliseconds since some fixed point — the CLAP timer extension
+  // schedules in real time. Deliberately not clock(): that is process CPU time
+  // summed over all threads, so it crawls while the process is idle (timers
+  // never fire) and can outrun real time while the audio threads are busy.
+  return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   std::chrono::steady_clock::now().time_since_epoch())
+                                   .count());
 }
 
 fs::path getPluginPath()
