@@ -27,6 +27,7 @@
 #include "process.h"
 #include "parameter.h"
 #include "detail/shared/fixedqueue.h"
+#include "detail/shared/spinlock.h"
 #include "detail/shared/midi_translation.h"
 #include "detail/os/osutil.h"
 #include "detail/clap/automation.h"
@@ -597,6 +598,7 @@ class WrapAsAUV2 : public ausdk::AUBase,
   }
   void restartPlugin() override
   {
+    _requestRestart = true;
   }
   void request_callback() override
   {
@@ -754,6 +756,8 @@ class WrapAsAUV2 : public ausdk::AUBase,
 
   void activateCLAP();
   void deactivateCLAP();
+  // the AU-level half of the teardown, which an internal restart must not do
+  void releaseHostMIDIOutput();
   bool IsBypassEffect()
   {
     return _isBypassed;
@@ -835,6 +839,11 @@ class WrapAsAUV2 : public ausdk::AUBase,
   std::atomic_bool _requestUICallback = false;
   // set by mark_dirty(), serviced in onIdle()
   std::atomic_bool _requestMarkDirty = false;
+  std::atomic_bool _requestRestart = false;
+
+  // Held by Render() for its whole body, and taken by onIdle() to fence against
+  // an in-flight render before it rebuilds the plugin. See onIdle().
+  ClapWrapper::detail::shared::SpinLock _processLock;
 
   // the queue from audiothread to UI thread
   ClapWrapper::detail::shared::fixedqueue<queueEvent, 8192> _queueToUI;
