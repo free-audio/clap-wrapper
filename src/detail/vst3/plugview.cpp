@@ -5,13 +5,13 @@
 
 WrappedView::WrappedView(const clap_plugin_t *plugin, const clap_plugin_gui_t *gui,
                          std::function<void()> onReleaseAdditionalReferences,
-                         std::function<void(bool)> onDestroy, std::function<void()> onRunLoopAvailable)
+                         std::function<void(bool)> onDestroy, std::function<void()> onRunLoopChanged)
   : IPlugView()
   , FObject()
   , _plugin(plugin)
   , _extgui(gui)
   , _onReleaseAdditionalReferences(onReleaseAdditionalReferences)
-  , _onRunLoopAvailable(onRunLoopAvailable)
+  , _onRunLoopChanged(onRunLoopChanged)
   , _onDestroy(onDestroy)
 {
 }
@@ -224,14 +224,24 @@ tresult PLUGIN_API WrappedView::setFrame(IPlugFrame *frame)
   _plugFrame = frame;
 
 #if LIN
+  // The run loop going away matters as much as it arriving: it is the wrapper's
+  // only main thread, and something has to take over when the host takes it
+  // back. A host may hand back a null frame and keep the view alive across an
+  // editor being closed and reopened.
+  auto *const previousRunLoop = _runLoop;
+  Steinberg::Linux::IRunLoop *runLoop{nullptr};
   if (_plugFrame)
   {
-    if (_plugFrame->queryInterface(Steinberg::Linux::IRunLoop::iid, (void **)&_runLoop) ==
-            Steinberg::kResultOk &&
-        _onRunLoopAvailable)
+    if (_plugFrame->queryInterface(Steinberg::Linux::IRunLoop::iid, (void **)&runLoop) !=
+        Steinberg::kResultOk)
     {
-      _onRunLoopAvailable();
+      runLoop = nullptr;
     }
+  }
+  _runLoop = runLoop;
+  if (_runLoop != previousRunLoop && _onRunLoopChanged)
+  {
+    _onRunLoopChanged();
   }
 #endif
   return kResultOk;

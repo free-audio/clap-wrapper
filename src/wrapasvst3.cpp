@@ -274,6 +274,9 @@ tresult PLUGIN_API ClapAsVst3::canProcessSampleSize(int32 symbolicSampleSize)
 
 tresult PLUGIN_API ClapAsVst3::setState(IBStream *state)
 {
+  // [main-thread] -- must not run while the Linux helper thread is inside this
+  // plug-in's idle. \see _mainThreadLock
+  std::lock_guard<std::recursive_mutex> mainThreadGuard(_mainThreadLock);
   auto raise = _plugin->AlwaysMainThread();
   // a plugin may request a value rescan from within load(), which syncs the values for us
   _paramValuesSyncedDuringLoad = false;
@@ -312,6 +315,9 @@ void ClapAsVst3::syncParameterValuesFromClap()
 
 tresult PLUGIN_API ClapAsVst3::getState(IBStream *state)
 {
+  // [main-thread] -- must not run while the Linux helper thread is inside this
+  // plug-in's idle. \see _mainThreadLock
+  std::lock_guard<std::recursive_mutex> mainThreadGuard(_mainThreadLock);
   return (_plugin->save(CLAPVST3StreamAdapter(state)) ? Steinberg::kResultOk : Steinberg::kResultFalse);
 }
 
@@ -350,6 +356,9 @@ uint32 PLUGIN_API ClapAsVst3::getTailSamples()
 
 tresult PLUGIN_API ClapAsVst3::setupProcessing(Vst::ProcessSetup &newSetup)
 {
+  // [main-thread] -- must not run while the Linux helper thread is inside this
+  // plug-in's idle. \see _mainThreadLock
+  std::lock_guard<std::recursive_mutex> mainThreadGuard(_mainThreadLock);
   if (newSetup.symbolicSampleSize != Vst::kSample32)
   {
     return kResultFalse;
@@ -411,6 +420,9 @@ tresult PLUGIN_API ClapAsVst3::setProcessing(TBool state)
 tresult PLUGIN_API ClapAsVst3::setBusArrangements(Vst::SpeakerArrangement *inputs, int32 numIns,
                                                   Vst::SpeakerArrangement *outputs, int32 numOuts)
 {
+  // [main-thread] -- must not run while the Linux helper thread is inside this
+  // plug-in's idle. \see _mainThreadLock
+  std::lock_guard<std::recursive_mutex> mainThreadGuard(_mainThreadLock);
   if (!_plugin->_ext._audioports)
   {
     return kResultFalse;
@@ -501,6 +513,9 @@ tresult PLUGIN_API ClapAsVst3::setComponentState(IBStream * /*state*/)
 
 IPlugView *PLUGIN_API ClapAsVst3::createView(FIDString /*name*/)
 {
+  // [main-thread] -- must not run while the Linux helper thread is inside this
+  // plug-in's idle. \see _mainThreadLock
+  std::lock_guard<std::recursive_mutex> mainThreadGuard(_mainThreadLock);
   if (_plugin->_ext._gui)
   {
     clearContextMenu();
@@ -517,6 +532,10 @@ IPlugView *PLUGIN_API ClapAsVst3::createView(FIDString /*name*/)
               detachTimers(_wrappedview->getRunLoop());
               detachPosixFD(_wrappedview->getRunLoop());
               _iRunLoop = nullptr;
+
+              // the editor is going away, and with it the only main thread the
+              // host was ever going to hand us -- wake the helper back up
+              os::idleSourceChanged();
 #endif
 
               clearContextMenu();
@@ -527,8 +546,21 @@ IPlugView *PLUGIN_API ClapAsVst3::createView(FIDString /*name*/)
           {
 
 #if LIN
-            attachTimers(_wrappedview->getRunLoop());
-            attachPosixFD(_wrappedview->getRunLoop());
+            if (auto *const runLoop = _wrappedview->getRunLoop())
+            {
+              attachTimers(runLoop);
+              attachPosixFD(runLoop);
+            }
+            else if (_iRunLoop)
+            {
+              // the host took the frame back but kept the view: unregister
+              // while the old run loop is still alive, then hand the idle back
+              // to the helper thread
+              detachTimers(_iRunLoop);
+              detachPosixFD(_iRunLoop);
+              _iRunLoop = nullptr;
+              os::idleSourceChanged();
+            }
 #else
             (void)this;  // silence warning on non-linux
 #endif
@@ -542,6 +574,9 @@ IPlugView *PLUGIN_API ClapAsVst3::createView(FIDString /*name*/)
 tresult PLUGIN_API ClapAsVst3::getParamStringByValue(Vst::ParamID id, Vst::ParamValue valueNormalized,
                                                      Vst::String128 string)
 {
+  // [main-thread] -- must not run while the Linux helper thread is inside this
+  // plug-in's idle. \see _mainThreadLock
+  std::lock_guard<std::recursive_mutex> mainThreadGuard(_mainThreadLock);
   auto param = (Vst3Parameter *)this->getParameterObject(id);
   auto val = param->asClapValue(valueNormalized);
 
@@ -583,6 +618,9 @@ tresult PLUGIN_API ClapAsVst3::getParamStringByValue(Vst::ParamID id, Vst::Param
 tresult PLUGIN_API ClapAsVst3::getParamValueByString(Vst::ParamID id, Vst::TChar *string,
                                                      Vst::ParamValue &valueNormalized)
 {
+  // [main-thread] -- must not run while the Linux helper thread is inside this
+  // plug-in's idle. \see _mainThreadLock
+  std::lock_guard<std::recursive_mutex> mainThreadGuard(_mainThreadLock);
   auto param = (Vst3Parameter *)this->getParameterObject(id);
   Steinberg::String m(string);
   char inbuf[128];
@@ -604,6 +642,9 @@ tresult PLUGIN_API ClapAsVst3::getParamValueByString(Vst::ParamID id, Vst::TChar
 tresult PLUGIN_API ClapAsVst3::activateBus(Vst::MediaType type, Vst::BusDirection dir, int32 index,
                                            TBool state)
 {
+  // [main-thread] -- must not run while the Linux helper thread is inside this
+  // plug-in's idle. \see _mainThreadLock
+  std::lock_guard<std::recursive_mutex> mainThreadGuard(_mainThreadLock);
   return super::activateBus(type, dir, index, state);
 }
 
@@ -644,6 +685,9 @@ tresult PLUGIN_API ClapAsVst3::setIoMode(Vst::IoMode mode)
 
 tresult PLUGIN_API ClapAsVst3::setComponentHandler(Vst::IComponentHandler *handler)
 {
+  // [main-thread] -- must not run while the Linux helper thread is inside this
+  // plug-in's idle. \see _mainThreadLock
+  std::lock_guard<std::recursive_mutex> mainThreadGuard(_mainThreadLock);
   componentHandler3.reset();
 
   // the base class extracts IComponentHandler and IComponentHandler2
@@ -1474,6 +1518,22 @@ const char *ClapAsVst3::host_get_name()
 
 void ClapAsVst3::onIdle()
 {
+  if (!_plugin || !_plugin->_plugin) return;
+
+  // On the run loop path this is the host's own main thread and the lock is
+  // uncontended. On the Linux helper thread it is not, so take it with
+  // try_lock: the helper holds a module-wide lock while it idles, and blocking
+  // here would stall every other instance behind whichever one the host is
+  // currently inside. Anything skipped is picked up on the next tick.
+  std::unique_lock<std::recursive_mutex> mainThreadGuard(_mainThreadLock, std::try_to_lock);
+  if (!mainThreadGuard.owns_lock()) return;
+
+  // Makes clap_host_thread_check::is_main_thread() answer true for the
+  // duration. The lock above is what earns that answer rather than merely
+  // asserting it: while it is held, the thread the host calls the main thread
+  // cannot be in here as well.
+  auto mainThreadOverride = _plugin->AlwaysMainThread();
+
   // handling queued events
   queueEvent n;
   while (_queueToUI.pop(n))
@@ -1541,10 +1601,10 @@ void ClapAsVst3::onIdle()
   }
 
 #if LIN
-  if (!_iRunLoop)  // don't process timers if we have a runloop.
-                   // (but if we don't have a runloop on linux onIdle isn't called
-                   // anyway so consider just not having this at all once we decide
-                   // to do with the no UI case)
+  // With a run loop the timers are registered on it directly and fire as
+  // ITimerHandlers. Without one this idle belongs to the helper thread, and
+  // driving them here is what makes clap timers work with no editor open.
+  if (!_iRunLoop)
 #endif
   {
     // handling timerobjects
@@ -1618,6 +1678,9 @@ void ClapAsVst3::attachTimers(Steinberg::Linux::IRunLoop *r)
         _iRunLoop->registerTimer(t.handler.get(), t.period);
       }
     }
+
+    // the host's own main thread drives the idle from here on
+    os::idleSourceChanged();
   }
 }
 
