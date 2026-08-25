@@ -364,6 +364,14 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
  public:
   //----from IPlugObject
   void onIdle() override;
+#if LIN
+  // While an editor is open the host's run loop drives onIdle() on the real
+  // main thread and the Linux helper thread stands down. \see attachTimers()
+  bool hasOwnIdleSource() const override
+  {
+    return _iRunLoop != nullptr;
+  }
+#endif
 
  private:
   std::vector<clap_id> _gesturedparameters;
@@ -412,6 +420,17 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
 
   std::atomic_bool _requestUICallback = false;
   std::atomic_bool _requestRestart = false;
+
+  // Held by whichever thread is currently acting as this plug-in's main thread:
+  // the host's, or the Linux helper standing in for it while no editor is open.
+  // The VST3 entry points a host is expected to call on the main thread take it
+  // too, so that the two cannot be inside the plug-in at the same time.
+  // Recursive because a plug-in reaches back into the wrapper from within
+  // on_main_thread().
+  //
+  // Lock order is helper-then-plug-object: never call os::attach(), os::detach()
+  // or os::idleSourceChanged() while holding this.
+  std::recursive_mutex _mainThreadLock;
   bool _missedLatencyRequest = false;
 
   std::thread::id _main_thread_id{};
