@@ -856,8 +856,20 @@ class WrapAsAUV2 : public ausdk::AUBase,
   {
     uint32_t inputChannels;   // main input channel count, 0 = no main input
     uint32_t outputChannels;  // main output channel count, 0 = no main output
+    // What the layout makes every bus, in element order. A layout is a property
+    // of the whole port list -- a plugin that goes mono may take its sidechain
+    // with it -- and can_apply_configuration answers yes or no without saying
+    // what the ports would become, so the probe applies each candidate and
+    // reads them back.
+    std::vector<uint32_t> inputBusChannels, outputBusChannels;
   };
   std::vector<ChannelCapsCache> _channelCapsCache;
+
+  // Reads every port into \p caps' per-bus vectors. [main-thread & !active]
+  void recordBusChannelCounts(ChannelCapsCache &caps) const;
+  // Re-reads the ports into the port caches and re-applies the bus names and
+  // formats, which is what keeps them describing the live layout.
+  void refreshPortCachesAndBusses();
 
   // Upper bound of the per-scope main-bus *channel counts* probed for the
   // cache (not a bus count). The active layout is seeded into the cache
