@@ -34,13 +34,24 @@
 
 #define NDUAL_SCHEDULING_ENABLED 1
 
+// The four component types an AudioUnit built from a CLAP can have. Derived
+// from the AudioComponentDescription the host instantiated, never from a
+// build-time string: an AU may be registered under more than one type (see
+// clap.plugin-factory-info-as-auv2-legacy) and a single generated entry point
+// then serves all of them.
 enum class AUV2_Type : uint32_t
 {
   aufx_effect = 1,
   aumu_musicdevice = 2,
-  aumi_noteeffect = 3
+  aumi_noteeffect = 3,
+  aumf_musiceffect = 4,
 
+  // a type the wrapper does not recognise; treated as an effect, which is the
+  // only one of the four that takes audio in and makes no notes
+  unknown = 0
 };
+
+AUV2_Type auv2TypeFromComponentType(OSType componentType);
 namespace free_audio::auv2_wrapper
 {
 
@@ -344,7 +355,7 @@ class WrapAsAUV2 : public ausdk::AUBase,
   using Base = ausdk::AUBase;
 
  public:
-  explicit WrapAsAUV2(AUV2_Type type, const std::string &clapname, const std::string &clapid, int idx,
+  explicit WrapAsAUV2(const std::string &clapname, const std::string &clapid, int idx,
                       AudioComponentInstance ci);
   virtual ~WrapAsAUV2();
 
@@ -352,6 +363,8 @@ class WrapAsAUV2 : public ausdk::AUBase,
   void PostConstructor() override;
 
  private:
+  // What the *host* asked for, read from the component description rather than
+  // baked in when the entry point was generated. \see auv2TypeFromComponentType
   AUV2_Type _autype;
 
   // connection from plugin to view

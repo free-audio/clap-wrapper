@@ -119,19 +119,44 @@ bool WrapAsAUV2::initializeClapDesc()
   return true;
 }
 
-WrapAsAUV2::WrapAsAUV2(AUV2_Type type, const std::string &clapname, const std::string &clapid, int idx,
+////////////////////////////////////////////////////////////////////////////////
+// Which of the four AU types the host instantiated us as. The generated entry
+// point used to carry this, decided from the type string the build helper wrote
+// into the Info.plist -- which had two problems. It knew only three of the four
+// types, so an `aumf` silently became an instrument; and one entry point may now
+// answer to more than one type, so there is no single build-time answer to bake.
+// The component description is the host's own statement and is always right.
+////////////////////////////////////////////////////////////////////////////////
+
+AUV2_Type auv2TypeFromComponentType(OSType const componentType)
+{
+  switch (componentType)
+  {
+    case kAudioUnitType_Effect:
+      return AUV2_Type::aufx_effect;
+    case kAudioUnitType_MusicDevice:
+      return AUV2_Type::aumu_musicdevice;
+    case kAudioUnitType_MIDIProcessor:
+      return AUV2_Type::aumi_noteeffect;
+    case kAudioUnitType_MusicEffect:
+      return AUV2_Type::aumf_musiceffect;
+    default:
+      return AUV2_Type::unknown;
+  }
+}
+
+WrapAsAUV2::WrapAsAUV2(const std::string &clapname, const std::string &clapid, int idx,
                        AudioComponentInstance ci)
   : Base{ci, 0, 0}  // these elements are set correctly in ::PostConstructor
   , Clap::IHost()
   , Clap::IAutomation()
   , os::IPlugObject()
-  , _autype(type)
+  , _autype(auv2TypeFromComponentType(GetComponentDescription().componentType))
   , _clapname{clapname}
   , _clapid{clapid}
   , _idx{idx}
   , _os_attached([this] { os::attach(this); }, [this] { os::detach(this); })
 {
-  (void)_autype;  // TODO: will be used for dynamic property adaption
   _uiIsOpened = false;
   if (!_desc)
   {

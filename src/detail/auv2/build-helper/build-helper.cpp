@@ -376,30 +376,13 @@ int main(int argc, char **argv)
 
 #if 1
       {
+        // No type is written into the entry point. WrapAsAUV2 reads it from the
+        // component description the host instantiated it with, which is the only
+        // source that stays right when one entry point answers to several types.
         std::cout << "    + " << u.name << " entry " << on << " from WrapAsAUV2" << std::endl;
         cppf << "struct " << on << " : free_audio::auv2_wrapper::WrapAsAUV2 {\n"
              << "   " << on << "(AudioComponentInstance ci) :\n"
-             << "         free_audio::auv2_wrapper::WrapAsAUV2(";
-        if (u.type == "aumu")
-        {
-          cppf << "AUV2_Type::aumu_musicdevice";
-        }
-        else if (u.type == "aumi")
-        {
-          cppf << "AUV2_Type::aumi_noteeffect";
-        }
-        else if (u.type == "aufx")
-        {
-          cppf << "AUV2_Type::aufx_effect";
-        }
-        else
-        {
-          std::cout << "    + WARNING: Unable to determine AUV2_Type for instrument type '" << u.type
-                    << "'\n"
-                    << "      Defaulting to AUV2_Type::musicdevice" << std::endl;
-          cppf << "AUV2_Type::aumu_musicdevice";
-        }
-        cppf << "," << args << ", ci) {}"
+             << "         free_audio::auv2_wrapper::WrapAsAUV2(" << args << ", ci) {}"
              << "};\n"
              << "AUSDK_COMPONENT_ENTRY(ausdk::AUMusicDeviceFactory, " << on << ");\n";
       }
