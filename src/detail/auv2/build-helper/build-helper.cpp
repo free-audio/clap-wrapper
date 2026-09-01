@@ -13,7 +13,22 @@ struct auInfo
   bool explicitMode{false};
   std::vector<std::string> tags;
 
+  // Which CLAP plugin inside the bundle this is. Not the position in the
+  // AudioComponents array and not the entry point's number: one plugin may be
+  // registered under several identities, and the array then has more entries
+  // than the CLAP has plugins. It is what WrapAsAUV2 is handed to pick a
+  // plugin, so getting it from the array position silently instantiates the
+  // wrong one in a multi-plugin bundle.
+  int pluginIndex{0};
+
   const std::string factoryBase{"wrapAsAUV2_inst"};
+
+  // One entry point per plugin, named for the plugin rather than for where its
+  // entry happens to sit in the array. Every identity of a plugin shares it.
+  std::string factoryName() const
+  {
+    return factoryBase + std::to_string(pluginIndex) + "Factory";
+  }
 
   uint32_t bundleversToVersion() const
   {
@@ -43,15 +58,15 @@ struct auInfo
     return sum();
   }
 
-  void writePListFragment(std::ostream &of, int idx) const
+  void writePListFragment(std::ostream &of) const
   {
     if (!clapid.empty())
     {
-      of << "      <!-- entry for id '" << clapid << "' / index " << idx << " -->\n";
+      of << "      <!-- entry for id '" << clapid << "' / plugin index " << pluginIndex << " -->\n";
     }
     else
     {
-      of << "      <!-- entry for index " << idx << " clap id unknown -->\n";
+      of << "      <!-- entry for plugin index " << pluginIndex << ", clap id unknown -->\n";
     }
     of << "      <dict>\n"
        << "        <key>name</key>\n"
@@ -59,8 +74,7 @@ struct auInfo
        << "        <key>description</key>\n"
        << "        <string>" << desc << "</string>\n"
        << "        <key>factoryFunction</key>\n"
-       << "        <string>" << factoryBase << idx << "Factory"
-       << "</string>\n"
+       << "        <string>" << factoryName() << "</string>\n"
        << "        <key>manufacturer</key>\n"
        << "        <string>" << manu << "</string>\n"
        << "        <key>subtype</key>\n"
@@ -211,6 +225,7 @@ bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname
 
     if (doExport)
     {
+      u.pluginIndex = idx;
       units.push_back(u);
     }
     idx++;
@@ -245,6 +260,8 @@ int main(int argc, char **argv)
     u.manu = std::string(argv[idx++]);
     u.manunm = std::string(argv[idx++]);
     u.desc = u.name + " CLAP to AU Wrapper";
+
+    u.pluginIndex = 0;  // explicit mode describes exactly one plugin
 
     std::cout << "  - single plugin explicit mode: " << u.name << " (" << u.type << "/" << u.subt << ")"
               << std::endl;
@@ -343,12 +360,11 @@ int main(int argc, char **argv)
   of << intop.rdbuf();
 
   of << "    <key>AudioComponents</key>\n    <array>\n";
-  int idx{0};
   for (const auto &u : units)
   {
     std::cout << "    + " << u.name << " (" << u.type << "/" << u.subt << ") by " << u.manunm << " ("
               << u.manu << ")" << std::endl;
-    u.writePListFragment(of, idx++);
+    u.writePListFragment(of);
   }
   of << "    </array>\n";
   of << "  </dict>\n</plist>\n";
@@ -367,12 +383,12 @@ int main(int argc, char **argv)
     cppf << "#pragma once\n";
     cppf << "#include \"detail/auv2/auv2_base_classes.h\"\n\n";
 
-    idx = 0;
     for (const auto &u : units)
     {
-      auto on = u.factoryBase + std::to_string(idx);
+      auto on = u.factoryBase + std::to_string(u.pluginIndex);
 
-      auto args = std::string("\"") + u.clapname + "\", \"" + u.clapid + "\", " + std::to_string(idx);
+      auto args =
+          std::string("\"") + u.clapname + "\", \"" + u.clapid + "\", " + std::to_string(u.pluginIndex);
 
 #if 1
       {
@@ -419,7 +435,6 @@ int main(int argc, char **argv)
              << "AUSDK_COMPONENT_ENTRY(ausdk::AUBaseFactory, " << on << ");\n";
       }
 #endif
-      idx++;
     }
     cppf.close();
     std::cout << "  - generated_entrypoints.hxx generated" << std::endl;
@@ -440,7 +455,6 @@ int main(int argc, char **argv)
     fillOSS << "bool fillAudioUnitCocoaView(AudioUnitCocoaViewInfo* viewInfo, "
                "std::shared_ptr<Clap::Plugin> _plugin) {\n";
 
-    idx = 0;
     for (const auto &u : units)
     {
       std::string strcid;
@@ -492,7 +506,6 @@ int main(int argc, char **argv)
           fillOSS << "  }\n";
         }
       }
-      idx++;
     }
 
     fillOSS << "\n  return false;\n}\n\n";
