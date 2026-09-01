@@ -46,6 +46,8 @@ class Library
   const clap_plugin_factory_as_vst3 *_pluginFactoryVst3Info = nullptr;
   bool _pluginFactoryVst3InfoIsV1 = false;
   const clap_plugin_factory_as_auv2 *_pluginFactoryAUv2Info = nullptr;
+  // Optional and independent of the one above. \see CLAP_PLUGIN_FACTORY_INFO_AUV2_LEGACY
+  const clap_plugin_factory_auv2_legacy *_pluginFactoryAUv2Legacy = nullptr;
   const clap_plugin_factory_as_aax_t *_pluginFactoryAAXInfo = nullptr;
   const clap_ara_factory_t *_pluginFactoryARAInfo = nullptr;
   std::vector<const clap_plugin_descriptor_t *> plugins;
