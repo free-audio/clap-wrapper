@@ -310,6 +310,8 @@ void Library::setupPluginsFromPluginEntry(const char *path)
       }
       _pluginFactoryAUv2Info = static_cast<decltype(_pluginFactoryAUv2Info)>(
           _pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_AUV2));
+      _pluginFactoryAUv2Legacy = static_cast<decltype(_pluginFactoryAUv2Legacy)>(
+          _pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_AUV2_LEGACY));
       _pluginFactoryAAXInfo = static_cast<decltype(_pluginFactoryAAXInfo)>(
           _pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_AAX));
       _pluginFactoryARAInfo =
@@ -322,6 +324,7 @@ void Library::setupPluginsFromPluginEntry(const char *path)
         _pluginFactoryVst3Info = nullptr;
         _pluginFactoryVst3InfoIsV1 = false;
         _pluginFactoryAUv2Info = nullptr;
+        _pluginFactoryAUv2Legacy = nullptr;
         _pluginFactoryARAInfo = nullptr;
       }
 
