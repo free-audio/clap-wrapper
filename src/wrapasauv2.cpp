@@ -233,9 +233,8 @@ OSStatus WrapAsAUV2::Initialize()
   auto guarantee_mainthread = _plugin->AlwaysMainThread();
   if (!activateCLAP())
   {
-    // The host settled on a main-bus format pair the plugin does not accept
-    // (see activateCLAP). Refuse the initialization rather than render with
-    // buffers sized differently from the plugin's ports.
+    // A rejected configuration or lifecycle call leaves the CLAP deactivated.
+    // Report the failure so the host does not render an unavailable processor.
     return kAudioUnitErr_FormatNotSupported;
   }
 
@@ -1339,11 +1338,22 @@ bool WrapAsAUV2::activateCLAP()
       _flushAdapter.reset();
     }
 
-    _plugin->activate();
-    _plugin->start_processing();
+    _clapActivated = _plugin->activate();
+    if (!_clapActivated)
+    {
+      deactivateCLAP();
+      return false;
+    }
+    _clapProcessing = _plugin->start_processing();
+    if (!_clapProcessing)
+    {
+      deactivateCLAP();
+      return false;
+    }
     _initialized = true;
+    return true;
   }
-  return true;
+  return false;
 }
 
 void WrapAsAUV2::deactivateCLAP()
@@ -1357,8 +1367,16 @@ void WrapAsAUV2::deactivateCLAP()
       _initialized = false;
       _processAdapter.reset();
     }
-    _plugin->stop_processing();
-    _plugin->deactivate();
+    if (_clapProcessing)
+    {
+      _plugin->stop_processing();
+      _clapProcessing = false;
+    }
+    if (_clapActivated)
+    {
+      _plugin->deactivate();
+      _clapActivated = false;
+    }
   }
 }
 
@@ -1633,10 +1651,8 @@ void WrapAsAUV2::onIdle()
     if (wasInitialized)
     {
       deactivateCLAP();
-      // Cannot fail for the format-pair reason Initialize guards against:
-      // the formats have not changed since the last successful activation.
-      // If it fails anyway, _initialized stays false and renders return
-      // silence, the same state as before Initialize.
+      // Even unchanged formats can encounter a rejected CLAP lifecycle call.
+      // A failed restart leaves processing unavailable for a later retry.
       if (!activateCLAP())
       {
         LOGINFO("[clap-wrapper] restart: could not reactivate the plugin");

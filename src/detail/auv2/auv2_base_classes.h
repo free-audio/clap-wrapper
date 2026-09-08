@@ -815,7 +815,7 @@ class WrapAsAUV2 : public ausdk::AUBase,
   // buffer sizes).
   bool applyConfigurationFromBusFormats();
 
-  // Returns false when the plugin rejects the host-chosen bus formats; the
+  // Returns false when the plugin rejects the bus formats or fails to start;
   // caller must treat that as a failed initialization.
   bool activateCLAP();
   void deactivateCLAP();
@@ -846,6 +846,10 @@ class WrapAsAUV2 : public ausdk::AUBase,
   // exist. Lives across flushes so gestures pair up; see flushParameters().
   std::unique_ptr<Clap::AUv2::ProcessAdapter> _flushAdapter;
   std::atomic<bool> _initialized = false;
+  /// Whether CLAP activation succeeded and requires a matching deactivation.
+  bool _clapActivated = false;
+  /// Whether CLAP processing started and requires a matching stop notification.
+  bool _clapProcessing = false;
 
   // some info about the wrapped clap
   // audio-port layout captured at PostConstructor. Scanning the CLAP
