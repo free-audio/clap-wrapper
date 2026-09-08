@@ -14,6 +14,8 @@
 
 #include <iostream>
 #include <functional>
+#include <memory>
+#include <AudioUnitSDK/AUUtility.h>
 #include "clap_proxy.h"
 #include <AudioToolbox/AudioUnitProperties.h>
 
@@ -28,6 +30,8 @@ typedef struct ui_connection
 {
   uint32_t identifier = kAudioUnitProperty_ClapWrapper_UIConnection_id;
   Clap::Plugin *_plugin = nullptr;   // points to the plugin instance
+  /// Serializes host lifecycle calls with editor calls and outlives either connection endpoint.
+  std::shared_ptr<ausdk::AUMutex> _mainThreadMutex;
   clap_window_t *_window = nullptr;  // points to a window handle, actually ptr to wrapping NSView class
   uint32_t *_canary = nullptr;       // a canary in the Windows class
   std::function<void(clap_window_t *, uint32_t *)> _registerWindow = nullptr;

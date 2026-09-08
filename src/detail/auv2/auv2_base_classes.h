@@ -832,6 +832,9 @@ class WrapAsAUV2 : public ausdk::AUBase,
 
   // --------------- internals
 
+  /// Shares the SDK's non-realtime entry lock with idle callbacks and the Cocoa editor.
+  std::shared_ptr<ausdk::AUMutex> _mainThreadMutex = std::make_shared<ausdk::AUMutex>();
+
   // the wrapped CLAP:
   std::string _clapname;
   std::string _clapid;
