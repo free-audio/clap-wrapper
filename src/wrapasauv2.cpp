@@ -1382,9 +1382,8 @@ void WrapAsAUV2::releaseHostMIDIOutput()
 OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags &inFlags, const AudioTimeStamp &inTimeStamp,
                             UInt32 inFrames)
 {
-  assert(inFlags == 0);
   ClapWrapper::detail::shared::SpinLockGuard processGuard(_processLock);
-  if (_initialized && (inFlags == 0))
+  if (_initialized)
   {
     // do the render dance
     Clap::AUv2::ProcessData data{inFlags, inTimeStamp, inFrames, this};
