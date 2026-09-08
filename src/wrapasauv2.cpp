@@ -5,6 +5,7 @@
 #include <cassert>
 #include <algorithm>
 #include <cmath>
+#include <mutex>
 #include <Block.h>
 
 extern bool fillAudioUnitCocoaView(AudioUnitCocoaViewInfo *viewInfo, std::shared_ptr<Clap::Plugin>);
@@ -157,6 +158,10 @@ WrapAsAUV2::WrapAsAUV2(const std::string &clapname, const std::string &clapid, i
   , _idx{idx}
   , _os_attached([this] { os::attach(this); }, [this] { os::detach(this); })
 {
+  // Logic may initialize an AU on a worker while its editor and idle timer run.
+  // The SDK holds this lock across its complete non-realtime dispatch, including
+  // changes to AUBase::IsInitialized() before and after the virtual callbacks.
+  SetMutex(_mainThreadMutex.get());
   _uiIsOpened = false;
   if (!_desc)
   {
@@ -173,7 +178,6 @@ WrapAsAUV2::WrapAsAUV2(const std::string &clapname, const std::string &clapid, i
       if (_plugin)
       {
         _plugin->initialize();
-        _os_attached.on();
       }
       else
       {
@@ -189,6 +193,7 @@ WrapAsAUV2::WrapAsAUV2(const std::string &clapname, const std::string &clapid, i
 
 WrapAsAUV2::~WrapAsAUV2()
 {
+  const std::lock_guard<ausdk::AUMutex> mainThreadGuard(*_mainThreadMutex);
 #if AUSDK_MIDI2_AVAILABLE
   if (auto blk = _midioutput_hosteventlistblock.exchange(nullptr)) Block_release(blk);
   for (auto blk : _retiredEventListBlocks) Block_release(blk);
@@ -214,6 +219,8 @@ WrapAsAUV2::~WrapAsAUV2()
   {
     CFRelease(_current_program_name);
   }
+  // AUBase must not retain a pointer to a member-owned lock during base destruction.
+  SetMutex(nullptr);
 }
 
 // the very very reduced state machine
@@ -233,9 +240,8 @@ OSStatus WrapAsAUV2::Initialize()
   auto guarantee_mainthread = _plugin->AlwaysMainThread();
   if (!activateCLAP())
   {
-    // The host settled on a main-bus format pair the plugin does not accept
-    // (see activateCLAP). Refuse the initialization rather than render with
-    // buffers sized differently from the plugin's ports.
+    // A rejected configuration or lifecycle call leaves the CLAP deactivated.
+    // Report the failure so the host does not render an unavailable processor.
     return kAudioUnitErr_FormatNotSupported;
   }
 
@@ -718,7 +724,6 @@ void WrapAsAUV2::Cleanup()
       if (_plugin->_plugin && _plugin->_ext._gui)
       {
         this->_uiconn._destroyWindow();
-        this->_plugin->_ext._gui->destroy(_plugin->_plugin);
       }
     }
   }
@@ -884,6 +889,7 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         //      return noErr;
       case kAudioUnitProperty_ClapWrapper_UIConnection_id:
         _uiconn._plugin = _plugin.get();
+        _uiconn._mainThreadMutex = _mainThreadMutex;
         _uiconn._window = nullptr;
         _uiconn._registerWindow = [this](auto *x, auto *y)
         {
@@ -1339,11 +1345,22 @@ bool WrapAsAUV2::activateCLAP()
       _flushAdapter.reset();
     }
 
-    _plugin->activate();
-    _plugin->start_processing();
+    _clapActivated = _plugin->activate();
+    if (!_clapActivated)
+    {
+      deactivateCLAP();
+      return false;
+    }
+    _clapProcessing = _plugin->start_processing();
+    if (!_clapProcessing)
+    {
+      deactivateCLAP();
+      return false;
+    }
     _initialized = true;
+    return true;
   }
-  return true;
+  return false;
 }
 
 void WrapAsAUV2::deactivateCLAP()
@@ -1357,8 +1374,16 @@ void WrapAsAUV2::deactivateCLAP()
       _initialized = false;
       _processAdapter.reset();
     }
-    _plugin->stop_processing();
-    _plugin->deactivate();
+    if (_clapProcessing)
+    {
+      _plugin->stop_processing();
+      _clapProcessing = false;
+    }
+    if (_clapActivated)
+    {
+      _plugin->deactivate();
+      _clapActivated = false;
+    }
   }
 }
 
@@ -1382,9 +1407,8 @@ void WrapAsAUV2::releaseHostMIDIOutput()
 OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags &inFlags, const AudioTimeStamp &inTimeStamp,
                             UInt32 inFrames)
 {
-  assert(inFlags == 0);
   ClapWrapper::detail::shared::SpinLockGuard processGuard(_processLock);
-  if (_initialized && (inFlags == 0))
+  if (_initialized)
   {
     // do the render dance
     Clap::AUv2::ProcessData data{inFlags, inTimeStamp, inFrames, this};
@@ -1590,6 +1614,10 @@ void WrapAsAUV2::pushQueuedEventsToHost()
 
 void WrapAsAUV2::onIdle()
 {
+  // Preserve pending work when a host lifecycle call owns the CLAP main-thread state.
+  // Waiting here could block the real UI thread while host initialization waits for it.
+  const std::unique_lock<ausdk::AUMutex> mainThreadGuard(*_mainThreadMutex, std::try_to_lock);
+  if (!mainThreadGuard.owns_lock()) return;
   if (!_plugin) return;
 
   pushQueuedEventsToHost();
@@ -1634,10 +1662,8 @@ void WrapAsAUV2::onIdle()
     if (wasInitialized)
     {
       deactivateCLAP();
-      // Cannot fail for the format-pair reason Initialize guards against:
-      // the formats have not changed since the last successful activation.
-      // If it fails anyway, _initialized stays false and renders return
-      // silence, the same state as before Initialize.
+      // Even unchanged formats can encounter a rejected CLAP lifecycle call.
+      // A failed restart leaves processing unavailable for a later retry.
       if (!activateCLAP())
       {
         LOGINFO("[clap-wrapper] restart: could not reactivate the plugin");
@@ -2247,6 +2273,9 @@ void WrapAsAUV2::PostConstructor()
     Inputs().GetElement(0)->SetName(CFSTR("Input"));
     LOGINFO("[clap-wrapper] PostConstructor: added placeholder silent input bus");
   }
+
+  // The timer must not enter the CLAP while its initial port configuration is being queried.
+  _os_attached.on();
 }
 
 UInt32 WrapAsAUV2::GetAudioChannelLayout(AudioUnitScope scope, AudioUnitElement element,
