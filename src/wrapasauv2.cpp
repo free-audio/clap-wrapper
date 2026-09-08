@@ -724,7 +724,6 @@ void WrapAsAUV2::Cleanup()
       if (_plugin->_plugin && _plugin->_ext._gui)
       {
         this->_uiconn._destroyWindow();
-        this->_plugin->_ext._gui->destroy(_plugin->_plugin);
       }
     }
   }
