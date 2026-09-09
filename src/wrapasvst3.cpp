@@ -1367,15 +1367,26 @@ void ClapAsVst3::onPresetIndexComplete()
 void ClapAsVst3::onRequestPresetLoad(size_t presetIndex)
 {
   // Audio thread. Record and return - see the member's comment on coalescing.
+  //
+  // A value equal to the one already in effect is not a request: the
+  // parameter stream carries the selector's value, not its edges, and acting
+  // on every arrival makes loading a preset a permanent state of reloading it
+  // (\see _presetIndexInEffect).
+  if (static_cast<int64_t>(presetIndex) == _presetIndexInEffect.load(std::memory_order_relaxed))
+  {
+    return;
+  }
+
   _presetLoadRequest.store(static_cast<int64_t>(presetIndex));
 }
 
 void ClapAsVst3::preset_loaded(uint32_t locationKind, const char *location, const char *loadKey)
 {
-  // The plugin loaded a preset of its own accord (its own UI, most likely).
-  // Move the selector so the host's program display follows, but only if the
-  // preset is one this wrapper actually indexed - a plugin can load from
-  // places we never crawled, and there is no slot to point at for those.
+  // The plugin loaded a preset - the one onIdle() asked for, or one of its own
+  // accord (its own UI, most likely). Move the selector so the host's program
+  // display follows, but only if the preset is one this wrapper actually
+  // indexed - a plugin can load from places we never crawled, and there is no
+  // slot to point at for those.
   if (!_presetIndex || _presetParamId == Vst::kNoParamId) return;
 
   size_t index = 0;
@@ -1384,9 +1395,27 @@ void ClapAsVst3::preset_loaded(uint32_t locationKind, const char *location, cons
   auto *param = (Vst3Parameter *)parameters.getParameter(_presetParamId);
   if (!param) return;
 
+  _presetIndexInEffect.store(static_cast<int64_t>(index), std::memory_order_relaxed);
+
   const auto normalized = param->asVst3Value(static_cast<double>(index));
+  if (param->getNormalized() == normalized)
+  {
+    // Already where the host put it, which is the usual case: this is the
+    // confirmation of a load the host itself asked for. Reporting it as an
+    // edit is what a host hands back as a fresh program change.
+    return;
+  }
+
   param->setNormalized(normalized);
-  if (componentHandler) componentHandler->performEdit(_presetParamId, normalized);
+  if (componentHandler)
+  {
+    // Bracketed, like any value a plugin originates: an unbracketed
+    // performEdit() is a change a host cannot attribute to a gesture, and the
+    // ones that record it leave the parameter latched in touch mode.
+    componentHandler->beginEdit(_presetParamId);
+    componentHandler->performEdit(_presetParamId, normalized);
+    componentHandler->endEdit(_presetParamId);
+  }
 }
 
 void ClapAsVst3::preset_load_error(uint32_t /*locationKind*/, const char * /*location*/,
@@ -1703,6 +1732,13 @@ void ClapAsVst3::onIdle()
     if (count > 0)
     {
       const auto index = std::min<size_t>((size_t)requested, count - 1);
+
+      // In effect from here on, whatever the load makes of it: the host is
+      // sending this value, and a preset that cannot be loaded has to be
+      // attempted once rather than once per block. A load that succeeds
+      // confirms the same index through preset_loaded().
+      _presetIndexInEffect.store(static_cast<int64_t>(index), std::memory_order_relaxed);
+
       if (_presetIndex->presetAt(index, entry))
       {
         _plugin->loadPresetFromLocation(entry.locationKind,

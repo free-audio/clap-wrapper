@@ -487,6 +487,21 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   // Coalescing is correct: three program changes in one block should load the
   // last preset, not three.
   std::atomic<int64_t> _presetLoadRequest{-1};
+  // The selector value already in effect: the index onIdle() last acted on,
+  // or the one preset_loaded() resolved. A parameter change is only a request
+  // when it names something else.
+  //
+  // Both halves of that matter. preset_loaded() tells the host where the
+  // selector now stands, and a host that hands that value straight back would
+  // be asking for the preset that has just been loaded - a loop that reloads
+  // the plugin's entire state for as long as the instance lives, discarding
+  // whatever the user edited in between. A host is also entitled to send a
+  // program list parameter's current value in every process block, which is
+  // the same request arriving from the other side.
+  //
+  // Written on the main thread (onIdle, preset_loaded), read on the audio
+  // thread (onRequestPresetLoad).
+  std::atomic<int64_t> _presetIndexInEffect{-1};
   // Set when the crawl finishes; onIdle() turns it into the host notification,
   // because notifyProgramListChange() is not for a background thread.
   std::atomic<bool> _presetListChanged{false};
