@@ -164,6 +164,16 @@ tresult PLUGIN_API ClapAsVst3::terminate()
 {
   vst3HostApplication.reset();
 
+  // Before anything else: the index lives in a module-wide cache and its
+  // crawl thread holds our callback. Leaving it registered past here would let
+  // it call into a half-terminated wrapper.
+  if (_presetIndex && _presetIndexToken)
+  {
+    _presetIndex->removeCompletionListener(_presetIndexToken);
+    _presetIndexToken = 0;
+  }
+  _presetIndex.reset();
+
   if (_plugin)
   {
     _os_attached.off();  // ensure we are detached
@@ -1274,6 +1284,153 @@ void ClapAsVst3::setupParameters(const clap_plugin_t *plugin, const clap_plugin_
                                     S16("Brit"), S16(""), 0, nullptr, 0));
 
   // PRESSURE is handled by IMidiMapping (-> Polypressure)
+
+  setupPresets();
+}
+
+// ----------------------------------------------------------------------------
+// clap.preset-load, published to the host as a VST3 program list
+// ----------------------------------------------------------------------------
+void ClapAsVst3::setupPresets()
+{
+  _presetParamId = Vst::kNoParamId;
+  _presetUnitId = Vst::kRootUnitId;
+
+  // setupParameters() can run more than once (param_rescan, and the rebuild in
+  // onIdle below), and the index is shared and long-lived - so drop any
+  // listener from a previous pass rather than stacking another onto it.
+  if (_presetIndex && _presetIndexToken)
+  {
+    _presetIndex->removeCompletionListener(_presetIndexToken);
+    _presetIndexToken = 0;
+  }
+
+  // No point offering a list the plugin could not load from.
+  if (!_plugin || !_plugin->supportsPresetLoad()) return;
+
+  // Shared per module: the crawl is expensive and its result is identical for
+  // every instance of the same plugin.
+  if (!_presetIndex)
+  {
+    const auto *descriptor = _library->plugins[_libraryIndex];
+    _presetIndex = Clap::PresetIndex::forPlugin(_library, descriptor->id ? descriptor->id : "");
+  }
+  if (!_presetIndex) return;  // the plugin has no preset-discovery factory
+
+  // A free tag, away from both the CLAP parameter ids and the block the
+  // IMidiMapping parameters reserve at 0xb00000.
+  Vst::ParamID id = 0xc00000;
+  while (parameters.getParameter(id)) ++id;
+
+  // The list has to be sized now, because a parameter's stepCount is fixed at
+  // creation and a host reads stepCount+1 as the program count (the SDK's own
+  // preset sample sets kNumPrograms-1). So wait briefly for the crawl rather
+  // than announce a size that is wrong: an embedded container resolves in
+  // milliseconds, and a folder crawl that outlasts the wait is still covered
+  // by the rescan onIdle() asks for when it completes.
+  _presetIndex->waitUntilComplete(1000);
+  const auto presetCount = _presetIndex->size();
+  if (presetCount == 0) return;  // nothing to show; the rescan will come back
+
+  auto *selector = Vst3Parameter::createPresetSelector(id, (int32_t)presetCount);
+
+  // The program list goes on the ROOT unit, and the selector with it. Not a
+  // unit of its own: a host reads the root unit's programListId to find "the
+  // plugin's programs" - that is what the SDK's mda sample does
+  // (mdaBaseController.cpp: uinfo.id = kRootUnitId; uinfo.programListId =
+  // kPresetParam) and what againcontroller.cpp means by "create root only if
+  // you want to use the programListId". Hung off a child unit instead, the
+  // list validates perfectly and Cubase shows nothing.
+  selector->setUnitID(Vst::kRootUnitId);
+  parameters.addParameter(selector);
+
+  // units[0] is the root unit setupParameters() created just above. Setting
+  // the id on the Unit object rather than rebuilding it is how the
+  // IMidiMapping block already does it (newUnit->setProgramListID).
+  if (!units.empty()) units.at(0)->setProgramListID((Vst::ProgramListID)id);
+
+  _presetParamId = id;
+  _presetUnitId = Vst::kRootUnitId;
+
+  // The crawl may already be done - addCompletionListener() calls straight
+  // back in that case, which is why _presetParamId is set before this.
+  _presetIndexToken = _presetIndex->addCompletionListener([this]() { onPresetIndexComplete(); });
+}
+
+void ClapAsVst3::onPresetIndexComplete()
+{
+  // Called from the index's crawl thread. Nothing that talks to the host may
+  // happen here; onIdle() picks this up on the main thread.
+  _presetListChanged.store(true);
+}
+
+void ClapAsVst3::onRequestPresetLoad(size_t presetIndex)
+{
+  // Audio thread. Record and return - see the member's comment on coalescing.
+  _presetLoadRequest.store(static_cast<int64_t>(presetIndex));
+}
+
+void ClapAsVst3::preset_loaded(uint32_t locationKind, const char *location, const char *loadKey)
+{
+  // The plugin loaded a preset of its own accord (its own UI, most likely).
+  // Move the selector so the host's program display follows, but only if the
+  // preset is one this wrapper actually indexed - a plugin can load from
+  // places we never crawled, and there is no slot to point at for those.
+  if (!_presetIndex || _presetParamId == Vst::kNoParamId) return;
+
+  size_t index = 0;
+  if (!_presetIndex->indexOf(locationKind, location, loadKey, index)) return;
+
+  auto *param = (Vst3Parameter *)parameters.getParameter(_presetParamId);
+  if (!param) return;
+
+  const auto normalized = param->asVst3Value(static_cast<double>(index));
+  param->setNormalized(normalized);
+  if (componentHandler) componentHandler->performEdit(_presetParamId, normalized);
+}
+
+void ClapAsVst3::preset_load_error(uint32_t /*locationKind*/, const char * /*location*/,
+                                   const char * /*loadKey*/, int32_t /*osError*/, const char *msg)
+{
+  // VST3 has no channel for this. Log it so it is at least discoverable; the
+  // plugin has already been told, and it is the one with a UI to say so in.
+  if (_plugin) _plugin->log(CLAP_LOG_WARNING, msg ? msg : "preset load failed");
+}
+
+Steinberg::int32 PLUGIN_API ClapAsVst3::getProgramListCount()
+{
+  return super::getProgramListCount() + (_presetParamId != Vst::kNoParamId ? 1 : 0);
+}
+
+Steinberg::tresult PLUGIN_API ClapAsVst3::getProgramListInfo(Steinberg::int32 listIndex,
+                                                             Vst::ProgramListInfo &info)
+{
+  const auto inherited = super::getProgramListCount();
+  if (listIndex < inherited) return super::getProgramListInfo(listIndex, info);
+
+  if (_presetParamId == Vst::kNoParamId || listIndex != inherited) return Steinberg::kResultFalse;
+
+  info.id = (Vst::ProgramListID)_presetParamId;
+  // What the host will show as the number of slots. Reporting the count found
+  // so far (rather than the parameter's 128 steps) keeps a browser from
+  // listing empty entries while the crawl is still running.
+  info.programCount = _presetIndex ? (Steinberg::int32)_presetIndex->size() : 0;
+  stringconv::convert(std::string("Presets"), info.name);
+  return Steinberg::kResultOk;
+}
+
+Steinberg::tresult PLUGIN_API ClapAsVst3::getProgramName(Vst::ProgramListID listId,
+                                                         Steinberg::int32 programIndex,
+                                                         Vst::String128 name)
+{
+  if (!isPresetProgramList(listId)) return super::getProgramName(listId, programIndex, name);
+
+  Clap::PresetEntry entry;
+  if (!_presetIndex || programIndex < 0 || !_presetIndex->presetAt((size_t)programIndex, entry))
+    return Steinberg::kResultFalse;
+
+  stringconv::convert(entry.displayName(), name);
+  return Steinberg::kResultOk;
 }
 
 void ClapAsVst3::param_rescan(clap_param_rescan_flags flags)
@@ -1533,6 +1690,47 @@ void ClapAsVst3::onIdle()
   // asserting it: while it is held, the thread the host calls the main thread
   // cannot be in here as well.
   auto mainThreadOverride = _plugin->AlwaysMainThread();
+
+  // A preset the host asked for on the audio thread, and a preset list that
+  // filled in on the crawl thread. Both have to happen here: from_location()
+  // is [main-thread], and so is notifyProgramListChange().
+  if (auto requested = _presetLoadRequest.exchange(-1); requested >= 0)
+  {
+    Clap::PresetEntry entry;
+    // Clamp anyway: stepCount matches the count at creation, but a host may
+    // still have a stale value from before a rescan.
+    const auto count = _presetIndex ? _presetIndex->size() : 0;
+    if (count > 0)
+    {
+      const auto index = std::min<size_t>((size_t)requested, count - 1);
+      if (_presetIndex->presetAt(index, entry))
+      {
+        _plugin->loadPresetFromLocation(entry.locationKind,
+                                        entry.location.empty() ? nullptr : entry.location.c_str(),
+                                        entry.loadKey.empty() ? nullptr : entry.loadKey.c_str());
+      }
+    }
+  }
+
+  if (_presetListChanged.exchange(false))
+  {
+    if (_presetParamId == Vst::kNoParamId)
+    {
+      // The crawl finished after setupPresets() had nothing to size the list
+      // with, so there is no selector parameter at all yet. Only rebuilding
+      // the parameters can introduce one; restartComponent is what makes the
+      // host re-read them.
+      setupParameters(_plugin->_plugin, _plugin->_ext._params);
+      if (componentHandler)
+        componentHandler->restartComponent(Vst::RestartFlags::kParamTitlesChanged |
+                                           Vst::RestartFlags::kParamValuesChanged);
+    }
+    else if (auto unitHandler = Steinberg::FUnknownPtr<Vst::IUnitHandler>(componentHandler))
+    {
+      // -1: every program in the list changed, not one of them.
+      unitHandler->notifyProgramListChange((Vst::ProgramListID)_presetParamId, -1);
+    }
+  }
 
   // handling queued events
   queueEvent n;

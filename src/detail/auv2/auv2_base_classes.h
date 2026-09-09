@@ -29,6 +29,7 @@
 #include "detail/shared/fixedqueue.h"
 #include "detail/shared/spinlock.h"
 #include "detail/shared/midi_translation.h"
+#include "detail/clap/preset_discovery.h"
 #include "detail/os/osutil.h"
 #include "detail/clap/automation.h"
 
@@ -616,10 +617,11 @@ class WrapAsAUV2 : public ausdk::AUBase,
     // call that reported dirty. The flag also collapses bursts into one
     // notification per idle tick.
     //
-    // Deliberately not accompanied by kAudioUnitProperty_PresentPreset: the
-    // wrapper exposes no presets, so AUBase's mCurrentPreset stays {-1,
-    // "Untitled"} and notifying it would only make hosts re-read an unchanged
-    // value. That belongs with CLAP preset-load support, when it arrives.
+    // Deliberately not accompanied by kAudioUnitProperty_PresentPreset. That
+    // is now a real property (the wrapper does publish factory presets - see
+    // GetPresets below), but it changes when a preset is *loaded*, not when
+    // the plugin's state drifts from what the host cached; preset_loaded() is
+    // what notifies it.
     _requestMarkDirty = true;
   }
   void restartPlugin() override
@@ -755,6 +757,18 @@ class WrapAsAUV2 : public ausdk::AUBase,
   void onBeginEdit(clap_id id) override;
   void onPerformEdit(const clap_event_param_value_t *value) override;
   void onEndEdit(clap_id id) override;
+
+  // --------------- factory presets, from clap.preset-load
+  // AU's preset list is flat and numbered, and a host stores the *number*.
+  // Clap::PresetIndex is what makes that number mean the same preset twice -
+  // see its header on ordering.
+  OSStatus GetPresets(CFArrayRef *outData) const override;
+  OSStatus NewFactoryPresetSet(const AUPreset &inNewFactoryPreset) override;
+
+  // --------------- Clap::IHost, preset-load
+  void preset_loaded(uint32_t locationKind, const char *location, const char *loadKey) override;
+  void preset_load_error(uint32_t locationKind, const char *location, const char *loadKey,
+                         int32_t osError, const char *msg) override;
 
   // --------------- IPlugObject
   void onIdle() override;
@@ -939,6 +953,29 @@ class WrapAsAUV2 : public ausdk::AUBase,
 #endif
 
   std::atomic_bool _requestUICallback = false;
+  // ---- clap.preset-load, published as AU factory presets ----
+  void setupPresets();
+  // Builds _presetCache from the index. const because GetPresets() is: AU asks
+  // for the preset list early and synchronously, often before the first idle
+  // tick, so building it lazily there is the only way to answer with anything.
+  void rebuildPresetCache() const;
+
+  std::shared_ptr<Clap::PresetIndex> _presetIndex;
+  uint64_t _presetIndexToken = 0;
+  // Set from the index's crawl thread, serviced in onIdle(): notifying a host
+  // is not something to do from a background thread.
+  std::atomic_bool _presetListChanged = false;
+
+  mutable std::mutex _presetCacheMutex;
+  mutable std::vector<AUPreset> _presetCache;
+  mutable bool _presetCacheBuilt = false;
+  // Every CFString ever handed to a host in an AUPreset, kept alive until this
+  // instance dies. A host may still hold an array from before a rebuild, and
+  // the AU API gives it no way to tell us it is done with one - so retiring
+  // the strings early would be a use-after-free with a very long fuse. There
+  // are at most two generations (empty, then crawled), so nothing accumulates.
+  mutable std::vector<CFStringRef> _presetNameStrings;
+
   // set by mark_dirty(), serviced in onIdle()
   std::atomic_bool _requestMarkDirty = false;
   std::atomic_bool _requestRestart = false;

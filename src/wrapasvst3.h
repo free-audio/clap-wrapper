@@ -37,6 +37,7 @@
 #include "detail/os/osutil.h"
 #include "detail/vst3/plugview.h"
 #include "detail/clap/automation.h"
+#include "detail/clap/preset_discovery.h"
 #include "detail/shared/fixedqueue.h"
 #include "detail/ara/ara.h"
 #include "detail/vst3/aravst3.h"
@@ -381,6 +382,24 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   void onBeginEdit(clap_id id) override;
   void onPerformEdit(const clap_event_param_value_t *value) override;
   void onEndEdit(clap_id id) override;
+  void onRequestPresetLoad(size_t presetIndex) override;
+
+  //---from Clap::IHost, preset-load ---------------
+  void preset_loaded(uint32_t locationKind, const char *location, const char *loadKey) override;
+  void preset_load_error(uint32_t locationKind, const char *location, const char *loadKey,
+                         int32_t osError, const char *msg) override;
+
+  //---program lists, for the preset list -----------
+  // The preset list is answered from the index rather than from a
+  // Steinberg::Vst::ProgramList object, because the index fills in on a
+  // background thread and a ProgramList cannot be emptied once built. The MIDI
+  // "Program Changes" lists still come from the SDK, so both paths have to
+  // coexist here.
+  Steinberg::int32 PLUGIN_API getProgramListCount() override;
+  Steinberg::tresult PLUGIN_API getProgramListInfo(Steinberg::int32 listIndex,
+                                                   Vst::ProgramListInfo &info /*out*/) override;
+  Steinberg::tresult PLUGIN_API getProgramName(Vst::ProgramListID listId, Steinberg::int32 programIndex,
+                                               Vst::String128 name /*out*/) override;
 
   // information function to enable/disable the IMIDIMapping interface
   bool checkMIDIDialectSupport();
@@ -444,6 +463,33 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
 
   // set by param_rescan() whenever it syncs values, cleared and checked by setState()
   bool _paramValuesSyncedDuringLoad{false};
+
+  // ---- clap.preset-load, published as a VST3 program list ----
+  // Built in setupParameters() when the plugin implements preset-load. The
+  // index itself is shared per module and crawls on a background thread, so
+  // the list can be empty here and fill in later; onPresetIndexComplete() is
+  // what tells the host to look again.
+  void setupPresets();
+  void onPresetIndexComplete();
+  bool isPresetProgramList(Vst::ProgramListID listId) const
+  {
+    return _presetParamId != Vst::kNoParamId && listId == (Vst::ProgramListID)_presetParamId;
+  }
+
+  std::shared_ptr<Clap::PresetIndex> _presetIndex;
+  uint64_t _presetIndexToken = 0;
+  // The program list id and the selector parameter id are deliberately the
+  // same number - that is how VST3 ties a unit's program list to the
+  // parameter a host moves to change program.
+  Vst::ParamID _presetParamId = Vst::kNoParamId;
+  Vst::UnitID _presetUnitId = Vst::kRootUnitId;
+  // Set from the audio thread by onRequestPresetLoad(), drained in onIdle().
+  // Coalescing is correct: three program changes in one block should load the
+  // last preset, not three.
+  std::atomic<int64_t> _presetLoadRequest{-1};
+  // Set when the crawl finishes; onIdle() turns it into the host notification,
+  // because notifyProgramListChange() is not for a background thread.
+  std::atomic<bool> _presetListChanged{false};
 
   // for IMidiMapping
   bool _useIMidiMapping = false;

@@ -77,6 +77,13 @@ class Vst3Parameter : public Steinberg::Vst::Parameter
   static Vst3Parameter *create(const clap_param_info_t *info,
                                std::function<Steinberg::Vst::UnitID(const char *modulepath)> getUnitId);
   static Vst3Parameter *create(uint8_t bus, uint8_t channel, uint8_t cc, Steinberg::Vst::ParamID id);
+
+  // The preset selector: a kIsProgramChange parameter whose value is an index
+  // into the wrapper's preset list, not a MIDI program number. It has to be a
+  // separate kind because the process adapter turns every isMidi program
+  // change into an actual 0xC0 message, which is emphatically not what
+  // selecting a preset should do.
+  static Vst3Parameter *createPresetSelector(Steinberg::Vst::ParamID id, int32_t presetCount);
   // copies from the clap_param_info_t
   uint32_t param_index_for_clap_get_info = 0;
   clap_id id = 0;
@@ -86,6 +93,7 @@ class Vst3Parameter : public Steinberg::Vst::Parameter
   double max_value;  // maximum plain value
   // or it was MIDI
   bool isMidi = false;
+  bool isPreset = false;
   uint8_t channel = 0;
   uint8_t controller = 0;
 };

@@ -74,6 +74,23 @@ class IHost
   virtual bool track_info_get(clap_track_info_t *info) = 0;
   virtual const char *host_get_name() = 0;
 
+  // clap.preset-load, host side. Defaulted rather than pure: only the formats
+  // that can show a preset list (VST3 program lists, AU factory presets) have
+  // anything to do here, and making these pure would force every other
+  // wrapper to grow two empty overrides.
+  //
+  // `loaded` is how a plugin tells the host what it now holds - a plugin's own
+  // UI can load a preset without the host asking, and the host's list has to
+  // follow. Both arrive on the main thread.
+  virtual void preset_loaded(uint32_t /*location_kind*/, const char * /*location*/,
+                             const char * /*load_key*/)
+  {
+  }
+  virtual void preset_load_error(uint32_t /*location_kind*/, const char * /*location*/,
+                                 const char * /*load_key*/, int32_t /*os_error*/, const char * /*msg*/)
+  {
+  }
+
   // context menu
 
   // actually, everything here should be virtual only, but until all wrappers are updated,
@@ -121,6 +138,7 @@ struct ClapPluginExtensions
   const clap_ara_plugin_extension_t *_ara = nullptr;
   const clap_plugin_gain_adjustment_metering_t *_gainreduc = nullptr;
   const clap_plugin_auv2_param_ordering_t *_auv2_param_ordering = nullptr;
+  const clap_plugin_preset_load_t *_preset_load = nullptr;
 #if LIN
   const clap_plugin_posix_fd_support *_posixfd = nullptr;
 #endif
@@ -183,6 +201,19 @@ class Plugin
 
   bool load(const clap_istream_t *stream) const;
   bool save(const clap_ostream_t *stream) const;
+
+  // clap.preset-load, plugin side. True when the plugin implements it at all -
+  // a wrapper with nothing to load presets *into* should not advertise a
+  // preset list to its host.
+  bool supportsPresetLoad() const
+  {
+    return _ext._preset_load != nullptr && _ext._preset_load->from_location != nullptr;
+  }
+  // [main-thread]. Failure is reported by the plugin through the host side
+  // (IHost::preset_load_error) as well as by this return value; the message
+  // only ever arrives that way, so a wrapper that wants to show one must
+  // override the callback.
+  bool loadPresetFromLocation(uint32_t locationKind, const char *location, const char *loadKey) const;
   bool activate() const;
   void deactivate() const;
   bool start_processing();
@@ -212,6 +243,12 @@ class Plugin
 
   // tail
   void tail_changed();
+
+  // preset_load, host side: forwarded to the wrapper, which is what knows how
+  // to show its host a preset list.
+  void preset_loaded(uint32_t locationKind, const char *location, const char *loadKey);
+  void preset_load_error(uint32_t locationKind, const char *location, const char *loadKey,
+                         int32_t osError, const char *msg);
 
   // context_menu
   bool context_menu_populate(const clap_context_menu_target_t *target,
