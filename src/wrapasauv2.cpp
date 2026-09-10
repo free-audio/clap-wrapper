@@ -1174,8 +1174,7 @@ std::vector<clap_audio_port_configuration_request_t> WrapAsAUV2::mainBusConfigur
                _inputPortCache[i].isMain ? mainInChannels : nonMain(_inputPortCache[i].channelCount));
   for (size_t i = 0; i < _outputPortCache.size(); ++i)
     addRequest(false, static_cast<uint32_t>(i),
-               _outputPortCache[i].isMain ? mainOutChannels
-                                          : nonMain(_outputPortCache[i].channelCount));
+               _outputPortCache[i].isMain ? mainOutChannels : nonMain(_outputPortCache[i].channelCount));
 
   return requests;
 }
@@ -2040,7 +2039,8 @@ UInt32 WrapAsAUV2::SupportedNumChannels(const AUChannelInfo **outInfo)
     {
       auto const already =
           std::any_of(cinfo.begin(), cinfo.end(),
-                      [&caps](const AUChannelInfo &seen) {
+                      [&caps](const AUChannelInfo &seen)
+                      {
                         return seen.inChannels == static_cast<SInt16>(caps.inputChannels) &&
                                seen.outChannels == static_cast<SInt16>(caps.outputChannels);
                       });
