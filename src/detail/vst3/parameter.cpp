@@ -183,3 +183,27 @@ Vst3Parameter *Vst3Parameter::create(uint8_t bus, uint8_t channel, uint8_t cc, V
 
   return new Vst3Parameter(v, bus, channel, cc);
 }
+
+Vst3Parameter *Vst3Parameter::createPresetSelector(Steinberg::Vst::ParamID id, int32_t presetCount)
+{
+  Vst::ParameterInfo v;
+  memset(&v, 0, sizeof(v));
+  v.id = id;
+  utf8_to_utf16l("Preset", (uint16_t *)(v.title), str16BufferSize(v.title));
+  utf8_to_utf16l("Preset", (uint16_t *)(v.shortTitle), str16BufferSize(v.shortTitle));
+  v.units[0] = 0;
+  v.defaultNormalizedValue = 0;
+  // kIsProgramChange is what ties the parameter to the unit's program list, so
+  // a host shows the list instead of a bare slider. Not automatable: a preset
+  // load rebuilds a plugin's state, which is not something to draw a curve
+  // through.
+  v.flags = Vst::ParameterInfo::kIsProgramChange | Vst::ParameterInfo::kIsList;
+  v.stepCount = presetCount > 1 ? presetCount - 1 : 0;
+
+  auto *p = new Vst3Parameter(v, 0, 0, 0);
+  p->isMidi = false;
+  p->isPreset = true;
+  p->min_value = 0;
+  p->max_value = v.stepCount;
+  return p;
+}

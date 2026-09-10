@@ -189,6 +189,17 @@ WrapAsAUV2::WrapAsAUV2(const std::string &clapname, const std::string &clapid, i
 
 WrapAsAUV2::~WrapAsAUV2()
 {
+  // The index outlives this instance (it is cached per module) and its crawl
+  // thread holds our callback, so it has to be dropped before anything else.
+  if (_presetIndex && _presetIndexToken)
+  {
+    _presetIndex->removeCompletionListener(_presetIndexToken);
+    _presetIndexToken = 0;
+  }
+  _presetIndex.reset();
+  for (auto name : _presetNameStrings) CFRelease(name);
+  _presetNameStrings.clear();
+
 #if AUSDK_MIDI2_AVAILABLE
   if (auto blk = _midioutput_hosteventlistblock.exchange(nullptr)) Block_release(blk);
   for (auto blk : _retiredEventListBlocks) Block_release(blk);
@@ -310,6 +321,146 @@ void WrapAsAUV2::setupWrapperSpecifics(const clap_plugin_t *plugin)
 {
   // TODO: if there are AUv2 specific extensions, they can be retrieved here
   // _auv2_specifics = (clap_plugin_as_auv2_t*)plugin->get_extension(plugin, CLAP_PLUGIN_AS_AUV2);
+  setupPresets();
+}
+
+// ----------------------------------------------------------------------------
+// clap.preset-load, published to the host as AU factory presets
+// ----------------------------------------------------------------------------
+void WrapAsAUV2::setupPresets()
+{
+  // Nothing to offer if the plugin cannot load a preset it is handed back.
+  if (!_plugin || !_plugin->supportsPresetLoad()) return;
+
+  // _desc->id, not _clapid: this wrapper can be built to select its plugin by
+  // index instead of by id, and then _clapid is empty. An empty id here is not
+  // harmless - it is the value the index matches add_plugin_id() against, so
+  // every preset that names its plugin would be filtered out and the list
+  // would come back empty.
+  const char *pluginId = _desc && _desc->id ? _desc->id : _clapid.c_str();
+  _presetIndex = Clap::PresetIndex::forPlugin(&_library, pluginId);
+  if (!_presetIndex) return;  // the plugin has no preset-discovery factory
+
+  _presetIndexToken = _presetIndex->addCompletionListener(
+      [this]()
+      {
+        // Crawl thread: only a flag. onIdle() tells the host.
+        _presetListChanged.store(true);
+      });
+}
+
+void WrapAsAUV2::rebuildPresetCache() const
+{
+  std::lock_guard<std::mutex> lock(_presetCacheMutex);
+
+  _presetCache.clear();
+  if (!_presetIndex)
+  {
+    _presetCacheBuilt = true;
+    return;
+  }
+
+  // Only a completed crawl is worth caching. A host asking during one - AU
+  // asks early - would otherwise pin whatever partial list existed at that
+  // moment, and an empty one would stay empty until the completion tick.
+  _presetCacheBuilt = _presetIndex->isComplete();
+
+  const auto presets = _presetIndex->presets();
+  _presetCache.reserve(presets.size());
+  for (size_t i = 0; i < presets.size(); ++i)
+  {
+    const auto name = presets[i].displayName();
+    auto cfName = CFStringCreateWithCString(kCFAllocatorDefault, name.c_str(), kCFStringEncodingUTF8);
+    if (!cfName) continue;
+    _presetNameStrings.push_back(cfName);  // see the member's comment on lifetime
+
+    AUPreset preset{};
+    // The preset number IS the index in Clap::PresetIndex's ordering. A host
+    // stores this number, which is why that ordering is deterministic.
+    preset.presetNumber = static_cast<SInt32>(i);
+    preset.presetName = cfName;
+    _presetCache.push_back(preset);
+  }
+}
+
+OSStatus WrapAsAUV2::GetPresets(CFArrayRef *outData) const
+{
+  if (!_presetIndex) return kAudioUnitErr_InvalidProperty;
+
+  // AU asks for this once, synchronously, at load - and a host told
+  // kAudioUnitErr_InvalidProperty concludes the unit has no factory presets
+  // and is under no obligation to ever ask again. So wait briefly for the
+  // crawl rather than answer "none" while it is still running: an embedded
+  // container resolves in milliseconds, and a folder crawl that outlasts the
+  // wait is still covered by the FactoryPresets notification onIdle() sends.
+  _presetIndex->waitUntilComplete(1000);
+
+  if (!_presetCacheBuilt) rebuildPresetCache();
+
+  std::lock_guard<std::mutex> lock(_presetCacheMutex);
+  if (_presetCache.empty()) return kAudioUnitErr_InvalidProperty;
+
+  // A null outData is the host asking whether presets exist at all.
+  if (outData == nullptr) return noErr;
+
+  auto array =
+      CFArrayCreateMutable(kCFAllocatorDefault, static_cast<CFIndex>(_presetCache.size()), nullptr);
+  if (!array) return kAudio_MemFullError;
+  for (const auto &preset : _presetCache) CFArrayAppendValue(array, &preset);
+
+  *outData = static_cast<CFArrayRef>(array);  // the host releases it
+  return noErr;
+}
+
+OSStatus WrapAsAUV2::NewFactoryPresetSet(const AUPreset &inNewFactoryPreset)
+{
+  if (!_presetIndex || !_plugin) return kAudioUnitErr_InvalidPropertyValue;
+  if (inNewFactoryPreset.presetNumber < 0) return kAudioUnitErr_InvalidPropertyValue;
+
+  Clap::PresetEntry entry;
+  if (!_presetIndex->presetAt(static_cast<size_t>(inNewFactoryPreset.presetNumber), entry))
+    return kAudioUnitErr_InvalidPropertyValue;
+
+  auto guarantee_mainthread = _plugin->AlwaysMainThread();
+  if (!_plugin->loadPresetFromLocation(entry.locationKind,
+                                       entry.location.empty() ? nullptr : entry.location.c_str(),
+                                       entry.loadKey.empty() ? nullptr : entry.loadKey.c_str()))
+    return kAudioUnitErr_InvalidPropertyValue;
+
+  // Only now is it the current preset. Doing this before the load would leave
+  // a host showing a preset the plugin refused.
+  SetAFactoryPresetAsCurrent(inNewFactoryPreset);
+  return noErr;
+}
+
+void WrapAsAUV2::preset_loaded(uint32_t locationKind, const char *location, const char *loadKey)
+{
+  // The plugin loaded a preset itself (its own UI, or a project restore).
+  // Point the host's PresentPreset at the matching slot, if we indexed it.
+  if (!_presetIndex) return;
+
+  size_t index = 0;
+  if (!_presetIndex->indexOf(locationKind, location, loadKey, index)) return;
+
+  if (!_presetCacheBuilt) rebuildPresetCache();
+
+  AUPreset preset{};
+  {
+    std::lock_guard<std::mutex> lock(_presetCacheMutex);
+    if (index >= _presetCache.size()) return;
+    preset = _presetCache[index];
+  }
+
+  SetAFactoryPresetAsCurrent(preset);
+  PropertyChanged(kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0);
+}
+
+void WrapAsAUV2::preset_load_error(uint32_t /*locationKind*/, const char * /*location*/,
+                                   const char * /*loadKey*/, int32_t /*osError*/, const char *msg)
+{
+  // AU has no channel for this either; the plugin has been told and owns the
+  // user-facing message.
+  LOGINFO("[clap-wrapper] preset load failed: {}", msg ? msg : "(no message)");
 }
 
 void WrapAsAUV2::setupAudioBusses(const clap_plugin_t *plugin,
@@ -1593,6 +1744,19 @@ void WrapAsAUV2::onIdle()
   if (!_plugin) return;
 
   pushQueuedEventsToHost();
+
+  if (_presetListChanged.exchange(false))
+  {
+    // The crawl finished (or found more). Rebuild and tell the host to
+    // re-read; PropertyChanged is main-thread work, which is why the crawl
+    // thread only set a flag.
+    {
+      std::lock_guard<std::mutex> lock(_presetCacheMutex);
+      _presetCacheBuilt = false;
+    }
+    rebuildPresetCache();
+    PropertyChanged(kAudioUnitProperty_FactoryPresets, kAudioUnitScope_Global, 0);
+  }
 
   if (_requestMarkDirty.exchange(false))
   {

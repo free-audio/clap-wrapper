@@ -231,6 +231,8 @@ function(guarantee_clap_wrapper_shared)
             src/detail/clap/fsutil.h
             src/detail/clap/fsutil.cpp
             src/detail/clap/automation.h
+            src/detail/clap/preset_discovery.h
+            src/detail/clap/preset_discovery.cpp
             )
     target_link_libraries(clap-wrapper-shared-detail PUBLIC clap clap-wrapper-extensions clap-wrapper-compile-options-public)
     target_link_libraries(clap-wrapper-shared-detail PRIVATE clap-wrapper-compile-options)

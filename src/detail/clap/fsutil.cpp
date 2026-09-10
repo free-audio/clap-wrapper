@@ -317,6 +317,14 @@ void Library::setupPluginsFromPluginEntry(const char *path)
       _pluginFactoryARAInfo =
           static_cast<const clap_ara_factory_t *>(_pluginEntry->get_factory(CLAP_EXT_ARA_FACTORY));
 
+      _pluginFactoryPresetDiscovery = static_cast<const clap_preset_discovery_factory_t *>(
+          _pluginEntry->get_factory(CLAP_PRESET_DISCOVERY_FACTORY_ID));
+      if (!_pluginFactoryPresetDiscovery)
+      {
+        _pluginFactoryPresetDiscovery = static_cast<const clap_preset_discovery_factory_t *>(
+            _pluginEntry->get_factory(CLAP_PRESET_DISCOVERY_FACTORY_ID_COMPAT));
+      }
+
       // detect plugins that do not check the CLAP_PLUGIN_FACTORY_ID
       if ((void *)_pluginFactory == (void *)_pluginFactoryVst3Info)
       {
@@ -326,6 +334,7 @@ void Library::setupPluginsFromPluginEntry(const char *path)
         _pluginFactoryAUv2Info = nullptr;
         _pluginFactoryAUv2Legacy = nullptr;
         _pluginFactoryARAInfo = nullptr;
+        _pluginFactoryPresetDiscovery = nullptr;
       }
 
       auto count = _pluginFactory->get_plugin_count(_pluginFactory);

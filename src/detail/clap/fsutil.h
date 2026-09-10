@@ -50,6 +50,12 @@ class Library
   const clap_plugin_factory_auv2_legacy *_pluginFactoryAUv2Legacy = nullptr;
   const clap_plugin_factory_as_aax_t *_pluginFactoryAAXInfo = nullptr;
   const clap_ara_factory_t *_pluginFactoryARAInfo = nullptr;
+  // The plugin's CLAP preset-discovery factory, when it has one. Unlike the
+  // *_Info factories above this is not wrapper metadata: it is the plugin
+  // telling a host where its presets live and what they contain. No VST3 or
+  // AUv2 host will ever ask for it, so the wrapper has to be the indexer
+  // itself - see detail/clap/preset_discovery.h.
+  const clap_preset_discovery_factory_t *_pluginFactoryPresetDiscovery = nullptr;
   std::vector<const clap_plugin_descriptor_t *> plugins;
 
   const clap_plugin_info_as_vst3_t *get_vst3_info(uint32_t index) const;

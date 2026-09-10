@@ -145,6 +145,15 @@ static bool track_info_get(const clap_host_t *host, clap_track_info_t *info)
 
 const clap_host_track_info trackinfo = {track_info_get};
 
+const clap_host_preset_load_t preset_load = {
+    /* on_error */
+    [](const clap_host_t *host, uint32_t location_kind, const char *location, const char *load_key,
+       int32_t os_error, const char *msg) -> void
+    { self(host)->preset_load_error(location_kind, location, load_key, os_error, msg); },
+    /* loaded */
+    [](const clap_host_t *host, uint32_t location_kind, const char *location,
+       const char *load_key) -> void { self(host)->preset_loaded(location_kind, location, load_key); }};
+
 }  // namespace HostExt
 
 std::shared_ptr<Plugin> Plugin::createInstance(const clap_plugin_factory *factory, const std::string &id,
@@ -251,6 +260,9 @@ void Plugin::connectClap(const clap_plugin_t *clap)
   }
 
   getExtension(_plugin, _ext._gainreduc, CLAP_EXT_GAIN_ADJUSTMENT_METERING);
+
+  getExtension(_plugin, _ext._preset_load, CLAP_EXT_PRESET_LOAD);
+  if (!_ext._preset_load) getExtension(_plugin, _ext._preset_load, CLAP_EXT_PRESET_LOAD_COMPAT);
   getExtension(_plugin, _ext._auv2_param_ordering, CLAP_PLUGIN_AUV2_PARAM_ORDERING);
 
 #if LIN
@@ -352,6 +364,13 @@ bool Plugin::load(const clap_istream_t *stream) const
   return false;
 }
 
+bool Plugin::loadPresetFromLocation(uint32_t locationKind, const char *location,
+                                    const char *loadKey) const
+{
+  if (!supportsPresetLoad()) return false;
+  return _ext._preset_load->from_location(_plugin, locationKind, location, loadKey);
+}
+
 bool Plugin::save(const clap_ostream_t *stream) const
 {
   if (_ext._state)
@@ -418,6 +437,17 @@ void Plugin::mark_dirty()
 void Plugin::latency_changed()
 {
   _parentHost->latency_changed();
+}
+
+void Plugin::preset_loaded(uint32_t locationKind, const char *location, const char *loadKey)
+{
+  _parentHost->preset_loaded(locationKind, location, loadKey);
+}
+
+void Plugin::preset_load_error(uint32_t locationKind, const char *location, const char *loadKey,
+                               int32_t osError, const char *msg)
+{
+  _parentHost->preset_load_error(locationKind, location, loadKey, osError, msg);
 }
 
 void Plugin::tail_changed()
@@ -557,6 +587,8 @@ const void *Plugin::clapExtension(const clap_host * /*host*/, const char *extens
   if (!strcmp(extension, CLAP_EXT_TAIL)) return &HostExt::tail;
   if (!strcmp(extension, CLAP_EXT_STATE)) return &HostExt::state;
   if (!strcmp(extension, CLAP_EXT_CONTEXT_MENU)) return &HostExt::context_menu;
+  if (!strcmp(extension, CLAP_EXT_PRESET_LOAD) || !strcmp(extension, CLAP_EXT_PRESET_LOAD_COMPAT))
+    return &HostExt::preset_load;
 
 #if LIN
   if (!strcmp(extension, CLAP_EXT_POSIX_FD_SUPPORT)) return &HostExt::hostposixfd;
