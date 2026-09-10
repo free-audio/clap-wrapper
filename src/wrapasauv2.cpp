@@ -1148,11 +1148,11 @@ void WrapAsAUV2::addOutputBus(int bus, const clap_audio_port_info_t *info)
 }
 
 std::vector<clap_audio_port_configuration_request_t> WrapAsAUV2::mainBusConfigurationRequests(
-    uint32_t mainInChannels, uint32_t mainOutChannels) const
+    uint32_t mainInChannels, uint32_t mainOutChannels, uint32_t nonMainChannels) const
 {
   // One request per port, mirroring the VST3 wrapper's setBusArrangements
   // (wrapasvst3.cpp): main ports get the given counts, non-main ports keep
-  // their current ones.
+  // their current ones -- or, when nonMainChannels is non-zero, move to that.
   std::vector<clap_audio_port_configuration_request_t> requests;
   auto addRequest = [&requests](bool isInput, uint32_t port, uint32_t channels)
   {
@@ -1166,12 +1166,16 @@ std::vector<clap_audio_port_configuration_request_t> WrapAsAUV2::mainBusConfigur
     requests.push_back(request);
   };
 
+  auto const nonMain = [nonMainChannels](uint32_t current)
+  { return nonMainChannels ? nonMainChannels : current; };
+
   for (size_t i = 0; i < _inputPortCache.size(); ++i)
     addRequest(true, static_cast<uint32_t>(i),
-               _inputPortCache[i].isMain ? mainInChannels : _inputPortCache[i].channelCount);
+               _inputPortCache[i].isMain ? mainInChannels : nonMain(_inputPortCache[i].channelCount));
   for (size_t i = 0; i < _outputPortCache.size(); ++i)
     addRequest(false, static_cast<uint32_t>(i),
-               _outputPortCache[i].isMain ? mainOutChannels : _outputPortCache[i].channelCount);
+               _outputPortCache[i].isMain ? mainOutChannels
+                                          : nonMain(_outputPortCache[i].channelCount));
 
   return requests;
 }
@@ -1232,35 +1236,59 @@ bool WrapAsAUV2::applyConfigurationFromBusFormats()
       !_plugin->_ext._configurable_audio_ports)
     return true;
 
-  // The channel counts the host settled on for the main busses. AU elements
-  // map 1:1 to the CLAP ports scanned at PostConstructor, but a plugin that
-  // changes its port *count* in apply_configuration can leave the caches
-  // longer than the element scopes, and ausdk's Input()/Output() throw on an
-  // element that does not exist - so never look past the element counts.
+  // What the host settled on, every bus of it. AU elements map 1:1 to the CLAP
+  // ports scanned at PostConstructor, but a plugin that changes its port *count*
+  // in apply_configuration can leave the caches longer than the element scopes,
+  // and ausdk's Input()/Output() throw on an element that does not exist - so
+  // never look past the element counts.
+  //
+  //   Every bus and not the main ones alone. ValidFormat vets one scope at a
+  // time, because that is how a host sets formats, so it can only ask whether
+  // *some* probed layout gives *that* bus that width - and a host can therefore
+  // legally land on a combination no single layout has. Asking the plugin for
+  // exactly what the host set is what turns that into a refusal here rather
+  // than into an AU element whose channel count the active plugin's port does
+  // not share, which the render path would then write past.
   bool mismatch = false;
-  uint32_t mainInChannels = 0, mainOutChannels = 0;
+  // only the diagnostic below reads these, and that compiles away at
+  // CLAP_WRAPPER_LOGLEVEL=0
+  [[maybe_unused]] uint32_t mainInChannels = 0, mainOutChannels = 0;
 
   const size_t numInputElements = Inputs().GetNumberOfElements();
   const size_t numOutputElements = Outputs().GetNumberOfElements();
 
+  std::vector<clap_audio_port_configuration_request_t> requests;
+  auto addRequest = [&requests](bool isInput, size_t port, uint32_t channels)
+  {
+    clap_audio_port_configuration_request_t request{};
+    request.is_input = isInput;
+    request.port_index = static_cast<uint32_t>(port);
+    request.channel_count = channels;
+    request.port_type =
+        (channels == 1) ? CLAP_PORT_MONO : ((channels == 2) ? CLAP_PORT_STEREO : nullptr);
+    request.port_details = nullptr;
+    requests.push_back(request);
+  };
+
   for (size_t i = 0; i < _inputPortCache.size() && i < numInputElements; ++i)
   {
-    if (!_inputPortCache[i].isMain) continue;
-    mainInChannels = Input(static_cast<AudioUnitElement>(i)).GetStreamFormat().mChannelsPerFrame;
-    mismatch |= (mainInChannels != _inputPortCache[i].channelCount);
-    break;
+    const uint32_t channels =
+        Input(static_cast<AudioUnitElement>(i)).GetStreamFormat().mChannelsPerFrame;
+    mismatch |= (channels != _inputPortCache[i].channelCount);
+    if (_inputPortCache[i].isMain) mainInChannels = channels;
+    addRequest(true, i, channels);
   }
   for (size_t i = 0; i < _outputPortCache.size() && i < numOutputElements; ++i)
   {
-    if (!_outputPortCache[i].isMain) continue;
-    mainOutChannels = Output(static_cast<AudioUnitElement>(i)).GetStreamFormat().mChannelsPerFrame;
-    mismatch |= (mainOutChannels != _outputPortCache[i].channelCount);
-    break;
+    const uint32_t channels =
+        Output(static_cast<AudioUnitElement>(i)).GetStreamFormat().mChannelsPerFrame;
+    mismatch |= (channels != _outputPortCache[i].channelCount);
+    if (_outputPortCache[i].isMain) mainOutChannels = channels;
+    addRequest(false, i, channels);
   }
 
   if (!mismatch) return true;
 
-  auto requests = mainBusConfigurationRequests(mainInChannels, mainOutChannels);
   const bool applied = _plugin->_ext._configurable_audio_ports->apply_configuration(
       _plugin->_plugin, requests.data(), static_cast<uint32_t>(requests.size()));
 
@@ -2004,8 +2032,20 @@ UInt32 WrapAsAUV2::SupportedNumChannels(const AUChannelInfo **outInfo)
     // The PostConstructor probe found the plugin's accepted main-bus layouts
     // through clap.configurable-audio-ports: advertise exactly those (the
     // matching one is applied in activateCLAP once the host settles on it).
+    // One entry per main-bus pair. The probe records a layout per *shape* it
+    // got accepted, so the same pair can appear twice -- once with the non-main
+    // busses left alone and once with them moved along -- and AUChannelInfo has
+    // no way to say that, nor any need to: it describes main busses only.
     for (const auto &caps : _channelCapsCache)
     {
+      auto const already =
+          std::any_of(cinfo.begin(), cinfo.end(),
+                      [&caps](const AUChannelInfo &seen) {
+                        return seen.inChannels == static_cast<SInt16>(caps.inputChannels) &&
+                               seen.outChannels == static_cast<SInt16>(caps.outputChannels);
+                      });
+      if (already) continue;
+
       cinfo.emplace_back();
       cinfo.back().inChannels = static_cast<SInt16>(caps.inputChannels);
       cinfo.back().outChannels = static_cast<SInt16>(caps.outputChannels);
@@ -2172,15 +2212,30 @@ void WrapAsAUV2::PostConstructor()
         for (uint32_t out = minOut; out <= maxOut; ++out)
         {
           if (in == currentIn && out == currentOut) continue;  // seeded above
-          auto requests = mainBusConfigurationRequests(in, out);
-          const auto size = static_cast<uint32_t>(requests.size());
-          auto *cap = _plugin->_ext._configurable_audio_ports;
-          if (!cap->can_apply_configuration(_plugin->_plugin, requests.data(), size)) continue;
-          if (!cap->apply_configuration(_plugin->_plugin, requests.data(), size)) continue;
 
-          moved = true;
-          _channelCapsCache.push_back({in, out});
-          recordBusChannelCounts(_channelCapsCache.back());
+          // Two shapes per candidate, because a plugin may accept both and a
+          // host will ask for either. The first leaves every non-main port
+          // where it is, which is what a host that only moves the main busses
+          // sends; the second takes them along, which is what a host
+          // configuring a whole track sends. A plugin whose side chain must
+          // match its main bus accepts only the second, one whose side chain is
+          // fixed only the first, and one that can do both gets both recorded
+          // -- ValidFormat admits a bus width that *any* recorded layout gives
+          // that bus, so offering only one of the two is what makes a host's
+          // perfectly reasonable request come back as
+          // kAudioUnitErr_FormatNotSupported.
+          for (uint32_t nonMain : {uint32_t{0}, in})
+          {
+            auto requests = mainBusConfigurationRequests(in, out, nonMain);
+            const auto size = static_cast<uint32_t>(requests.size());
+            auto *cap = _plugin->_ext._configurable_audio_ports;
+            if (!cap->can_apply_configuration(_plugin->_plugin, requests.data(), size)) continue;
+            if (!cap->apply_configuration(_plugin->_plugin, requests.data(), size)) continue;
+
+            moved = true;
+            _channelCapsCache.push_back({in, out});
+            recordBusChannelCounts(_channelCapsCache.back());
+          }
         }
       }
 

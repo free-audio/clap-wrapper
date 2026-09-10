@@ -800,10 +800,11 @@ class WrapAsAUV2 : public ausdk::AUBase,
   void addOutputBus(int bus, const clap_audio_port_info_t *info);
 
   // Configuration requests for the main busses: main ports get the given
-  // channel counts, non-main ports keep their current ones. Shared by the
+  // channel counts, non-main ports keep their current ones -- or, when
+  // nonMainChannels is non-zero, move to that instead. Shared by the
   // PostConstructor probe and applyConfigurationFromBusFormats.
   std::vector<clap_audio_port_configuration_request_t> mainBusConfigurationRequests(
-      uint32_t mainInChannels, uint32_t mainOutChannels) const;
+      uint32_t mainInChannels, uint32_t mainOutChannels, uint32_t nonMainChannels = 0) const;
 
   // If the host chose main-bus stream formats that differ from the current
   // CLAP port layout (ValidFormat admits every probed layout), push the
