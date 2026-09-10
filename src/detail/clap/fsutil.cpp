@@ -25,6 +25,8 @@
 #if LIN
 #include <dlfcn.h>
 #include <iostream>
+#include <pwd.h>
+#include <unistd.h>
 #endif
 
 #include "../os/osutil.h"
@@ -76,7 +78,21 @@ std::vector<fs::path> getValidCLAPSearchPaths()
 
 #if LIN
   res.emplace_back("/usr/lib/clap");
-  res.emplace_back(fs::path(getenv("HOME")) / fs::path(".clap"));
+  res.emplace_back("/usr/local/lib/clap");
+
+  {
+    // HOME is not guaranteed to be set - in a systemd unit or a bare 'su' it
+    // often isn't - and handing a null to fs::path is undefined behaviour, so
+    // fall back to the passwd entry and skip the user directory if even that
+    // has nothing for us.
+    auto home = getenv("HOME");
+    if (!home || !*home)
+    {
+      auto pw = getpwuid(getuid());
+      home = (pw && pw->pw_dir && *pw->pw_dir) ? pw->pw_dir : nullptr;
+    }
+    if (home) res.emplace_back(fs::path(home) / fs::path(".clap"));
+  }
 #endif
 
 #if WIN
@@ -109,16 +125,19 @@ std::vector<fs::path> getValidCLAPSearchPaths()
   }
   auto sep = ':';
 
-  if (cp.empty())
+  // This condition used to be inverted, which made the whole of CLAP_PATH dead
+  // code: the only way in was an empty CLAP_PATH, which then had nothing to
+  // split.
+  if (!cp.empty())
   {
     size_t pos;
     while ((pos = cp.find(sep)) != std::string::npos)
     {
       auto item = cp.substr(0, pos);
       cp = cp.substr(pos + 1);
-      res.emplace_back(item);
+      if (!item.empty() && fs::exists(item)) res.emplace_back(item);
     }
-    if (!cp.empty()) res.emplace_back(cp);
+    if (!cp.empty() && fs::exists(cp)) res.emplace_back(cp);
   }
 #endif
 

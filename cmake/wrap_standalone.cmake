@@ -1,4 +1,10 @@
 
+# The Linux standalone GUI is X11, which is also how it appears under XWayland.
+# Turning this off builds a standalone with no window at all - audio, MIDI, the
+# command line and plugin timers all still work - and needs no X11 development
+# files present.
+option(CLAP_WRAPPER_STANDALONE_X11_GUI "Build the X11 GUI for the Linux standalone" ON)
+
 function(target_add_standalone_wrapper)
     set(oneValueArgs
             TARGET
@@ -175,10 +181,32 @@ function(target_add_standalone_wrapper)
         target_sources(${SA_TARGET} PRIVATE
                 ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/wrapasstandalone.cpp)
 
-        message(STATUS "clap-wrapper: Using Standalone X11 gui for CLAP Wrapper")
-        target_link_libraries(${salib} PUBLIC X11)
-        target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_X11)
-        target_sources(${salib} PRIVATE ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/linux/x11_gui.cpp)
+        # Not the GUI: error reporting and orderly shutdown, needed with or
+        # without X11
+        find_package(Threads REQUIRED)
+        target_link_libraries(${salib} PUBLIC Threads::Threads)
+        target_sources(${salib} PRIVATE
+                ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/linux/linux_frontend.cpp
+                ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/linux/linux_command_line.cpp)
+
+        if (CLAP_WRAPPER_STANDALONE_X11_GUI)
+            # Rather than linking a bare 'X11' and letting a missing libx11-dev
+            # turn up as a raw linker error
+            find_package(X11)
+            if (NOT X11_FOUND)
+                message(FATAL_ERROR "clap-wrapper: the standalone X11 GUI needs the X11 development "
+                        "files, which were not found. Install them (libx11-dev on debian/ubuntu, "
+                        "libX11-devel on fedora, libx11 on arch) or configure with "
+                        "-DCLAP_WRAPPER_STANDALONE_X11_GUI=OFF for a standalone with no window.")
+            endif()
+
+            message(STATUS "clap-wrapper: Using Standalone X11 gui for CLAP Wrapper")
+            target_link_libraries(${salib} PUBLIC X11::X11)
+            target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_X11)
+            target_sources(${salib} PRIVATE ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/linux/x11_gui.cpp)
+        else()
+            message(STATUS "clap-wrapper: Standalone X11 gui disabled; the standalone will run without a window")
+        endif()
 
         set_target_properties(${SA_TARGET} PROPERTIES OUTPUT_NAME ${SA_OUTPUT_NAME})
 

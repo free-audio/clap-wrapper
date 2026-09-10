@@ -79,6 +79,62 @@ is a complete standalone synth you can release.
 
 See [docs/ios.md](docs/ios.md) for the full iOS instructions.
 
+### The Linux standalone
+
+The Linux standalone is configured from the command line rather than from a
+settings window; `--help` lists everything, and the useful ones are:
+
+```
+--audio-api <name>       alsa, pulse, jack, pipewire (an alias for pulse), auto
+--output-device <spec>   a device name, part of one, or an id from --list-devices
+--input-device <spec>
+--no-input               output only, even for a plugin with an audio input
+--sample-rate <hz>
+--buffer-size <frames>
+--midi-input <spec>      a port name, part of one, or an index; repeatable
+--no-midi                bind no MIDI input at all
+--no-gui                 run without a window; end it with ^C
+--list-apis              backends this build has, and what each one can see
+--list-devices           audio devices for the chosen (or default) api
+--list-midi-inputs       MIDI input ports, and which ones would be opened
+```
+
+Device and port *names* are the thing to pass: the numeric ids RtAudio reports
+are per-run handles, not stable identifiers — the same card can be `[130]` in
+one listing and `[131]` in the next. A name is matched exactly if it can be and
+otherwise as a unique fragment, so `--output-device HDMI` will usually do.
+
+Every MIDI input port is opened unless `--midi-input` names the ones you want.
+
+These flags are overrides on top of the persisted standalone settings, and are
+not written back to them: a flag configures one run. A device, rate or port
+which was named and does not exist is a startup error (exit 5) rather than
+something quietly replaced with a default.
+
+By default the standalone prefers PulseAudio, then JACK, then ALSA, taking the
+first which actually has a device — RtAudio's own order would settle on raw
+ALSA every time, since ALSA always has devices. PulseAudio is also how a
+PipeWire graph is reached: RtAudio 6.0.1 has no native PipeWire backend, and
+`--audio-api pipewire` is an alias for `pulse` for that reason.
+
+Which backends are available is a build-time decision, reported at configure
+time and controlled by `CLAP_WRAPPER_STANDALONE_LINUX_ALSA`, `_PULSE` and
+`_JACK`. They default to what pkg-config can find, so **install
+`libpulse-dev` before configuring** or the build has no PulseAudio and hence
+no PipeWire. `CLAP_WRAPPER_STANDALONE_LINUX_JACK` wants `libjack-dev`.
+
+The GUI is X11, which is how it appears under XWayland too; there is no
+native Wayland support yet. `-DCLAP_WRAPPER_STANDALONE_X11_GUI=OFF` builds a
+standalone with no window and no X11 dependency at all, and needs
+`libx11-dev` when it is on. SIGINT/SIGTERM shut the standalone down in order,
+and a second one exits immediately.
+
+Shutdown also has a five second watchdog, because it can wedge somewhere we
+cannot reach: RtAudio's ALSA backend holds the stream mutex across the blocking
+`snd_pcm_readi()` of a duplex stream, so if the capture side stops producing —
+which a PipeWire or dmix capture device does readily — nothing can stop the
+stream and the process would otherwise have to be killed by hand.
+
 ## Licensing
 
 The `clap-wrapper` project is released under the MIT license.

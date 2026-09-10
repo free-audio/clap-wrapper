@@ -9,63 +9,139 @@
 #include <poll.h>
 #include <string.h>
 #include <cstdint>
+#include <cerrno>
+#include <algorithm>
+#include <atomic>
+#include <string>
 
 #include "x11_gui.h"
+#include "linux_frontend.h"
 #include <sys/epoll.h>
 
 namespace freeaudio::clap_wrapper::standalone::linux_standalone
 {
-void X11Gui::initialize(freeaudio::clap_wrapper::standalone::StandaloneHost *sah)
+namespace
 {
+int x11ErrorHandler(Display *d, XErrorEvent *e)
+{
+  // Xlib's default handler exits the process on any protocol error. A plugin
+  // asking X11 for something it won't do shouldn't take the audio with it.
+  // Errors arrive on whichever thread talked to X, and a plugin can generate
+  // them per repaint, so this is capped rather than unbounded.
+  static std::atomic<int> reported{0};
+  constexpr int maxReported{20};
+
+  auto n = ++reported;
+  if (n > maxReported) return 0;
+
+  char buf[512]{};
+  XGetErrorText(d, e->error_code, buf, sizeof(buf) - 1);
+  LOGINFO("[ERROR] X11 protocol error : {} (request {}.{})", buf, (int)e->request_code,
+          (int)e->minor_code);
+  fprintf(stderr, "[ERROR] X11 protocol error: %s (request %d.%d)%s\n", buf, (int)e->request_code,
+          (int)e->minor_code, (n == maxReported) ? " (further X11 errors will not be reported)" : "");
+  fflush(stderr);
+  return 0;
+}
+}  // namespace
+
+bool X11Gui::initialize(freeaudio::clap_wrapper::standalone::StandaloneHost *sah, bool wantWindow)
+{
+  standaloneHost = sah;
+  sah->x11Gui = this;
+  sah->onRequestResize = [this](int w, int h) { return resetSizeTo(w, h); };
+
+  // The epoll is how plugin timers and fds get dispatched, so it is set up
+  // whether or not we end up with a display
+  epoll_fd = epoll_create1(EPOLL_CLOEXEC);
+  if (epoll_fd < 0)
+  {
+    LOGINFO("[ERROR] Unable to create epoll : {}", strerror(errno));
+  }
+
+  if (!wantWindow)
+  {
+    // --no-gui. The epoll above still dispatches the plugin's timers and fds.
+    LOGINFO("Running without a window by request");
+    return false;
+  }
+
   XInitThreads();
+  XSetErrorHandler(x11ErrorHandler);
+
   display = XOpenDisplay(nullptr);
   if (!display)
   {
     const char *disp = getenv("DISPLAY");
-    fprintf(stderr, "XOpenDisplay failed: could not connect to display '%s'\n",
-            disp ? disp : "(DISPLAY not set)");
-    exit(1);
+    reportError("Unable to open a display",
+                std::string("Could not connect to the X11 display '") +
+                    (disp ? disp : "(DISPLAY not set)") +
+                    "'. Continuing without a window; audio and MIDI still run.");
+    return false;
   }
-  sah->x11Gui = this;
-  sah->onRequestResize = [this](int w, int h) { return resetSizeTo(w, h); };
-  epoll_fd = epoll_create1(EPOLL_CLOEXEC);
-  if (epoll_fd < 0)
-  {
-    LOGINFO("Unable to create epoll");
-  }
+
+  return true;
+}
+
+bool X11Gui::keepRunning() const
+{
+  if (!runloopRunning) return false;
+  if (quitRequested()) return false;
+  if (standaloneHost && !standaloneHost->running) return false;
+  return true;
 }
 
 void X11Gui::runloop()
 {
-  if (!display || window == 0 || epoll_fd < 0)
+  runloopRunning = true;
+
+  if (epoll_fd < 0)
   {
-    // no gui. Only way to kill us is with a signal.
-    while (true)
+    // Nothing to dispatch and nothing to draw, so just idle. This used to be a
+    // 'while (true) sleep' which honoured nothing at all and could only be
+    // ended by killing the process outright.
+    while (keepRunning())
     {
-      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
     return;
   }
+
   XEvent e;
   struct epoll_event events[maxEpollEvents];
-  bool running{true};
-  while (running)
+  while (keepRunning())
   {
-    while (XPending(display))
+    while (display && XPending(display))
     {
       XNextEvent(display, &e);
       switch (e.type)
       {
         case MapNotify:
         {
-          if (plugin && plugin->_ext._gui)
+          if (guiCreated && plugin && plugin->_ext._gui)
           {
             clap_window win;
             win.api = CLAP_WINDOW_API_X11;
             win.x11 = window;
             auto ui = plugin->_ext._gui;
-            ui->set_parent(plugin->_plugin, &win);
-            ui->show(plugin->_plugin);
+            if (!ui->set_parent(plugin->_plugin, &win))
+            {
+              reportError("Plugin Error",
+                          "The plugin failed to embed its user interface. Please contact the "
+                          "plugin developer.");
+            }
+            else
+            {
+              ui->show(plugin->_plugin);
+            }
+          }
+        }
+        break;
+        case ConfigureNotify:
+        {
+          if (e.xconfigure.window == window)
+          {
+            handleConfigure(e.xconfigure.width, e.xconfigure.height);
           }
         }
         break;
@@ -74,37 +150,49 @@ void X11Gui::runloop()
           // 3. Check if the message is the delete request
           if ((Atom)(e.xclient.data.l[0]) == wmDeleteMessage)
           {
-            running = false;
+            runloopRunning = false;
           }
           break;
         }
       }
     }
+    if (!keepRunning()) break;
+
     // Poll for both X11 events and timer events
-    int num{0};
-    if (running) num = epoll_wait(epoll_fd, events, maxEpollEvents, 50);
+    auto num = epoll_wait(epoll_fd, events, maxEpollEvents, 50);
 
-    if (num > 0)
+    if (num < 0)
     {
-      for (int i = 0; i < num; ++i)
-      {
-        auto fd = events[i].data.fd;
-        auto tfd = fdToTimerId.find(fd);
-        auto pfd = registeredFds.find(fd);
+      if (errno == EINTR) continue;  // a signal; keepRunning() will sort it out
+      LOGINFO("[ERROR] epoll_wait failed : {}", strerror(errno));
+      break;
+    }
 
-        if (tfd != fdToTimerId.end())
+    for (int i = 0; i < num; ++i)
+    {
+      auto fd = events[i].data.fd;
+      auto tfd = fdToTimerId.find(fd);
+      auto pfd = registeredFds.find(fd);
+
+      if (tfd != fdToTimerId.end())
+      {
+        // The timerfd sits in a level-triggered epoll, so it has to be drained
+        // here. Skipping the read leaves it permanently readable and epoll_wait
+        // then returns immediately forever, spinning a core at 100%.
+        uint64_t expirations{0};
+        auto rd = ::read(fd, &expirations, sizeof(expirations));
+        (void)rd;
+
+        if (plugin && plugin->_ext._timer)
         {
-          if (plugin->_ext._timer)
-          {
-            plugin->_ext._timer->on_timer(plugin->_plugin, tfd->second);
-          }
+          plugin->_ext._timer->on_timer(plugin->_plugin, tfd->second);
         }
-        if (pfd != registeredFds.end())
+      }
+      if (pfd != registeredFds.end())
+      {
+        if (plugin && plugin->_ext._posixfd)
         {
-          if (plugin->_ext._posixfd)
-          {
-            plugin->_ext._posixfd->on_fd(plugin->_plugin, fd, pfd->second);
-          }
+          plugin->_ext._posixfd->on_fd(plugin->_plugin, fd, pfd->second);
         }
       }
     }
@@ -113,64 +201,138 @@ void X11Gui::runloop()
 
 void X11Gui::setPlugin(std::shared_ptr<Clap::Plugin> p)
 {
-  this->plugin = p;
-  if (display && plugin->_ext._gui)
+  if (!p)
   {
-    auto ui = plugin->_ext._gui;
-    auto p = plugin->_plugin;
-    if (!ui->is_api_supported(p, CLAP_WINDOW_API_X11, false))
+    // The plugin failed to instantiate. main() reports that; don't compound it
+    // with a null dereference here.
+    LOGINFO("[ERROR] setPlugin with no plugin");
+    return;
+  }
+
+  this->plugin = p;
+
+  // Without a display we run on: the plugin still gets audio, MIDI, timers and
+  // fd callbacks, it just has nowhere to draw
+  if (!display) return;
+
+  if (!plugin->_ext._gui)
+  {
+    LOGINFO("Plugin provides no GUI extension; running without a window");
+    return;
+  }
+
+  auto ui = plugin->_ext._gui;
+  auto pl = plugin->_plugin;
+
+  if (!ui->is_api_supported(pl, CLAP_WINDOW_API_X11, false))
+  {
+    reportError("Plugin Error", "The plugin does not support an X11 GUI. Continuing without a window.");
+    window = 0;
+    return;
+  }
+
+  if (!ui->create(pl, CLAP_WINDOW_API_X11, false))
+  {
+    reportError("Plugin Error", "The plugin failed to create its user interface.");
+    window = 0;
+    return;
+  }
+  guiCreated = true;
+
+  uint32_t w{0}, h{0};
+  if (!ui->get_size(pl, &w, &h))
+  {
+    reportError("Plugin Error", "The plugin failed to report its window size.");
+    destroyGui();
+    return;
+  }
+
+  if (!isSaneSize(w, h))
+  {
+    reportError("Plugin Error", "The plugin reported an invalid window size (" + std::to_string(w) +
+                                    " x " + std::to_string(h) + ").");
+    destroyGui();
+    return;
+  }
+
+  if (ui->can_resize(pl))
+  {
+    // adjust_size only means anything for a resizable GUI, and a zero back from
+    // it would be a BadValue abort in XCreateSimpleWindow, so it only counts if
+    // the answer is usable
+    uint32_t aw{w}, ah{h};
+    if (ui->adjust_size(pl, &aw, &ah) && isSaneSize(aw, ah))
     {
-      LOGINFO("[ERROR] CLAP does not support X11");
-      window = 0;
-      return;
-    }
-
-    ui->create(p, CLAP_WINDOW_API_X11, false);
-
-    uint32_t w, h;
-    ui->get_size(p, &w, &h);
-    ui->adjust_size(p, &w, &h);
-
-    int s = DefaultScreen(display);
-    window = XCreateSimpleWindow(display, RootWindow(display, s), 10, 10, w, h, 1,
-                                 BlackPixel(display, s), WhitePixel(display, s));
-    XStoreName(display, window, plugin->_plugin->desc->name);
-    XSelectInput(display, window, InputOutput | StructureNotifyMask);
-
-    // Get window clsoed notifications
-    wmDeleteMessage = XInternAtom(display, "WM_DELETE_WINDOW", False);
-    XSetWMProtocols(display, window, &wmDeleteMessage, 1);
-
-    resetSizeTo(w, h);
-
-    XMapWindow(display, window);
-
-    epoll_event event;
-    event.events = EPOLLIN;
-    event.data.fd = ConnectionNumber(display);
-    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, ConnectionNumber(display), &event) == -1)
-    {
-      LOGINFO("Unable to register display epoll");
-      close(epoll_fd);
-      epoll_fd = -1;
-      return;
+      w = aw;
+      h = ah;
     }
   }
+
+  int s = DefaultScreen(display);
+  window = XCreateSimpleWindow(display, RootWindow(display, s), 10, 10, w, h, 1, BlackPixel(display, s),
+                               WhitePixel(display, s));
+  if (window == 0)
+  {
+    reportError("Unable to create a window", "X11 would not create the plugin window.");
+    destroyGui();
+    return;
+  }
+
+  XStoreName(display, window, plugin->_plugin->desc->name);
+  // StructureNotify for map and resize, Exposure so a damaged window can be
+  // asked to redraw. This used to pass InputOutput, which is a window class
+  // rather than an event mask and happens to equal KeyPressMask.
+  XSelectInput(display, window, StructureNotifyMask | ExposureMask);
+
+  // Get window clsoed notifications
+  wmDeleteMessage = XInternAtom(display, "WM_DELETE_WINDOW", False);
+  XSetWMProtocols(display, window, &wmDeleteMessage, 1);
+
+  resetSizeTo(w, h);
+
+  XMapWindow(display, window);
+
+  epoll_event event{};
+  event.events = EPOLLIN;
+  event.data.fd = ConnectionNumber(display);
+  if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, ConnectionNumber(display), &event) == -1)
+  {
+    // Keep the epoll: plugin timers and fds still need it, and the runloop's
+    // 50ms poll picks X events up regardless, just less promptly
+    LOGINFO("[ERROR] Unable to register display epoll : {}", strerror(errno));
+  }
 }
-void X11Gui::shutdown()
+
+bool X11Gui::isSaneSize(uint32_t w, uint32_t h)
 {
-  if (plugin && plugin->_ext._gui)
+  return w > 0 && h > 0 && w <= maxWindowDim && h <= maxWindowDim;
+}
+
+void X11Gui::destroyGui()
+{
+  if (guiCreated && plugin && plugin->_ext._gui)
   {
     plugin->_ext._gui->destroy(plugin->_plugin);
   }
+  guiCreated = false;
+  window = 0;
+}
+void X11Gui::shutdown()
+{
+  // destroyGui() clears `window`, so keep hold of it to tear down after
+  auto ourWindow = window;
+
+  // only destroy a GUI we got as far as creating
+  destroyGui();
+
   if (epoll_fd >= 0)
   {
     close(epoll_fd);
     epoll_fd = -1;
   }
-  if (display && window > 0)
+  if (display && ourWindow > 0)
   {
-    XDestroyWindow(display, window);
+    XDestroyWindow(display, ourWindow);
     XFlush(display);
   }
   if (display)
@@ -182,21 +344,47 @@ void X11Gui::shutdown()
 
 int X11Gui::nextTimerId{2112};
 
-bool X11Gui::register_timer(int period_ms, clap_id *tid)
+bool X11Gui::register_timer(uint32_t period_ms, clap_id *tid)
 {
-  int tfd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC);
+  if (epoll_fd < 0)
+  {
+    LOGINFO("[ERROR] register_timer with no epoll");
+    return false;
+  }
+
+  // A zero period would spin the runloop, so 'as fast as you can' becomes 1ms.
+  // An hour is well past any plausible redraw or housekeeping timer.
+  auto period = std::clamp(period_ms, (uint32_t)1, (uint32_t)(60 * 60 * 1000));
+
+  int tfd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
+  if (tfd < 0)
+  {
+    LOGINFO("[ERROR] timerfd_create failed : {}", strerror(errno));
+    return false;
+  }
+
+  // tv_nsec has to stay below 1e9, so a period of a second or more belongs in
+  // tv_sec. Stuffing it all into tv_nsec is EINVAL and the timer never fires.
   struct itimerspec ts;
   memset(&ts, 0, sizeof(ts));
-  ts.it_interval.tv_nsec = period_ms * 1e6;  // Repeat every 1s
-  ts.it_value.tv_nsec = period_ms * 1e6;     // First expiry in 1s
-  timerfd_settime(tfd, 0, &ts, NULL);
+  ts.it_interval.tv_sec = (time_t)(period / 1000);
+  ts.it_interval.tv_nsec = (long)(period % 1000) * 1000000L;
+  ts.it_value = ts.it_interval;
 
-  epoll_event event;
+  if (timerfd_settime(tfd, 0, &ts, nullptr) < 0)
+  {
+    LOGINFO("[ERROR] timerfd_settime failed for a {}ms timer : {}", period, strerror(errno));
+    close(tfd);
+    return false;
+  }
+
+  epoll_event event{};
   event.events = EPOLLIN;
   event.data.fd = tfd;
   if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, tfd, &event) == -1)
   {
-    LOGINFO("Unable to register timer epoll");
+    LOGINFO("[ERROR] Unable to register timer epoll : {}", strerror(errno));
+    close(tfd);
     return false;
   }
 
@@ -234,22 +422,52 @@ bool X11Gui::unregister_timer(clap_id tid)
   return true;
 }
 
-bool X11Gui::register_fd(int fd, clap_posix_fd_flags_t iflags)
+uint32_t X11Gui::epollFlagsFor(clap_posix_fd_flags_t iflags)
 {
-  int flags{0};
+  uint32_t flags{0};
   if (iflags & CLAP_POSIX_FD_READ) flags = flags | EPOLLIN;
   if (iflags & CLAP_POSIX_FD_WRITE) flags = flags | EPOLLOUT;
   if (iflags & CLAP_POSIX_FD_ERROR) flags = flags | EPOLLERR;
+  return flags;
+}
 
-  epoll_event event;
-  event.events = flags;
+bool X11Gui::register_fd(int fd, clap_posix_fd_flags_t iflags)
+{
+  if (epoll_fd < 0) return false;
+
+  epoll_event event{};
+  event.events = epollFlagsFor(iflags);
   event.data.fd = fd;
   if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event) == -1)
   {
-    LOGINFO("Unable to register plugin provided fd");
+    LOGINFO("[ERROR] Unable to register plugin provided fd : {}", strerror(errno));
     return false;
   }
   registeredFds[fd] = iflags;
+  return true;
+}
+
+bool X11Gui::modify_fd(int fd, clap_posix_fd_flags_t iflags)
+{
+  if (epoll_fd < 0) return false;
+
+  auto pos = registeredFds.find(fd);
+  if (pos == registeredFds.end())
+  {
+    LOGINFO("[ERROR] modify_fd on unregistered fd {}", fd);
+    return false;
+  }
+
+  epoll_event event{};
+  event.events = epollFlagsFor(iflags);
+  event.data.fd = fd;
+  if (epoll_ctl(epoll_fd, EPOLL_CTL_MOD, fd, &event) == -1)
+  {
+    LOGINFO("[ERROR] epoll_ctl EPOLL_CTL_MOD failed for fd {} : {}", fd, strerror(errno));
+    return false;
+  }
+
+  pos->second = iflags;
   return true;
 }
 
@@ -272,19 +490,102 @@ bool X11Gui::unregister_fd(int fd)
 bool X11Gui::resetSizeTo(int w, int h)
 {
   if (!display || window == 0) return false;
-  XResizeWindow(display, window, w, h);
+  if (w <= 0 || h <= 0) return false;
 
-  XSizeHints *hints = XAllocSizeHints();
-  hints->flags = PMinSize | PMaxSize;
-  hints->min_width = w;
-  hints->max_width = w;
-  hints->min_height = h;
-  hints->max_height = h;
+  XResizeWindow(display, window, (unsigned int)w, (unsigned int)h);
 
-  // Apply hints to the window
-  XSetWMNormalHints(display, window, hints);
-  XFree(hints);
+  // we asked for this, so don't hand the resulting ConfigureNotify back to the
+  // plugin as if the user had done it
+  lastWidth = w;
+  lastHeight = h;
+
+  applySizeHints(w, h);
 
   return true;
+}
+
+void X11Gui::applySizeHints(int w, int h)
+{
+  bool hResize{false}, vResize{false}, keepAspect{false};
+  int aspectW{0}, aspectH{0};
+
+  if (guiCreated && plugin && plugin->_ext._gui)
+  {
+    auto ui = plugin->_ext._gui;
+    hResize = vResize = ui->can_resize(plugin->_plugin);
+
+    if (hResize)
+    {
+      clap_gui_resize_hints_t rh{};
+      if (ui->get_resize_hints && ui->get_resize_hints(plugin->_plugin, &rh))
+      {
+        hResize = rh.can_resize_horizontally;
+        vResize = rh.can_resize_vertically;
+        if (rh.preserve_aspect_ratio && rh.aspect_ratio_width > 0 && rh.aspect_ratio_height > 0)
+        {
+          keepAspect = true;
+          aspectW = (int)rh.aspect_ratio_width;
+          aspectH = (int)rh.aspect_ratio_height;
+        }
+      }
+    }
+  }
+
+  XSizeHints *hints = XAllocSizeHints();
+  if (!hints) return;
+
+  // A fixed axis is pinned min == max. A resizable one gets a floor and no
+  // practical ceiling: pinning both axes regardless of can_resize(), which is
+  // what this used to do, makes user resize impossible.
+  constexpr int minDim{64};
+  hints->flags = PMinSize | PMaxSize;
+  hints->min_width = hResize ? std::min(minDim, w) : w;
+  hints->max_width = hResize ? (int)maxWindowDim : w;
+  hints->min_height = vResize ? std::min(minDim, h) : h;
+  hints->max_height = vResize ? (int)maxWindowDim : h;
+
+  if (keepAspect)
+  {
+    hints->flags |= PAspect;
+    hints->min_aspect.x = aspectW;
+    hints->min_aspect.y = aspectH;
+    hints->max_aspect.x = aspectW;
+    hints->max_aspect.y = aspectH;
+  }
+
+  XSetWMNormalHints(display, window, hints);
+  XFree(hints);
+}
+
+void X11Gui::handleConfigure(int w, int h)
+{
+  if (w <= 0 || h <= 0) return;
+  if (w == lastWidth && h == lastHeight) return;  // our own resize coming back
+
+  lastWidth = w;
+  lastHeight = h;
+
+  if (!guiCreated || !plugin || !plugin->_ext._gui) return;
+
+  auto ui = plugin->_ext._gui;
+  auto pl = plugin->_plugin;
+  if (!ui->can_resize(pl)) return;  // a fixed size GUI has nothing to say here
+
+  uint32_t aw{(uint32_t)w}, ah{(uint32_t)h};
+  if (!ui->adjust_size(pl, &aw, &ah) || !isSaneSize(aw, ah))
+  {
+    aw = (uint32_t)w;
+    ah = (uint32_t)h;
+  }
+
+  ui->set_size(pl, aw, ah);
+
+  if ((int)aw != w || (int)ah != h)
+  {
+    // The plugin snapped to a size of its own, so make the window agree. The
+    // ConfigureNotify which follows matches the size resetSizeTo() records, so
+    // this settles rather than ping-ponging.
+    resetSizeTo((int)aw, (int)ah);
+  }
 }
 };  // namespace freeaudio::clap_wrapper::standalone::linux_standalone
