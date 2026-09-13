@@ -502,6 +502,19 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   // Written on the main thread (onIdle, preset_loaded), read on the audio
   // thread (onRequestPresetLoad).
   std::atomic<int64_t> _presetIndexInEffect{-1};
+  // Armed by a successful setState(): the next selector value the host sends
+  // is where its selector stands, not a preset to load. A restored project
+  // hands back the value it was saved with, and obeying it reloads that preset
+  // over the state that has just been restored.
+  //
+  // Armed there and nowhere else. A fresh instance has no state to protect, so
+  // its first program change is a real one and is obeyed - which is also why
+  // this cannot be inferred from _presetIndexInEffect being -1, a condition the
+  // two cases share.
+  //
+  // Written on the main thread (setState), cleared on the audio thread
+  // (onRequestPresetLoad).
+  std::atomic<bool> _adoptNextPresetValue{false};
   // Set when the crawl finishes; onIdle() turns it into the host notification,
   // because notifyProgramListChange() is not for a background thread.
   std::atomic<bool> _presetListChanged{false};
