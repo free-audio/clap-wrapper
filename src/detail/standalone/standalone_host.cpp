@@ -257,16 +257,40 @@ void StandaloneHost::clapProcess(void *pOutput, const void *pInput, uint32_t fra
 
   if (mainOutIdx >= 0 && f && currentOutputChannels > 0)
   {
-    // Interleave the plugin's main output bus into the device stream with the
-    // same channel policy as the input: the last bus channel repeats when the
-    // device is wider (a mono bus plays on both device channels), surplus bus
-    // channels are dropped.
+    // Interleave the plugin's main output bus into the device stream.
+    //
+    // Policy: a mono bus is duplicated onto the device's first two channels, so
+    // that a mono source plays centred on a stereo device - which is what every
+    // user expects of a mono plugin - and every device channel beyond those two
+    // is silent. Any other bus maps channel-for-channel up to
+    // min(bus channels, device channels), and again every surplus device
+    // channel is silent. Surplus *bus* channels (a 5.1 bus on a stereo device)
+    // are dropped.
+    //
+    // This used to repeat the last bus channel into every surplus device
+    // channel. That was indistinguishable from the mono rule while the device
+    // was always opened with two channels, but the Windows frontend now opens
+    // devices at their full channel count, and with that rule a stereo plugin
+    // on an 8-output interface put its right channel on outputs 3 to 8 - a
+    // hard-right signal on whatever those outputs feed, typically a cue mix
+    // or a second pair of monitors. Silence on the channels the plugin does
+    // not address is the only surprise-free answer.
+    //
+    // The input path (above) still uses the repeat-last rule, deliberately;
+    // that is to be decided separately.
+    const bool monoBus{mainOutChans == 1};
+    const auto fedChannels{std::min(monoBus ? 2U : mainOutChans, currentOutputChannels)};
+
     for (auto i = 0U; i < frameCount; ++i)
     {
-      for (auto ch = 0U; ch < currentOutputChannels; ++ch)
+      auto *frame = f + currentOutputChannels * i;
+      for (auto ch = 0U; ch < fedChannels; ++ch)
       {
-        auto busChan = (ch < mainOutChans) ? ch : mainOutChans - 1;
-        f[currentOutputChannels * i + ch] = utilityBuffer[mainOutIdx + busChan][i];
+        frame[ch] = utilityBuffer[mainOutIdx + (monoBus ? 0 : ch)][i];
+      }
+      for (auto ch = fedChannels; ch < currentOutputChannels; ++ch)
+      {
+        frame[ch] = 0.f;
       }
     }
   }
@@ -467,12 +491,26 @@ bool StandaloneHost::saveStandaloneSettings()
 void StandaloneHost::captureAudioSettings()
 {
   settings.audioApiName = audioApiName;
-  settings.outputDeviceName = deviceName(audioOutputDeviceID);
-  settings.inputDeviceName = deviceName(audioInputDeviceID);
-  settings.audioOutputUsed = audioOutputUsed;
-  settings.audioInputUsed = audioInputUsed;
   settings.sampleRate = currentSampleRate;
   settings.bufferSize = currentBufferSize;
+
+  // The device names and the used flags are deliberately *not* captured here.
+  //
+  // audioInput/OutputDeviceID and audioInput/OutputUsed describe the stream as
+  // it was actually opened: resolveOutputDevice() falls back to the default
+  // when the saved device is absent, and startAudioThreadOn() clears the used
+  // flag when the side cannot be opened. Writing those back would turn one
+  // launch with the USB interface unplugged into a permanent switch to the
+  // laptop speakers - saveSettings() runs on every window move and on
+  // WM_DESTROY, so the fallback would be persisted before the user ever
+  // noticed - and one launch inside an RDP session with no playback endpoint
+  // into output being disabled for good, since applyAudioSettings() ANDs the
+  // stored flag with the probe.
+  //
+  // So settings.*DeviceName and settings.audio*Used hold what the user asked
+  // for, and only the frontend writes them, at the point where the user makes
+  // a choice (a device combo, the mute-input menu). This is the same split
+  // openMidiPorts() already has with settings.midiPortNames.
 }
 
 void StandaloneHost::applyAudioSettings()
@@ -497,11 +535,39 @@ void StandaloneHost::applyAudioSettings()
 
   // A machine with no capture device still reports a default input device id, so
   // "did we get an id back" is not the question - "is it a real device" is.
+  // What the user wants (settings) AND what the machine has (probe) gives the
+  // runtime flag; captureAudioSettings() never writes the runtime flag back,
+  // so a probe that fails today does not become the user's wish tomorrow.
   audioOutputUsed = settings.audioOutputUsed && isKnownDevice(audioOutputDeviceID);
   audioInputUsed = settings.audioInputUsed && isKnownDevice(audioInputDeviceID);
 
   currentSampleRate = settings.sampleRate;
+
+  // The .conf is the supported way to configure a build with no settings UI, and
+  // that makes it untrusted input. clapProcess() terminates the process if a
+  // callback ever delivers utilityBufferSize frames or more, and RtAudio will
+  // happily open a WASAPI stream at whatever size it is asked for, so a
+  // hand-edited bufferSize=100000 would take the whole standalone down on the
+  // first callback. Clamp to the largest size the settings panel itself offers;
+  // anything above that could not be shown or chosen in the UI anyway. 0 stays
+  // 0 - startAudioThreadOn() reads it as "use the default".
   currentBufferSize = settings.bufferSize;
+  const auto offered{getBufferSizes()};
+  if (!offered.empty())
+  {
+    const auto largest{*std::max_element(offered.begin(), offered.end())};
+    if (currentBufferSize > largest)
+    {
+      LOGINFO("[WARNING] Buffer size {} from the settings file is beyond the supported {}; using {}",
+              currentBufferSize, largest, largest);
+      currentBufferSize = largest;
+    }
+  }
+
+  // The sample rate needs no clamp: nothing indexes by it, and when output is in
+  // use startAudioThreadOn() checks it against the device's rate list and falls
+  // back to the preferred rate. A garbage rate on an input-only stream reaches
+  // openStream(), which reports an error rather than crashing.
 }
 
 bool StandaloneHost::isKnownDevice(unsigned int deviceID)

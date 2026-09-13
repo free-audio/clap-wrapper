@@ -832,14 +832,20 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
 
                  case Menu::Identifier::MuteInput:
                  {
+                   // This is the one place the user says whether they want input
+                   // at all, so it is where the persisted intent is written.
+                   // captureAudioSettings() does not copy the runtime flag, which
+                   // startAudioThreadOn() clears when no capture device is present.
                    if (menu.item[1].fState == MFS_UNCHECKED)
                    {
                      sah->audioInputUsed = false;
+                     sah->settings.audioInputUsed = false;
                      menu.item[1].fState = MFS_CHECKED;
                    }
                    else
                    {
                      sah->audioInputUsed = true;
+                     sah->settings.audioInputUsed = true;
                      menu.item[1].fState = MFS_UNCHECKED;
                    }
 
@@ -991,6 +997,14 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                               sah->deviceOutputChannels = devices[*index].outputChannels;
                               sah->audioOutputUsed = true;
 
+                              // Record the *chosen* name here, at the point of choice,
+                              // as the MIDI list does below. captureAudioSettings() no
+                              // longer derives it from the open device, because the
+                              // open device is the fallback whenever the chosen one is
+                              // unplugged, and persisting the fallback lost the choice.
+                              sah->settings.outputDeviceName = devices[*index].name;
+                              sah->settings.audioOutputUsed = true;
+
                               refreshSampleRates();
                               refreshBufferSizes();
 
@@ -1008,6 +1022,11 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                               sah->audioInputDeviceID = devices[*index].ID;
                               sah->deviceInputChannels = devices[*index].inputChannels;
                               sah->audioInputUsed = true;
+
+                              // Picking an input device unmutes it; see the output
+                              // handler above for why the name is recorded here.
+                              sah->settings.inputDeviceName = devices[*index].name;
+                              sah->settings.audioInputUsed = true;
 
                               refreshSampleRates();
                               refreshBufferSizes();
@@ -1240,7 +1259,10 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
     saveSettings();
   }
 
-  menu.item[1].fState = sah->audioInputUsed ? MFS_UNCHECKED : MFS_CHECKED;
+  // The check mark shows what the user chose, not what the machine could open:
+  // the runtime flag is also false when there is simply no capture device, and
+  // showing that as "muted" would invite a click that does nothing.
+  menu.item[1].fState = sah->settings.audioInputUsed ? MFS_UNCHECKED : MFS_CHECKED;
   SetMenuItemInfoW(getSystemMenu(hwnd.get()), 1, FALSE, &menu.item[1]);
 
   if (plugin.gui)
@@ -1572,13 +1594,27 @@ void Plugin::selectDefaultDevices()
 {
   auto [input, output, sampleRate]{sah->getDefaultAudioInOutSampleRate()};
 
+  // No device has been chosen under this API: an empty name is "the system
+  // default", which is what we are about to open, and it keeps following the
+  // system default if the user changes it in Windows. A name from the previous
+  // API would be meaningless here anyway - WASAPI and DirectSound do not even
+  // spell the same endpoint the same way.
+  sah->settings.inputDeviceName.clear();
+  sah->settings.outputDeviceName.clear();
+
   // RtAudio hands back a default input device id even on a machine with no
   // capture device at all, so take the id only if it names something real.
+  // This is a probe of the machine, not a choice by the user, so it goes into
+  // the runtime flags only - ANDed with the user's wish, which survives an API
+  // switch (input muted before stays muted after) - and never into settings.
+  // It used to be written to disk through captureAudioSettings(), and one first
+  // run in an RDP session with no playback endpoint then disabled output on
+  // every later launch at the console.
   sah->audioInputDeviceID = input;
-  sah->audioInputUsed = sah->isKnownDevice(input);
+  sah->audioInputUsed = sah->settings.audioInputUsed && sah->isKnownDevice(input);
 
   sah->audioOutputDeviceID = output;
-  sah->audioOutputUsed = sah->isKnownDevice(output);
+  sah->audioOutputUsed = sah->settings.audioOutputUsed && sah->isKnownDevice(output);
 
   sah->currentSampleRate = sampleRate;
   sah->currentBufferSize = StandaloneSettings::defaultBufferSize;

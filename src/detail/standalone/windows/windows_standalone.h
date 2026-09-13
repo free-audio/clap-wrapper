@@ -309,6 +309,9 @@ struct Plugin final : public Window
   // previous API mean nothing under the new one.
   void selectAudioApi(RtAudio::Api api);
 
+  // Take the current API's default devices. Clears the persisted device names
+  // (empty = system default) and derives the runtime used flags from the
+  // persisted intent and a presence probe; the probe itself is never persisted.
   void selectDefaultDevices();
   void refreshDeviceChannelCounts();
 
