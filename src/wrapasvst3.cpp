@@ -2099,13 +2099,19 @@ bool ClapAsVst3::context_menu_populate(const clap_context_menu_target_t *target,
   if (!builder->supports(builder, CLAP_CONTEXT_MENU_ITEM_END_SUBMENU)) return false;
   // CLAP_CONTEXT_MENU_ITEM_TITLE is not used by VST3
 
-  if (target->kind == CLAP_CONTEXT_MENU_TARGET_KIND_GLOBAL)
+  // A null target is the global context - see the documentation of
+  // clap_plugin_context_menu::populate in clap/ext/context-menu.h - so it must
+  // not be dereferenced. An unrecognised kind still creates no menu at all.
+  if (target == nullptr || target->kind == CLAP_CONTEXT_MENU_TARGET_KIND_GLOBAL)
   {
     this->vst3ContextMenu = componentHandler3->createContextMenu(this->_wrappedview, nullptr);
   }
-  if (target->kind == CLAP_CONTEXT_MENU_TARGET_KIND_PARAM)
+  else if (target->kind == CLAP_CONTEXT_MENU_TARGET_KIND_PARAM)
   {
-    vst3ContextMenuParamID = target->id;
+    // Parameters are published to the host with the top bit cleared (see
+    // createParameter() in detail/vst3/parameter.cpp), so that - and not the
+    // raw clap_id - is the id the host can resolve back to a parameter.
+    vst3ContextMenuParamID = target->id & 0x7FFFFFFF;
     vst3ContextMenu = componentHandler3->createContextMenu(_wrappedview, &vst3ContextMenuParamID);
   }
   if (vst3ContextMenu)
