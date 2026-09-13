@@ -325,15 +325,21 @@ tresult PLUGIN_API ClapAsVst3::setState(IBStream *state)
   // then the better authority rather than the worse one.
   if (result == kResultOk)
   {
-    // Drop a request the audio thread queued from a block that ran before the
-    // state did. It cannot close the window on its own - process() does not
-    // take _mainThreadLock, so a request can still be stored after this - but
-    // the adopt below is what actually decides, and onIdle() re-tests against
-    // _presetIndexInEffect before it loads anything.
-    _presetLoadRequest.store(-1);
-
-    // Whatever the host sends next is where its selector stands, not a request
-    // to go there. \see onRequestPresetLoad().
+    // One store does both: it drops a request the audio thread queued from a
+    // block that ran before the state did, and it arms the adopt, so that
+    // whatever the host sends next is where its selector stands, not a
+    // request to go there. \see onRequestPresetLoad().
+    //
+    // It has to be one store. process() does not take _mainThreadLock, so a
+    // request can be published at any point during this function; when the
+    // drop and the arm were two separate atomics, a request could slip in
+    // between them - decided against the unarmed flag, stored into the
+    // cleared slot - and onIdle() would then load the selector's preset over
+    // the state just restored, because a state that never came from the
+    // preset list leaves _presetIndexInEffect at -1 for the re-test there to
+    // find. onRequestPresetLoad() publishes by compare-exchange against the
+    // value it decided on, so a request that races this store loses the
+    // exchange and is re-decided against the armed word.
     //
     // Reading the selector parameter here instead does not work, and it is
     // worth writing down why, because it looks like it should: at this point
@@ -345,7 +351,7 @@ tresult PLUGIN_API ClapAsVst3::setState(IBStream *state)
     // therefore seeds 0 whatever the project said, which both misses every
     // preset except index 0 and makes index 0 itself unreachable for the life
     // of the instance.
-    _adoptNextPresetValue.store(true, std::memory_order_relaxed);
+    _presetLoadRequest.store(kAdoptNextPresetValue);
   }
 
   return result;
@@ -1435,18 +1441,38 @@ void ClapAsVst3::onRequestPresetLoad(size_t presetIndex)
   // A second pick loads. That is the lesser of the two - the alternative
   // reloads the saved preset over every restored project, on every host that
   // streams, every time.
-  if (_adoptNextPresetValue.exchange(false, std::memory_order_relaxed))
+  //
+  // Decide and publish in one compare-exchange, against the word this
+  // decision was made on. setState() can store kAdoptNextPresetValue at any
+  // moment during this function; if it does so after the load below and
+  // before the exchange, the exchange fails, `current` comes back armed, and
+  // the loop adopts instead of requesting. Two separate steps - test a flag,
+  // then store a request - left exactly that gap open, and a request that
+  // fell into it was loaded by onIdle() over the restored state.
+  // \see _presetLoadRequest.
+  const auto requested = static_cast<int64_t>(presetIndex);
+  auto current = _presetLoadRequest.load();
+  for (;;)
   {
-    _presetIndexInEffect.store(static_cast<int64_t>(presetIndex), std::memory_order_relaxed);
-    return;
-  }
+    if (current == kAdoptNextPresetValue)
+    {
+      if (!_presetLoadRequest.compare_exchange_weak(current, kNoPresetRequest)) continue;
+      _presetIndexInEffect.store(requested, std::memory_order_relaxed);
+      return;
+    }
 
-  if (static_cast<int64_t>(presetIndex) == _presetIndexInEffect.load(std::memory_order_relaxed))
-  {
-    return;
-  }
+    if (requested == _presetIndexInEffect.load(std::memory_order_relaxed))
+    {
+      return;
+    }
 
-  _presetLoadRequest.store(static_cast<int64_t>(presetIndex));
+    // `current` is either kNoPresetRequest or an earlier request from this
+    // block, which this one coalesces away. A failure updates `current` and
+    // re-decides: onIdle() may have drained it (then it is kNoPresetRequest
+    // and the exchange simply goes again) or setState() may have armed it
+    // (then the branch above takes over).
+    if (_presetLoadRequest.compare_exchange_weak(current, requested)) return;
+  }
 }
 
 void ClapAsVst3::preset_loaded(uint32_t locationKind, const char *location, const char *loadKey)
@@ -1564,7 +1590,12 @@ void ClapAsVst3::param_rescan(clap_param_rescan_flags flags)
     for (decltype(len) i = 0; i < len; ++i)
     {
       auto p = static_cast<Vst3Parameter *>(parameters.getParameterByIndex(i));
-      if (p->isMidi) continue;
+      // Neither kind names a CLAP parameter. The preset selector in particular
+      // is created with param_index_for_clap_get_info left at 0, so asking
+      // get_info for it hands back CLAP parameter 0 and renames the host's
+      // program-change control after it - "Macro 1" in Cubase, for a plug-in
+      // whose macros rename themselves and rescan on every change.
+      if (p->isMidi || p->isPreset) continue;
       clap_param_info_t info;
       if (_plugin->_ext._params->get_info(_plugin->_plugin, p->param_index_for_clap_get_info, &info))
       {
@@ -1745,9 +1776,9 @@ bool ClapAsVst3::unregister_timer(clap_id timer_id)
       to.period = 0;
       to.nexttick = 0;
 #if LIN
-      if (to.handler && _iRunLoop)
+      if (auto *const runLoop = _iRunLoop.load(); to.handler && runLoop)
       {
-        _iRunLoop->unregisterTimer(to.handler.get());
+        runLoop->unregisterTimer(to.handler.get());
       }
       to.handler.reset();
 #endif
@@ -1792,7 +1823,18 @@ void ClapAsVst3::onIdle()
   // A preset the host asked for on the audio thread, and a preset list that
   // filled in on the crawl thread. Both have to happen here: from_location()
   // is [main-thread], and so is notifyProgramListChange().
-  if (auto requested = _presetLoadRequest.exchange(-1); requested >= 0)
+  //
+  // Take only an actual request. A plain exchange(-1) would also take the
+  // kAdoptNextPresetValue that setState() left there, and disarm the adopt
+  // before the audio thread ever saw it. The only change the audio thread can
+  // make to a word that already holds a request is to replace it with a newer
+  // one; the exchange then fails, `requested` picks up the newer index, and
+  // the loop takes that instead.
+  auto requested = _presetLoadRequest.load();
+  while (requested >= 0 && !_presetLoadRequest.compare_exchange_weak(requested, kNoPresetRequest))
+  {
+  }
+  if (requested >= 0)
   {
     Clap::PresetEntry entry;
     // Clamp anyway: stepCount matches the count at creation, but a host may
@@ -1969,46 +2011,67 @@ void ClapAsVst3::attachTimers(Steinberg::Linux::IRunLoop *r)
 {
   if (r)
   {
-    _iRunLoop = r;
+    const auto previous = _iRunLoop.exchange(r);
 
     if (_idleHandler)
     {
-      _iRunLoop->unregisterTimer(_idleHandler.get());
+      r->unregisterTimer(_idleHandler.get());
     }
     else
     {
       _idleHandler = Steinberg::owned(new IdleHandler(this));
     }
-    _iRunLoop->registerTimer(_idleHandler.get(), 30);
+    r->registerTimer(_idleHandler.get(), 30);
 
     for (auto &t : _timersObjects)
     {
       if (!t.handler)
       {
         t.handler = Steinberg::owned(new TimerHandler(this, t.timer_id));
-        _iRunLoop->registerTimer(t.handler.get(), t.period);
+        r->registerTimer(t.handler.get(), t.period);
       }
     }
 
-    // the host's own main thread drives the idle from here on
-    os::idleSourceChanged();
+    // The host's own main thread drives the idle from here on - but only say
+    // so when that is news, i.e. when there was no run loop before. This is
+    // reached from two places: the view's frame callback in createView(),
+    // which is where a run loop actually appears and which the host calls
+    // directly, holding nothing of ours; and register_timer(), which passes
+    // _iRunLoop back in to hang a new timer on an existing run loop. A
+    // plug-in may register a timer from inside on_main_thread(), which runs
+    // in onIdle() with _mainThreadLock held, and os::idleSourceChanged()
+    // takes the helper's lock - the wrong way round for the documented order
+    // (\see _mainThreadLock). Notifying only on the transition keeps the
+    // register_timer path clear of it, because a same-value exchange is not
+    // a transition. It also is not one the helper needs to hear about: it
+    // re-tests anyoneWantsTicking() every tick and parks on its own once
+    // this object answers hasOwnIdleSource(); only the other direction, a run
+    // loop going away, needs a wake-up.
+    if (previous == nullptr)
+    {
+      os::idleSourceChanged();
+    }
   }
 }
 
 void ClapAsVst3::detachTimers(Steinberg::Linux::IRunLoop *r)
 {
-  if (r && r == _iRunLoop)
+  // Read once. The helper thread only reads _iRunLoop and never writes it, so
+  // a local copy cannot go stale under us; it is only atomic so that the
+  // helper's read is defined.
+  auto *const runLoop = _iRunLoop.load();
+  if (r && r == runLoop)
   {
     if (_idleHandler)
     {
-      _iRunLoop->unregisterTimer(_idleHandler.get());
+      runLoop->unregisterTimer(_idleHandler.get());
       _idleHandler.reset();
     }
     for (auto &t : _timersObjects)
     {
       if (t.handler)
       {
-        _iRunLoop->unregisterTimer(t.handler.get());
+        runLoop->unregisterTimer(t.handler.get());
         t.handler.reset();
       }
     }
@@ -2049,9 +2112,9 @@ bool ClapAsVst3::unregister_fd(int fd)
     if (it->fd == fd)
     {
       res = true;
-      if (_iRunLoop && it->handler)
+      if (auto *const runLoop = _iRunLoop.load(); runLoop && it->handler)
       {
-        _iRunLoop->unregisterEventHandler(it->handler.get());
+        runLoop->unregisterEventHandler(it->handler.get());
       }
       it->handler.reset();
       it = _posixFDObjects.erase(it);
@@ -2086,14 +2149,17 @@ void ClapAsVst3::attachPosixFD(Steinberg::Linux::IRunLoop *r)
 {
   if (r)
   {
-    _iRunLoop = r;
+    // No idleSourceChanged() here: the frame callback in createView() calls
+    // attachTimers() first, which announces the run loop, and register_fd()
+    // passes the run loop already in place. \see attachTimers()
+    _iRunLoop.store(r);
 
     for (auto &p : _posixFDObjects)
     {
       if (!p.handler)
       {
         p.handler = Steinberg::owned(new FDHandler(this, p.fd, p.flags));
-        _iRunLoop->registerEventHandler(p.handler.get(), p.fd);
+        r->registerEventHandler(p.handler.get(), p.fd);
       }
     }
   }
@@ -2101,13 +2167,14 @@ void ClapAsVst3::attachPosixFD(Steinberg::Linux::IRunLoop *r)
 
 void ClapAsVst3::detachPosixFD(Steinberg::Linux::IRunLoop *r)
 {
-  if (r && r == _iRunLoop)
+  auto *const runLoop = _iRunLoop.load();
+  if (r && r == runLoop)
   {
     for (auto &p : _posixFDObjects)
     {
       if (p.handler)
       {
-        _iRunLoop->unregisterEventHandler(p.handler.get());
+        runLoop->unregisterEventHandler(p.handler.get());
         p.handler.reset();
       }
     }
