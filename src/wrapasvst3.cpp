@@ -2108,7 +2108,10 @@ bool ClapAsVst3::context_menu_populate(const clap_context_menu_target_t *target,
   }
   else if (target->kind == CLAP_CONTEXT_MENU_TARGET_KIND_PARAM)
   {
-    vst3ContextMenuParamID = target->id;
+    // Parameters are published to the host with the top bit cleared (see
+    // createParameter() in detail/vst3/parameter.cpp), so that - and not the
+    // raw clap_id - is the id the host can resolve back to a parameter.
+    vst3ContextMenuParamID = target->id & 0x7FFFFFFF;
     vst3ContextMenu = componentHandler3->createContextMenu(_wrappedview, &vst3ContextMenuParamID);
   }
   if (vst3ContextMenu)
