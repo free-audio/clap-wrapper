@@ -111,8 +111,19 @@ class PresetIndex
   // thread, including concurrently.
   static std::shared_ptr<PresetIndex> forPlugin(const Library *library, const std::string &pluginId);
 
-  // Drops every cached index. For test harnesses and for a host that unloads
-  // the library; the shared_ptrs handed out stay valid.
+  // Drops every cached index and stops its crawl: every crawl thread has been
+  // joined by the time this returns, whether or not a wrapper still holds the
+  // shared_ptr (those stay valid; they just hold a finished index).
+  //
+  // This is the last thing that may run before the hosted CLAP is
+  // deinit()ed and unloaded, and it has to run *then*, not at static
+  // destruction: the crawl thread is inside provider->get_metadata() in that
+  // very module, so unloading first leaves it executing unmapped code (Reaper's
+  // in-process rescan), and joining it later from a static destructor means
+  // joining under DLL_PROCESS_DETACH on Windows, where the loader lock keeps
+  // the thread from ever exiting. See the ModuleTerminator in
+  // wrapasvst3_entry.cpp, which is the caller. Must not be called from a
+  // crawl thread (a listener, say) - it joins them.
   static void resetCache();
 
   ~PresetIndex();
@@ -158,6 +169,17 @@ class PresetIndex
   // the caller's thread) if it already has. Use it to tell a host its preset
   // list changed. The token lets a wrapper unregister in its destructor -
   // without that, a callback could outlive the instance it captured.
+  //
+  // removeCompletionListener() guarantees that when it returns the listener
+  // is not running and will not run again. If the crawl thread is inside that
+  // very listener at the moment, the call blocks until it comes back - which
+  // is what makes "remove in the destructor" actually safe: Logic and auval
+  // dispose an AU some 100 ms after instantiating it, squarely inside a
+  // folder crawl, and an erase that cannot recall an in-flight callback would
+  // let it run on freed memory. Two rules follow for listeners: they may
+  // re-enter the index, including removing themselves (that is detected and
+  // does not block), but they must not wait on the thread that may be
+  // removing them, and they must not drop the last reference to the index.
   using Listener = std::function<void()>;
   uint64_t addCompletionListener(Listener listener);
   void removeCompletionListener(uint64_t token);
@@ -168,6 +190,9 @@ class PresetIndex
   void start(const Library *library, const std::string &pluginId);
   void crawl(const clap_preset_discovery_factory_t *factory, std::string pluginId);
   void finish();
+  // Tells the crawl to stop at the next file and waits for it. Idempotent;
+  // what both the destructor and resetCache() do.
+  void abandon();
 
   // The receiver and indexer callbacks the provider talks to. They live here
   // so the whole conversation with the plugin is in one place.
@@ -183,8 +208,15 @@ class PresetIndex
   std::condition_variable _completionCv;
 
   std::mutex _listenerMutex;
-  std::vector<std::pair<uint64_t, Listener>> _listeners;
+  std::vector<std::pair<uint64_t, Listener>> _listeners;  // in token order
   uint64_t _nextListenerToken{1};
+  // Which listener finish() is executing right now (0: none), and on which
+  // thread, so removeCompletionListener() can wait for exactly that one - and
+  // can tell a listener removing itself apart from a destructor racing it.
+  // All three are guarded by _listenerMutex.
+  uint64_t _listenerInCall{0};
+  std::thread::id _listenerInCallThread;
+  std::condition_variable _listenerCv;
 
   std::thread _thread;
   std::atomic<bool> _abandon{false};
