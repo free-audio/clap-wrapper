@@ -299,6 +299,44 @@ tresult PLUGIN_API ClapAsVst3::setState(IBStream *state)
   {
     syncParameterValuesFromClap();
   }
+
+  // A project load is not a program change, and the preset selector must not
+  // be allowed to undo one. A host that restores a project restores the state
+  // and goes on sending the selector its own value - Cubase sends a program
+  // list parameter in every process block - so the value that arrives next
+  // names the preset the state was *saved from*, not a preset to load. Loading
+  // it would replace everything the state just restored with the untouched
+  // preset it started life as, which is the whole project's worth of edits.
+  //
+  // Two things stand in the way of that, because the request and the load are
+  // on different threads and the state can arrive between them:
+  //
+  //   - a request the audio thread queued from a block that ran BEFORE the
+  //     state did. onIdle() acts on it without looking at the state that has
+  //     landed in the meantime, so it has to be dropped here.
+  //   - the -1 in _presetIndexInEffect, which makes the next arrival look like
+  //     a change to something new. preset_loaded() will have replaced it
+  //     already if the state named a preset, but a rig that never came from
+  //     the preset list - dropped in, or edited from the plugin's own default
+  //     - names none, and leaves nothing for the guard to work with.
+  //
+  // The second is why the selector's own value is read here. Where the host's
+  // list stands is not a request to go there - it is where the restored
+  // content came from - so it is what is in effect. Only when the state named
+  // no preset at all: if it named one, preset_loaded() has run during the load
+  // above and has put the right index there already.
+  _presetLoadRequest.store(-1);
+
+  if (_presetParamId != Vst::kNoParamId &&
+      _presetIndexInEffect.load(std::memory_order_relaxed) < 0)
+  {
+    if (auto *param = static_cast<Vst3Parameter *>(parameters.getParameter(_presetParamId)))
+    {
+      const auto index = static_cast<int64_t>(param->asClapValue(param->getNormalized()) + 0.5);
+      if (index >= 0) _presetIndexInEffect.store(index, std::memory_order_relaxed);
+    }
+  }
+
   return result;
 }
 
@@ -1372,6 +1410,9 @@ void ClapAsVst3::onRequestPresetLoad(size_t presetIndex)
   // parameter stream carries the selector's value, not its edges, and acting
   // on every arrival makes loading a preset a permanent state of reloading it
   // (\see _presetIndexInEffect).
+  // A state load establishes the same thing without a preset ever being
+  // loaded, which is what keeps a restored project from reloading the preset
+  // it was saved from over itself. \see setState().
   if (static_cast<int64_t>(presetIndex) == _presetIndexInEffect.load(std::memory_order_relaxed))
   {
     return;
@@ -1733,17 +1774,25 @@ void ClapAsVst3::onIdle()
     {
       const auto index = std::min<size_t>((size_t)requested, count - 1);
 
-      // In effect from here on, whatever the load makes of it: the host is
-      // sending this value, and a preset that cannot be loaded has to be
-      // attempted once rather than once per block. A load that succeeds
-      // confirms the same index through preset_loaded().
-      _presetIndexInEffect.store(static_cast<int64_t>(index), std::memory_order_relaxed);
-
-      if (_presetIndex->presetAt(index, entry))
+      // Tested again here, and not only where the request was made: the two
+      // are on different threads, and a state load can land between them and
+      // say that this preset is already what the plugin holds. Loading it
+      // again would put the untouched preset over the restored state.
+      // \see setState().
+      if (static_cast<int64_t>(index) != _presetIndexInEffect.load(std::memory_order_relaxed))
       {
-        _plugin->loadPresetFromLocation(entry.locationKind,
-                                        entry.location.empty() ? nullptr : entry.location.c_str(),
-                                        entry.loadKey.empty() ? nullptr : entry.loadKey.c_str());
+        // In effect from here on, whatever the load makes of it: the host is
+        // sending this value, and a preset that cannot be loaded has to be
+        // attempted once rather than once per block. A load that succeeds
+        // confirms the same index through preset_loaded().
+        _presetIndexInEffect.store(static_cast<int64_t>(index), std::memory_order_relaxed);
+
+        if (_presetIndex->presetAt(index, entry))
+        {
+          _plugin->loadPresetFromLocation(entry.locationKind,
+                                          entry.location.empty() ? nullptr : entry.location.c_str(),
+                                          entry.loadKey.empty() ? nullptr : entry.loadKey.c_str());
+        }
       }
     }
   }
