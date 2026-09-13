@@ -26,28 +26,40 @@ class CLAPVST3StreamAdapter
   static int64_t read(const struct clap_istream *stream, void *buffer, uint64_t size)
   {
     auto self = static_cast<CLAPVST3StreamAdapter *>(stream->ctx);
+
+    // IBStream counts in int32. A caller asking for more than that is not an
+    // error - it is a reader with no length, which is every clap_istream
+    // reader - so give it what fits and let it come back for the rest.
+    const int32 wanted = size > static_cast<uint64_t>(Steinberg::kMaxInt32)
+                             ? Steinberg::kMaxInt32
+                             : static_cast<Steinberg::int32>(size);
+
     Steinberg::int32 bytesRead = 0;
-    const auto result = self->vst_stream->read(buffer, (int32)size, &bytesRead);
+    const auto result = self->vst_stream->read(buffer, wanted, &bytesRead);
     if (kResultOk == result) return bytesRead;
 
-    // Not every host reports the end of a stream the way the SDK's own
-    // IBStream implementations do. Cubase answers a read that runs past the
-    // end of the plug-in's chunk with kResultFalse rather than with kResultOk
-    // and a short count - and a reader asking for more than is left is the
-    // normal way to read a stream whose length it does not know, which is
-    // every reader clap_istream has.
+    // kResultFalse, and ONLY kResultFalse, is how a host may phrase "that ran
+    // past the end of the chunk". Cubase answers that way rather than with
+    // kResultOk and a short count, and asking for more than is left is the
+    // normal way to read a stream whose length you were never told - the
+    // extension gives a reader no way to ask.
     //
-    // CLAP has one code for "there is nothing more": 0. Reporting -1 instead
-    // says "this stream is broken", and a plug-in that believes it throws away
-    // the project state it was in the middle of restoring - which is exactly
-    // what it did, on the very first read, so nothing was ever restored under
-    // VST3 at all.
-    //
-    // A real I/O failure ends up here too and is reported as a short read. The
-    // reader gets a truncated chunk and rejects it, which is where it was
-    // going to end up anyway; what it does not do is lose a whole project to a
-    // host that phrased the end of a stream differently.
-    return bytesRead > 0 ? bytesRead : 0;
+    // CLAP has one code for "there is nothing more" and it is 0
+    // (clap/stream.h: "0 indicates end of file and -1 a read error"), so that
+    // is what this returns. Reporting -1 for it said "this stream is broken",
+    // and a plug-in that believed it threw away the project state it was in
+    // the middle of restoring - on the very first read, so under VST3 nothing
+    // was ever restored at all.
+    if (kResultFalse == result) return bytesRead;
+
+    // Anything else is a real failure - kOutOfMemory, kInternalError,
+    // kInvalidArgument - and has to stay one. Reporting end-of-file for these
+    // is worse than reporting nothing: a reader that loops until it has the
+    // bytes it needs (the pattern in this repository's own conformance
+    // fixtures) never terminates, and one that treats "no bytes" as "no state"
+    // reports a successful load and lets the next save write its defaults over
+    // the user's project.
+    return -1;
   }
   static int64_t write(const struct clap_ostream *stream, const void *buffer, uint64_t size)
   {

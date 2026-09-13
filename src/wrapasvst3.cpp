@@ -320,21 +320,32 @@ tresult PLUGIN_API ClapAsVst3::setState(IBStream *state)
   //     the preset list - dropped in, or edited from the plugin's own default
   //     - names none, and leaves nothing for the guard to work with.
   //
-  // The second is why the selector's own value is read here. Where the host's
-  // list stands is not a request to go there - it is where the restored
-  // content came from - so it is what is in effect. Only when the state named
-  // no preset at all: if it named one, preset_loaded() has run during the load
-  // above and has put the right index there already.
-  _presetLoadRequest.store(-1);
-
-  if (_presetParamId != Vst::kNoParamId &&
-      _presetIndexInEffect.load(std::memory_order_relaxed) < 0)
+  // Only when there is a restored state to protect. A load that failed leaves
+  // the plug-in holding whatever it held before, and the host's selector is
+  // then the better authority rather than the worse one.
+  if (result == kResultOk)
   {
-    if (auto *param = static_cast<Vst3Parameter *>(parameters.getParameter(_presetParamId)))
-    {
-      const auto index = static_cast<int64_t>(param->asClapValue(param->getNormalized()) + 0.5);
-      if (index >= 0) _presetIndexInEffect.store(index, std::memory_order_relaxed);
-    }
+    // Drop a request the audio thread queued from a block that ran before the
+    // state did. It cannot close the window on its own - process() does not
+    // take _mainThreadLock, so a request can still be stored after this - but
+    // the adopt below is what actually decides, and onIdle() re-tests against
+    // _presetIndexInEffect before it loads anything.
+    _presetLoadRequest.store(-1);
+
+    // Whatever the host sends next is where its selector stands, not a request
+    // to go there. \see onRequestPresetLoad().
+    //
+    // Reading the selector parameter here instead does not work, and it is
+    // worth writing down why, because it looks like it should: at this point
+    // the parameter still holds createPresetSelector's default of 0. The
+    // host replays a program list parameter AFTER the component state, the
+    // selector's value is not in the state chunk, and syncParameterValuesFromClap
+    // cannot fill it either - the selector's id is a tag this wrapper invented
+    // and no CLAP plug-in owns, so get_value fails for it. Seeding from it
+    // therefore seeds 0 whatever the project said, which both misses every
+    // preset except index 0 and makes index 0 itself unreachable for the life
+    // of the instance.
+    _adoptNextPresetValue.store(true, std::memory_order_relaxed);
   }
 
   return result;
@@ -1410,9 +1421,26 @@ void ClapAsVst3::onRequestPresetLoad(size_t presetIndex)
   // parameter stream carries the selector's value, not its edges, and acting
   // on every arrival makes loading a preset a permanent state of reloading it
   // (\see _presetIndexInEffect).
-  // A state load establishes the same thing without a preset ever being
-  // loaded, which is what keeps a restored project from reloading the preset
-  // it was saved from over itself. \see setState().
+  // Neither is the first value to arrive after a state load, whatever it says.
+  // The state is the newer fact about what the plug-in holds; the selector is
+  // a label on where that content started, and a host restoring a project
+  // hands back the label it stored with it. Obeying that reloads the preset
+  // over everything the project just restored. So adopt the value as the one
+  // in effect and load nothing - an actual move by the user still names
+  // something else, and is still obeyed. \see setState().
+  //
+  // The cost, stated plainly: on a host that sends this parameter only when it
+  // changes rather than in every process block, nothing arrives to be adopted
+  // until the user picks a preset, and that first pick is spent on the adopt.
+  // A second pick loads. That is the lesser of the two - the alternative
+  // reloads the saved preset over every restored project, on every host that
+  // streams, every time.
+  if (_adoptNextPresetValue.exchange(false, std::memory_order_relaxed))
+  {
+    _presetIndexInEffect.store(static_cast<int64_t>(presetIndex), std::memory_order_relaxed);
+    return;
+  }
+
   if (static_cast<int64_t>(presetIndex) == _presetIndexInEffect.load(std::memory_order_relaxed))
   {
     return;
