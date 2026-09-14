@@ -13,16 +13,15 @@
 @implementation @AUV3_FACTORY_CLASS_NAME@
 - (AUAudioUnit *)createAudioUnitWithComponentDescription:(AudioComponentDescription)desc
                                                    error:(NSError **)error {
-    // The view controller may have created it already, to answer a size
-    // query before the host got here (see -_bootstrapAudioUnit).
-    if (self.audioUnit) return self.audioUnit;
-    ClapAUv3AudioUnit *au = [[ClapAUv3AudioUnit alloc] initWithComponentDescription:desc
+    // -loadView may be bootstrapping one right now on the main thread, so the
+    // check and the build have to happen under the base class's lock.
+    return [self createAudioUnitOnce:^ClapAUv3AudioUnit *(NSError **err) {
+        return [[ClapAUv3AudioUnit alloc] initWithComponentDescription:desc
                                                           options:0
-                                                            error:error
+                                                            error:err
                                                          clapName:@"@AUV3_CLAP_NAME@"
                                                            clapId:@"@AUV3_CLAP_ID@"
                                                         clapIndex:0];
-    self.audioUnit = au;
-    return au;
+    } error:error];
 }
 @end
