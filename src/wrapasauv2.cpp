@@ -362,10 +362,13 @@ void WrapAsAUV2::rebuildPresetCache() const
     return;
   }
 
-  // Only a completed crawl is worth caching. A host asking during one - AU
-  // asks early - would otherwise pin whatever partial list existed at that
-  // moment, and an empty one would stay empty until the completion tick.
-  _presetCacheBuilt = _presetIndex->isComplete();
+  // Only a completed crawl is publishable, so stay empty until there is one:
+  // the index sorts itself when the crawl finishes, so a host that read a
+  // partial list - AU asks early - would show names against numbers that
+  // resolve to other presets once the sort lands. The completion tick rebuilds
+  // and notifies the host.
+  if (!_presetIndex->isComplete()) return;
+  _presetCacheBuilt = true;
 
   const auto presets = _presetIndex->presets();
   _presetCache.reserve(presets.size());
