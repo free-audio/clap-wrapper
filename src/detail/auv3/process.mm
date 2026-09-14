@@ -985,11 +985,64 @@ void ProcessAdapter::queueParameterChange(clap_id paramId, double value)
   _hostParamChangesCount.fetch_add(1);
 }
 
-bool ProcessAdapter::dequeueParameterChange(QueuedParamChange &out)
+// See the declaration. This is the same top-of-cycle drain process() does, minus
+// the audio: a host that has allocated render resources but paused the render
+// (Audio Hijack with the block switched off, REAPER with the track idle) still
+// owes the plugin its parameter changes and still owes the host the plugin's,
+// and CLAP allows both only inside process() or flush().
+void ProcessAdapter::flush()
 {
-  if (!_hostParamChanges.pop(out)) return false;
-  _hostParamChangesCount.fetch_sub(1);
-  return true;
+  if (!_ext_params) return;
+
+  // Whatever the last render cycle left in the input list was delivered by
+  // that cycle; only the parked host changes are pending.
+  _events.clear();
+  _eventindices.clear();
+  {
+    QueuedParamChange qpc;
+    while (_hostParamChanges.pop(qpc))
+    {
+      _hostParamChangesCount.fetch_sub(1);
+      addParameterEvent(qpc.id, qpc.value, 0);
+    }
+  }
+  sortEventIndices();
+
+  _ext_params->flush(_plugin, &_in_events, &_out_events);
+
+  // Only parameter events can leave a flush. MIDI and note output the plugin
+  // pushed here has no render to ride on — the AU MIDI output blocks may only
+  // be called from inside the render — so it is dropped rather than delivered
+  // out of time.
+  for (auto &evt : _outevents)
+  {
+    if (evt.header.space_id != CLAP_CORE_EVENT_SPACE_ID) continue;
+    switch (evt.header.type)
+    {
+      case CLAP_EVENT_PARAM_VALUE:
+        if (_automation) _automation->onPerformEdit(&evt.param);
+        break;
+      case CLAP_EVENT_PARAM_GESTURE_BEGIN:
+      {
+        auto *ge = (clap_event_param_gesture *)&evt;
+        if (_automation) _automation->onBeginEdit(ge->param_id);
+        break;
+      }
+      case CLAP_EVENT_PARAM_GESTURE_END:
+      {
+        auto *ge = (clap_event_param_gesture *)&evt;
+        if (_automation) _automation->onEndEdit(ge->param_id);
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  _outevents.clear();
+  _sysexOutBuffers.reset();
+
+  _events.clear();
+  _eventindices.clear();
 }
 
 void ProcessAdapter::addParameterEvent(clap_id paramId, double value, uint32_t sampleOffset)

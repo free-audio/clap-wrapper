@@ -10,10 +10,13 @@
 #include "detail/clap/fsutil.h"
 #include "detail/os/osutil.h"
 #include "detail/shared/fixedqueue.h"
+#include "detail/shared/spinlock.h"
 #include "detail/clap/automation.h"
 
 #include <os/log.h>
 #include <unistd.h>
+#include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <memory>
 #include <atomic>
@@ -142,6 +145,34 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
   std::atomic_bool _requestMarkDirty{false};
   dispatch_source_t _idleTimer = nullptr;
 
+  // "there are parameter events to move": set by param_request_flush() for
+  // the plugin's direction and by the parameter observer / bypass setter for
+  // the host's, serviced by the idle timer. See serviceFlushRequest().
+  std::atomic_bool _requestedFlush{false};
+  // set by the render block, cleared by the idle timer: tells the tick whether
+  // a render has carried the parameter traffic since it last looked.
+  std::atomic_bool _renderedSinceIdle{false};
+  // consecutive idle ticks that saw no render, saturating at the point where
+  // the idle tick takes over the flushing. Only the idle timer touches it.
+  uint32_t _idleTicksSinceRender = 0;
+  // how many of those ticks make a paused host, sized from the block period
+  // in allocateRenderResourcesAndReturnError:. See serviceFlushRequest().
+  static constexpr double kIdleTickMs = 10.0;
+  static constexpr uint32_t kMinIdleTicksBeforeFlush = 5;
+  std::atomic<uint32_t> _idleTicksBeforeFlush{kMinIdleTicksBeforeFlush};
+
+  // The one lock that keeps clap_plugin_params.flush() and clap_plugin.process()
+  // apart, which CLAP requires (clap/ext/params.h: flush "must not be called
+  // concurrently to clap_plugin->process()"). Held by the render block around
+  // process(), by every flush this wrapper issues, and by allocate/deallocate
+  // around the activate/start_processing and stop_processing/deactivate
+  // pairs so that, under it, _initialized is exactly "the plugin is active" —
+  // which is what decides whether a flush must claim the audio thread or the
+  // main thread. A spin lock because the render thread must never block on
+  // a kernel primitive; the idle flush only runs once the host has stopped
+  // rendering, so the render side effectively never finds it taken.
+  ClapWrapper::detail::shared::SpinLock _processLock;
+
   // Back-reference to the ObjC audio unit (weak to avoid retain cycle)
   __weak ClapAUv3AudioUnit *_audioUnit = nil;
 
@@ -211,8 +242,10 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
   {
     // The AUv3 host owns the render resources: start_processing() happens in
     // allocateRenderResourcesAndReturnError:, which only the host calls. There
-    // is nothing to wake from this side.
+    // is nothing to wake from this side — but whatever parameter traffic the
+    // request was really about can still be moved by a flush, so ask for one.
     AUV3LOG("IHost::request_process() called");
+    _requestedFlush = true;
   }
 
   void request_callback() override
@@ -235,6 +268,11 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
     auto *processing = &_initialized;  // true between start_processing/stop_processing
     auto *self = this;
     dispatch_source_set_event_handler(_idleTimer, ^{
+      // Move parameter events in both directions when the host has stopped
+      // rendering. Runs first so that what the flush pulls out of the plugin
+      // reaches the host in this tick's drain rather than the next.
+      self->serviceFlushRequest();
+
       // Drain the parameter automation queue (Touch/Value/Release → host).
       // This is safe even while processing — it only touches AUParameter
       // objects on the main queue, no CLAP plugin calls.
@@ -485,7 +523,13 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
 
   void param_request_flush() override
   {
-    AUV3LOG("IHost::param_request_flush() called");
+    // May arrive at any moment and in any state, active or not: it says the
+    // plugin has parameter events (its editor moved a knob), not that it has
+    // stopped processing. clap_host_params.request_flush() obliges the host
+    // to schedule process() or flush(); the render does the former while
+    // the host is rendering, and the idle timer does the latter once it has
+    // seen that no render is coming (see serviceFlushRequest()).
+    _requestedFlush = true;
   }
 
   void latency_changed() override
@@ -748,10 +792,143 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
     }
   }
 
-  // Deliver a single parameter value to the plugin via params->flush().
-  // Only legal while the plugin is NOT processing. The single construction
-  // point for the one-shot event list used by the observer, the bypass
-  // setter, and the post-deallocate queue drain.
+  // Output sink for the flushes this wrapper issues outside the process
+  // adapter. The plugin may answer a flush with parameter events of its own
+  // (a value its editor changed, the gesture around it, a dependent
+  // parameter it moved in response) — they go down the same path a render's
+  // would, so the host sees them either way.
+  static bool flushOutputTryPush(const clap_output_events_t *list, const clap_event_header_t *ev)
+  {
+    auto *self = static_cast<AUv3ImplDetail *>(list->ctx);
+    if (ev->space_id != CLAP_CORE_EVENT_SPACE_ID) return true;
+    switch (ev->type)
+    {
+      case CLAP_EVENT_PARAM_VALUE:
+        if (ev->size >= sizeof(clap_event_param_value_t))
+          self->onPerformEdit(reinterpret_cast<const clap_event_param_value_t *>(ev));
+        break;
+      case CLAP_EVENT_PARAM_GESTURE_BEGIN:
+        if (ev->size >= sizeof(clap_event_param_gesture_t))
+          self->onBeginEdit(reinterpret_cast<const clap_event_param_gesture_t *>(ev)->param_id);
+        break;
+      case CLAP_EVENT_PARAM_GESTURE_END:
+        if (ev->size >= sizeof(clap_event_param_gesture_t))
+          self->onEndEdit(reinterpret_cast<const clap_event_param_gesture_t *>(ev)->param_id);
+        break;
+      default:
+        break;
+    }
+    return true;
+  }
+
+  // Calls clap_plugin_params.flush() with the given input list, excluded from
+  // process() by _processLock and on the thread identity CLAP demands for the
+  // plugin's current state: [active ? audio-thread : main-thread]. Under the
+  // lock _initialized is exactly "active" — allocate publishes it after
+  // start_processing and deallocate clears it after deactivate, both while
+  // holding the lock — so the decision cannot be stale.
+  void flushEvents(const clap_input_events_t *in_events)
+  {
+    ClapWrapper::detail::shared::SpinLockGuard processGuard(_processLock);
+    flushEventsLocked(in_events);
+  }
+
+  // The body of flushEvents(); the caller holds _processLock.
+  void flushEventsLocked(const clap_input_events_t *in_events)
+  {
+    if (!_plugin || !_plugin->_ext._params) return;
+
+    clap_output_events_t out_events = {};
+    out_events.ctx = this;
+    out_events.try_push = flushOutputTryPush;
+
+    if (_initialized)
+    {
+      auto audioGuard = _plugin->AlwaysAudioThread();
+      _plugin->_ext._params->flush(_plugin->_plugin, in_events, &out_events);
+    }
+    else
+    {
+      auto mainGuard = _plugin->AlwaysMainThread();
+      _plugin->_ext._params->flush(_plugin->_plugin, in_events, &out_events);
+    }
+  }
+
+  // The parameter flush, run from the idle timer on the main queue.
+  //
+  // In CLAP a plugin can only push an output event — a value its own editor
+  // changed, the gesture around it — from inside process() or flush(), and
+  // the host's own parameter sets only reach the plugin the same way (the
+  // observer queues them on the process adapter while render resources are
+  // allocated). Both directions therefore stop dead whenever the host stops
+  // rendering, and AUv3 hosts do stop without deallocating: Audio Hijack
+  // keeps the resources of a switched-off block, REAPER leaves an idle track's
+  // unit initialized, and Apple documents renderResourcesAllocated as
+  // resource state only, never as a promise that render calls will follow.
+  // So the flag cannot decide whether a render will deliver; only the absence
+  // of renders can, and this is the one place that observes it.
+  //
+  // One empty tick is not proof the host has paused, and guessing wrong costs
+  // something: the host schedules its automation through the render event
+  // list, and a flush that beat the next render would deliver the queued
+  // values out of order with it. How long to wait cannot be a constant — at
+  // 4096 frames and 44.1kHz a block is 93ms, so a host rendering perfectly
+  // normally leaves gaps longer than any small number of 10ms ticks.
+  // allocateRenderResources sizes the wait at three blocks, which no
+  // rendering host produces; once one really has paused, the counter stays
+  // saturated and a request is served on the very next tick. With the plugin
+  // deactivated there is no render to wait for, and none is waited for.
+  void serviceFlushRequest()
+  {
+    if (!_plugin) return;
+
+    if (_renderedSinceIdle.exchange(false))
+    {
+      _idleTicksSinceRender = 0;
+    }
+    else if (_idleTicksSinceRender < _idleTicksBeforeFlush)
+    {
+      ++_idleTicksSinceRender;
+    }
+
+    if (!_requestedFlush) return;
+    if (_initialized && _idleTicksSinceRender < _idleTicksBeforeFlush) return;
+
+    // Cleared before the work, not after: a request that arrives while the
+    // plugin is inside flush() is about events this flush cannot have seen,
+    // and has to survive into the next tick.
+    _requestedFlush = false;
+
+    ClapWrapper::detail::shared::SpinLockGuard processGuard(_processLock);
+    if (_initialized && _processAdapter)
+    {
+      // Active: the queued host changes live in the adapter, and flush() is
+      // [audio-thread]; the lock is what lets the main queue stand in for it.
+      auto audioGuard = _plugin->AlwaysAudioThread();
+      _processAdapter->flush();
+    }
+    else
+    {
+      // Deactivated: host changes were already flushed one by one as they
+      // arrived (flushParamValueWithCookie), so only the plugin's direction
+      // is owed — an empty input list gives it somewhere to push. flush() is
+      // [main-thread] here, which this queue is.
+      clap_input_events_t in_events = {};
+      in_events.ctx = nullptr;
+      in_events.size = [](const clap_input_events_t *) -> uint32_t { return 0; };
+      in_events.get = [](const clap_input_events_t *, uint32_t) -> const clap_event_header_t *
+      { return nullptr; };
+      flushEventsLocked(&in_events);
+    }
+  }
+
+  // Deliver a single parameter value to the plugin via params->flush(). The
+  // path the observer and the bypass setter take while render resources are
+  // not allocated: no render can carry the change, and a host that sets a
+  // value and reads fullState straight after must find it in the plugin, so
+  // it is not deferred to the idle tick. Excluded from process() by
+  // flushEvents(), which also covers the narrow window in which allocation
+  // completes between the observer's routing decision and this call.
   void flushParamValueWithCookie(clap_id id, double value, void *cookie)
   {
     if (!_plugin || !_plugin->_ext._params) return;
@@ -777,24 +954,7 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
     in_events.get = [](const clap_input_events_t *list, uint32_t) -> const clap_event_header_t *
     { return *static_cast<const clap_event_header_t *const *>(list->ctx); };
 
-    clap_output_events_t out_events = {};
-    out_events.ctx = nullptr;
-    out_events.try_push = [](const clap_output_events_t *, const clap_event_header_t *) -> bool
-    { return true; };
-
-    auto mainGuard = _plugin->AlwaysMainThread();
-    _plugin->_ext._params->flush(_plugin->_plugin, &in_events, &out_events);
-  }
-
-  void flushParamValue(clap_id id, double value)
-  {
-    void *cookie = nullptr;
-    {
-      std::lock_guard<std::mutex> lock(_paramCacheMutex);
-      auto it = _paramCookieCache.find(id);
-      if (it != _paramCookieCache.end()) cookie = it->second;
-    }
-    flushParamValueWithCookie(id, value, cookie);
+    flushEvents(&in_events);
   }
 
   // --- IPlugObject ---
@@ -1166,14 +1326,19 @@ static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
     if (s_suppressParamObserverEcho) return;
 
     // Always update the cache (and fetch the cookie in the same lock scope).
-    // While rendering, also queue the change for the render thread:
-    // flush() is forbidden while the plugin is processing and the adapter's
-    // event vectors are render-thread-owned, so the SPSC queue (producers
-    // serialized by this mutex) is the only legal delivery path — it is
-    // drained as input events at the top of the next render cycle. The
-    // rendering decision is made INSIDE the lock: allocate/deallocate flip
-    // _renderResourcesAllocated under the same mutex, so we can never
-    // flush while processing or queue on a freed adapter.
+    // While render resources are allocated, queue the change for the render
+    // thread: the adapter's event vectors are render-thread-owned, so the
+    // SPSC queue (producers serialized by this mutex) is the delivery path
+    // — it is drained as input events at the top of the next render cycle,
+    // or by the idle timer's flush if no render comes. The routing decision
+    // is made INSIDE the lock: allocate/deallocate flip
+    // _renderResourcesAllocated under the same mutex, so we can never queue
+    // on a freed adapter.
+    //
+    // _renderResourcesAllocated only chooses the route, never promises
+    // delivery: Apple defines it as resource state, and Audio Hijack keeps a
+    // switched-off block's resources allocated with no render running. The
+    // flush request below is what guarantees the change arrives regardless.
     clap_id pid = (clap_id)param.address;
     void *cookie = nullptr;
     bool queuedForRender = false;
@@ -1192,9 +1357,16 @@ static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
         queuedForRender = true;
       }
     }
-    if (queuedForRender) return;
+    if (queuedForRender)
+    {
+      // Nothing may ever render this: on a paused host process() is not
+      // coming, and then the idle timer is the only thing that will hand it
+      // to the plugin (see serviceFlushRequest()).
+      strongSelf->_impl->_requestedFlush = true;
+      return;
+    }
 
-    // Non-realtime path: push directly to the CLAP plugin via flush.
+    // Deactivated: push directly to the CLAP plugin via flush.
     strongSelf->_impl->flushParamValueWithCookie(pid, (double)value, cookie);
   };
 
@@ -1583,23 +1755,47 @@ static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
     _impl->_processAdapter->hostMIDIProtocol = self.hostMIDIProtocol;
   }
 
-  // Publish the adapter for the render block and flip the flag under the
-  // cache mutex BEFORE the plugin may start processing: producers
-  // (implementorValueObserver, bypass setter) must switch from the flush
-  // path to the render queue path first — flush during processing violates
-  // the CLAP contract. Queued changes wait in the adapter until the first
-  // render cycle. The mutex pairs with the producers' flag check.
-  _impl->_processAdapterLive.store(_impl->_processAdapter.get());
+  // How long the idle timer waits before it decides the host has paused the
+  // render. A fixed number of ticks cannot work: at 4096 frames and 44.1kHz a
+  // block is 93ms, so a host that is rendering perfectly normally leaves gaps
+  // longer than any small constant, and the idle tick would flush inside
+  // every one of them. Three blocks is a gap no rendering host produces.
   {
-    std::lock_guard<std::mutex> lock(_impl->_paramCacheMutex);
-    _renderResourcesAllocated = YES;
+    const double blockMs = 1000.0 * (double)self.maximumFramesToRender / std::max(sampleRate, 1.0);
+    const auto ticks = (uint32_t)std::ceil(3.0 * blockMs / _impl->kIdleTickMs);
+    _impl->_idleTicksBeforeFlush = std::max(_impl->kMinIdleTicksBeforeFlush, ticks);
   }
 
-  // Activate the CLAP plugin
-  AUV3LOG("allocateRenderResources: calling activate()");
-  _impl->_plugin->activate();
+  {
+    // Under _processLock from here to _initialized: no flush can slip in
+    // between activate() and start_processing() and claim the wrong thread
+    // for an already-active plugin, and no render can reach process() before
+    // start_processing() (the adapter is published before activation).
+    ClapWrapper::detail::shared::SpinLockGuard processGuard(_impl->_processLock);
 
-  // Re-cache latency — the plugin may have set it during activation
+    // Publish the adapter for the render block and flip the flag under the
+    // cache mutex BEFORE the plugin may start processing: producers
+    // (implementorValueObserver, bypass setter) must switch from the flush
+    // path to the render queue path first — flush during processing violates
+    // the CLAP contract. Queued changes wait in the adapter until the first
+    // render cycle. The mutex pairs with the producers' flag check.
+    _impl->_processAdapterLive.store(_impl->_processAdapter.get());
+    {
+      std::lock_guard<std::mutex> lock(_impl->_paramCacheMutex);
+      _renderResourcesAllocated = YES;
+    }
+
+    // Activate the CLAP plugin
+    AUV3LOG("allocateRenderResources: calling activate()");
+    _impl->_plugin->activate();
+
+    AUV3LOG("allocateRenderResources: calling start_processing()");
+    _impl->_plugin->start_processing();
+    _impl->_initialized = true;
+  }
+
+  // Re-cache latency — the plugin may have set it during activation. Outside
+  // the lock: the KVO runs the host's listeners synchronously.
   if (_impl->_plugin->_ext._latency)
   {
     uint32_t newLatency = _impl->_plugin->_ext._latency->get(_impl->_plugin->_plugin);
@@ -1611,10 +1807,6 @@ static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
       [self didChangeValueForKey:@"latency"];
     }
   }
-
-  AUV3LOG("allocateRenderResources: calling start_processing()");
-  _impl->_plugin->start_processing();
-  _impl->_initialized = true;
 
   AUV3LOG("allocateRenderResources: completed successfully");
   return YES;
@@ -1637,18 +1829,26 @@ static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
     }
   }
 
-  if (_impl && _impl->_plugin && _impl->_initialized)
-  {
-    auto guarantee_mainthread = _impl->_plugin->AlwaysMainThread();
-    AUV3LOG("deallocateRenderResources: calling stop_processing()");
-    _impl->_plugin->stop_processing();
-    AUV3LOG("deallocateRenderResources: calling deactivate()");
-    _impl->_plugin->deactivate();
-    _impl->_initialized = false;
-  }
-
   if (_impl)
   {
+    // Under _processLock from stop_processing() to the adapter reset: the
+    // idle timer's flush checks _initialized and _processAdapter under the
+    // same lock, so it can neither claim the audio thread for a plugin that
+    // is being deactivated nor flush through an adapter that is being freed.
+    // Taken only after the render handshake above completed, so a render
+    // that holds the lock is never waited for while _renderInFlight is held.
+    ClapWrapper::detail::shared::SpinLockGuard processGuard(_impl->_processLock);
+
+    if (_impl->_plugin && _impl->_initialized)
+    {
+      auto guarantee_mainthread = _impl->_plugin->AlwaysMainThread();
+      AUV3LOG("deallocateRenderResources: calling stop_processing()");
+      _impl->_plugin->stop_processing();
+      AUV3LOG("deallocateRenderResources: calling deactivate()");
+      _impl->_plugin->deactivate();
+      _impl->_initialized = false;
+    }
+
     // Producers (implementorValueObserver, bypass setter) check this flag
     // and touch the adapter under _paramCacheMutex — flip it under the
     // same mutex so a producer can never race the adapter reset below.
@@ -1660,20 +1860,18 @@ static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
     }
 
     // Changes parked in the render queue while the last cycles ran would
-    // otherwise be lost (the cache and host UI already show them) —
-    // deliver them via flush, which is legal now that processing stopped.
-    if (_impl->_processAdapter)
+    // otherwise be lost (the cache and host UI already show them) — deliver
+    // them via flush, which is [main-thread] now that the plugin is
+    // deactivated, and hand the host whatever the plugin still had to say.
+    if (_impl->_processAdapter && _impl->_plugin)
     {
-      Clap::AUv3::ProcessAdapter::QueuedParamChange qpc;
-      while (_impl->_processAdapter->dequeueParameterChange(qpc))
-      {
-        _impl->flushParamValue(qpc.id, qpc.value);
-      }
+      auto guarantee_mainthread = _impl->_plugin->AlwaysMainThread();
+      _impl->_processAdapter->flush();
     }
-  }
 
-  AUV3LOG("deallocateRenderResources: resetting process adapter");
-  _impl->_processAdapter.reset();
+    AUV3LOG("deallocateRenderResources: resetting process adapter");
+    _impl->_processAdapter.reset();
+  }
 
   AUV3LOG("deallocateRenderResources: calling [super deallocateRenderResources]");
   [super deallocateRenderResources];
@@ -1712,10 +1910,19 @@ static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
     // thread during init, so the default heuristic is wrong.
     AUAudioUnitStatus status = kAudioUnitErr_Uninitialized;
     {
+      // Excludes the idle timer's flush (see serviceFlushRequest()), which
+      // only runs once three blocks have passed without a render — so in a
+      // rendering host this lock is free. Taken after the _renderInFlight
+      // announcement so deallocation, which waits on that counter without
+      // holding the lock, cannot form a cycle with a render waiting here.
+      ClapWrapper::detail::shared::SpinLockGuard processGuard(impl->_processLock);
       auto audioGuard = impl->_plugin->AlwaysAudioThread();
       status = adapter->process(actionFlags, timestamp, frameCount, outputBusNumber, outputData,
                                 realtimeEventListHead, pullInputBlock);
     }
+    // This render carried whatever was queued in either direction, so the
+    // next idle tick has nothing to make up for.
+    impl->_renderedSinceIdle = true;
     impl->_renderInFlight.fetch_sub(1);
 
     // Do NOT dispatch on_main_thread() from the render block. Surge XT's
@@ -1915,11 +2122,12 @@ static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
 
   double newValue = shouldBypassEffect ? 1.0 : 0.0;
 
-  // Update cache (and fetch the cookie in the same lock scope). While
-  // rendering, route the change through the render thread's queue —
-  // flush() is forbidden while the plugin is processing. The rendering
-  // decision is made INSIDE the lock (paired with allocate/deallocate
-  // flipping the flag under the same mutex).
+  // Update cache (and fetch the cookie in the same lock scope). While render
+  // resources are allocated, route the change through the render thread's
+  // queue, same as implementorValueObserver — and ask for a flush, since a
+  // paused host will never render it. The routing decision is made INSIDE
+  // the lock (paired with allocate/deallocate flipping the flag under the
+  // same mutex).
   void *cookie = nullptr;
   bool queuedForRender = false;
   {
@@ -1938,9 +2146,13 @@ static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
     }
   }
 
-  // Push to the CLAP plugin via params->flush() (only legal while not processing)
-  if (!queuedForRender)
+  if (queuedForRender)
   {
+    _impl->_requestedFlush = true;
+  }
+  else
+  {
+    // Deactivated: push to the CLAP plugin via params->flush() directly.
     _impl->flushParamValueWithCookie(_impl->_bypassParamId, newValue, cookie);
   }
 
