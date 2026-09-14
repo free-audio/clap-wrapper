@@ -56,33 +56,20 @@ std::string normalizeExtension(const char *declared)
   return toLower(value);
 }
 
-// The plugin speaks UTF-8 - every string across the CLAP ABI is, and
-// Library::load hands the plugin its own path as u8string() - while fs::path
-// speaks the OS. On Windows those are two different things: fs::path{std::string}
-// decodes through the ANSI code page, so a UTF-8 "C:\Users\Jürgen\...\Presets"
-// turns into a folder that does not exist and the location is silently
-// skipped; and in the other direction path::string() *throws*
-// std::system_error for any name the code page cannot express ("パッド.preset"
-// on a Western-locale machine), which on a bare thread is std::terminate for
-// the host. fsutil.cpp already goes through native()/u8string() everywhere for
-// exactly this reason; this is the one conversion it does not need, UTF-8 in.
-//
-// Not fs::u8path(): deprecated in C++20, which this project builds with under
-// -Werror.
+// CLAP strings are UTF-8, fs::path is OS-native: on Windows fs::path{std::string}
+// decodes through the ANSI code page, and path::string() *throws* for any name
+// that page cannot express. Not fs::u8path(): deprecated in C++20, -Werror.
 fs::path pathFromUtf8(const std::string &utf8)
 {
 #if WIN
   if (utf8.empty()) return {};
   const auto size = static_cast<int>(utf8.size());
   const int length = ::MultiByteToWideChar(CP_UTF8, 0, utf8.data(), size, nullptr, 0);
-  if (length <= 0) return {};  // not UTF-8 after all: no such folder, same as a typo
+  if (length <= 0) return {};
   std::wstring wide(static_cast<size_t>(length), L'\0');
   ::MultiByteToWideChar(CP_UTF8, 0, utf8.data(), size, wide.data(), length);
   return fs::path{std::move(wide)};
 #else
-  // POSIX filenames are bytes and every platform we ship on treats them as
-  // UTF-8 - the same assumption mac_helpers.mm makes with
-  // fs::path{[u fileSystemRepresentation]}.
   return fs::path{utf8};
 #endif
 }
@@ -143,8 +130,7 @@ struct PresetIndex::Declarations
     // "If empty or NULL then every file should be matched."
     if (extensions.empty()) return false;
 
-    // u8string(), not string(): see pathFromUtf8 - an extension is as capable
-    // of being outside the ANSI code page as the rest of the name.
+    // u8string(), not string(): see pathFromUtf8.
     auto ext = path.extension().u8string();
     if (!ext.empty() && ext.front() == '.') ext.erase(ext.begin());
     ext = toLower(ext);
@@ -423,17 +409,8 @@ std::shared_ptr<PresetIndex> PresetIndex::forPlugin(const Library *library, cons
 
 void PresetIndex::resetCache()
 {
-  // Take the indices out from under the lock, then stop them outside it.
-  // Clearing the map alone is not enough: a wrapper that is still alive (a
-  // host that unloads with instances open, or simply a shared_ptr that has
-  // not been dropped yet) keeps the index and therefore its thread alive, and
-  // the whole point of this call is that no crawl thread is left running
-  // inside a module that is about to be unloaded. So every crawl is abandoned
-  // and joined explicitly, refcount or not.
-  //
-  // The join happens outside cache.mutex, so a crawl thread that is at this
-  // moment still starting up cannot end up behind it. (It never takes that
-  // mutex today; the ordering is kept so that stays a non-issue.)
+  // Refcount or not: clearing the map alone leaves the thread of an index a
+  // wrapper still holds running inside a module about to be unloaded.
   std::vector<std::shared_ptr<PresetIndex>> dropped;
   {
     auto &cache = indexCache();
@@ -452,10 +429,7 @@ PresetIndex::~PresetIndex()
 void PresetIndex::abandon()
 {
   _abandon.store(true);
-  // The crawl checks _abandon between files, so this waits out at most the
-  // get_metadata() call in flight. join() also renders the thread
-  // non-joinable, which is what makes a second call (destructor after
-  // resetCache) a no-op.
+  // join() leaves the thread non-joinable, so a second call is a no-op.
   if (_thread.joinable()) _thread.join();
 }
 
@@ -465,13 +439,7 @@ void PresetIndex::start(const Library *library, const std::string &pluginId)
   _thread = std::thread(
       [this, factory, pluginId]()
       {
-        // Nothing may escape this body: it is a bare std::thread, and an
-        // exception leaving it is std::terminate - the host killed over one
-        // odd file in a user folder. The conversions in crawl() are chosen not
-        // to throw (see pathFromUtf8), and everything filesystem-side goes
-        // through an error_code, so what this catches is the remainder: a
-        // provider that throws across the C ABI, an allocation failure, a
-        // standard library that found a way we did not think of.
+        // Bare std::thread: an escaping exception is std::terminate.
         try
         {
           crawl(factory, pluginId);
@@ -485,11 +453,7 @@ void PresetIndex::start(const Library *library, const std::string &pluginId)
           LOGINFO("preset crawl for '{}' aborted by a non-standard exception", pluginId);
         }
 
-        // Whatever happened above, this is still a crawl that ended, and it
-        // must say so: a wrapper blocked in waitUntilComplete() would
-        // otherwise sit out its whole timeout, and a listener would wait
-        // forever for a completion that already happened. What has been
-        // collected so far stays, and stays sorted if crawl() got that far.
+        // On every path, or waitUntilComplete() and the listeners never fire.
         finish();
       });
 }
@@ -582,8 +546,7 @@ void PresetIndex::crawl(const clap_preset_discovery_factory_t *factory, std::str
           if (!declarations.matchesExtension(it->path())) continue;
           if (++seen > kMaxPresetsPerLocation) break;
 
-          // u8string(): what the plugin expects back in from_location(), and
-          // the only narrowing that cannot throw on Windows - see pathFromUtf8.
+          // u8string(): what from_location() expects back, and cannot throw.
           const auto path = it->path().u8string();
           receiver.location = path;
           provider->get_metadata(provider, location.kind, path.c_str(), &receiver.receiver);
@@ -612,8 +575,7 @@ void PresetIndex::crawl(const clap_preset_discovery_factory_t *factory, std::str
                      });
   }
 
-  // finish() is deliberately not called here but by the thread body in
-  // start(), so that it also runs when this function is left by exception.
+  // finish() is called by the thread body in start(), so it also runs on throw.
 }
 
 bool PresetIndex::waitUntilComplete(unsigned timeoutMs)
@@ -636,26 +598,10 @@ void PresetIndex::finish()
   }
   _completionCv.notify_all();
 
-  // Listeners are called one at a time, each looked up under the lock at the
-  // moment it is its turn, and none of them under the lock.
-  //
-  // Not a snapshot copied up front: a copy cannot be recalled, so a wrapper
-  // that removed its listener while the copy was being worked through would
-  // still be called - on a destroyed instance, if that removal was its
-  // destructor. Looking each one up as it comes means a listener removed
-  // before its turn is simply never seen; and the one in flight is
-  // published in _listenerInCall so removeCompletionListener() can wait for
-  // it. Tokens are handed out in increasing order and _listeners is kept in
-  // insertion order, so "first entry with a token above the last one called"
-  // is the next listener in line, however the list changed in between.
-  //
-  // Not under the lock either: a listener may re-enter the index, and a
-  // listener that calls add/removeCompletionListener() under a non-recursive
-  // mutex it already holds is a deadlock.
-  //
-  // Only listeners registered before this point are called from here. One
-  // added afterwards is told by addCompletionListener() itself, because
-  // _complete is already set - calling it from both would be twice.
+  // Looked up one at a time as its turn comes, never snapshotted: a copy cannot
+  // be recalled, so a listener removed meanwhile would still be called, possibly
+  // on a destroyed instance. Called outside the lock - a listener may re-enter.
+  // ceiling: later registrations are called by addCompletionListener() instead.
   uint64_t last = 0;
   uint64_t ceiling;
   {
@@ -754,14 +700,8 @@ void PresetIndex::removeCompletionListener(uint64_t token)
                                   [token](const auto &pair) { return pair.first == token; }),
                    _listeners.end());
 
-  // Erasing stops future calls; it does nothing about the one finish() may
-  // be in the middle of right now, on the crawl thread, into the very object
-  // whose destructor is calling us. So wait for it - and only for it: a
-  // wrapper being torn down must not stall behind some other instance's
-  // callback. The one case that must not wait is the listener removing
-  // itself from inside its own call, which is on the crawl thread and would
-  // be waiting for itself. Once the wait returns the token is out of the
-  // list, so the walk in finish() cannot pick it up again.
+  // Erasing cannot recall a call finish() is making right now, so wait it out -
+  // except for a listener removing itself, which would wait on its own thread.
   if (_listenerInCall == token && _listenerInCallThread != std::this_thread::get_id())
     _listenerCv.wait(lock, [this, token]() { return _listenerInCall != token; });
 }

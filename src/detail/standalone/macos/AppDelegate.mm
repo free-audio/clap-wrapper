@@ -261,15 +261,9 @@
   freeaudio::clap_wrapper::standalone::getStandaloneHost()->displayAudioError = nullptr;
   freeaudio::clap_wrapper::standalone::getStandaloneHost()->onRequestResize = nullptr;
 
-  // The GUI teardown needs the plugin, so take a reference - but only for the
-  // duration of this block. getMainPlugin() hands back a shared_ptr copy, and
-  // that copy must be released *before* mainFinish, which resets the global
-  // and the host's references and then runs entry->deinit(). Had the copy
-  // lived to the end of this method it would have been the last owner, and
-  // Clap::Plugin's destructor would have called _plugin->destroy() on an
-  // entry that was already deinited - a spec violation, and a use-after-free
-  // of the library in the dynamically loaded case. Windows does the same
-  // release-before-mainFinish dance in its WM_DESTROY handler.
+  // Scoped so this shared_ptr copy is released before mainFinish, which
+  // deinit()s the entry: were it the last owner, ~Plugin would then call
+  // _plugin->destroy() on a deinited - dynamically, unloaded - entry.
   {
     auto plugin = freeaudio::clap_wrapper::standalone::getMainPlugin();
 
@@ -280,9 +274,7 @@
     }
   }
 
-  // Stop the timer before mainFinish: its callback dereferences
-  // getMainPlugin() without a null check, and after mainFinish the global is
-  // reset and the StandaloneHost it also reads is gone.
+  // Before mainFinish: the callback dereferences getMainPlugin() unchecked.
   [self.requestCallbackTimer invalidate];
   self.requestCallbackTimer = nil;
 

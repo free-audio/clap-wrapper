@@ -103,19 +103,9 @@ Clap::Library &hostedClapLibrary()
 static Steinberg::ModuleTerminator gReleaseHostedClapLibrary(
     []()
     {
-      // The preset index first, and it must be first: its crawl thread runs
-      // inside the hosted .clap - provider->get_metadata() is the plugin's
-      // code - so the library must not be deinit()ed and unmapped underneath
-      // it. That is the same class of bug as the static-destruction note
-      // above, with the order inverted rather than absent: here the library
-      // would go before the thread that uses it. Reaper's in-process rescan
-      // is where it showed - the plugin's globals torn down under a crawl
-      // still running, or, when the crawl was joined later from the static
-      // IndexCache destructor under DLL_PROCESS_DETACH, a scan that never
-      // finished. resetCache() joins every crawl before it returns, and this
-      // is the point where that is still safe: ExitDll()/bundleExit()/
-      // ModuleExit() are called by the host, not from DllMain, so nothing
-      // holds the loader lock while the join waits.
+      // First: the crawl thread runs inside the hosted .clap and must be joined
+      // before it is deinit()ed and unmapped. And here rather than at static
+      // destruction - the host calls ExitDll(), so no loader lock is held.
       Clap::PresetIndex::resetCache();
 
       delete gHostedClapLibrary;
