@@ -230,6 +230,8 @@ void LinuxHelper::run()
     if (!anyoneWantsTicking())
     {
       LOGDETAIL("clap-wrapper: every attached object has a run loop, pausing the idle thread");
+      // Unbounded on purpose: every change that can turn the predicate back to
+      // "tick me" reaches this thread under _standInLock, so none can be lost.
       _standInWakeup.wait(guard, [this] { return !_standInRunning || anyoneWantsTicking(); });
       continue;
     }
@@ -270,6 +272,10 @@ void LinuxHelper::detach(IPlugObject *plugobject)
 
 void LinuxHelper::idleSourceChanged()
 {
+  // The lock is not optional: run() tests its predicate and parks in one step,
+  // so an unlocked notify can be lost, leaving the helper parked forever. Safe
+  // to block on: lock order is helper-then-plug-object, onIdle() only try_locks.
+  std::lock_guard<std::recursive_mutex> guard(_standInLock);
   _standInWakeup.notify_all();
 }
 

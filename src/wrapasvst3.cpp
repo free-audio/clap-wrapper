@@ -325,15 +325,10 @@ tresult PLUGIN_API ClapAsVst3::setState(IBStream *state)
   // then the better authority rather than the worse one.
   if (result == kResultOk)
   {
-    // Drop a request the audio thread queued from a block that ran before the
-    // state did. It cannot close the window on its own - process() does not
-    // take _mainThreadLock, so a request can still be stored after this - but
-    // the adopt below is what actually decides, and onIdle() re-tests against
-    // _presetIndexInEffect before it loads anything.
-    _presetLoadRequest.store(-1);
-
-    // Whatever the host sends next is where its selector stands, not a request
-    // to go there. \see onRequestPresetLoad().
+    // One store drops a request the audio thread queued before the state and
+    // arms the adopt. It has to be one store: process() takes no lock, so a
+    // request published between a separate drop and arm would survive both and
+    // be loaded over the state just restored. \see onRequestPresetLoad().
     //
     // Reading the selector parameter here instead does not work, and it is
     // worth writing down why, because it looks like it should: at this point
@@ -345,7 +340,7 @@ tresult PLUGIN_API ClapAsVst3::setState(IBStream *state)
     // therefore seeds 0 whatever the project said, which both misses every
     // preset except index 0 and makes index 0 itself unreachable for the life
     // of the instance.
-    _adoptNextPresetValue.store(true, std::memory_order_relaxed);
+    _presetLoadRequest.store(kAdoptNextPresetValue);
   }
 
   return result;
@@ -1435,18 +1430,28 @@ void ClapAsVst3::onRequestPresetLoad(size_t presetIndex)
   // A second pick loads. That is the lesser of the two - the alternative
   // reloads the saved preset over every restored project, on every host that
   // streams, every time.
-  if (_adoptNextPresetValue.exchange(false, std::memory_order_relaxed))
+  //
+  // Decide and publish in one compare-exchange: setState() can arm at any
+  // moment here, and a failed exchange re-decides against the armed value.
+  const auto requested = static_cast<int64_t>(presetIndex);
+  auto current = _presetLoadRequest.load();
+  for (;;)
   {
-    _presetIndexInEffect.store(static_cast<int64_t>(presetIndex), std::memory_order_relaxed);
-    return;
-  }
+    if (current == kAdoptNextPresetValue)
+    {
+      if (!_presetLoadRequest.compare_exchange_weak(current, kNoPresetRequest)) continue;
+      _presetIndexInEffect.store(requested, std::memory_order_relaxed);
+      return;
+    }
 
-  if (static_cast<int64_t>(presetIndex) == _presetIndexInEffect.load(std::memory_order_relaxed))
-  {
-    return;
-  }
+    if (requested == _presetIndexInEffect.load(std::memory_order_relaxed))
+    {
+      return;
+    }
 
-  _presetLoadRequest.store(static_cast<int64_t>(presetIndex));
+    // `current` is kNoPresetRequest or an earlier request this one coalesces.
+    if (_presetLoadRequest.compare_exchange_weak(current, requested)) return;
+  }
 }
 
 void ClapAsVst3::preset_loaded(uint32_t locationKind, const char *location, const char *loadKey)
@@ -1564,7 +1569,9 @@ void ClapAsVst3::param_rescan(clap_param_rescan_flags flags)
     for (decltype(len) i = 0; i < len; ++i)
     {
       auto p = static_cast<Vst3Parameter *>(parameters.getParameterByIndex(i));
-      if (p->isMidi) continue;
+      // Neither names a CLAP parameter: the selector's index is left at 0, so
+      // get_info would rename the host's program control after parameter 0.
+      if (p->isMidi || p->isPreset) continue;
       clap_param_info_t info;
       if (_plugin->_ext._params->get_info(_plugin->_plugin, p->param_index_for_clap_get_info, &info))
       {
@@ -1745,9 +1752,9 @@ bool ClapAsVst3::unregister_timer(clap_id timer_id)
       to.period = 0;
       to.nexttick = 0;
 #if LIN
-      if (to.handler && _iRunLoop)
+      if (auto *const runLoop = _iRunLoop.load(); to.handler && runLoop)
       {
-        _iRunLoop->unregisterTimer(to.handler.get());
+        runLoop->unregisterTimer(to.handler.get());
       }
       to.handler.reset();
 #endif
@@ -1792,7 +1799,14 @@ void ClapAsVst3::onIdle()
   // A preset the host asked for on the audio thread, and a preset list that
   // filled in on the crawl thread. Both have to happen here: from_location()
   // is [main-thread], and so is notifyProgramListChange().
-  if (auto requested = _presetLoadRequest.exchange(-1); requested >= 0)
+  //
+  // Take only an actual request: a plain exchange would also take the
+  // kAdoptNextPresetValue setState() left there and disarm the adopt.
+  auto requested = _presetLoadRequest.load();
+  while (requested >= 0 && !_presetLoadRequest.compare_exchange_weak(requested, kNoPresetRequest))
+  {
+  }
+  if (requested >= 0)
   {
     Clap::PresetEntry entry;
     // Clamp anyway: stepCount matches the count at creation, but a host may
@@ -1969,46 +1983,54 @@ void ClapAsVst3::attachTimers(Steinberg::Linux::IRunLoop *r)
 {
   if (r)
   {
-    _iRunLoop = r;
+    const auto previous = _iRunLoop.exchange(r);
 
     if (_idleHandler)
     {
-      _iRunLoop->unregisterTimer(_idleHandler.get());
+      r->unregisterTimer(_idleHandler.get());
     }
     else
     {
       _idleHandler = Steinberg::owned(new IdleHandler(this));
     }
-    _iRunLoop->registerTimer(_idleHandler.get(), 30);
+    r->registerTimer(_idleHandler.get(), 30);
 
     for (auto &t : _timersObjects)
     {
       if (!t.handler)
       {
         t.handler = Steinberg::owned(new TimerHandler(this, t.timer_id));
-        _iRunLoop->registerTimer(t.handler.get(), t.period);
+        r->registerTimer(t.handler.get(), t.period);
       }
     }
 
-    // the host's own main thread drives the idle from here on
-    os::idleSourceChanged();
+    // The host's main thread drives the idle from here on, but announce it
+    // only on the transition: register_timer() also lands here, and it may run
+    // from on_main_thread() with _mainThreadLock held, where taking the
+    // helper's lock would invert the documented order.
+    if (previous == nullptr)
+    {
+      os::idleSourceChanged();
+    }
   }
 }
 
 void ClapAsVst3::detachTimers(Steinberg::Linux::IRunLoop *r)
 {
-  if (r && r == _iRunLoop)
+  // Read once: the helper thread only reads _iRunLoop, never writes it.
+  auto *const runLoop = _iRunLoop.load();
+  if (r && r == runLoop)
   {
     if (_idleHandler)
     {
-      _iRunLoop->unregisterTimer(_idleHandler.get());
+      runLoop->unregisterTimer(_idleHandler.get());
       _idleHandler.reset();
     }
     for (auto &t : _timersObjects)
     {
       if (t.handler)
       {
-        _iRunLoop->unregisterTimer(t.handler.get());
+        runLoop->unregisterTimer(t.handler.get());
         t.handler.reset();
       }
     }
@@ -2049,9 +2071,9 @@ bool ClapAsVst3::unregister_fd(int fd)
     if (it->fd == fd)
     {
       res = true;
-      if (_iRunLoop && it->handler)
+      if (auto *const runLoop = _iRunLoop.load(); runLoop && it->handler)
       {
-        _iRunLoop->unregisterEventHandler(it->handler.get());
+        runLoop->unregisterEventHandler(it->handler.get());
       }
       it->handler.reset();
       it = _posixFDObjects.erase(it);
@@ -2086,14 +2108,16 @@ void ClapAsVst3::attachPosixFD(Steinberg::Linux::IRunLoop *r)
 {
   if (r)
   {
-    _iRunLoop = r;
+    // No idleSourceChanged() here: the frame callback calls attachTimers()
+    // first, which announces the run loop. \see attachTimers()
+    _iRunLoop.store(r);
 
     for (auto &p : _posixFDObjects)
     {
       if (!p.handler)
       {
         p.handler = Steinberg::owned(new FDHandler(this, p.fd, p.flags));
-        _iRunLoop->registerEventHandler(p.handler.get(), p.fd);
+        r->registerEventHandler(p.handler.get(), p.fd);
       }
     }
   }
@@ -2101,13 +2125,14 @@ void ClapAsVst3::attachPosixFD(Steinberg::Linux::IRunLoop *r)
 
 void ClapAsVst3::detachPosixFD(Steinberg::Linux::IRunLoop *r)
 {
-  if (r && r == _iRunLoop)
+  auto *const runLoop = _iRunLoop.load();
+  if (r && r == runLoop)
   {
     for (auto &p : _posixFDObjects)
     {
       if (p.handler)
       {
-        _iRunLoop->unregisterEventHandler(p.handler.get());
+        runLoop->unregisterEventHandler(p.handler.get());
         p.handler.reset();
       }
     }

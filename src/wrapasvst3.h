@@ -370,9 +370,11 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
 #if LIN
   // While an editor is open the host's run loop drives onIdle() on the real
   // main thread and the Linux helper thread stands down. \see attachTimers()
+  //
+  // Called on the helper thread, which is why _iRunLoop is atomic.
   bool hasOwnIdleSource() const override
   {
-    return _iRunLoop != nullptr;
+    return _iRunLoop.load() != nullptr;
   }
 #endif
 
@@ -486,7 +488,22 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   // Set from the audio thread by onRequestPresetLoad(), drained in onIdle().
   // Coalescing is correct: three program changes in one block should load the
   // last preset, not three.
-  std::atomic<int64_t> _presetLoadRequest{-1};
+  //
+  // One word carries two facts, on purpose:
+  //
+  //   >= 0                    a preset the host asked for, not yet loaded
+  //   kNoPresetRequest        nothing pending
+  //   kAdoptNextPresetValue   armed by a successful setState(): the next
+  //                           selector value the host sends is where the
+  //                           host's selector stands, not a preset to load
+  //
+  // One word is what closes the race: setState() arms and drops in a single
+  // store, the audio thread decides and publishes in a single compare-exchange
+  // (\see onRequestPresetLoad). Armed by setState() and nowhere else, so a
+  // fresh instance's first program change is a real one.
+  static constexpr int64_t kNoPresetRequest = -1;
+  static constexpr int64_t kAdoptNextPresetValue = -2;
+  std::atomic<int64_t> _presetLoadRequest{kNoPresetRequest};
   // The selector value already in effect: the index onIdle() last acted on,
   // or the one preset_loaded() resolved. A parameter change is only a request
   // when it names something else.
@@ -502,19 +519,6 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   // Written on the main thread (onIdle, preset_loaded), read on the audio
   // thread (onRequestPresetLoad).
   std::atomic<int64_t> _presetIndexInEffect{-1};
-  // Armed by a successful setState(): the next selector value the host sends
-  // is where its selector stands, not a preset to load. A restored project
-  // hands back the value it was saved with, and obeying it reloads that preset
-  // over the state that has just been restored.
-  //
-  // Armed there and nowhere else. A fresh instance has no state to protect, so
-  // its first program change is a real one and is obeyed - which is also why
-  // this cannot be inferred from _presetIndexInEffect being -1, a condition the
-  // two cases share.
-  //
-  // Written on the main thread (setState), cleared on the audio thread
-  // (onRequestPresetLoad).
-  std::atomic<bool> _adoptNextPresetValue{false};
   // Set when the crawl finishes; onIdle() turns it into the host notification,
   // because notifyProgramListChange() is not for a background thread.
   std::atomic<bool> _presetListChanged{false};
@@ -544,7 +548,9 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
 
   void attachTimers(Steinberg::Linux::IRunLoop *);
   void detachTimers(Steinberg::Linux::IRunLoop *);
-  Steinberg::Linux::IRunLoop *_iRunLoop{nullptr};
+  // Written on the host's main thread, read from the helper thread; every
+  // write to null is followed by os::idleSourceChanged() to wake the helper.
+  std::atomic<Steinberg::Linux::IRunLoop *> _iRunLoop{nullptr};
 #endif
 
 #if LIN

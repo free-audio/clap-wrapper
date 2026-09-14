@@ -3,6 +3,7 @@
 #include <set>
 #include <limits>
 #include <cassert>
+#include <cstring>
 #include <algorithm>
 #include <cmath>
 #include <Block.h>
@@ -1641,6 +1642,27 @@ OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags &inFlags, const AudioTime
     //                                        {}
     //                                        );
   }
+  else
+  {
+    // Nothing rendered this cycle (the CLAP is down while onIdle() cycles it
+    // for a restart), and AUBase will not silence anything for us: the AU stays
+    // initialized throughout, so DoRenderBus copies the output element's cache
+    // into the host's buffer after every noErr Render and returning without
+    // writing replays the last block. Zero every output element, not just the
+    // bus being rendered - RenderBus answers the others from their caches - and
+    // the silence flag on top is only a hint. _renderedSinceIdle is left alone:
+    // the idle tick's flush still has to make up for this block.
+    const auto numOutputs = Outputs().GetNumberOfElements();
+    for (UInt32 i = 0; i < numOutputs; ++i)
+    {
+      AudioBufferList &buffers = Output(i).PrepareBuffer(inFrames);
+      for (UInt32 j = 0; j < buffers.mNumberBuffers; ++j)
+      {
+        std::memset(buffers.mBuffers[j].mData, 0, buffers.mBuffers[j].mDataByteSize);
+      }
+    }
+    inFlags |= kAudioUnitRenderAction_OutputIsSilence;
+  }
   return noErr;
 }
 
@@ -1814,8 +1836,8 @@ void WrapAsAUV2::onIdle()
     // rebuild. Render holds it for its whole body, so once it is acquired no
     // render is inside the process adapter; clearing _initialized under it
     // keeps the ones that follow out while the plugin is torn down and stood
-    // back up. Those renders return without touching the buffers, exactly as
-    // they do before the AU is initialized.
+    // back up. The AU stays initialized throughout, so those renders still
+    // reach Render(), which zeroes the output (see the else branch there).
     bool wasInitialized;
     {
       ClapWrapper::detail::shared::SpinLockGuard processGuard(_processLock);
@@ -1827,8 +1849,8 @@ void WrapAsAUV2::onIdle()
       deactivateCLAP();
       // Cannot fail for the format-pair reason Initialize guards against:
       // the formats have not changed since the last successful activation.
-      // If it fails anyway, _initialized stays false and renders return
-      // silence, the same state as before Initialize.
+      // If it fails anyway, _initialized stays false and renders are silent
+      // until request_process() below or the host's next Initialize recovers.
       if (!activateCLAP())
       {
         LOGINFO("[clap-wrapper] restart: could not reactivate the plugin");
@@ -1848,9 +1870,8 @@ void WrapAsAUV2::onIdle()
     // activate/start_processing pair, which it drives from AU Initialize() --
     // so if the AU is initialized and the CLAP is not running underneath it,
     // stand it back up. No lock is needed to decide that: activateCLAP()
-    // publishes _initialized last, and a render that reads it false returns
-    // without touching the plugin, exactly as it does before the AU is
-    // initialized at all.
+    // publishes _initialized last, and a render that reads it false outputs
+    // silence without touching the plugin.
     if (IsInitialized() && !_initialized)
     {
       activateCLAP();
