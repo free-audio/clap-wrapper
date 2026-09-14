@@ -1041,6 +1041,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                             if (auto index{settings.sampleRate.selection(sampleRates.size())}; index)
                             {
                               sah->currentSampleRate = sampleRates[*index];
+                              sah->settings.sampleRate = sampleRates[*index];
 
                               saveSettings();
                               startAudio();
@@ -1369,6 +1370,10 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
   refreshLayout();
 
   startAudio();
+
+  // The rate asked for may have been 0 ("device preferred") or unsupported, so the
+  // combo can only show the truth once the stream is open.
+  refreshSampleRates();
 
   // Honor the show state requested by the launcher (shortcut "Run:" / STARTUPINFO),
   // falling back to a normal window. SW_HIDE would otherwise leave us invisible-but-running.
