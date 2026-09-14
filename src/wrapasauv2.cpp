@@ -1644,46 +1644,14 @@ OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags &inFlags, const AudioTime
   }
   else
   {
-    // Nothing renders into the plugin this cycle: the CLAP underneath is down
-    // (onIdle() is cycling it for a plugin-requested restart, or activateCLAP()
-    // failed there and it stayed down), or the host handed over action flags
-    // this wrapper does not process (the assert above records the expectation
-    // that it never does). Either way the output still has to be written here,
-    // because AUBase will not do it. DoRender() only refuses a call with
-    // kAudioUnitErr_Uninitialized while the *AU* is uninitialized, and the AU
-    // stays initialized right through a restart; once a call gets past that
-    // check, DoRenderBus() (AUBase.h) copies the output element's cache into
-    // the host's buffer after every Render() that returns noErr. Returning
-    // without touching that cache is therefore not silence: it hands the host
-    // the last block the plugin rendered, once per cycle, for as long as the
-    // restart takes. With a plugin that reallocates its DSP on restart that is
-    // tens of milliseconds of one block looping under a playing Logic transport
-    // -- a buzz where a latency or oversampling change should be a dropout.
-    //
-    // Zero the buffers *and* raise kAudioUnitRenderAction_OutputIsSilence, and
-    // the zeroing is the part that matters. The flag is only a hint to the
-    // caller -- AUBase itself never reads it, DoRenderBus copies the cache
-    // regardless -- so a host that ignores it would still play the stale
-    // cache if the buffers were left alone. That is why ausdk's own
-    // AUEffectBase::Render ZeroBuffer()s its output whenever it reports silence
-    // rather than trusting the flag; the flag on top lets a host that does
-    // honour it skip the mix. inFlags is DoRender's ioActionFlags by reference,
-    // so the host sees it.
-    //
-    // Every output element is zeroed, not just the bus being rendered. On a
-    // multi-bus unit only the first bus rendered for a timestamp reaches
-    // Render(); AUBase::RenderBus answers the rest from the element cache
-    // (NeedsToRender()), so a cache left stale on bus 1 would repeat there even
-    // with bus 0 clean. PrepareBuffer() then memset is the same pair the
-    // process adapter uses: claim each element's cache, then silence the
-    // placeholder busses the plugin never writes (ProcessAdapter::process).
-    // DoRenderBus moves the result into the host's buffer afterwards exactly
-    // as it does after a real render. Deliberately not AUBufferList's own
-    // ZeroBuffer: nothing else in this wrapper calls it, and this file cannot
-    // be compiled on the machine the fix was written on.
-    //
-    // _renderedSinceIdle is deliberately left alone: nothing was carried in
-    // either direction, so the idle tick's flush still has to make up for it.
+    // Nothing rendered this cycle (the CLAP is down while onIdle() cycles it
+    // for a restart), and AUBase will not silence anything for us: the AU stays
+    // initialized throughout, so DoRenderBus copies the output element's cache
+    // into the host's buffer after every noErr Render and returning without
+    // writing replays the last block. Zero every output element, not just the
+    // bus being rendered - RenderBus answers the others from their caches - and
+    // the silence flag on top is only a hint. _renderedSinceIdle is left alone:
+    // the idle tick's flush still has to make up for this block.
     const auto numOutputs = Outputs().GetNumberOfElements();
     for (UInt32 i = 0; i < numOutputs; ++i)
     {
@@ -1868,13 +1836,8 @@ void WrapAsAUV2::onIdle()
     // rebuild. Render holds it for its whole body, so once it is acquired no
     // render is inside the process adapter; clearing _initialized under it
     // keeps the ones that follow out while the plugin is torn down and stood
-    // back up. Those renders are not rejected the way AUBase rejects one
-    // before Initialize (kAudioUnitErr_Uninitialized): the AU stays initialized
-    // throughout, so they reach Render(), which zeroes the output and flags it
-    // silent. It has to, because AUBase would otherwise hand the host the
-    // output element's cache -- the last block the plugin rendered -- once per
-    // cycle for as long as the rebuild takes, an audible buzz under a playing
-    // Logic transport (see the else branch in Render()).
+    // back up. The AU stays initialized throughout, so those renders still
+    // reach Render(), which zeroes the output (see the else branch there).
     bool wasInitialized;
     {
       ClapWrapper::detail::shared::SpinLockGuard processGuard(_processLock);
@@ -1886,10 +1849,8 @@ void WrapAsAUV2::onIdle()
       deactivateCLAP();
       // Cannot fail for the format-pair reason Initialize guards against:
       // the formats have not changed since the last successful activation.
-      // If it fails anyway, _initialized stays false and every render from
-      // here on is silent (Render() zeroes the output) until request_process()
-      // below or the host's next Initialize stands the CLAP back up; parameter
-      // traffic keeps flowing through the deactivated-state flush meanwhile.
+      // If it fails anyway, _initialized stays false and renders are silent
+      // until request_process() below or the host's next Initialize recovers.
       if (!activateCLAP())
       {
         LOGINFO("[clap-wrapper] restart: could not reactivate the plugin");
@@ -1910,7 +1871,7 @@ void WrapAsAUV2::onIdle()
     // so if the AU is initialized and the CLAP is not running underneath it,
     // stand it back up. No lock is needed to decide that: activateCLAP()
     // publishes _initialized last, and a render that reads it false outputs
-    // silence without touching the plugin (see the else branch in Render()).
+    // silence without touching the plugin.
     if (IsInitialized() && !_initialized)
     {
       activateCLAP();

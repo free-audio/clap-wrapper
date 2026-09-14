@@ -58,13 +58,6 @@ class LinuxHelper
   // Recursive, and paired with condition_variable_any, because it is held
   // across onIdle() and a plug object may come back through attach(), detach()
   // or idleSourceChanged() from inside its own idle.
-  //
-  // Also the lock that guards the wake-up handshake: run() tests its predicate
-  // and parks under it, so every change to what that predicate reads has to
-  // reach it through this lock - either made while holding it (_plugs,
-  // _standInRunning) or, for state a plug object publishes on its own
-  // (hasOwnIdleSource), followed by a notify_all() issued while holding it.
-  // A notify for an unlocked change can be lost. \see idleSourceChanged()
   std::recursive_mutex _standInLock;
   std::condition_variable_any _standInWakeup;
   std::thread _standInThread;
@@ -237,16 +230,8 @@ void LinuxHelper::run()
     if (!anyoneWantsTicking())
     {
       LOGDETAIL("clap-wrapper: every attached object has a run loop, pausing the idle thread");
-      // Unbounded, and correct only under two conditions that the rest of this
-      // file has to keep true: the predicate reads state the plug objects
-      // publish atomically (hasOwnIdleSource), and every change that can turn
-      // its answer back to "tick me" reaches this thread through _standInLock
-      // - _plugs and _standInRunning are only written with it held, and a run
-      // loop going away is announced by idleSourceChanged(), which notifies
-      // with it held - so that no such change can slip between this predicate
-      // and this wait. Not a wait_for as a safety net, on purpose: a bounded
-      // wait would turn a missed wake-up from a dead plug-in into a merely
-      // late one, and hide the bug that caused it.
+      // Unbounded on purpose: every change that can turn the predicate back to
+      // "tick me" reaches this thread under _standInLock, so none can be lost.
       _standInWakeup.wait(guard, [this] { return !_standInRunning || anyoneWantsTicking(); });
       continue;
     }
@@ -287,22 +272,9 @@ void LinuxHelper::detach(IPlugObject *plugobject)
 
 void LinuxHelper::idleSourceChanged()
 {
-  // The lock is not optional. run() evaluates anyoneWantsTicking() with
-  // _standInLock held and then parks on the condition variable in one step;
-  // a notify that is not itself serialised by the same lock can land in the
-  // window after the predicate came back "everyone has a run loop" and before
-  // the wait registered, and then it is simply lost. On the plug object's
-  // side that window is: helper reads _iRunLoop (non-null), host nulls it and
-  // notifies, helper parks - with an unbounded wait, forever. The plug-in then
-  // gets no idle at all for as long as its editor stays closed, which is the
-  // one situation this thread exists to cover.
-  //
-  // Taking the lock here means blocking until any idle that is in flight has
-  // finished, the same as attach() and detach() do. That is acceptable only
-  // because the caller holds no plug object lock: lock order is
-  // helper-then-plug-object, and onIdle() only ever try_locks its own, so the
-  // helper never blocks on a plug object and this can never be the far side
-  // of a deadlock. \see ClapAsVst3::_mainThreadLock
+  // The lock is not optional: run() tests its predicate and parks in one step,
+  // so an unlocked notify can be lost, leaving the helper parked forever. Safe
+  // to block on: lock order is helper-then-plug-object, onIdle() only try_locks.
   std::lock_guard<std::recursive_mutex> guard(_standInLock);
   _standInWakeup.notify_all();
 }
