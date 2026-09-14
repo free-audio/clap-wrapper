@@ -18,6 +18,7 @@
 
 #include "detail/clap/fsutil.h"
 #include "detail/os/fs.h"
+#include "detail/os/log.h"
 
 namespace Clap
 {
@@ -53,6 +54,24 @@ std::string normalizeExtension(const char *declared)
   std::string value{declared};
   if (!value.empty() && value.front() == '.') value.erase(value.begin());
   return toLower(value);
+}
+
+// CLAP strings are UTF-8, fs::path is OS-native: on Windows fs::path{std::string}
+// decodes through the ANSI code page, and path::string() *throws* for any name
+// that page cannot express. Not fs::u8path(): deprecated in C++20, -Werror.
+fs::path pathFromUtf8(const std::string &utf8)
+{
+#if WIN
+  if (utf8.empty()) return {};
+  const auto size = static_cast<int>(utf8.size());
+  const int length = ::MultiByteToWideChar(CP_UTF8, 0, utf8.data(), size, nullptr, 0);
+  if (length <= 0) return {};
+  std::wstring wide(static_cast<size_t>(length), L'\0');
+  ::MultiByteToWideChar(CP_UTF8, 0, utf8.data(), size, wide.data(), length);
+  return fs::path{std::move(wide)};
+#else
+  return fs::path{utf8};
+#endif
 }
 
 }  // namespace
@@ -111,7 +130,8 @@ struct PresetIndex::Declarations
     // "If empty or NULL then every file should be matched."
     if (extensions.empty()) return false;
 
-    auto ext = path.extension().string();
+    // u8string(), not string(): see pathFromUtf8.
+    auto ext = path.extension().u8string();
     if (!ext.empty() && ext.front() == '.') ext.erase(ext.begin());
     ext = toLower(ext);
 
@@ -389,21 +409,53 @@ std::shared_ptr<PresetIndex> PresetIndex::forPlugin(const Library *library, cons
 
 void PresetIndex::resetCache()
 {
-  auto &cache = indexCache();
-  std::lock_guard<std::mutex> lock(cache.mutex);
-  cache.map.clear();
+  // Refcount or not: clearing the map alone leaves the thread of an index a
+  // wrapper still holds running inside a module about to be unloaded.
+  std::vector<std::shared_ptr<PresetIndex>> dropped;
+  {
+    auto &cache = indexCache();
+    std::lock_guard<std::mutex> lock(cache.mutex);
+    for (auto &[key, index] : cache.map) dropped.push_back(index);
+    cache.map.clear();
+  }
+  for (auto &index : dropped) index->abandon();
 }
 
 PresetIndex::~PresetIndex()
 {
+  abandon();
+}
+
+void PresetIndex::abandon()
+{
   _abandon.store(true);
+  // join() leaves the thread non-joinable, so a second call is a no-op.
   if (_thread.joinable()) _thread.join();
 }
 
 void PresetIndex::start(const Library *library, const std::string &pluginId)
 {
   const auto *factory = library->_pluginFactoryPresetDiscovery;
-  _thread = std::thread([this, factory, pluginId]() { crawl(factory, pluginId); });
+  _thread = std::thread(
+      [this, factory, pluginId]()
+      {
+        // Bare std::thread: an escaping exception is std::terminate.
+        try
+        {
+          crawl(factory, pluginId);
+        }
+        catch (const std::exception &e)
+        {
+          LOGINFO("preset crawl for '{}' aborted: {}", pluginId, e.what());
+        }
+        catch (...)
+        {
+          LOGINFO("preset crawl for '{}' aborted by a non-standard exception", pluginId);
+        }
+
+        // On every path, or waitUntilComplete() and the listeners never fire.
+        finish();
+      });
 }
 
 void PresetIndex::crawl(const clap_preset_discovery_factory_t *factory, std::string pluginId)
@@ -460,7 +512,7 @@ void PresetIndex::crawl(const clap_preset_discovery_factory_t *factory, std::str
 
         // A FILE location may be a directory to crawl or a single file.
         std::error_code ec;
-        const fs::path root{location.location};
+        const fs::path root = pathFromUtf8(location.location);
 
         if (fs::is_regular_file(root, ec))
         {
@@ -494,7 +546,8 @@ void PresetIndex::crawl(const clap_preset_discovery_factory_t *factory, std::str
           if (!declarations.matchesExtension(it->path())) continue;
           if (++seen > kMaxPresetsPerLocation) break;
 
-          const auto path = it->path().string();
+          // u8string(): what from_location() expects back, and cannot throw.
+          const auto path = it->path().u8string();
           receiver.location = path;
           provider->get_metadata(provider, location.kind, path.c_str(), &receiver.receiver);
           receiver.finishFile();
@@ -522,7 +575,7 @@ void PresetIndex::crawl(const clap_preset_discovery_factory_t *factory, std::str
                      });
   }
 
-  finish();
+  // finish() is called by the thread body in start(), so it also runs on throw.
 }
 
 bool PresetIndex::waitUntilComplete(unsigned timeoutMs)
@@ -545,13 +598,38 @@ void PresetIndex::finish()
   }
   _completionCv.notify_all();
 
-  std::vector<Listener> toCall;
+  // Looked up one at a time as its turn comes, never snapshotted: a copy cannot
+  // be recalled, so a listener removed meanwhile would still be called, possibly
+  // on a destroyed instance. Called outside the lock - a listener may re-enter.
+  // ceiling: later registrations are called by addCompletionListener() instead.
+  uint64_t last = 0;
+  uint64_t ceiling;
   {
     std::lock_guard<std::mutex> lock(_listenerMutex);
-    for (auto &[token, listener] : _listeners) toCall.push_back(listener);
+    ceiling = _nextListenerToken - 1;
   }
-  for (auto &listener : toCall)
+  for (;;)
+  {
+    Listener listener;
+    {
+      std::lock_guard<std::mutex> lock(_listenerMutex);
+      auto it = std::find_if(_listeners.begin(), _listeners.end(), [&](const auto &pair)
+                             { return pair.first > last && pair.first <= ceiling; });
+      if (it == _listeners.end()) break;
+      last = it->first;
+      listener = it->second;
+      _listenerInCall = last;
+      _listenerInCallThread = std::this_thread::get_id();
+    }
+
     if (listener) listener();
+
+    {
+      std::lock_guard<std::mutex> lock(_listenerMutex);
+      _listenerInCall = 0;
+    }
+    _listenerCv.notify_all();
+  }
 }
 
 std::vector<PresetEntry> PresetIndex::presets() const
@@ -617,10 +695,15 @@ uint64_t PresetIndex::addCompletionListener(Listener listener)
 
 void PresetIndex::removeCompletionListener(uint64_t token)
 {
-  std::lock_guard<std::mutex> lock(_listenerMutex);
+  std::unique_lock<std::mutex> lock(_listenerMutex);
   _listeners.erase(std::remove_if(_listeners.begin(), _listeners.end(),
                                   [token](const auto &pair) { return pair.first == token; }),
                    _listeners.end());
+
+  // Erasing cannot recall a call finish() is making right now, so wait it out -
+  // except for a listener removing itself, which would wait on its own thread.
+  if (_listenerInCall == token && _listenerInCallThread != std::this_thread::get_id())
+    _listenerCv.wait(lock, [this, token]() { return _listenerInCall != token; });
 }
 
 }  // namespace Clap

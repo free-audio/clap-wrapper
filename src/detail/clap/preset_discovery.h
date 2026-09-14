@@ -111,8 +111,10 @@ class PresetIndex
   // thread, including concurrently.
   static std::shared_ptr<PresetIndex> forPlugin(const Library *library, const std::string &pluginId);
 
-  // Drops every cached index. For test harnesses and for a host that unloads
-  // the library; the shared_ptrs handed out stay valid.
+  // Drops every cached index and joins its crawl thread, held shared_ptrs or
+  // not (those stay valid, just finished). Must run before the hosted CLAP is
+  // deinit()ed - the crawl is inside that module - and not from a static
+  // destructor, where Windows' loader lock keeps the thread from exiting.
   static void resetCache();
 
   ~PresetIndex();
@@ -158,6 +160,10 @@ class PresetIndex
   // the caller's thread) if it already has. Use it to tell a host its preset
   // list changed. The token lets a wrapper unregister in its destructor -
   // without that, a callback could outlive the instance it captured.
+  // removeCompletionListener() returns only once the listener is neither running
+  // nor able to run again, which is what makes removal from a destructor safe. A
+  // listener may re-enter the index and remove itself, but must not wait on the
+  // thread that may be removing it, nor drop the index's last reference.
   using Listener = std::function<void()>;
   uint64_t addCompletionListener(Listener listener);
   void removeCompletionListener(uint64_t token);
@@ -168,6 +174,8 @@ class PresetIndex
   void start(const Library *library, const std::string &pluginId);
   void crawl(const clap_preset_discovery_factory_t *factory, std::string pluginId);
   void finish();
+  // Stops the crawl and waits for it. Idempotent.
+  void abandon();
 
   // The receiver and indexer callbacks the provider talks to. They live here
   // so the whole conversation with the plugin is in one place.
@@ -183,8 +191,13 @@ class PresetIndex
   std::condition_variable _completionCv;
 
   std::mutex _listenerMutex;
-  std::vector<std::pair<uint64_t, Listener>> _listeners;
+  std::vector<std::pair<uint64_t, Listener>> _listeners;  // in token order
   uint64_t _nextListenerToken{1};
+  // Which listener finish() is running (0: none) and on which thread, so
+  // removeCompletionListener() can wait for that one. Guarded by _listenerMutex.
+  uint64_t _listenerInCall{0};
+  std::thread::id _listenerInCallThread;
+  std::condition_variable _listenerCv;
 
   std::thread _thread;
   std::atomic<bool> _abandon{false};
