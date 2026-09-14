@@ -246,9 +246,9 @@ OSStatus WrapAsAUV2::Initialize()
   auto guarantee_mainthread = _plugin->AlwaysMainThread();
   if (!activateCLAP())
   {
-    // The host settled on a main-bus format pair the plugin does not accept
-    // (see activateCLAP). Refuse the initialization rather than render with
-    // buffers sized differently from the plugin's ports.
+    // The plugin refused the host-chosen main-bus format pair, or refused to
+    // activate at all (see activateCLAP). Refuse the initialization rather
+    // than render with buffers sized differently from the plugin's ports.
     return kAudioUnitErr_FormatNotSupported;
   }
 
@@ -1481,7 +1481,7 @@ bool WrapAsAUV2::activateCLAP()
 {
   if (_plugin)
   {
-    assert(!_initialized);
+    assert(!_clapActive);
     // Reconcile the host-chosen bus formats with the plugin's port layout
     // before anything reads the ports: main thread, plugin deactivated. A
     // failure here must fail the activation: ValidFormat can only vet each
@@ -1556,7 +1556,15 @@ bool WrapAsAUV2::activateCLAP()
       _flushAdapter.reset();
     }
 
-    _plugin->activate();
+    if (!_plugin->activate())
+    {
+      // Take the process adapter built above back down: with no active plugin
+      // behind it, nothing would ever drain what SetParameter queues on it.
+      deactivateCLAP();
+      return false;
+    }
+    _clapActive = true;
+
     _plugin->start_processing();
     _initialized = true;
   }
@@ -1607,8 +1615,15 @@ void WrapAsAUV2::deactivateCLAP()
 
       _processAdapter.reset();
     }
-    _plugin->stop_processing();
-    _plugin->deactivate();
+
+    // CLAP forbids either call on a plugin that is not active, and a
+    // reactivation that failed leaves it exactly that way.
+    if (_clapActive)
+    {
+      _clapActive = false;
+      _plugin->stop_processing();
+      _plugin->deactivate();
+    }
   }
 }
 
