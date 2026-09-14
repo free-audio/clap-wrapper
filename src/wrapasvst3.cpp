@@ -357,7 +357,7 @@ void ClapAsVst3::syncParameterValuesFromClap()
   for (decltype(len) i = 0; i < len; ++i)
   {
     auto p = static_cast<Vst3Parameter *>(parameters.getParameterByIndex(i));
-    if (p->isMidi) continue;
+    if (p->isWrapperOwned()) continue;
     double val;
     if (_plugin->_ext._params->get_value(_plugin->_plugin, p->id, &val))
     {
@@ -647,7 +647,7 @@ tresult PLUGIN_API ClapAsVst3::getParamStringByValue(Vst::ParamID id, Vst::Param
     return kResultOk;
   }
 
-  if (param->isMidi)
+  if (param->isWrapperOwned())
   {
     auto r = std::to_string((int)val);
 
@@ -683,7 +683,7 @@ tresult PLUGIN_API ClapAsVst3::getParamValueByString(Vst::ParamID id, Vst::TChar
   char inbuf[128];
   m.copyTo8(inbuf, 0, 128);
   double out = 0.;
-  if (param->isMidi)
+  if (param->isWrapperOwned())
   {
     return Steinberg::kResultFalse;
   }
@@ -1591,9 +1591,9 @@ void ClapAsVst3::param_rescan(clap_param_rescan_flags flags)
     for (decltype(len) i = 0; i < len; ++i)
     {
       auto p = static_cast<Vst3Parameter *>(parameters.getParameterByIndex(i));
-      // Neither names a CLAP parameter: the selector's index is left at 0, so
-      // get_info would rename the host's program control after parameter 0.
-      if (p->isMidi || p->isPreset) continue;
+      // The selector's index is left at 0, so get_info would otherwise rename
+      // the host's program control after parameter 0.
+      if (p->isWrapperOwned()) continue;
       clap_param_info_t info;
       if (_plugin->_ext._params->get_info(_plugin->_plugin, p->param_index_for_clap_get_info, &info))
       {
