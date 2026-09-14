@@ -205,8 +205,6 @@ Vst3Parameter *Vst3Parameter::createPresetSelector(Steinberg::Vst::ParamID id, i
   p->isPreset = true;
   p->min_value = 0;
   p->max_value = 0;
-  // One place decides what a count of N looks like on the parameter, whether
-  // it is the count at creation or the one the crawl delivers later.
   p->resizePresetSelector(presetCount);
   return p;
 }
@@ -214,17 +212,13 @@ Vst3Parameter *Vst3Parameter::createPresetSelector(Steinberg::Vst::ParamID id, i
 void Vst3Parameter::resizePresetSelector(int32_t presetCount)
 {
   auto &v = getInfo();
-  // A host reads stepCount+1 as the number of programs (the SDK's own preset
-  // sample sets kNumPrograms-1), so one preset is stepCount 0 - which is also
-  // what an empty list is. The flag is what tells the two apart.
+  // A host reads stepCount+1 as the program count, so a single preset and an
+  // empty list are both stepCount 0 - kIsHidden is what tells them apart.
   v.stepCount = presetCount > 1 ? presetCount - 1 : 0;
   if (presetCount > 0)
     v.flags &= ~Vst::ParameterInfo::kIsHidden;
   else
     v.flags |= Vst::ParameterInfo::kIsHidden;
-  // The plain range asClapValue()/asVst3Value() convert against: index 0 to
-  // the last index. With no presets it collapses to 0..0, which asVst3Value()
-  // guards against dividing by.
   min_value = 0;
   max_value = v.stepCount;
 }

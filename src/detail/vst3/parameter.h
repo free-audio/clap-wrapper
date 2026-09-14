@@ -72,11 +72,8 @@ class Vst3Parameter : public Steinberg::Vst::Parameter
     {
       return floor(clapvalue - min_value) / float(info.stepCount);
     }
-    // A zero-width range has exactly one plain value, and that value is
-    // normalized 0. The preset selector sits there while its list is empty
-    // (stepCount 0, min_value == max_value == 0), and a CLAP parameter may
-    // legitimately declare min == max as well; dividing here would hand the
-    // host a NaN for either.
+    // min == max - an empty preset selector, or a CLAP parameter that declares
+    // it - has exactly one plain value, and dividing would hand the host a NaN.
     const auto range = max_value - min_value;
     if (range <= 0.0) return 0.0;
     return (clapvalue - min_value) / range;
@@ -91,25 +88,14 @@ class Vst3Parameter : public Steinberg::Vst::Parameter
   // change into an actual 0xC0 message, which is emphatically not what
   // selecting a preset should do.
   //
-  // Created hidden and with stepCount 0 when presetCount is 0, rather than
-  // not at all: the parameter COUNT of a VST3 component must not change while
-  // it is active (the process adapter holds a raw pointer into the parameter
-  // container), so the selector has to exist from the first setupParameters()
-  // on, whatever the crawl has found by then. What may change afterwards is
-  // its stepCount and its flags - see resizePresetSelector().
+  // Created even for presetCount 0 (hidden, stepCount 0): the parameter count
+  // must not change while the component is active - see resizePresetSelector().
   static Vst3Parameter *createPresetSelector(Steinberg::Vst::ParamID id, int32_t presetCount);
-  // Re-sizes an existing selector to a list of presetCount entries, in place:
-  // stepCount, max_value and the kIsHidden flag. Nothing is allocated and no
-  // pointer moves, so the process adapter's references stay valid; the caller
-  // must nevertheless hold whatever excludes process() while the fields are
-  // written, and afterwards announce kParamTitlesChanged, which the SDK
-  // defines as "titles, default values, stepCount or flags have changed".
+  // Resizes an existing selector in place. The caller must exclude process()
+  // while the fields are written, and afterwards announce kParamTitlesChanged.
   void resizePresetSelector(int32_t presetCount);
-  // The number of programs a selector currently publishes: 0 while hidden
-  // (list empty or crawl not finished), stepCount+1 otherwise - the reading a
-  // host makes of stepCount, and the one number every preset path in the
-  // wrapper has to agree on. The live index may be larger while a crawl is
-  // still running; that size is not published until it is complete.
+  // Programs published to the host: 0 while hidden, stepCount+1 otherwise. The
+  // live index may be larger while a crawl is still running.
   int32_t presetCount() const
   {
     auto &info = this->getInfo();

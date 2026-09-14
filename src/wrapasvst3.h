@@ -471,21 +471,14 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   // Built in setupParameters() when the plugin implements preset-load. The
   // index itself is shared per module and crawls on a background thread, so
   // the list can be empty here and fill in later; onPresetIndexComplete() is
-  // what tells the host to look again. The selector parameter itself always
-  // exists once an index does - hidden, with stepCount 0, while the crawl is
-  // running - and is grown in place by onIdle() when the crawl completes. The
-  // parameter count never changes for that; \see setupPresets().
+  // what tells the host to look again. The selector always exists once an index
+  // does - hidden while the crawl runs - and onIdle() grows it in place.
   void setupPresets();
   void onPresetIndexComplete();
-  // The selector parameter, or nullptr when there is none. Its stepCount and
-  // hidden flag are the one source of truth for how many presets the host has
-  // been told about (\see Vst3Parameter::presetCount) - getProgramListInfo(),
-  // the clamp in onIdle() and preset_loaded() all read that, none of them the
-  // live size of _presetIndex.
+  // The selector parameter, or nullptr. Its presetCount() - never the live size
+  // of _presetIndex - is what the host has been told about.
   Vst3Parameter *presetSelector() const;
-  // Moves the selector to `index` and tells the host, as a bracketed edit. For
-  // a load the plug-in originated - preset_loaded(), and the catch-up in
-  // onIdle() once the list has grown to include what the plug-in holds.
+  // Moves the selector to `index` and tells the host, as a bracketed edit.
   void moveSelectorTo(Vst3Parameter &param, size_t index);
   bool isPresetProgramList(Vst::ProgramListID listId) const
   {
