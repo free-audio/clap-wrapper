@@ -40,21 +40,15 @@ struct StandaloneSettings
 
   std::string audioApiName;  // RtAudio::getApiName(); empty means unspecified
 
-  // The devices the user *asked for*, and whether they want that side of the
-  // stream at all. These are written only when the user makes a choice, never
-  // from the device the standalone actually ended up opening: a saved device
-  // that is unplugged today resolves to the default for this session and is
-  // still the saved device tomorrow, and a session on a machine with no
-  // playback endpoint (an RDP session without audio redirection) leaves
-  // audioOutputUsed alone rather than switching output off for good.
+  // What the user asked for, written only at the point of choice - never from the
+  // device actually opened, which may be a fallback.
   std::string inputDeviceName;   // empty means the system default device
   std::string outputDeviceName;  // empty means the system default device
-  bool audioInputUsed{true};     // false only when the user muted input
-  bool audioOutputUsed{true};    // no UI turns this off yet; the .conf can
+  bool audioInputUsed{true};
+  bool audioOutputUsed{true};  // no UI turns this off yet; the .conf can
 
   int32_t sampleRate{0};  // 0 means the device's preferred rate
-  // Clamped on apply to the largest size the settings panel offers; see
-  // StandaloneHost::applyAudioSettings() for why a .conf value cannot be trusted.
+  // Clamped on apply; see StandaloneHost::applyAudioSettings().
   uint32_t bufferSize{defaultBufferSize};
 
   // An empty selection means "open every port", which is what the standalone did

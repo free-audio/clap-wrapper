@@ -147,12 +147,10 @@ struct StandaloneHost : Clap::IHost
   bool saveStandaloneSettings();
 
   // Current audio configuration -> settings, and back. applyAudioSettings()
-  // selects the API, resolves the persisted device *names* against the devices
-  // this machine actually has right now, and clamps what the file says to what
-  // the process loop can survive. captureAudioSettings() writes back only the
-  // API, sample rate and buffer size: the device names and used flags in
-  // settings are the user's request, the frontend writes them at the point of
-  // selection, and the resolved/probed runtime values below never overwrite them.
+  // selects the API and resolves the persisted device *names* against the
+  // devices this machine actually has right now.
+  // captureAudioSettings() writes back only the API, sample rate and buffer size;
+  // the device names and used flags are the user's request, written by the frontend.
   void captureAudioSettings();
   void applyAudioSettings();
 
@@ -340,10 +338,8 @@ struct StandaloneHost : Clap::IHost
   std::string audioApiName{RtAudio::getApiName(RtAudio::Api::UNSPECIFIED)};
   std::string audioApiDisplayName{RtAudio::getApiDisplayName(RtAudio::Api::UNSPECIFIED)};
   unsigned int audioInputDeviceID{0}, audioOutputDeviceID{0};
-  // Whether that side of the stream is to be opened *right now*: the user's
-  // wish (settings.audioInput/OutputUsed) AND a device being present. The
-  // probe half is why these are runtime state and not persisted - see
-  // captureAudioSettings().
+  // The user's wish (settings.audioInput/OutputUsed) AND a device being present;
+  // the probe half is why these are not persisted.
   bool audioInputUsed{true}, audioOutputUsed{true};
   // How many channels to ask the *device* for. Distinct from
   // totalInput/OutputChannels above, which are the plugin's bus totals.
