@@ -1647,12 +1647,26 @@ void WrapAsAUV2::releaseHostMIDIOutput()
 OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags &inFlags, const AudioTimeStamp &inTimeStamp,
                             UInt32 inFrames)
 {
-  assert(inFlags == 0);
-  ClapWrapper::detail::shared::SpinLockGuard processGuard(_processLock);
-  if (_initialized && (inFlags == 0))
+  // None of the flags a host may set on the way in mean "do not process":
+  // DoNotCheckRenderArgs only tells AUBase to skip its argument checks, and an
+  // input the upstream unit marked silent still has to reach a plugin that may
+  // have a tail. Only the offline phases that are not a render pass are refused,
+  // and this is not an offline unit, so they should never arrive at all.
+  constexpr AudioUnitRenderActionFlags cannotProcess =
+      kAudioOfflineUnitRenderAction_Preflight | kAudioOfflineUnitRenderAction_Complete;
+
+  // try_lock, not lock: onIdle() can hold this across clap_plugin_params.flush(),
+  // which is plugin code of unbounded duration. A block the render thread would
+  // have had to wait for is a block it renders silent instead.
+  std::unique_lock<ClapWrapper::detail::shared::SpinLock> processGuard(_processLock, std::try_to_lock);
+  if (processGuard.owns_lock() && _initialized && !(inFlags & cannotProcess))
   {
     // do the render dance
-    Clap::AUv2::ProcessData data{inFlags, inTimeStamp, inFrames, this};
+    // The adapter hands these to PullInput, which ORs in whatever the upstream
+    // unit reports -- including its own OutputIsSilence. Ours is set below, on
+    // purpose; inheriting it would tell the host this plugin rendered silence.
+    AudioUnitRenderActionFlags pullFlags = inFlags;
+    Clap::AUv2::ProcessData data{pullFlags, inTimeStamp, inFrames, this};
 
     // retrieve musical information for this render block
 
@@ -1727,17 +1741,22 @@ OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags &inFlags, const AudioTime
     //                                        ()
     //                                        {}
     //                                        );
+
+    // The plugin rendered: whatever silence the host or an upstream unit
+    // claimed on the way in does not describe this output.
+    inFlags &= static_cast<AudioUnitRenderActionFlags>(~kAudioUnitRenderAction_OutputIsSilence);
   }
   else
   {
-    // Nothing rendered this cycle (the CLAP is down while onIdle() cycles it
-    // for a restart), and AUBase will not silence anything for us: the AU stays
-    // initialized throughout, so DoRenderBus copies the output element's cache
-    // into the host's buffer after every noErr Render and returning without
-    // writing replays the last block. Zero every output element, not just the
-    // bus being rendered - RenderBus answers the others from their caches - and
-    // the silence flag on top is only a hint. _renderedSinceIdle is left alone:
-    // the idle tick's flush still has to make up for this block.
+    // Nothing rendered this cycle (the CLAP is down while onIdle() cycles it for
+    // a restart, or that tick still holds the process lock), and AUBase will not
+    // silence anything for us: the AU stays initialized throughout, so
+    // DoRenderBus copies the output element's cache into the host's buffer after
+    // every noErr Render and returning without writing replays the last block.
+    // Zero every output element, not just the bus being rendered - RenderBus
+    // answers the others from their caches - and the silence flag on top is only
+    // a hint. _renderedSinceIdle is left alone: the idle tick's flush still has
+    // to make up for this block.
     const auto numOutputs = Outputs().GetNumberOfElements();
     for (UInt32 i = 0; i < numOutputs; ++i)
     {

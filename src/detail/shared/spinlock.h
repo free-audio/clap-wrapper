@@ -20,6 +20,13 @@ struct SpinLock
     }
   }
 
+  // for a caller that must not wait -- with lock()/unlock() this also makes
+  // std::unique_lock<SpinLock>(lock, std::try_to_lock) work
+  bool try_lock()
+  {
+    return !locked_.exchange(true, std::memory_order_acquire);
+  }
+
   void unlock()
   {
     locked_.store(false, std::memory_order_release);
