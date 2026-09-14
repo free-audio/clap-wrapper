@@ -74,6 +74,11 @@ class IHost
   virtual bool track_info_get(clap_track_info_t *info) = 0;
   virtual const char *host_get_name() = 0;
 
+  // one of CLAP_WRAPPER_HOST_FLAVOR_*, reported through CLAP_WRAPPER_HOST_INFORMATION
+  virtual const char *wrapper_flavor() const = 0;
+  // set before the plugin is created and not changed after; nullptr when unknowable
+  virtual const char *underlying_host_name() const = 0;
+
   // clap.preset-load, host side. Defaulted rather than pure: only the formats
   // that can show a preset list (VST3 program lists, AU factory presets) have
   // anything to do here, and making these pure would force every other
@@ -281,6 +286,15 @@ class Plugin
   bool track_info_get(clap_track_info_t *info)
   {
     return _parentHost->track_info_get(info);
+  }
+
+  const char *wrapper_flavor() const
+  {
+    return _parentHost->wrapper_flavor();
+  }
+  const char *underlying_host_name() const
+  {
+    return _parentHost->underlying_host_name();
   }
 
   // clap_timer support

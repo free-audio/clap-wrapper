@@ -14,6 +14,7 @@
 #include <math.h>
 #include <assert.h>
 #include "clapwrapper/vst3.h"
+#include "clapwrapper/wrapper_host.h"
 #include "distortion_clap_entry.h"
 
 static const char *features[] = {CLAP_PLUGIN_FEATURE_AUDIO_EFFECT, CLAP_PLUGIN_FEATURE_STEREO,
@@ -371,6 +372,32 @@ static bool clap1stDist_init(const struct clap_plugin *plugin)
   if (plug->hostLog && plug->host)
   {
     plug->hostLog->log(plug->host, CLAP_LOG_INFO, "Created clap1st Distortion compiled with C++");
+
+    // null means a real clap host rather than clap-wrapper
+    auto *cwh = (const clap_wrapper_host_information_t *)plug->host->get_extension(
+        plug->host, CLAP_WRAPPER_HOST_INFORMATION);
+    const char *how = "Running as a CLAP";
+    if (cwh)
+    {
+      const char *flavor = cwh->get_wrapper_flavor(plug->host);
+      if (strcmp(flavor, CLAP_WRAPPER_HOST_FLAVOR_VST3) == 0)
+        how = "Wrapped as a VST3";
+      else if (strcmp(flavor, CLAP_WRAPPER_HOST_FLAVOR_AUV2) == 0)
+        how = "Wrapped as an AUv2";
+      else if (strcmp(flavor, CLAP_WRAPPER_HOST_FLAVOR_STANDALONE) == 0)
+        how = "Wrapped as a standalone";
+      else
+        how = "Wrapped in some other format";
+    }
+    plug->hostLog->log(plug->host, CLAP_LOG_INFO, how);
+
+    if (cwh)
+    {
+      const char *underlying = cwh->get_underlying_host_name(plug->host);
+      char msg[256];
+      snprintf(msg, sizeof(msg), "Underlying host is '%s'", underlying ? underlying : "unknown");
+      plug->hostLog->log(plug->host, CLAP_LOG_INFO, msg);
+    }
   }
 
   return true;

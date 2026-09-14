@@ -152,6 +152,9 @@ tresult PLUGIN_API ClapAsVst3::initialize(FUnknown *context)
   {
     if (!_plugin)
     {
+      Steinberg::Vst::String128 res;
+      if (vst3HostApplication && kResultOk == vst3HostApplication->getName(res))
+        underlying_hostname = stringconv::convert(res);
       _plugin = Clap::Plugin::createInstance(*_library, _libraryIndex, this);
     }
     result = (_plugin && _plugin->initialize()) ? kResultOk : kResultFalse;
@@ -1759,15 +1762,7 @@ bool ClapAsVst3::unregister_timer(clap_id timer_id)
 
 const char *ClapAsVst3::host_get_name()
 {
-  if (vst3HostApplication)
-  {
-    Steinberg::Vst::String128 res;
-    if (kResultOk == vst3HostApplication->getName(res))
-    {
-      wrapper_hostname = stringconv::convert(res);
-      wrapper_hostname.append(" (CLAP-as-VST3)");
-    }
-  }
+  if (!underlying_hostname.empty()) wrapper_hostname = underlying_hostname + " (CLAP-as-VST3)";
   return wrapper_hostname.c_str();
 }
 

@@ -136,6 +136,7 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
   int _idx = 0;
   os::State _os_attached;
   std::string _hostname = "CLAP-as-AUv3";
+  std::string _underlying_hostname;
   std::atomic<bool> _initialized{false};
   std::atomic_bool _requestUICallback{false};
   // set by mark_dirty(), serviced by the idle timer
@@ -600,6 +601,15 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
     }
   }
 
+  const char *wrapper_flavor() const override
+  {
+    return CLAP_WRAPPER_HOST_FLAVOR_AUV3;
+  }
+  const char *underlying_host_name() const override
+  {
+    return _underlying_hostname.empty() ? nullptr : _underlying_hostname.c_str();
+  }
+
   const char *host_get_name() override
   {
     NSBundle *mainBundle = [NSBundle mainBundle];
@@ -981,6 +991,7 @@ static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
 
     // Create the plugin instance
     AUV3LOG("init: creating plugin instance via factory");
+    _impl->_underlying_hostname = os::getHostAppName();
     _impl->_plugin =
         Clap::Plugin::createInstance(_library._pluginFactory, _impl->_desc->id, _impl.get());
     if (!_impl->_plugin)

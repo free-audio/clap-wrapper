@@ -20,6 +20,7 @@
 #include "clapwrapper/vst3.h"
 #include "clapwrapper/auv2.h"
 #include "clapwrapper/aax.h"
+#include "clapwrapper/wrapper_host.h"
 #include "../ara/ara.h"
 #include "detail/os/fs.h"
 

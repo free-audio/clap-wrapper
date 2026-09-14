@@ -698,6 +698,15 @@ class WrapAsAUV2 : public ausdk::AUBase,
     return false;
   }
 
+  const char *wrapper_flavor() const override
+  {
+    return CLAP_WRAPPER_HOST_FLAVOR_AUV2;
+  }
+  const char *underlying_host_name() const override
+  {
+    return _underlying_hostname.empty() ? nullptr : _underlying_hostname.c_str();
+  }
+
   const char *host_get_name() override
   {
     char text[65];
@@ -920,6 +929,7 @@ class WrapAsAUV2 : public ausdk::AUBase,
   // std::vector<clap_note_port_info_t> _midi_outports_info;
 
   std::string _hostname = "CLAP-as-AUv2";
+  std::string _underlying_hostname;
 
 #ifdef DUAL_SCHEDULING_ENABLED
   bool _midi_dualscheduling_mode = false;

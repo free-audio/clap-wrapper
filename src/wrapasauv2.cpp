@@ -169,6 +169,7 @@ WrapAsAUV2::WrapAsAUV2(const std::string &clapname, const std::string &clapid, i
        */
 
       // pffffrzz();  // <- enable this to have a hook to attach a debugger
+      _underlying_hostname = os::getHostAppName();
       _plugin = Clap::Plugin::createInstance(_library._pluginFactory, _desc->id, this);
       if (_plugin)
       {

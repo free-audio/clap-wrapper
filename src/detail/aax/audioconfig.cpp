@@ -196,6 +196,9 @@ plugin_bus_info_t getAvailableBusConfigs(Clap::Library *factory, uint32_t index)
   static const clap_host_audio_ports_t micro_audio_ports = {
       [](const clap_host_t *host, uint32_t flag) -> bool { return false; },
       [](const clap_host_t *host, uint32_t flags) -> void {}};
+  static const clap_wrapper_host_information_t micro_wrapper_info = {
+      [](const clap_host_t *host) -> const char * { return CLAP_WRAPPER_HOST_FLAVOR_AAX; },
+      [](const clap_host_t *host) -> const char * { return nullptr; }};
   clap_host_t microhost = {
       CLAP_VERSION,
       nullptr,
@@ -209,6 +212,7 @@ plugin_bus_info_t getAvailableBusConfigs(Clap::Library *factory, uint32_t index)
         LOGDETAIL("plugin requests microhost extension {}", extension_id);
         if (!strcmp(CLAP_EXT_PARAMS, extension_id)) return &micro_params;
         if (!strcmp(CLAP_EXT_AUDIO_PORTS, extension_id)) return &micro_audio_ports;
+        if (!strcmp(CLAP_WRAPPER_HOST_INFORMATION, extension_id)) return &micro_wrapper_info;
         return nullptr;
       },
       [](const struct clap_host *host) -> void {},  // request_restart
