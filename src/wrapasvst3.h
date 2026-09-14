@@ -52,6 +52,7 @@ namespace Clap
 {
 class ProcessAdapter;
 }
+class Vst3Parameter;
 
 class queueEvent
 {
@@ -470,9 +471,15 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   // Built in setupParameters() when the plugin implements preset-load. The
   // index itself is shared per module and crawls on a background thread, so
   // the list can be empty here and fill in later; onPresetIndexComplete() is
-  // what tells the host to look again.
+  // what tells the host to look again. The selector always exists once an index
+  // does - hidden while the crawl runs - and onIdle() grows it in place.
   void setupPresets();
   void onPresetIndexComplete();
+  // The selector parameter, or nullptr. Its presetCount() - never the live size
+  // of _presetIndex - is what the host has been told about.
+  Vst3Parameter *presetSelector() const;
+  // Moves the selector to `index` and tells the host, as a bracketed edit.
+  void moveSelectorTo(Vst3Parameter &param, size_t index);
   bool isPresetProgramList(Vst::ProgramListID listId) const
   {
     return _presetParamId != Vst::kNoParamId && listId == (Vst::ProgramListID)_presetParamId;

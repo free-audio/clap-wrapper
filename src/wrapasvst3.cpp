@@ -1340,9 +1340,8 @@ void ClapAsVst3::setupPresets()
   _presetParamId = Vst::kNoParamId;
   _presetUnitId = Vst::kRootUnitId;
 
-  // setupParameters() can run more than once (param_rescan, and the rebuild in
-  // onIdle below), and the index is shared and long-lived - so drop any
-  // listener from a previous pass rather than stacking another onto it.
+  // setupParameters() can run more than once, and the index is shared and
+  // long-lived - drop any listener from a previous pass rather than stack one.
   if (_presetIndex && _presetIndexToken)
   {
     _presetIndex->removeCompletionListener(_presetIndexToken);
@@ -1366,15 +1365,11 @@ void ClapAsVst3::setupPresets()
   Vst::ParamID id = 0xc00000;
   while (parameters.getParameter(id)) ++id;
 
-  // The list has to be sized now, because a parameter's stepCount is fixed at
-  // creation and a host reads stepCount+1 as the program count (the SDK's own
-  // preset sample sets kNumPrograms-1). So wait briefly for the crawl rather
-  // than announce a size that is wrong: an embedded container resolves in
-  // milliseconds, and a folder crawl that outlasts the wait is still covered
-  // by the rescan onIdle() asks for when it completes.
-  _presetIndex->waitUntilComplete(1000);
-  const auto presetCount = _presetIndex->size();
-  if (presetCount == 0) return;  // nothing to show; the rescan will come back
+  // Created whatever the crawl has found, and never waited for: the parameter
+  // count must not change once the component is active (the process adapter
+  // holds a raw pointer into the container), so onIdle() grows it in place.
+  // Only a completed crawl is published; a mid-crawl size is a fragment.
+  const auto presetCount = _presetIndex->isComplete() ? _presetIndex->size() : 0;
 
   auto *selector = Vst3Parameter::createPresetSelector(id, (int32_t)presetCount);
 
@@ -1399,6 +1394,12 @@ void ClapAsVst3::setupPresets()
   // The crawl may already be done - addCompletionListener() calls straight
   // back in that case, which is why _presetParamId is set before this.
   _presetIndexToken = _presetIndex->addCompletionListener([this]() { onPresetIndexComplete(); });
+}
+
+Vst3Parameter *ClapAsVst3::presetSelector() const
+{
+  if (_presetParamId == Vst::kNoParamId) return nullptr;
+  return static_cast<Vst3Parameter *>(parameters.getParameter(_presetParamId));
 }
 
 void ClapAsVst3::onPresetIndexComplete()
@@ -1466,13 +1467,24 @@ void ClapAsVst3::preset_loaded(uint32_t locationKind, const char *location, cons
   size_t index = 0;
   if (!_presetIndex->indexOf(locationKind, location, loadKey, index)) return;
 
-  auto *param = (Vst3Parameter *)parameters.getParameter(_presetParamId);
+  auto *param = presetSelector();
   if (!param) return;
 
   _presetIndexInEffect.store(static_cast<int64_t>(index), std::memory_order_relaxed);
 
-  const auto normalized = param->asVst3Value(static_cast<double>(index));
-  if (param->getNormalized() == normalized)
+  // The index is from the live list, which can be ahead of what the selector
+  // publishes; an index past stepCount normalizes above 1.0. onIdle() moves the
+  // selector to _presetIndexInEffect once the list has grown to include it.
+  if (index >= static_cast<size_t>(param->presetCount())) return;
+
+  moveSelectorTo(*param, index);
+}
+
+void ClapAsVst3::moveSelectorTo(Vst3Parameter &param, size_t index)
+{
+  // [main-thread] index must be within what the selector publishes.
+  const auto normalized = param.asVst3Value(static_cast<double>(index));
+  if (param.getNormalized() == normalized)
   {
     // Already where the host put it, which is the usual case: this is the
     // confirmation of a load the host itself asked for. Reporting it as an
@@ -1480,7 +1492,7 @@ void ClapAsVst3::preset_loaded(uint32_t locationKind, const char *location, cons
     return;
   }
 
-  param->setNormalized(normalized);
+  param.setNormalized(normalized);
   if (componentHandler)
   {
     // Bracketed, like any value a plugin originates: an unbracketed
@@ -1514,10 +1526,11 @@ Steinberg::tresult PLUGIN_API ClapAsVst3::getProgramListInfo(Steinberg::int32 li
   if (_presetParamId == Vst::kNoParamId || listIndex != inherited) return Steinberg::kResultFalse;
 
   info.id = (Vst::ProgramListID)_presetParamId;
-  // What the host will show as the number of slots. Reporting the count found
-  // so far (rather than the parameter's 128 steps) keeps a browser from
-  // listing empty entries while the crawl is still running.
-  info.programCount = _presetIndex ? (Steinberg::int32)_presetIndex->size() : 0;
+  // The slots the host will show: the selector's own stepCount+1, not the live
+  // index size. If the list were the longer of the two, picking a program past
+  // stepCount clamps to 1.0 and silently loads the wrong preset.
+  auto *selector = presetSelector();
+  info.programCount = selector ? selector->presetCount() : 0;
   stringconv::convert(std::string("Presets"), info.name);
   return Steinberg::kResultOk;
 }
@@ -1528,8 +1541,14 @@ Steinberg::tresult PLUGIN_API ClapAsVst3::getProgramName(Vst::ProgramListID list
 {
   if (!isPresetProgramList(listId)) return super::getProgramName(listId, programIndex, name);
 
+  // Bounded by what getProgramListInfo() published: mid-crawl the index knows
+  // names for slots the host has not been told exist.
+  auto *selector = presetSelector();
+  if (!selector || programIndex < 0 || programIndex >= selector->presetCount())
+    return Steinberg::kResultFalse;
+
   Clap::PresetEntry entry;
-  if (!_presetIndex || programIndex < 0 || !_presetIndex->presetAt((size_t)programIndex, entry))
+  if (!_presetIndex || !_presetIndex->presetAt((size_t)programIndex, entry))
     return Steinberg::kResultFalse;
 
   stringconv::convert(entry.displayName(), name);
@@ -1809,10 +1828,11 @@ void ClapAsVst3::onIdle()
   if (requested >= 0)
   {
     Clap::PresetEntry entry;
-    // Clamp anyway: stepCount matches the count at creation, but a host may
-    // still have a stale value from before a rescan.
-    const auto count = _presetIndex ? _presetIndex->size() : 0;
-    if (count > 0)
+    // Clamp against what the selector publishes - the range asClapValue()
+    // decoded against; a host may still replay a value from an older stepCount.
+    auto *selector = presetSelector();
+    const auto count = selector ? (size_t)selector->presetCount() : 0;
+    if (count > 0 && _presetIndex)
     {
       const auto index = std::min<size_t>((size_t)requested, count - 1);
 
@@ -1841,21 +1861,40 @@ void ClapAsVst3::onIdle()
 
   if (_presetListChanged.exchange(false))
   {
-    if (_presetParamId == Vst::kNoParamId)
+    // Grow the existing selector in place; never rebuild the parameters here -
+    // that destroys Parameter objects the process adapter is dereferencing on
+    // the audio thread. kParamTitlesChanged is the SDK's channel for this.
+    auto *selector = presetSelector();
+    if (selector && _presetIndex && _presetIndex->isComplete() &&
+        (Steinberg::int32)_presetIndex->size() != selector->presetCount())
     {
-      // The crawl finished after setupPresets() had nothing to size the list
-      // with, so there is no selector parameter at all yet. Only rebuilding
-      // the parameters can introduce one; restartComponent is what makes the
-      // host re-read them.
-      setupParameters(_plugin->_plugin, _plugin->_ext._params);
+      // The size test is not just an optimisation: with the shared index already
+      // complete there is nothing to tell the host, and a restart is not free.
+      const auto presetCount = _presetIndex->size();
+      {
+        // process() decodes the selector against stepCount and min/max_value on
+        // the audio thread, so exclude it for the field writes and nothing else.
+        ClapWrapper::detail::shared::SpinLockGuard growLock(_processOrFlushLock);
+        selector->resizePresetSelector((int32_t)presetCount);
+      }
+
+      // Both, in this order: the parameter info, then the list it selects from.
       if (componentHandler)
         componentHandler->restartComponent(Vst::RestartFlags::kParamTitlesChanged |
                                            Vst::RestartFlags::kParamValuesChanged);
-    }
-    else if (auto unitHandler = Steinberg::FUnknownPtr<Vst::IUnitHandler>(componentHandler))
-    {
-      // -1: every program in the list changed, not one of them.
-      unitHandler->notifyProgramListChange((Vst::ProgramListID)_presetParamId, -1);
+      if (auto unitHandler = Steinberg::FUnknownPtr<Vst::IUnitHandler>(componentHandler))
+      {
+        // -1: every program in the list changed, not one of them.
+        unitHandler->notifyProgramListChange((Vst::ProgramListID)_presetParamId, -1);
+      }
+
+      // Cubase sends the selector's value in every process block, so a preset the
+      // plug-in loaded mid-crawl must be caught up to or preset 0 wins over it.
+      const auto inEffect = _presetIndexInEffect.load(std::memory_order_relaxed);
+      if (inEffect >= 0 && inEffect < static_cast<int64_t>(presetCount))
+      {
+        moveSelectorTo(*selector, static_cast<size_t>(inEffect));
+      }
     }
   }
 

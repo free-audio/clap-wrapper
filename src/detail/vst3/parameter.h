@@ -72,7 +72,11 @@ class Vst3Parameter : public Steinberg::Vst::Parameter
     {
       return floor(clapvalue - min_value) / float(info.stepCount);
     }
-    return (clapvalue - min_value) / (max_value - min_value);
+    // min == max - an empty preset selector, or a CLAP parameter that declares
+    // it - has exactly one plain value, and dividing would hand the host a NaN.
+    const auto range = max_value - min_value;
+    if (range <= 0.0) return 0.0;
+    return (clapvalue - min_value) / range;
   }
   static Vst3Parameter *create(const clap_param_info_t *info,
                                std::function<Steinberg::Vst::UnitID(const char *modulepath)> getUnitId);
@@ -83,7 +87,21 @@ class Vst3Parameter : public Steinberg::Vst::Parameter
   // separate kind because the process adapter turns every isMidi program
   // change into an actual 0xC0 message, which is emphatically not what
   // selecting a preset should do.
+  //
+  // Created even for presetCount 0 (hidden, stepCount 0): the parameter count
+  // must not change while the component is active - see resizePresetSelector().
   static Vst3Parameter *createPresetSelector(Steinberg::Vst::ParamID id, int32_t presetCount);
+  // Resizes an existing selector in place. The caller must exclude process()
+  // while the fields are written, and afterwards announce kParamTitlesChanged.
+  void resizePresetSelector(int32_t presetCount);
+  // Programs published to the host: 0 while hidden, stepCount+1 otherwise. The
+  // live index may be larger while a crawl is still running.
+  int32_t presetCount() const
+  {
+    auto &info = this->getInfo();
+    if (!isPreset || (info.flags & Steinberg::Vst::ParameterInfo::kIsHidden)) return 0;
+    return info.stepCount + 1;
+  }
   // copies from the clap_param_info_t
   uint32_t param_index_for_clap_get_info = 0;
   clap_id id = 0;
