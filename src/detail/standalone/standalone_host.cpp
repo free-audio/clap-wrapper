@@ -526,7 +526,8 @@ void StandaloneHost::applyAudioSettings()
     }
   }
 
-  // The sample rate needs no clamp: startAudioThreadOn() validates it.
+  // The sample rate needs no clamp: startAudioThreadOn() resolves it against the
+  // device it is about to open.
 }
 
 bool StandaloneHost::isKnownDevice(unsigned int deviceID)
