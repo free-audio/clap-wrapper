@@ -309,6 +309,7 @@ struct Plugin final : public Window
   // previous API mean nothing under the new one.
   void selectAudioApi(RtAudio::Api api);
 
+  // Take the current API's default devices; clears the persisted device names.
   void selectDefaultDevices();
   void refreshDeviceChannelCounts();
 

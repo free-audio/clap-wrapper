@@ -149,6 +149,8 @@ struct StandaloneHost : Clap::IHost
   // Current audio configuration -> settings, and back. applyAudioSettings()
   // selects the API and resolves the persisted device *names* against the
   // devices this machine actually has right now.
+  // captureAudioSettings() writes back only the API, sample rate and buffer size;
+  // the device names and used flags are the user's request, written by the frontend.
   void captureAudioSettings();
   void applyAudioSettings();
 
@@ -336,6 +338,8 @@ struct StandaloneHost : Clap::IHost
   std::string audioApiName{RtAudio::getApiName(RtAudio::Api::UNSPECIFIED)};
   std::string audioApiDisplayName{RtAudio::getApiDisplayName(RtAudio::Api::UNSPECIFIED)};
   unsigned int audioInputDeviceID{0}, audioOutputDeviceID{0};
+  // The user's wish (settings.audioInput/OutputUsed) AND a device being present;
+  // the probe half is why these are not persisted.
   bool audioInputUsed{true}, audioOutputUsed{true};
   // How many channels to ask the *device* for. Distinct from
   // totalInput/OutputChannels above, which are the plugin's bus totals.

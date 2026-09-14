@@ -257,16 +257,23 @@ void StandaloneHost::clapProcess(void *pOutput, const void *pInput, uint32_t fra
 
   if (mainOutIdx >= 0 && f && currentOutputChannels > 0)
   {
-    // Interleave the plugin's main output bus into the device stream with the
-    // same channel policy as the input: the last bus channel repeats when the
-    // device is wider (a mono bus plays on both device channels), surplus bus
-    // channels are dropped.
+    // A mono bus is duplicated onto the first two device channels, anything else
+    // maps channel-for-channel. Surplus device channels are silenced rather than
+    // fed the last bus channel: devices now open at their full width, so that
+    // rule put a stereo plugin's right channel on outputs 3 to 8.
+    const bool monoBus{mainOutChans == 1};
+    const auto fedChannels{std::min(monoBus ? 2U : mainOutChans, currentOutputChannels)};
+
     for (auto i = 0U; i < frameCount; ++i)
     {
-      for (auto ch = 0U; ch < currentOutputChannels; ++ch)
+      auto *frame = f + currentOutputChannels * i;
+      for (auto ch = 0U; ch < fedChannels; ++ch)
       {
-        auto busChan = (ch < mainOutChans) ? ch : mainOutChans - 1;
-        f[currentOutputChannels * i + ch] = utilityBuffer[mainOutIdx + busChan][i];
+        frame[ch] = utilityBuffer[mainOutIdx + (monoBus ? 0 : ch)][i];
+      }
+      for (auto ch = fedChannels; ch < currentOutputChannels; ++ch)
+      {
+        frame[ch] = 0.f;
       }
     }
   }
@@ -467,12 +474,13 @@ bool StandaloneHost::saveStandaloneSettings()
 void StandaloneHost::captureAudioSettings()
 {
   settings.audioApiName = audioApiName;
-  settings.outputDeviceName = deviceName(audioOutputDeviceID);
-  settings.inputDeviceName = deviceName(audioInputDeviceID);
-  settings.audioOutputUsed = audioOutputUsed;
-  settings.audioInputUsed = audioInputUsed;
   settings.sampleRate = currentSampleRate;
   settings.bufferSize = currentBufferSize;
+
+  // Device names and used flags are deliberately not captured: they describe what
+  // could actually be opened (a fallback device, a side that failed to open), and
+  // saveSettings() runs often enough that persisting them would silently replace
+  // the user's choice. The frontend writes them at the point of choice instead.
 }
 
 void StandaloneHost::applyAudioSettings()
@@ -501,7 +509,24 @@ void StandaloneHost::applyAudioSettings()
   audioInputUsed = settings.audioInputUsed && isKnownDevice(audioInputDeviceID);
 
   currentSampleRate = settings.sampleRate;
+
+  // The .conf is hand-editable, and clapProcess() terminates the process if a
+  // callback delivers utilityBufferSize frames or more, so clamp to the largest
+  // size the settings panel offers. 0 still means "use the device default".
   currentBufferSize = settings.bufferSize;
+  const auto offered{getBufferSizes()};
+  if (!offered.empty())
+  {
+    const auto largest{*std::max_element(offered.begin(), offered.end())};
+    if (currentBufferSize > largest)
+    {
+      LOGINFO("[WARNING] Buffer size {} from the settings file is beyond the supported {}; using {}",
+              currentBufferSize, largest, largest);
+      currentBufferSize = largest;
+    }
+  }
+
+  // The sample rate needs no clamp: startAudioThreadOn() validates it.
 }
 
 bool StandaloneHost::isKnownDevice(unsigned int deviceID)

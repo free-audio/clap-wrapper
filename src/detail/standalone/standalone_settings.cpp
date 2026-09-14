@@ -211,7 +211,7 @@ bool StandaloneSettings::save(const fs::path &intoFile) const
 
     ofs << "# clap-wrapper standalone settings.\n";
     ofs << "# Audio devices and MIDI ports are matched by name when the standalone starts.\n";
-    ofs << "# An unmatched name falls back to the system default rather than failing.\n";
+    ofs << "# An unmatched name falls back to the system default for that run, and is kept.\n";
     ofs << "version=" << currentVersion << "\n";
 
     ofs << "audioApiName=" << escape(audioApiName) << "\n";
