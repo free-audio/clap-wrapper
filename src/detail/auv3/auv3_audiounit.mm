@@ -2077,7 +2077,13 @@ static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
   // misbehaviour.
   auto *gui = _impl->_plugin->_ext._gui;
   if (gui->adjust_size) gui->adjust_size(_impl->_plugin->_plugin, &width, &height);
-  return gui->set_size(_impl->_plugin->_plugin, width, height) ? YES : NO;
+  if (!gui->set_size(_impl->_plugin->_plugin, width, height)) return NO;
+
+  // Keep the cached size in step: prepareGUIAndReturnWidth:height: hands it
+  // back, and that is how the view controller learns the adjusted size.
+  _impl->_guiWidth = width;
+  _impl->_guiHeight = height;
+  return YES;
 }
 
 - (void)setViewController:(ClapAUv3ViewController *)vc
@@ -2565,10 +2571,20 @@ static BOOL clapAUv3FourCC(id value, OSType *outCode)
       [self.audioUnit setGUISize:(uint32_t)bounds.size.width height:(uint32_t)bounds.size.height];
     }
 
-    // Ensure the CLAP plugin's subview fills the container
+    // adjust_size may have snapped the container bounds (fixed aspect ratio,
+    // step sizes), and the plugin laid out at the snapped size — so the subview
+    // has to get that size too, not the raw bounds.
+    CGRect childFrame = bounds;
+    uint32_t agreedWidth = 0, agreedHeight = 0;
+    if ([self.audioUnit prepareGUIAndReturnWidth:&agreedWidth height:&agreedHeight] &&
+        agreedWidth > 0 && agreedHeight > 0)
+    {
+      childFrame = CGRectMake(0, 0, agreedWidth, agreedHeight);
+    }
+
     for (CLAPWRAP_ViewClass *subview in self.view.subviews)
     {
-      subview.frame = bounds;
+      subview.frame = childFrame;
     }
   }
 }
