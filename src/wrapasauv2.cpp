@@ -773,15 +773,31 @@ OSStatus WrapAsAUV2::SetParameter(AudioUnitParameterID inID, AudioUnitScope inSc
       // this from ScheduleParameter(), i.e. on the render thread but outside the
       // render, so without this the queue would have two writers.
       ClapWrapper::detail::shared::SpinLockGuard processGuard(_processLock);
+      auto &param = p->second.get()->info();
       if (_processAdapter)
       {
-        auto &param = p->second.get()->info();
         _processAdapter->addParameterEvent(param, inValue, inBufferOffsetInFrames);
+      }
+      else if (auto *flushAdapter = ensureFlushAdapter())
+      {
+        // The CLAP is deactivated, so there is no process adapter -- but the
+        // value is no less real for that. A host restoring a project sets
+        // kAudioUnitProperty_BypassEffect (which lands here through
+        // SetBypassEffect) and parameter values on the unit *before* it calls
+        // Initialize, and nothing re-syncs the AU element values into the
+        // plugin afterwards; dropped here, the value is gone for good, with
+        // the host UI showing a state the plugin is not in. clap/ext/params.h
+        // has exactly this case covered: flush() is [main-thread] while the
+        // plugin is inactive. So the event goes to the adapter the
+        // deactivated-state flush uses, and is handed over on the next idle
+        // tick or at activation, whichever comes first (see activateCLAP()).
+        flushAdapter->addParameterEvent(param, inValue, inBufferOffsetInFrames);
       }
     }
 
     // Nothing may ever render this: on an idle track process() is not coming,
-    // and then onIdle() is the only thing that will hand it to the plugin.
+    // and on a deactivated plugin it cannot come; either way onIdle() is the
+    // only thing that will hand it to the plugin.
     _requestedFlush = true;
   }
   return AUBase::SetParameter(inID, inScope, inElement, inValue, inBufferOffsetInFrames);
@@ -1508,13 +1524,34 @@ bool WrapAsAUV2::activateCLAP()
       // the adapter checks the pointer under it, and must not find one that is
       // half set up (setupProcessing clears the event queue as it goes).
       ClapWrapper::detail::shared::SpinLockGuard processGuard(_processLock);
+
+      // Whatever the host set while the plugin was deactivated is queued on the
+      // flush adapter (see SetParameter), and the idle tick may not have had a
+      // chance to deliver it: a host restoring a project sets
+      // kAudioUnitProperty_BypassEffect and then calls Initialize right behind
+      // it, with no idle tick in between. Deliver it now, while the plugin is
+      // still inactive and clap_plugin_params.flush() is therefore
+      // [main-thread] -- the thread every caller of this function guarantees
+      // (Initialize(), and the restart and request_process paths in onIdle()).
+      // Nothing else can be inside the plugin: _initialized is false, so
+      // Render() returns before touching it, and the idle flush is the caller
+      // or holds this same lock. Ordered before activate() on purpose: the
+      // plugin then activates already holding the value, instead of being
+      // handed it in its first process() cycle.
+      if (_flushAdapter)
+      {
+        auto guarantee_mainthread = _plugin->AlwaysMainThread();
+        _flushAdapter->flush();
+      }
+
       if (!_processAdapter) _processAdapter = std::make_unique<Clap::AUv2::ProcessAdapter>();
       _processAdapter->setupProcessing(Inputs(), Outputs(), _plugin->_plugin, _plugin->_ext._params,
                                        this, &_parametertree, this, maxSampleFrames,
                                        _midi_preferred_dialect, _midi_supported_dialects,
                                        clapAudioInputs, clapAudioOutputs);
-      // The deactivated-state flush adapter has no further use, and the gestures
-      // it was tracking belong to the real one now.
+      // The deactivated-state flush adapter has no further use: its parameter
+      // events have just been delivered, and the gestures it was tracking belong
+      // to the real one now.
       _flushAdapter.reset();
     }
 
@@ -1534,6 +1571,39 @@ void WrapAsAUV2::deactivateCLAP()
       // pointer and then use it, and the idle tick may be inside a flush on it.
       ClapWrapper::detail::shared::SpinLockGuard processGuard(_processLock);
       _initialized = false;
+
+      // Stand the deactivated-state adapter up here, on the main thread, rather
+      // than leaving SetParameter to build it on demand. AUBase calls
+      // SetParameter from ScheduleParameter(), which is the render thread, and
+      // between this reset and the matching activateCLAP() there is no process
+      // adapter for it to queue on -- a window as long as the plugin takes to
+      // rebuild its DSP. A render thread that had to allocate the replacement
+      // would be allocating inside a real-time callback; finding one already
+      // here makes it a queue push and nothing more.
+      //
+      // It is also where the process adapter's own backlog goes. Whatever the
+      // host set since the last render or flush is still queued there, and
+      // dropping the adapter would drop it: the host was told the value took,
+      // and the plugin would never hear it. This is the same loss SetParameter
+      // avoids while the CLAP is deactivated, at the other end of the window --
+      // the moment the adapter goes away rather than the span when there is
+      // none. Delivery is the deactivated path's job from here: the next idle
+      // tick, or activateCLAP() ahead of clap_plugin.activate(), whichever
+      // comes first, both on the main thread with the plugin inactive, which is
+      // where clap_plugin_params.flush() is legal. Nothing is handed to the
+      // plugin here -- it is still active until the deactivate() below, and a
+      // flush at this point would have to claim the audio thread during
+      // teardown.
+      if (auto *flushAdapter = ensureFlushAdapter())
+      {
+        if (_processAdapter && _processAdapter->transferPendingParametersTo(*flushAdapter) > 0)
+        {
+          // Nothing else would ask: the transfer is not a SetParameter, and the
+          // idle tick only flushes when something has asked it to.
+          _requestedFlush = true;
+        }
+      }
+
       _processAdapter.reset();
     }
     _plugin->stop_processing();
@@ -1887,7 +1957,8 @@ void WrapAsAUV2::onIdle()
   // In CLAP a plugin can only push an output event -- a value its own editor
   // changed, the gesture around it -- from inside process() or flush(), and the
   // host's own parameter sets only reach the plugin the same way (SetParameter
-  // queues them on the process adapter). Both directions therefore stop dead
+  // queues them on the process adapter while the plugin is active, and on the
+  // flush adapter while it is not). Both directions therefore stop dead
   // whenever the host stops rendering, and AU hosts do stop: Logic will not run
   // a track it knows carries no signal, and an initialized unit can sit there
   // for minutes without a single Render() call. The VST3 SDK's AU wrapper and
@@ -1942,7 +2013,9 @@ void WrapAsAUV2::onIdle()
     else
     {
       // Deactivated: the real adapter does not exist, and flush() is
-      // [main-thread] here.
+      // [main-thread] here. This is also the path that carries the host's
+      // parameter sets on an uninitialized unit -- SetParameter queues them on
+      // the flush adapter -- so it is a real delivery, not a courtesy call.
       auto guarantee_mainthread = _plugin->AlwaysMainThread();
       flushParameters();
     }
@@ -1952,21 +2025,29 @@ void WrapAsAUV2::onIdle()
   pushQueuedEventsToHost();
 }
 
-// Builds a throwaway process adapter to flush against, for the deactivated case
-// only: the real one lives between activateCLAP() and deactivateCLAP(), and
-// clap_plugin_params.flush() is [main-thread] exactly while the plugin is
-// inactive. Callers check _initialized under _processLock.
-void WrapAsAUV2::flushParameters()
+// The process adapter for the deactivated case: the real one lives between
+// activateCLAP() and deactivateCLAP(), and this one is what SetParameter queues
+// onto and flushParameters() flushes while the CLAP is inactive. Built on first
+// use, and kept between flushes rather than built per call, the way the VST3
+// wrapper builds its throwaway: a gesture the plugin opens in one deactivated
+// flush and closes in the next has to find the same adapter, because that is
+// where the open was recorded -- a close arriving at a fresh one is dropped, and
+// the host stays armed on the parameter. activateCLAP() flushes and releases
+// it. No audio is involved: a zero numMaxSamples skips the silent-stream
+// buffers, and the plugin is handed no audio ports.
+// Callers hold _processLock. Null when the plugin has no params extension,
+// in which case there is nothing to queue and nothing to flush.
+//
+// Allocates on first use, so it must not be reached first from a render thread.
+// It cannot be: deactivateCLAP() builds it as it drops the process adapter, so
+// the restart window always has one ready, and the only other moment without a
+// process adapter is before the first Initialize -- where the host is setting
+// properties on an uninitialized unit from the main thread and no render exists
+// to call ScheduleParameter at all.
+Clap::AUv2::ProcessAdapter *WrapAsAUV2::ensureFlushAdapter()
 {
-  if (!_plugin || !_plugin->_ext._params) return;
+  if (!_plugin || !_plugin->_ext._params) return nullptr;
 
-  // Kept between flushes rather than built per call, the way the VST3 wrapper
-  // builds its throwaway: a gesture the plugin opens in one deactivated flush
-  // and closes in the next has to find the same adapter, because that is where
-  // the open was recorded -- a close arriving at a fresh one is dropped, and
-  // the host stays armed on the parameter. activateCLAP() releases it.
-  // No audio is involved: a zero numMaxSamples skips the silent-stream buffers,
-  // and the plugin is handed no audio ports.
   if (!_flushAdapter)
   {
     _flushAdapter = std::make_unique<Clap::AUv2::ProcessAdapter>();
@@ -1974,7 +2055,18 @@ void WrapAsAUV2::flushParameters()
                                    &_parametertree, this, 0, _midi_preferred_dialect,
                                    _midi_supported_dialects, 0, 0);
   }
-  _flushAdapter->flush();
+  return _flushAdapter.get();
+}
+
+// Flushes the deactivated-case adapter: clap_plugin_params.flush() is
+// [main-thread] exactly while the plugin is inactive. Callers check
+// _initialized under _processLock.
+void WrapAsAUV2::flushParameters()
+{
+  if (auto *flushAdapter = ensureFlushAdapter())
+  {
+    flushAdapter->flush();
+  }
 }
 
 OSStatus WrapAsAUV2::SaveState(CFPropertyListRef *ptPList)

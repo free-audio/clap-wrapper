@@ -834,7 +834,11 @@ class WrapAsAUV2 : public ausdk::AUBase,
   // caller must treat that as a failed initialization.
   bool activateCLAP();
   void deactivateCLAP();
-  // parameter-only round trip on a throwaway process adapter, for when no render
+  // the process adapter used while the CLAP is deactivated: SetParameter queues
+  // the host's values on it and flushParameters() delivers them. Built on first
+  // use; call under _processLock. Null when the plugin has no params extension.
+  Clap::AUv2::ProcessAdapter *ensureFlushAdapter();
+  // parameter-only round trip on the deactivated-case adapter, for when no render
   // is running to carry the events. Only legal while the CLAP is deactivated.
   void flushParameters();
   // the AU-level half of the teardown, which an internal restart must not do
@@ -857,8 +861,11 @@ class WrapAsAUV2 : public ausdk::AUBase,
   std::shared_ptr<Clap::Plugin> _plugin = nullptr;
 
   std::unique_ptr<Clap::AUv2::ProcessAdapter> _processAdapter;
-  // Only for the deactivated-plugin flush, where _processAdapter does not
-  // exist. Lives across flushes so gestures pair up; see flushParameters().
+  // Only while the plugin is deactivated, where _processAdapter does not exist:
+  // SetParameter queues the host's values on it (a host sets bypass and
+  // parameters on a unit before it calls Initialize), and the idle flush or
+  // activateCLAP() -- whichever comes first -- delivers them. Lives across
+  // flushes so gestures pair up; see ensureFlushAdapter().
   std::unique_ptr<Clap::AUv2::ProcessAdapter> _flushAdapter;
   std::atomic<bool> _initialized = false;
 
