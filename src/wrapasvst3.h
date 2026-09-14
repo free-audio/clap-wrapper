@@ -307,6 +307,7 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   IPtr<Steinberg::Vst::IContextMenu> vst3ContextMenu = nullptr;
   IPtr<Steinberg::Vst::IHostApplication> vst3HostApplication = nullptr;
   std::string wrapper_hostname = "CLAP-As-VST3-Wrapper";
+  std::string underlying_hostname;
   std::vector<wrapper_context_menu_item> contextmenuitems;
   uint32_t vst3ContextMenuParamID = 0;
 
@@ -349,6 +350,14 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   bool unregister_timer(clap_id timer_id) override;
 
   const char *host_get_name() override;
+  const char *wrapper_flavor() const override
+  {
+    return CLAP_WRAPPER_HOST_FLAVOR_VST3;
+  }
+  const char *underlying_host_name() const override
+  {
+    return underlying_hostname.empty() ? nullptr : underlying_hostname.c_str();
+  }
 
   bool supportsContextMenu() const override;
   // context_menu

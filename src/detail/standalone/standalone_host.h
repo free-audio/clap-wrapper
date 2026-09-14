@@ -232,6 +232,20 @@ struct StandaloneHost : Clap::IHost
   bool unregister_timer(clap_id timer_id) override;
 
   const char *host_get_name() override;
+  const char *wrapper_flavor() const override
+  {
+    return CLAP_WRAPPER_HOST_FLAVOR_STANDALONE;
+  }
+  const char *underlying_host_name() const override
+  {
+#if MAC
+    return "Wrapper Mac Standalone";
+#elif WIN
+    return "Wrapper Windows Standalone";
+#else
+    return "Wrapper Linux Standalone";
+#endif
+  }
 
   bool track_info_get(clap_track_info_t *info) override
   {

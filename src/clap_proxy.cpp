@@ -145,6 +145,10 @@ static bool track_info_get(const clap_host_t *host, clap_track_info_t *info)
 
 const clap_host_track_info trackinfo = {track_info_get};
 
+const clap_wrapper_host_information_t wrapper_host_information = {
+    [](const clap_host_t *host) -> const char * { return self(host)->wrapper_flavor(); },
+    [](const clap_host_t *host) -> const char * { return self(host)->underlying_host_name(); }};
+
 const clap_host_preset_load_t preset_load = {
     /* on_error */
     [](const clap_host_t *host, uint32_t location_kind, const char *location, const char *load_key,
@@ -589,6 +593,7 @@ const void *Plugin::clapExtension(const clap_host * /*host*/, const char *extens
   if (!strcmp(extension, CLAP_EXT_CONTEXT_MENU)) return &HostExt::context_menu;
   if (!strcmp(extension, CLAP_EXT_PRESET_LOAD) || !strcmp(extension, CLAP_EXT_PRESET_LOAD_COMPAT))
     return &HostExt::preset_load;
+  if (!strcmp(extension, CLAP_WRAPPER_HOST_INFORMATION)) return &HostExt::wrapper_host_information;
 
 #if LIN
   if (!strcmp(extension, CLAP_EXT_POSIX_FD_SUPPORT)) return &HostExt::hostposixfd;

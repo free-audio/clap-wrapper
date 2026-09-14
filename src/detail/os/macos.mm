@@ -149,4 +149,15 @@ std::string getBinaryName()
   return getPluginPath().stem();
 }
 
+std::string getHostAppName()
+{
+  NSBundle *mainBundle = [NSBundle mainBundle];
+  // AUHostingService and our own appex are both XPC! bundles
+  if ([[mainBundle objectForInfoDictionaryKey:@"CFBundlePackageType"] isEqualToString:@"XPC!"])
+    return {};
+  NSString *name = [mainBundle objectForInfoDictionaryKey:@"CFBundleName"];
+  if (!name) name = [[NSProcessInfo processInfo] processName];
+  return name ? std::string([name UTF8String]) : std::string();
+}
+
 }  // namespace os
