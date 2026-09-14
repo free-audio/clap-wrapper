@@ -1570,7 +1570,6 @@ void WrapAsAUV2::deactivateCLAP()
       // pointer and then use it, and the idle tick may be inside a flush on it.
       ClapWrapper::detail::shared::SpinLockGuard processGuard(_processLock);
       _initialized = false;
-      _processAdapter.reset();
 
       // Stand the deactivated-state adapter up here, on the main thread, rather
       // than leaving SetParameter to build it on demand. AUBase calls
@@ -1580,7 +1579,31 @@ void WrapAsAUV2::deactivateCLAP()
       // rebuild its DSP. A render thread that had to allocate the replacement
       // would be allocating inside a real-time callback; finding one already
       // here makes it a queue push and nothing more.
-      ensureFlushAdapter();
+      //
+      // It is also where the process adapter's own backlog goes. Whatever the
+      // host set since the last render or flush is still queued there, and
+      // dropping the adapter would drop it: the host was told the value took,
+      // and the plugin would never hear it. This is the same loss SetParameter
+      // avoids while the CLAP is deactivated, at the other end of the window --
+      // the moment the adapter goes away rather than the span when there is
+      // none. Delivery is the deactivated path's job from here: the next idle
+      // tick, or activateCLAP() ahead of clap_plugin.activate(), whichever
+      // comes first, both on the main thread with the plugin inactive, which is
+      // where clap_plugin_params.flush() is legal. Nothing is handed to the
+      // plugin here -- it is still active until the deactivate() below, and a
+      // flush at this point would have to claim the audio thread during
+      // teardown.
+      if (auto *flushAdapter = ensureFlushAdapter())
+      {
+        if (_processAdapter && _processAdapter->transferPendingParametersTo(*flushAdapter) > 0)
+        {
+          // Nothing else would ask: the transfer is not a SetParameter, and the
+          // idle tick only flushes when something has asked it to.
+          _requestedFlush = true;
+        }
+      }
+
+      _processAdapter.reset();
     }
     _plugin->stop_processing();
     _plugin->deactivate();

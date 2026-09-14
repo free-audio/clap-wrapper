@@ -852,4 +852,55 @@ void ProcessAdapter::addParameterEvent(const clap_param_info_t &info, double val
   this->_eventindices.emplace_back(this->_events.size());
   this->_events.emplace_back(n);
 }
+
+// Moves the queued parameter events onto another adapter. This exists for one
+// moment: deactivateCLAP() drops the process adapter, and anything the host set
+// since the last render or flush is still sitting in it. Those values are as
+// real as any other -- a host that sets a parameter and then deactivates the
+// unit (a restart, a format change, a project close-and-reopen) has been told
+// nothing went wrong -- so they move to the adapter the deactivated state
+// flushes from rather than dying with this one.
+//
+// Only parameter events move. Everything else queued here belongs to a render
+// that is not going to happen now, and a flush may not carry it anyway.
+//
+// The offsets go with the block they were offsets into, and dropping them is
+// not tidiness: sortEventIndices() sorts on time first, and only breaks ties on
+// the insertion index. Left as they were, an event stamped into some earlier
+// block would sort *after* a value the deactivated state queues later at time
+// 0 -- the stale value applied last, which is the inversion this transfer
+// exists to avoid. At 0 they all tie, and the tiebreak then orders them the way
+// they arrived: these first, anything queued afterwards over the top.
+//
+// Order follows position in _events, because flush() rebuilds _eventindices
+// over it before sorting. Keeping the index list in step here is for a
+// process() that never comes on the adapter these are going to.
+size_t ProcessAdapter::transferPendingParametersTo(ProcessAdapter &other)
+{
+  if (&other == this) return 0;
+
+  size_t moved = 0;
+  size_t kept = 0;
+  for (size_t i = 0; i < _events.size(); ++i)
+  {
+    if (isParameterEvent(_events[i].header.type))
+    {
+      clap_multi_event_t n = _events[i];
+      n.header.time = 0;
+      other._eventindices.emplace_back(other._events.size());
+      other._events.emplace_back(n);
+      ++moved;
+    }
+    else
+    {
+      _events[kept++] = _events[i];
+    }
+  }
+
+  _events.resize(kept);
+  _eventindices.clear();
+  for (size_t i = 0; i < kept; ++i) _eventindices.emplace_back(i);
+
+  return moved;
+}
 }  // namespace Clap::AUv2
