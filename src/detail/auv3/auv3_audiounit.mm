@@ -2077,7 +2077,13 @@ static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
   // misbehaviour.
   auto *gui = _impl->_plugin->_ext._gui;
   if (gui->adjust_size) gui->adjust_size(_impl->_plugin->_plugin, &width, &height);
-  return gui->set_size(_impl->_plugin->_plugin, width, height) ? YES : NO;
+  if (!gui->set_size(_impl->_plugin->_plugin, width, height)) return NO;
+
+  // Keep the cached size in step: prepareGUIAndReturnWidth:height: hands it
+  // back, and that is how the view controller learns the adjusted size.
+  _impl->_guiWidth = width;
+  _impl->_guiHeight = height;
+  return YES;
 }
 
 - (void)setViewController:(ClapAUv3ViewController *)vc
@@ -2277,6 +2283,8 @@ static const CGSize kClapAUv3PlaceholderSize = {400, 500};
   CGSize _pluginSize;
   // We already tried to create the audio unit ourselves (see _bootstrapAudioUnit).
   BOOL _bootstrapAttempted;
+  // Serializes the two creation paths (see -createAudioUnitOnce:error:).
+  std::mutex _audioUnitMutex;
 }
 
 - (void)loadView
@@ -2309,6 +2317,10 @@ static const CGSize kClapAUv3PlaceholderSize = {400, 500};
 
 - (void)setAudioUnit:(ClapAUv3AudioUnit *)audioUnit
 {
+  if (_audioUnit == audioUnit) return;
+  // Never drop a live audio unit by bare overwrite: releasing the last reference
+  // reaches plugin->terminate() with the GUI still created, which CLAP forbids.
+  if (_audioUnit) [self _destroyGUI];
   _audioUnit = audioUnit;
   // Establish the back-reference so the AU can return us from
   // requestViewControllerWithCompletionHandler:
@@ -2360,6 +2372,22 @@ static BOOL clapAUv3FourCC(id value, OSType *outCode)
     return YES;
   }
   return NO;
+}
+
+// Both creation paths meet here: the host's factory call, which arrives on an
+// XPC worker thread, and -loadView's self-bootstrap on the appex main thread.
+// Unserialized they both see a nil audioUnit and build an audio unit, and the
+// loser is then thrown away with its GUI still alive. Nothing under this lock
+// ever waits on the main queue, so the losing path only stalls.
+- (AUAudioUnit *)createAudioUnitOnce:(ClapAUv3AudioUnit * (^)(NSError **))make error:(NSError **)error
+{
+  std::lock_guard<std::mutex> lock(_audioUnitMutex);
+  if (_audioUnit) return _audioUnit;
+
+  ClapAUv3AudioUnit *au = make(error);
+  if (!au) return nil;
+  self.audioUnit = au;
+  return au;
 }
 
 // Out-of-process AUv3: the viewbridge loads our view from inside
@@ -2565,10 +2593,20 @@ static BOOL clapAUv3FourCC(id value, OSType *outCode)
       [self.audioUnit setGUISize:(uint32_t)bounds.size.width height:(uint32_t)bounds.size.height];
     }
 
-    // Ensure the CLAP plugin's subview fills the container
+    // adjust_size may have snapped the container bounds (fixed aspect ratio,
+    // step sizes), and the plugin laid out at the snapped size — so the subview
+    // has to get that size too, not the raw bounds.
+    CGRect childFrame = bounds;
+    uint32_t agreedWidth = 0, agreedHeight = 0;
+    if ([self.audioUnit prepareGUIAndReturnWidth:&agreedWidth height:&agreedHeight] && agreedWidth > 0 &&
+        agreedHeight > 0)
+    {
+      childFrame = CGRectMake(0, 0, agreedWidth, agreedHeight);
+    }
+
     for (CLAPWRAP_ViewClass *subview in self.view.subviews)
     {
-      subview.frame = bounds;
+      subview.frame = childFrame;
     }
   }
 }
