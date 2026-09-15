@@ -474,13 +474,13 @@ bool StandaloneHost::saveStandaloneSettings()
 void StandaloneHost::captureAudioSettings()
 {
   settings.audioApiName = audioApiName;
-  settings.sampleRate = currentSampleRate;
   settings.bufferSize = currentBufferSize;
 
-  // Device names and used flags are deliberately not captured: they describe what
-  // could actually be opened (a fallback device, a side that failed to open), and
-  // saveSettings() runs often enough that persisting them would silently replace
-  // the user's choice. The frontend writes them at the point of choice instead.
+  // Device names, used flags and the sample rate are deliberately not captured:
+  // they describe what could actually be opened (a fallback device, a side that
+  // failed to open, a rate the device does not offer), and saveSettings() runs
+  // often enough that persisting them would silently replace the user's choice.
+  // The frontend writes them at the point of choice instead.
 }
 
 void StandaloneHost::applyAudioSettings()
@@ -526,7 +526,8 @@ void StandaloneHost::applyAudioSettings()
     }
   }
 
-  // The sample rate needs no clamp: startAudioThreadOn() validates it.
+  // The sample rate needs no clamp: startAudioThreadOn() resolves it against the
+  // device it is about to open.
 }
 
 bool StandaloneHost::isKnownDevice(unsigned int deviceID)

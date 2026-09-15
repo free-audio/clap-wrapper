@@ -149,8 +149,8 @@ struct StandaloneHost : Clap::IHost
   // Current audio configuration -> settings, and back. applyAudioSettings()
   // selects the API and resolves the persisted device *names* against the
   // devices this machine actually has right now.
-  // captureAudioSettings() writes back only the API, sample rate and buffer size;
-  // the device names and used flags are the user's request, written by the frontend.
+  // captureAudioSettings() writes back only the API and buffer size; the device
+  // names, used flags and sample rate are the user's request, written by the frontend.
   void captureAudioSettings();
   void applyAudioSettings();
 

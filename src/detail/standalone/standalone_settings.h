@@ -41,13 +41,13 @@ struct StandaloneSettings
   std::string audioApiName;  // RtAudio::getApiName(); empty means unspecified
 
   // What the user asked for, written only at the point of choice - never from the
-  // device actually opened, which may be a fallback.
+  // device actually opened or the rate actually granted, which may be a fallback.
   std::string inputDeviceName;   // empty means the system default device
   std::string outputDeviceName;  // empty means the system default device
   bool audioInputUsed{true};
   bool audioOutputUsed{true};  // no UI turns this off yet; the .conf can
+  int32_t sampleRate{0};       // 0 means the device's preferred rate
 
-  int32_t sampleRate{0};  // 0 means the device's preferred rate
   // Clamped on apply; see StandaloneHost::applyAudioSettings().
   uint32_t bufferSize{defaultBufferSize};
 
