@@ -437,7 +437,34 @@ tresult PLUGIN_API ClapAsVst3::setupProcessing(Vst::ProcessSetup &newSetup)
     _plugin->_ext._render->set(_plugin->_plugin, new_render_mode);
   }
   _plugin->setSampleRate(newSetup.sampleRate);
-  _plugin->setBlockSizes(newSetup.maxSamplesPerBlock, newSetup.maxSamplesPerBlock);
+
+  // maxSamplesPerBlock is a MAXIMUM, not a fixed block size, so it cannot be
+  // the minimum as well. VST3 lets a host call process() with any
+  // numSamples up to that bound, and hosts do: Cubase/Nuendo declare the
+  // ASIO-Guard block here and then render monitored tracks on the much
+  // smaller realtime block, and anticipative-FX schemes elsewhere do the
+  // same. ProcessAdapter::process() passes numSamples straight through as
+  // clap_process.frames_count.
+  //
+  // Declaring min == max told every wrapped plugin the opposite, and CLAP
+  // plugins are entitled to believe it: min_frames_count == max_frames_count
+  // is the contract's way of saying "every call carries exactly this many
+  // frames", which is what a plugin with a fixed internal render quantum
+  // uses to skip its input FIFO and run with zero added latency. Such a
+  // plugin then renders a whole quantum for a call that carries less than
+  // one, reading and writing past both the input and the output buffers the
+  // host owns. Reported as a wrapped guitar-amp plugin sounding wrong at 32
+  // and 64 sample buffers while 128 and 256 were fine -- those two happened
+  // to be whole multiples of its quantum.
+  //
+  // The load-bearing half is that min != max. VST3 states no minimum at all,
+  // so 32 is a practical floor rather than a guaranteed one: it is the
+  // smallest block hosts actually render, audio device buffers bottoming out
+  // there, and the AUv2 wrapper makes the same kind of call with 16. Clamped,
+  // because a declared minimum above the maximum would be a worse claim than
+  // the one being fixed.
+  const auto minSampleFrames = (newSetup.maxSamplesPerBlock >= 32) ? 32 : 1;
+  _plugin->setBlockSizes(minSampleFrames, newSetup.maxSamplesPerBlock);
 
   _largestBlocksize = newSetup.maxSamplesPerBlock;
 
