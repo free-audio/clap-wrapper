@@ -877,6 +877,11 @@ class WrapAsAUV2 : public ausdk::AUBase,
   // flushes so gestures pair up; see ensureFlushAdapter().
   std::unique_ptr<Clap::AUv2::ProcessAdapter> _flushAdapter;
   std::atomic<bool> _initialized = false;
+  // Whether clap_plugin.activate() succeeded and has not been matched by a
+  // deactivate() yet -- not the same fact as _initialized, which also goes
+  // false while the AU keeps running but nothing may enter the plugin. Main
+  // thread only (activateCLAP()/deactivateCLAP()).
+  bool _clapActive = false;
 
   // some info about the wrapped clap
   // audio-port layout captured at PostConstructor. Scanning the CLAP
