@@ -102,6 +102,13 @@ class Vst3Parameter : public Steinberg::Vst::Parameter
     if (!isPreset || (info.flags & Steinberg::Vst::ParameterInfo::kIsHidden)) return 0;
     return info.stepCount + 1;
   }
+  // Invented by the wrapper, with no CLAP counterpart, so neither `id` nor
+  // `param_index_for_clap_get_info` may ever be handed to the plugin.
+  bool isWrapperOwned() const
+  {
+    return isMidi || isPreset;
+  }
+
   // copies from the clap_param_info_t
   uint32_t param_index_for_clap_get_info = 0;
   clap_id id = 0;
