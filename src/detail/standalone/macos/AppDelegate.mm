@@ -261,14 +261,20 @@
   freeaudio::clap_wrapper::standalone::getStandaloneHost()->displayAudioError = nullptr;
   freeaudio::clap_wrapper::standalone::getStandaloneHost()->onRequestResize = nullptr;
 
-  auto plugin = freeaudio::clap_wrapper::standalone::getMainPlugin();
-
-  if (plugin && plugin->_ext._gui)
+  // Scoped so this shared_ptr copy is released before mainFinish, which
+  // deinit()s the entry: were it the last owner, ~Plugin would then call
+  // _plugin->destroy() on a deinited - dynamically, unloaded - entry.
   {
-    plugin->_ext._gui->hide(plugin->_plugin);
-    plugin->_ext._gui->destroy(plugin->_plugin);
+    auto plugin = freeaudio::clap_wrapper::standalone::getMainPlugin();
+
+    if (plugin && plugin->_ext._gui)
+    {
+      plugin->_ext._gui->hide(plugin->_plugin);
+      plugin->_ext._gui->destroy(plugin->_plugin);
+    }
   }
 
+  // Before mainFinish: the callback dereferences getMainPlugin() unchecked.
   [self.requestCallbackTimer invalidate];
   self.requestCallbackTimer = nil;
 

@@ -21,6 +21,21 @@
 
 namespace freeaudio::clap_wrapper::standalone
 {
+namespace
+{
+// The requested rate if the device offers it, its preferred rate otherwise.
+int32_t rateOfferedBy(const RtAudio::DeviceInfo &info, int32_t requested)
+{
+  if (requested > 0 && std::find(info.sampleRates.begin(), info.sampleRates.end(),
+                                 static_cast<unsigned int>(requested)) != info.sampleRates.end())
+  {
+    return requested;
+  }
+
+  return static_cast<int32_t>(info.preferredSampleRate);
+}
+}  // namespace
+
 int rtaCallback(void *outputBuffer, void *inputBuffer, unsigned int nBufferFrames,
                 double /* streamTime */, RtAudioStreamStatus status, void *data)
 {
@@ -380,23 +395,7 @@ void StandaloneHost::startAudioThreadOnImpl(unsigned int inputDeviceID, uint32_t
     outInfo = deviceInfoFor(outputDeviceID);
     oParams.nChannels = std::min(outputChannels, outInfo.outputChannels);
     oParams.firstChannel = 0;
-    if (sampleRate < 0)
-    {
-      sampleRate = outInfo.preferredSampleRate;
-    }
-    else
-    {
-      // Mkae sure this sample rate is available
-      bool isPossible{false};
-      for (auto sr : outInfo.sampleRates)
-      {
-        isPossible = isPossible || ((int)sr == (int)sampleRate);
-      }
-      if (!isPossible)
-      {
-        sampleRate = outInfo.preferredSampleRate;
-      }
-    }
+    sampleRate = rateOfferedBy(outInfo, sampleRate);
   }
 
   RtAudio::StreamParameters iParams;
@@ -406,10 +405,13 @@ void StandaloneHost::startAudioThreadOnImpl(unsigned int inputDeviceID, uint32_t
     inInfo = deviceInfoFor(inputDeviceID);
     iParams.nChannels = std::min(inputChannels, inInfo.inputChannels);
     iParams.firstChannel = 0;
-    if (sampleRate < 0) sampleRate = inInfo.preferredSampleRate;
+
+    // With no output side nothing else has vetted the rate, and the .conf is
+    // hand-editable; openStream() would simply fail and raise a dialog.
+    if (!useOutput) sampleRate = rateOfferedBy(inInfo, sampleRate);
   }
 
-  if (sampleRate < 0)
+  if (sampleRate <= 0)
   {
     LOGINFO("[WARNING] No preferred sample rate detected; using 48k");
     sampleRate = 48000;

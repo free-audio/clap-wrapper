@@ -152,6 +152,9 @@ tresult PLUGIN_API ClapAsVst3::initialize(FUnknown *context)
   {
     if (!_plugin)
     {
+      Steinberg::Vst::String128 res;
+      if (vst3HostApplication && kResultOk == vst3HostApplication->getName(res))
+        underlying_hostname = stringconv::convert(res);
       _plugin = Clap::Plugin::createInstance(*_library, _libraryIndex, this);
     }
     result = (_plugin && _plugin->initialize()) ? kResultOk : kResultFalse;
@@ -163,6 +166,16 @@ tresult PLUGIN_API ClapAsVst3::initialize(FUnknown *context)
 tresult PLUGIN_API ClapAsVst3::terminate()
 {
   vst3HostApplication.reset();
+
+  // Before anything else: the index lives in a module-wide cache and its
+  // crawl thread holds our callback. Leaving it registered past here would let
+  // it call into a half-terminated wrapper.
+  if (_presetIndex && _presetIndexToken)
+  {
+    _presetIndex->removeCompletionListener(_presetIndexToken);
+    _presetIndexToken = 0;
+  }
+  _presetIndex.reset();
 
   if (_plugin)
   {
@@ -289,6 +302,50 @@ tresult PLUGIN_API ClapAsVst3::setState(IBStream *state)
   {
     syncParameterValuesFromClap();
   }
+
+  // A project load is not a program change, and the preset selector must not
+  // be allowed to undo one. A host that restores a project restores the state
+  // and goes on sending the selector its own value - Cubase sends a program
+  // list parameter in every process block - so the value that arrives next
+  // names the preset the state was *saved from*, not a preset to load. Loading
+  // it would replace everything the state just restored with the untouched
+  // preset it started life as, which is the whole project's worth of edits.
+  //
+  // Two things stand in the way of that, because the request and the load are
+  // on different threads and the state can arrive between them:
+  //
+  //   - a request the audio thread queued from a block that ran BEFORE the
+  //     state did. onIdle() acts on it without looking at the state that has
+  //     landed in the meantime, so it has to be dropped here.
+  //   - the -1 in _presetIndexInEffect, which makes the next arrival look like
+  //     a change to something new. preset_loaded() will have replaced it
+  //     already if the state named a preset, but a rig that never came from
+  //     the preset list - dropped in, or edited from the plugin's own default
+  //     - names none, and leaves nothing for the guard to work with.
+  //
+  // Only when there is a restored state to protect. A load that failed leaves
+  // the plug-in holding whatever it held before, and the host's selector is
+  // then the better authority rather than the worse one.
+  if (result == kResultOk)
+  {
+    // One store drops a request the audio thread queued before the state and
+    // arms the adopt. It has to be one store: process() takes no lock, so a
+    // request published between a separate drop and arm would survive both and
+    // be loaded over the state just restored. \see onRequestPresetLoad().
+    //
+    // Reading the selector parameter here instead does not work, and it is
+    // worth writing down why, because it looks like it should: at this point
+    // the parameter still holds createPresetSelector's default of 0. The
+    // host replays a program list parameter AFTER the component state, the
+    // selector's value is not in the state chunk, and syncParameterValuesFromClap
+    // cannot fill it either - the selector's id is a tag this wrapper invented
+    // and no CLAP plug-in owns, so get_value fails for it. Seeding from it
+    // therefore seeds 0 whatever the project said, which both misses every
+    // preset except index 0 and makes index 0 itself unreachable for the life
+    // of the instance.
+    _presetLoadRequest.store(kAdoptNextPresetValue);
+  }
+
   return result;
 }
 
@@ -300,7 +357,7 @@ void ClapAsVst3::syncParameterValuesFromClap()
   for (decltype(len) i = 0; i < len; ++i)
   {
     auto p = static_cast<Vst3Parameter *>(parameters.getParameterByIndex(i));
-    if (p->isMidi) continue;
+    if (p->isWrapperOwned()) continue;
     double val;
     if (_plugin->_ext._params->get_value(_plugin->_plugin, p->id, &val))
     {
@@ -380,7 +437,34 @@ tresult PLUGIN_API ClapAsVst3::setupProcessing(Vst::ProcessSetup &newSetup)
     _plugin->_ext._render->set(_plugin->_plugin, new_render_mode);
   }
   _plugin->setSampleRate(newSetup.sampleRate);
-  _plugin->setBlockSizes(newSetup.maxSamplesPerBlock, newSetup.maxSamplesPerBlock);
+
+  // maxSamplesPerBlock is a MAXIMUM, not a fixed block size, so it cannot be
+  // the minimum as well. VST3 lets a host call process() with any
+  // numSamples up to that bound, and hosts do: Cubase/Nuendo declare the
+  // ASIO-Guard block here and then render monitored tracks on the much
+  // smaller realtime block, and anticipative-FX schemes elsewhere do the
+  // same. ProcessAdapter::process() passes numSamples straight through as
+  // clap_process.frames_count.
+  //
+  // Declaring min == max told every wrapped plugin the opposite, and CLAP
+  // plugins are entitled to believe it: min_frames_count == max_frames_count
+  // is the contract's way of saying "every call carries exactly this many
+  // frames", which is what a plugin with a fixed internal render quantum
+  // uses to skip its input FIFO and run with zero added latency. Such a
+  // plugin then renders a whole quantum for a call that carries less than
+  // one, reading and writing past both the input and the output buffers the
+  // host owns. Reported as a wrapped guitar-amp plugin sounding wrong at 32
+  // and 64 sample buffers while 128 and 256 were fine -- those two happened
+  // to be whole multiples of its quantum.
+  //
+  // The load-bearing half is that min != max. VST3 states no minimum at all,
+  // so 32 is a practical floor rather than a guaranteed one: it is the
+  // smallest block hosts actually render, audio device buffers bottoming out
+  // there, and the AUv2 wrapper makes the same kind of call with 16. Clamped,
+  // because a declared minimum above the maximum would be a worse claim than
+  // the one being fixed.
+  const auto minSampleFrames = (newSetup.maxSamplesPerBlock >= 32) ? 32 : 1;
+  _plugin->setBlockSizes(minSampleFrames, newSetup.maxSamplesPerBlock);
 
   _largestBlocksize = newSetup.maxSamplesPerBlock;
 
@@ -590,7 +674,7 @@ tresult PLUGIN_API ClapAsVst3::getParamStringByValue(Vst::ParamID id, Vst::Param
     return kResultOk;
   }
 
-  if (param->isMidi)
+  if (param->isWrapperOwned())
   {
     auto r = std::to_string((int)val);
 
@@ -626,7 +710,7 @@ tresult PLUGIN_API ClapAsVst3::getParamValueByString(Vst::ParamID id, Vst::TChar
   char inbuf[128];
   m.copyTo8(inbuf, 0, 128);
   double out = 0.;
-  if (param->isMidi)
+  if (param->isWrapperOwned())
   {
     return Steinberg::kResultFalse;
   }
@@ -1274,6 +1358,231 @@ void ClapAsVst3::setupParameters(const clap_plugin_t *plugin, const clap_plugin_
                                     S16("Brit"), S16(""), 0, nullptr, 0));
 
   // PRESSURE is handled by IMidiMapping (-> Polypressure)
+
+  setupPresets();
+}
+
+// ----------------------------------------------------------------------------
+// clap.preset-load, published to the host as a VST3 program list
+// ----------------------------------------------------------------------------
+void ClapAsVst3::setupPresets()
+{
+  _presetParamId = Vst::kNoParamId;
+  _presetUnitId = Vst::kRootUnitId;
+
+  // setupParameters() can run more than once, and the index is shared and
+  // long-lived - drop any listener from a previous pass rather than stack one.
+  if (_presetIndex && _presetIndexToken)
+  {
+    _presetIndex->removeCompletionListener(_presetIndexToken);
+    _presetIndexToken = 0;
+  }
+
+  // No point offering a list the plugin could not load from.
+  if (!_plugin || !_plugin->supportsPresetLoad()) return;
+
+  // Shared per module: the crawl is expensive and its result is identical for
+  // every instance of the same plugin.
+  if (!_presetIndex)
+  {
+    const auto *descriptor = _library->plugins[_libraryIndex];
+    _presetIndex = Clap::PresetIndex::forPlugin(_library, descriptor->id ? descriptor->id : "");
+  }
+  if (!_presetIndex) return;  // the plugin has no preset-discovery factory
+
+  // A free tag, away from both the CLAP parameter ids and the block the
+  // IMidiMapping parameters reserve at 0xb00000.
+  Vst::ParamID id = 0xc00000;
+  while (parameters.getParameter(id)) ++id;
+
+  // Created whatever the crawl has found, and never waited for: the parameter
+  // count must not change once the component is active (the process adapter
+  // holds a raw pointer into the container), so onIdle() grows it in place.
+  // Only a completed crawl is published; a mid-crawl size is a fragment.
+  const auto presetCount = _presetIndex->isComplete() ? _presetIndex->size() : 0;
+
+  auto *selector = Vst3Parameter::createPresetSelector(id, (int32_t)presetCount);
+
+  // The program list goes on the ROOT unit, and the selector with it. Not a
+  // unit of its own: a host reads the root unit's programListId to find "the
+  // plugin's programs" - that is what the SDK's mda sample does
+  // (mdaBaseController.cpp: uinfo.id = kRootUnitId; uinfo.programListId =
+  // kPresetParam) and what againcontroller.cpp means by "create root only if
+  // you want to use the programListId". Hung off a child unit instead, the
+  // list validates perfectly and Cubase shows nothing.
+  selector->setUnitID(Vst::kRootUnitId);
+  parameters.addParameter(selector);
+
+  // units[0] is the root unit setupParameters() created just above. Setting
+  // the id on the Unit object rather than rebuilding it is how the
+  // IMidiMapping block already does it (newUnit->setProgramListID).
+  if (!units.empty()) units.at(0)->setProgramListID((Vst::ProgramListID)id);
+
+  _presetParamId = id;
+  _presetUnitId = Vst::kRootUnitId;
+
+  // The crawl may already be done - addCompletionListener() calls straight
+  // back in that case, which is why _presetParamId is set before this.
+  _presetIndexToken = _presetIndex->addCompletionListener([this]() { onPresetIndexComplete(); });
+}
+
+Vst3Parameter *ClapAsVst3::presetSelector() const
+{
+  if (_presetParamId == Vst::kNoParamId) return nullptr;
+  return static_cast<Vst3Parameter *>(parameters.getParameter(_presetParamId));
+}
+
+void ClapAsVst3::onPresetIndexComplete()
+{
+  // Called from the index's crawl thread. Nothing that talks to the host may
+  // happen here; onIdle() picks this up on the main thread.
+  _presetListChanged.store(true);
+}
+
+void ClapAsVst3::onRequestPresetLoad(size_t presetIndex)
+{
+  // Audio thread. Record and return - see the member's comment on coalescing.
+  //
+  // A value equal to the one already in effect is not a request: the
+  // parameter stream carries the selector's value, not its edges, and acting
+  // on every arrival makes loading a preset a permanent state of reloading it
+  // (\see _presetIndexInEffect).
+  // Neither is the first value to arrive after a state load, whatever it says.
+  // The state is the newer fact about what the plug-in holds; the selector is
+  // a label on where that content started, and a host restoring a project
+  // hands back the label it stored with it. Obeying that reloads the preset
+  // over everything the project just restored. So adopt the value as the one
+  // in effect and load nothing - an actual move by the user still names
+  // something else, and is still obeyed. \see setState().
+  //
+  // The cost, stated plainly: on a host that sends this parameter only when it
+  // changes rather than in every process block, nothing arrives to be adopted
+  // until the user picks a preset, and that first pick is spent on the adopt.
+  // A second pick loads. That is the lesser of the two - the alternative
+  // reloads the saved preset over every restored project, on every host that
+  // streams, every time.
+  //
+  // Decide and publish in one compare-exchange: setState() can arm at any
+  // moment here, and a failed exchange re-decides against the armed value.
+  const auto requested = static_cast<int64_t>(presetIndex);
+  auto current = _presetLoadRequest.load();
+  for (;;)
+  {
+    if (current == kAdoptNextPresetValue)
+    {
+      if (!_presetLoadRequest.compare_exchange_weak(current, kNoPresetRequest)) continue;
+      _presetIndexInEffect.store(requested, std::memory_order_relaxed);
+      return;
+    }
+
+    if (requested == _presetIndexInEffect.load(std::memory_order_relaxed))
+    {
+      return;
+    }
+
+    // `current` is kNoPresetRequest or an earlier request this one coalesces.
+    if (_presetLoadRequest.compare_exchange_weak(current, requested)) return;
+  }
+}
+
+void ClapAsVst3::preset_loaded(uint32_t locationKind, const char *location, const char *loadKey)
+{
+  // The plugin loaded a preset - the one onIdle() asked for, or one of its own
+  // accord (its own UI, most likely). Move the selector so the host's program
+  // display follows, but only if the preset is one this wrapper actually
+  // indexed - a plugin can load from places we never crawled, and there is no
+  // slot to point at for those.
+  if (!_presetIndex || _presetParamId == Vst::kNoParamId) return;
+
+  size_t index = 0;
+  if (!_presetIndex->indexOf(locationKind, location, loadKey, index)) return;
+
+  auto *param = presetSelector();
+  if (!param) return;
+
+  _presetIndexInEffect.store(static_cast<int64_t>(index), std::memory_order_relaxed);
+
+  // The index is from the live list, which can be ahead of what the selector
+  // publishes; an index past stepCount normalizes above 1.0. onIdle() moves the
+  // selector to _presetIndexInEffect once the list has grown to include it.
+  if (index >= static_cast<size_t>(param->presetCount())) return;
+
+  moveSelectorTo(*param, index);
+}
+
+void ClapAsVst3::moveSelectorTo(Vst3Parameter &param, size_t index)
+{
+  // [main-thread] index must be within what the selector publishes.
+  const auto normalized = param.asVst3Value(static_cast<double>(index));
+  if (param.getNormalized() == normalized)
+  {
+    // Already where the host put it, which is the usual case: this is the
+    // confirmation of a load the host itself asked for. Reporting it as an
+    // edit is what a host hands back as a fresh program change.
+    return;
+  }
+
+  param.setNormalized(normalized);
+  if (componentHandler)
+  {
+    // Bracketed, like any value a plugin originates: an unbracketed
+    // performEdit() is a change a host cannot attribute to a gesture, and the
+    // ones that record it leave the parameter latched in touch mode.
+    componentHandler->beginEdit(_presetParamId);
+    componentHandler->performEdit(_presetParamId, normalized);
+    componentHandler->endEdit(_presetParamId);
+  }
+}
+
+void ClapAsVst3::preset_load_error(uint32_t /*locationKind*/, const char * /*location*/,
+                                   const char * /*loadKey*/, int32_t /*osError*/, const char *msg)
+{
+  // VST3 has no channel for this. Log it so it is at least discoverable; the
+  // plugin has already been told, and it is the one with a UI to say so in.
+  if (_plugin) _plugin->log(CLAP_LOG_WARNING, msg ? msg : "preset load failed");
+}
+
+Steinberg::int32 PLUGIN_API ClapAsVst3::getProgramListCount()
+{
+  return super::getProgramListCount() + (_presetParamId != Vst::kNoParamId ? 1 : 0);
+}
+
+Steinberg::tresult PLUGIN_API ClapAsVst3::getProgramListInfo(Steinberg::int32 listIndex,
+                                                             Vst::ProgramListInfo &info)
+{
+  const auto inherited = super::getProgramListCount();
+  if (listIndex < inherited) return super::getProgramListInfo(listIndex, info);
+
+  if (_presetParamId == Vst::kNoParamId || listIndex != inherited) return Steinberg::kResultFalse;
+
+  info.id = (Vst::ProgramListID)_presetParamId;
+  // The slots the host will show: the selector's own stepCount+1, not the live
+  // index size. If the list were the longer of the two, picking a program past
+  // stepCount clamps to 1.0 and silently loads the wrong preset.
+  auto *selector = presetSelector();
+  info.programCount = selector ? selector->presetCount() : 0;
+  stringconv::convert(std::string("Presets"), info.name);
+  return Steinberg::kResultOk;
+}
+
+Steinberg::tresult PLUGIN_API ClapAsVst3::getProgramName(Vst::ProgramListID listId,
+                                                         Steinberg::int32 programIndex,
+                                                         Vst::String128 name)
+{
+  if (!isPresetProgramList(listId)) return super::getProgramName(listId, programIndex, name);
+
+  // Bounded by what getProgramListInfo() published: mid-crawl the index knows
+  // names for slots the host has not been told exist.
+  auto *selector = presetSelector();
+  if (!selector || programIndex < 0 || programIndex >= selector->presetCount())
+    return Steinberg::kResultFalse;
+
+  Clap::PresetEntry entry;
+  if (!_presetIndex || !_presetIndex->presetAt((size_t)programIndex, entry))
+    return Steinberg::kResultFalse;
+
+  stringconv::convert(entry.displayName(), name);
+  return Steinberg::kResultOk;
 }
 
 void ClapAsVst3::param_rescan(clap_param_rescan_flags flags)
@@ -1309,7 +1618,9 @@ void ClapAsVst3::param_rescan(clap_param_rescan_flags flags)
     for (decltype(len) i = 0; i < len; ++i)
     {
       auto p = static_cast<Vst3Parameter *>(parameters.getParameterByIndex(i));
-      if (p->isMidi) continue;
+      // The selector's index is left at 0, so get_info would otherwise rename
+      // the host's program control after parameter 0.
+      if (p->isWrapperOwned()) continue;
       clap_param_info_t info;
       if (_plugin->_ext._params->get_info(_plugin->_plugin, p->param_index_for_clap_get_info, &info))
       {
@@ -1490,9 +1801,9 @@ bool ClapAsVst3::unregister_timer(clap_id timer_id)
       to.period = 0;
       to.nexttick = 0;
 #if LIN
-      if (to.handler && _iRunLoop)
+      if (auto *const runLoop = _iRunLoop.load(); to.handler && runLoop)
       {
-        _iRunLoop->unregisterTimer(to.handler.get());
+        runLoop->unregisterTimer(to.handler.get());
       }
       to.handler.reset();
 #endif
@@ -1504,15 +1815,7 @@ bool ClapAsVst3::unregister_timer(clap_id timer_id)
 
 const char *ClapAsVst3::host_get_name()
 {
-  if (vst3HostApplication)
-  {
-    Steinberg::Vst::String128 res;
-    if (kResultOk == vst3HostApplication->getName(res))
-    {
-      wrapper_hostname = stringconv::convert(res);
-      wrapper_hostname.append(" (CLAP-as-VST3)");
-    }
-  }
+  if (!underlying_hostname.empty()) wrapper_hostname = underlying_hostname + " (CLAP-as-VST3)";
   return wrapper_hostname.c_str();
 }
 
@@ -1533,6 +1836,89 @@ void ClapAsVst3::onIdle()
   // asserting it: while it is held, the thread the host calls the main thread
   // cannot be in here as well.
   auto mainThreadOverride = _plugin->AlwaysMainThread();
+
+  // A preset the host asked for on the audio thread, and a preset list that
+  // filled in on the crawl thread. Both have to happen here: from_location()
+  // is [main-thread], and so is notifyProgramListChange().
+  //
+  // Take only an actual request: a plain exchange would also take the
+  // kAdoptNextPresetValue setState() left there and disarm the adopt.
+  auto requested = _presetLoadRequest.load();
+  while (requested >= 0 && !_presetLoadRequest.compare_exchange_weak(requested, kNoPresetRequest))
+  {
+  }
+  if (requested >= 0)
+  {
+    Clap::PresetEntry entry;
+    // Clamp against what the selector publishes - the range asClapValue()
+    // decoded against; a host may still replay a value from an older stepCount.
+    auto *selector = presetSelector();
+    const auto count = selector ? (size_t)selector->presetCount() : 0;
+    if (count > 0 && _presetIndex)
+    {
+      const auto index = std::min<size_t>((size_t)requested, count - 1);
+
+      // Tested again here, and not only where the request was made: the two
+      // are on different threads, and a state load can land between them and
+      // say that this preset is already what the plugin holds. Loading it
+      // again would put the untouched preset over the restored state.
+      // \see setState().
+      if (static_cast<int64_t>(index) != _presetIndexInEffect.load(std::memory_order_relaxed))
+      {
+        // In effect from here on, whatever the load makes of it: the host is
+        // sending this value, and a preset that cannot be loaded has to be
+        // attempted once rather than once per block. A load that succeeds
+        // confirms the same index through preset_loaded().
+        _presetIndexInEffect.store(static_cast<int64_t>(index), std::memory_order_relaxed);
+
+        if (_presetIndex->presetAt(index, entry))
+        {
+          _plugin->loadPresetFromLocation(entry.locationKind,
+                                          entry.location.empty() ? nullptr : entry.location.c_str(),
+                                          entry.loadKey.empty() ? nullptr : entry.loadKey.c_str());
+        }
+      }
+    }
+  }
+
+  if (_presetListChanged.exchange(false))
+  {
+    // Grow the existing selector in place; never rebuild the parameters here -
+    // that destroys Parameter objects the process adapter is dereferencing on
+    // the audio thread. kParamTitlesChanged is the SDK's channel for this.
+    auto *selector = presetSelector();
+    if (selector && _presetIndex && _presetIndex->isComplete() &&
+        (Steinberg::int32)_presetIndex->size() != selector->presetCount())
+    {
+      // The size test is not just an optimisation: with the shared index already
+      // complete there is nothing to tell the host, and a restart is not free.
+      const auto presetCount = _presetIndex->size();
+      {
+        // process() decodes the selector against stepCount and min/max_value on
+        // the audio thread, so exclude it for the field writes and nothing else.
+        ClapWrapper::detail::shared::SpinLockGuard growLock(_processOrFlushLock);
+        selector->resizePresetSelector((int32_t)presetCount);
+      }
+
+      // Both, in this order: the parameter info, then the list it selects from.
+      if (componentHandler)
+        componentHandler->restartComponent(Vst::RestartFlags::kParamTitlesChanged |
+                                           Vst::RestartFlags::kParamValuesChanged);
+      if (auto unitHandler = Steinberg::FUnknownPtr<Vst::IUnitHandler>(componentHandler))
+      {
+        // -1: every program in the list changed, not one of them.
+        unitHandler->notifyProgramListChange((Vst::ProgramListID)_presetParamId, -1);
+      }
+
+      // Cubase sends the selector's value in every process block, so a preset the
+      // plug-in loaded mid-crawl must be caught up to or preset 0 wins over it.
+      const auto inEffect = _presetIndexInEffect.load(std::memory_order_relaxed);
+      if (inEffect >= 0 && inEffect < static_cast<int64_t>(presetCount))
+      {
+        moveSelectorTo(*selector, static_cast<size_t>(inEffect));
+      }
+    }
+  }
 
   // handling queued events
   queueEvent n;
@@ -1658,46 +2044,54 @@ void ClapAsVst3::attachTimers(Steinberg::Linux::IRunLoop *r)
 {
   if (r)
   {
-    _iRunLoop = r;
+    const auto previous = _iRunLoop.exchange(r);
 
     if (_idleHandler)
     {
-      _iRunLoop->unregisterTimer(_idleHandler.get());
+      r->unregisterTimer(_idleHandler.get());
     }
     else
     {
       _idleHandler = Steinberg::owned(new IdleHandler(this));
     }
-    _iRunLoop->registerTimer(_idleHandler.get(), 30);
+    r->registerTimer(_idleHandler.get(), 30);
 
     for (auto &t : _timersObjects)
     {
       if (!t.handler)
       {
         t.handler = Steinberg::owned(new TimerHandler(this, t.timer_id));
-        _iRunLoop->registerTimer(t.handler.get(), t.period);
+        r->registerTimer(t.handler.get(), t.period);
       }
     }
 
-    // the host's own main thread drives the idle from here on
-    os::idleSourceChanged();
+    // The host's main thread drives the idle from here on, but announce it
+    // only on the transition: register_timer() also lands here, and it may run
+    // from on_main_thread() with _mainThreadLock held, where taking the
+    // helper's lock would invert the documented order.
+    if (previous == nullptr)
+    {
+      os::idleSourceChanged();
+    }
   }
 }
 
 void ClapAsVst3::detachTimers(Steinberg::Linux::IRunLoop *r)
 {
-  if (r && r == _iRunLoop)
+  // Read once: the helper thread only reads _iRunLoop, never writes it.
+  auto *const runLoop = _iRunLoop.load();
+  if (r && r == runLoop)
   {
     if (_idleHandler)
     {
-      _iRunLoop->unregisterTimer(_idleHandler.get());
+      runLoop->unregisterTimer(_idleHandler.get());
       _idleHandler.reset();
     }
     for (auto &t : _timersObjects)
     {
       if (t.handler)
       {
-        _iRunLoop->unregisterTimer(t.handler.get());
+        runLoop->unregisterTimer(t.handler.get());
         t.handler.reset();
       }
     }
@@ -1738,9 +2132,9 @@ bool ClapAsVst3::unregister_fd(int fd)
     if (it->fd == fd)
     {
       res = true;
-      if (_iRunLoop && it->handler)
+      if (auto *const runLoop = _iRunLoop.load(); runLoop && it->handler)
       {
-        _iRunLoop->unregisterEventHandler(it->handler.get());
+        runLoop->unregisterEventHandler(it->handler.get());
       }
       it->handler.reset();
       it = _posixFDObjects.erase(it);
@@ -1775,14 +2169,16 @@ void ClapAsVst3::attachPosixFD(Steinberg::Linux::IRunLoop *r)
 {
   if (r)
   {
-    _iRunLoop = r;
+    // No idleSourceChanged() here: the frame callback calls attachTimers()
+    // first, which announces the run loop. \see attachTimers()
+    _iRunLoop.store(r);
 
     for (auto &p : _posixFDObjects)
     {
       if (!p.handler)
       {
         p.handler = Steinberg::owned(new FDHandler(this, p.fd, p.flags));
-        _iRunLoop->registerEventHandler(p.handler.get(), p.fd);
+        r->registerEventHandler(p.handler.get(), p.fd);
       }
     }
   }
@@ -1790,13 +2186,14 @@ void ClapAsVst3::attachPosixFD(Steinberg::Linux::IRunLoop *r)
 
 void ClapAsVst3::detachPosixFD(Steinberg::Linux::IRunLoop *r)
 {
-  if (r && r == _iRunLoop)
+  auto *const runLoop = _iRunLoop.load();
+  if (r && r == runLoop)
   {
     for (auto &p : _posixFDObjects)
     {
       if (p.handler)
       {
-        _iRunLoop->unregisterEventHandler(p.handler.get());
+        runLoop->unregisterEventHandler(p.handler.get());
         p.handler.reset();
       }
     }
@@ -1865,13 +2262,19 @@ bool ClapAsVst3::context_menu_populate(const clap_context_menu_target_t *target,
   if (!builder->supports(builder, CLAP_CONTEXT_MENU_ITEM_END_SUBMENU)) return false;
   // CLAP_CONTEXT_MENU_ITEM_TITLE is not used by VST3
 
-  if (target->kind == CLAP_CONTEXT_MENU_TARGET_KIND_GLOBAL)
+  // A null target is the global context - see the documentation of
+  // clap_plugin_context_menu::populate in clap/ext/context-menu.h - so it must
+  // not be dereferenced. An unrecognised kind still creates no menu at all.
+  if (target == nullptr || target->kind == CLAP_CONTEXT_MENU_TARGET_KIND_GLOBAL)
   {
     this->vst3ContextMenu = componentHandler3->createContextMenu(this->_wrappedview, nullptr);
   }
-  if (target->kind == CLAP_CONTEXT_MENU_TARGET_KIND_PARAM)
+  else if (target->kind == CLAP_CONTEXT_MENU_TARGET_KIND_PARAM)
   {
-    vst3ContextMenuParamID = target->id;
+    // Parameters are published to the host with the top bit cleared (see
+    // createParameter() in detail/vst3/parameter.cpp), so that - and not the
+    // raw clap_id - is the id the host can resolve back to a parameter.
+    vst3ContextMenuParamID = target->id & 0x7FFFFFFF;
     vst3ContextMenu = componentHandler3->createContextMenu(_wrappedview, &vst3ContextMenuParamID);
   }
   if (vst3ContextMenu)

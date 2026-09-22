@@ -3,6 +3,7 @@
 #include <set>
 #include <limits>
 #include <cassert>
+#include <cstring>
 #include <algorithm>
 #include <cmath>
 #include <mutex>
@@ -174,6 +175,7 @@ WrapAsAUV2::WrapAsAUV2(const std::string &clapname, const std::string &clapid, i
        */
 
       // pffffrzz();  // <- enable this to have a hook to attach a debugger
+      _underlying_hostname = os::getHostAppName();
       _plugin = Clap::Plugin::createInstance(_library._pluginFactory, _desc->id, this);
       if (_plugin)
       {
@@ -194,6 +196,17 @@ WrapAsAUV2::WrapAsAUV2(const std::string &clapname, const std::string &clapid, i
 WrapAsAUV2::~WrapAsAUV2()
 {
   const std::lock_guard<ausdk::AUMutex> mainThreadGuard(*_mainThreadMutex);
+  // The index outlives this instance (it is cached per module) and its crawl
+  // thread holds our callback, so it has to be dropped before anything else.
+  if (_presetIndex && _presetIndexToken)
+  {
+    _presetIndex->removeCompletionListener(_presetIndexToken);
+    _presetIndexToken = 0;
+  }
+  _presetIndex.reset();
+  for (auto name : _presetNameStrings) CFRelease(name);
+  _presetNameStrings.clear();
+
 #if AUSDK_MIDI2_AVAILABLE
   if (auto blk = _midioutput_hosteventlistblock.exchange(nullptr)) Block_release(blk);
   for (auto blk : _retiredEventListBlocks) Block_release(blk);
@@ -316,6 +329,149 @@ void WrapAsAUV2::setupWrapperSpecifics(const clap_plugin_t *plugin)
 {
   // TODO: if there are AUv2 specific extensions, they can be retrieved here
   // _auv2_specifics = (clap_plugin_as_auv2_t*)plugin->get_extension(plugin, CLAP_PLUGIN_AS_AUV2);
+  setupPresets();
+}
+
+// ----------------------------------------------------------------------------
+// clap.preset-load, published to the host as AU factory presets
+// ----------------------------------------------------------------------------
+void WrapAsAUV2::setupPresets()
+{
+  // Nothing to offer if the plugin cannot load a preset it is handed back.
+  if (!_plugin || !_plugin->supportsPresetLoad()) return;
+
+  // _desc->id, not _clapid: this wrapper can be built to select its plugin by
+  // index instead of by id, and then _clapid is empty. An empty id here is not
+  // harmless - it is the value the index matches add_plugin_id() against, so
+  // every preset that names its plugin would be filtered out and the list
+  // would come back empty.
+  const char *pluginId = _desc && _desc->id ? _desc->id : _clapid.c_str();
+  _presetIndex = Clap::PresetIndex::forPlugin(&_library, pluginId);
+  if (!_presetIndex) return;  // the plugin has no preset-discovery factory
+
+  _presetIndexToken = _presetIndex->addCompletionListener(
+      [this]()
+      {
+        // Crawl thread: only a flag. onIdle() tells the host.
+        _presetListChanged.store(true);
+      });
+}
+
+void WrapAsAUV2::rebuildPresetCache() const
+{
+  std::lock_guard<std::mutex> lock(_presetCacheMutex);
+
+  _presetCache.clear();
+  if (!_presetIndex)
+  {
+    _presetCacheBuilt = true;
+    return;
+  }
+
+  // Only a completed crawl is publishable, so stay empty until there is one:
+  // the index sorts itself when the crawl finishes, so a host that read a
+  // partial list - AU asks early - would show names against numbers that
+  // resolve to other presets once the sort lands. The completion tick rebuilds
+  // and notifies the host.
+  if (!_presetIndex->isComplete()) return;
+  _presetCacheBuilt = true;
+
+  const auto presets = _presetIndex->presets();
+  _presetCache.reserve(presets.size());
+  for (size_t i = 0; i < presets.size(); ++i)
+  {
+    const auto name = presets[i].displayName();
+    auto cfName = CFStringCreateWithCString(kCFAllocatorDefault, name.c_str(), kCFStringEncodingUTF8);
+    if (!cfName) continue;
+    _presetNameStrings.push_back(cfName);  // see the member's comment on lifetime
+
+    AUPreset preset{};
+    // The preset number IS the index in Clap::PresetIndex's ordering. A host
+    // stores this number, which is why that ordering is deterministic.
+    preset.presetNumber = static_cast<SInt32>(i);
+    preset.presetName = cfName;
+    _presetCache.push_back(preset);
+  }
+}
+
+OSStatus WrapAsAUV2::GetPresets(CFArrayRef *outData) const
+{
+  if (!_presetIndex) return kAudioUnitErr_InvalidProperty;
+
+  // AU asks for this once, synchronously, at load - and a host told
+  // kAudioUnitErr_InvalidProperty concludes the unit has no factory presets
+  // and is under no obligation to ever ask again. So wait briefly for the
+  // crawl rather than answer "none" while it is still running: an embedded
+  // container resolves in milliseconds, and a folder crawl that outlasts the
+  // wait is still covered by the FactoryPresets notification onIdle() sends.
+  _presetIndex->waitUntilComplete(1000);
+
+  if (!_presetCacheBuilt) rebuildPresetCache();
+
+  std::lock_guard<std::mutex> lock(_presetCacheMutex);
+  if (_presetCache.empty()) return kAudioUnitErr_InvalidProperty;
+
+  // A null outData is the host asking whether presets exist at all.
+  if (outData == nullptr) return noErr;
+
+  auto array =
+      CFArrayCreateMutable(kCFAllocatorDefault, static_cast<CFIndex>(_presetCache.size()), nullptr);
+  if (!array) return kAudio_MemFullError;
+  for (const auto &preset : _presetCache) CFArrayAppendValue(array, &preset);
+
+  *outData = static_cast<CFArrayRef>(array);  // the host releases it
+  return noErr;
+}
+
+OSStatus WrapAsAUV2::NewFactoryPresetSet(const AUPreset &inNewFactoryPreset)
+{
+  if (!_presetIndex || !_plugin) return kAudioUnitErr_InvalidPropertyValue;
+  if (inNewFactoryPreset.presetNumber < 0) return kAudioUnitErr_InvalidPropertyValue;
+
+  Clap::PresetEntry entry;
+  if (!_presetIndex->presetAt(static_cast<size_t>(inNewFactoryPreset.presetNumber), entry))
+    return kAudioUnitErr_InvalidPropertyValue;
+
+  auto guarantee_mainthread = _plugin->AlwaysMainThread();
+  if (!_plugin->loadPresetFromLocation(entry.locationKind,
+                                       entry.location.empty() ? nullptr : entry.location.c_str(),
+                                       entry.loadKey.empty() ? nullptr : entry.loadKey.c_str()))
+    return kAudioUnitErr_InvalidPropertyValue;
+
+  // Only now is it the current preset. Doing this before the load would leave
+  // a host showing a preset the plugin refused.
+  SetAFactoryPresetAsCurrent(inNewFactoryPreset);
+  return noErr;
+}
+
+void WrapAsAUV2::preset_loaded(uint32_t locationKind, const char *location, const char *loadKey)
+{
+  // The plugin loaded a preset itself (its own UI, or a project restore).
+  // Point the host's PresentPreset at the matching slot, if we indexed it.
+  if (!_presetIndex) return;
+
+  size_t index = 0;
+  if (!_presetIndex->indexOf(locationKind, location, loadKey, index)) return;
+
+  if (!_presetCacheBuilt) rebuildPresetCache();
+
+  AUPreset preset{};
+  {
+    std::lock_guard<std::mutex> lock(_presetCacheMutex);
+    if (index >= _presetCache.size()) return;
+    preset = _presetCache[index];
+  }
+
+  SetAFactoryPresetAsCurrent(preset);
+  PropertyChanged(kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0);
+}
+
+void WrapAsAUV2::preset_load_error(uint32_t /*locationKind*/, const char * /*location*/,
+                                   const char * /*loadKey*/, int32_t /*osError*/, const char *msg)
+{
+  // AU has no channel for this either; the plugin has been told and owns the
+  // user-facing message.
+  LOGINFO("[clap-wrapper] preset load failed: {}", msg ? msg : "(no message)");
 }
 
 void WrapAsAUV2::setupAudioBusses(const clap_plugin_t *plugin,
@@ -627,15 +783,31 @@ OSStatus WrapAsAUV2::SetParameter(AudioUnitParameterID inID, AudioUnitScope inSc
       // this from ScheduleParameter(), i.e. on the render thread but outside the
       // render, so without this the queue would have two writers.
       ClapWrapper::detail::shared::SpinLockGuard processGuard(_processLock);
+      auto &param = p->second.get()->info();
       if (_processAdapter)
       {
-        auto &param = p->second.get()->info();
         _processAdapter->addParameterEvent(param, inValue, inBufferOffsetInFrames);
+      }
+      else if (auto *flushAdapter = ensureFlushAdapter())
+      {
+        // The CLAP is deactivated, so there is no process adapter -- but the
+        // value is no less real for that. A host restoring a project sets
+        // kAudioUnitProperty_BypassEffect (which lands here through
+        // SetBypassEffect) and parameter values on the unit *before* it calls
+        // Initialize, and nothing re-syncs the AU element values into the
+        // plugin afterwards; dropped here, the value is gone for good, with
+        // the host UI showing a state the plugin is not in. clap/ext/params.h
+        // has exactly this case covered: flush() is [main-thread] while the
+        // plugin is inactive. So the event goes to the adapter the
+        // deactivated-state flush uses, and is handed over on the next idle
+        // tick or at activation, whichever comes first (see activateCLAP()).
+        flushAdapter->addParameterEvent(param, inValue, inBufferOffsetInFrames);
       }
     }
 
     // Nothing may ever render this: on an idle track process() is not coming,
-    // and then onIdle() is the only thing that will hand it to the plugin.
+    // and on a deactivated plugin it cannot come; either way onIdle() is the
+    // only thing that will hand it to the plugin.
     _requestedFlush = true;
   }
   return AUBase::SetParameter(inID, inScope, inElement, inValue, inBufferOffsetInFrames);
@@ -1154,11 +1326,11 @@ void WrapAsAUV2::addOutputBus(int bus, const clap_audio_port_info_t *info)
 }
 
 std::vector<clap_audio_port_configuration_request_t> WrapAsAUV2::mainBusConfigurationRequests(
-    uint32_t mainInChannels, uint32_t mainOutChannels) const
+    uint32_t mainInChannels, uint32_t mainOutChannels, uint32_t nonMainChannels) const
 {
   // One request per port, mirroring the VST3 wrapper's setBusArrangements
   // (wrapasvst3.cpp): main ports get the given counts, non-main ports keep
-  // their current ones.
+  // their current ones -- or, when nonMainChannels is non-zero, move to that.
   std::vector<clap_audio_port_configuration_request_t> requests;
   auto addRequest = [&requests](bool isInput, uint32_t port, uint32_t channels)
   {
@@ -1172,12 +1344,15 @@ std::vector<clap_audio_port_configuration_request_t> WrapAsAUV2::mainBusConfigur
     requests.push_back(request);
   };
 
+  auto const nonMain = [nonMainChannels](uint32_t current)
+  { return nonMainChannels ? nonMainChannels : current; };
+
   for (size_t i = 0; i < _inputPortCache.size(); ++i)
     addRequest(true, static_cast<uint32_t>(i),
-               _inputPortCache[i].isMain ? mainInChannels : _inputPortCache[i].channelCount);
+               _inputPortCache[i].isMain ? mainInChannels : nonMain(_inputPortCache[i].channelCount));
   for (size_t i = 0; i < _outputPortCache.size(); ++i)
     addRequest(false, static_cast<uint32_t>(i),
-               _outputPortCache[i].isMain ? mainOutChannels : _outputPortCache[i].channelCount);
+               _outputPortCache[i].isMain ? mainOutChannels : nonMain(_outputPortCache[i].channelCount));
 
   return requests;
 }
@@ -1238,35 +1413,59 @@ bool WrapAsAUV2::applyConfigurationFromBusFormats()
       !_plugin->_ext._configurable_audio_ports)
     return true;
 
-  // The channel counts the host settled on for the main busses. AU elements
-  // map 1:1 to the CLAP ports scanned at PostConstructor, but a plugin that
-  // changes its port *count* in apply_configuration can leave the caches
-  // longer than the element scopes, and ausdk's Input()/Output() throw on an
-  // element that does not exist - so never look past the element counts.
+  // What the host settled on, every bus of it. AU elements map 1:1 to the CLAP
+  // ports scanned at PostConstructor, but a plugin that changes its port *count*
+  // in apply_configuration can leave the caches longer than the element scopes,
+  // and ausdk's Input()/Output() throw on an element that does not exist - so
+  // never look past the element counts.
+  //
+  //   Every bus and not the main ones alone. ValidFormat vets one scope at a
+  // time, because that is how a host sets formats, so it can only ask whether
+  // *some* probed layout gives *that* bus that width - and a host can therefore
+  // legally land on a combination no single layout has. Asking the plugin for
+  // exactly what the host set is what turns that into a refusal here rather
+  // than into an AU element whose channel count the active plugin's port does
+  // not share, which the render path would then write past.
   bool mismatch = false;
-  uint32_t mainInChannels = 0, mainOutChannels = 0;
+  // only the diagnostic below reads these, and that compiles away at
+  // CLAP_WRAPPER_LOGLEVEL=0
+  [[maybe_unused]] uint32_t mainInChannels = 0, mainOutChannels = 0;
 
   const size_t numInputElements = Inputs().GetNumberOfElements();
   const size_t numOutputElements = Outputs().GetNumberOfElements();
 
+  std::vector<clap_audio_port_configuration_request_t> requests;
+  auto addRequest = [&requests](bool isInput, size_t port, uint32_t channels)
+  {
+    clap_audio_port_configuration_request_t request{};
+    request.is_input = isInput;
+    request.port_index = static_cast<uint32_t>(port);
+    request.channel_count = channels;
+    request.port_type =
+        (channels == 1) ? CLAP_PORT_MONO : ((channels == 2) ? CLAP_PORT_STEREO : nullptr);
+    request.port_details = nullptr;
+    requests.push_back(request);
+  };
+
   for (size_t i = 0; i < _inputPortCache.size() && i < numInputElements; ++i)
   {
-    if (!_inputPortCache[i].isMain) continue;
-    mainInChannels = Input(static_cast<AudioUnitElement>(i)).GetStreamFormat().mChannelsPerFrame;
-    mismatch |= (mainInChannels != _inputPortCache[i].channelCount);
-    break;
+    const uint32_t channels =
+        Input(static_cast<AudioUnitElement>(i)).GetStreamFormat().mChannelsPerFrame;
+    mismatch |= (channels != _inputPortCache[i].channelCount);
+    if (_inputPortCache[i].isMain) mainInChannels = channels;
+    addRequest(true, i, channels);
   }
   for (size_t i = 0; i < _outputPortCache.size() && i < numOutputElements; ++i)
   {
-    if (!_outputPortCache[i].isMain) continue;
-    mainOutChannels = Output(static_cast<AudioUnitElement>(i)).GetStreamFormat().mChannelsPerFrame;
-    mismatch |= (mainOutChannels != _outputPortCache[i].channelCount);
-    break;
+    const uint32_t channels =
+        Output(static_cast<AudioUnitElement>(i)).GetStreamFormat().mChannelsPerFrame;
+    mismatch |= (channels != _outputPortCache[i].channelCount);
+    if (_outputPortCache[i].isMain) mainOutChannels = channels;
+    addRequest(false, i, channels);
   }
 
   if (!mismatch) return true;
 
-  auto requests = mainBusConfigurationRequests(mainInChannels, mainOutChannels);
   const bool applied = _plugin->_ext._configurable_audio_ports->apply_configuration(
       _plugin->_plugin, requests.data(), static_cast<uint32_t>(requests.size()));
 
@@ -1291,7 +1490,7 @@ bool WrapAsAUV2::activateCLAP()
 {
   if (_plugin)
   {
-    assert(!_initialized);
+    assert(!_clapActive);
     // Reconcile the host-chosen bus formats with the plugin's port layout
     // before anything reads the ports: main thread, plugin deactivated. A
     // failure here must fail the activation: ValidFormat can only vet each
@@ -1335,22 +1534,46 @@ bool WrapAsAUV2::activateCLAP()
       // the adapter checks the pointer under it, and must not find one that is
       // half set up (setupProcessing clears the event queue as it goes).
       ClapWrapper::detail::shared::SpinLockGuard processGuard(_processLock);
+
+      // Whatever the host set while the plugin was deactivated is queued on the
+      // flush adapter (see SetParameter), and the idle tick may not have had a
+      // chance to deliver it: a host restoring a project sets
+      // kAudioUnitProperty_BypassEffect and then calls Initialize right behind
+      // it, with no idle tick in between. Deliver it now, while the plugin is
+      // still inactive and clap_plugin_params.flush() is therefore
+      // [main-thread] -- the thread every caller of this function guarantees
+      // (Initialize(), and the restart and request_process paths in onIdle()).
+      // Nothing else can be inside the plugin: _initialized is false, so
+      // Render() returns before touching it, and the idle flush is the caller
+      // or holds this same lock. Ordered before activate() on purpose: the
+      // plugin then activates already holding the value, instead of being
+      // handed it in its first process() cycle.
+      if (_flushAdapter)
+      {
+        auto guarantee_mainthread = _plugin->AlwaysMainThread();
+        _flushAdapter->flush();
+      }
+
       if (!_processAdapter) _processAdapter = std::make_unique<Clap::AUv2::ProcessAdapter>();
       _processAdapter->setupProcessing(Inputs(), Outputs(), _plugin->_plugin, _plugin->_ext._params,
                                        this, &_parametertree, this, maxSampleFrames,
                                        _midi_preferred_dialect, _midi_supported_dialects,
                                        clapAudioInputs, clapAudioOutputs);
-      // The deactivated-state flush adapter has no further use, and the gestures
-      // it was tracking belong to the real one now.
+      // The deactivated-state flush adapter has no further use: its parameter
+      // events have just been delivered, and the gestures it was tracking belong
+      // to the real one now.
       _flushAdapter.reset();
     }
 
-    _clapActivated = _plugin->activate();
-    if (!_clapActivated)
+    if (!_plugin->activate())
     {
+      // Take the process adapter built above back down: with no active plugin
+      // behind it, nothing would ever drain what SetParameter queues on it.
       deactivateCLAP();
       return false;
     }
+    _clapActive = true;
+
     _clapProcessing = _plugin->start_processing();
     if (!_clapProcessing)
     {
@@ -1372,6 +1595,39 @@ void WrapAsAUV2::deactivateCLAP()
       // pointer and then use it, and the idle tick may be inside a flush on it.
       ClapWrapper::detail::shared::SpinLockGuard processGuard(_processLock);
       _initialized = false;
+
+      // Stand the deactivated-state adapter up here, on the main thread, rather
+      // than leaving SetParameter to build it on demand. AUBase calls
+      // SetParameter from ScheduleParameter(), which is the render thread, and
+      // between this reset and the matching activateCLAP() there is no process
+      // adapter for it to queue on -- a window as long as the plugin takes to
+      // rebuild its DSP. A render thread that had to allocate the replacement
+      // would be allocating inside a real-time callback; finding one already
+      // here makes it a queue push and nothing more.
+      //
+      // It is also where the process adapter's own backlog goes. Whatever the
+      // host set since the last render or flush is still queued there, and
+      // dropping the adapter would drop it: the host was told the value took,
+      // and the plugin would never hear it. This is the same loss SetParameter
+      // avoids while the CLAP is deactivated, at the other end of the window --
+      // the moment the adapter goes away rather than the span when there is
+      // none. Delivery is the deactivated path's job from here: the next idle
+      // tick, or activateCLAP() ahead of clap_plugin.activate(), whichever
+      // comes first, both on the main thread with the plugin inactive, which is
+      // where clap_plugin_params.flush() is legal. Nothing is handed to the
+      // plugin here -- it is still active until the deactivate() below, and a
+      // flush at this point would have to claim the audio thread during
+      // teardown.
+      if (auto *flushAdapter = ensureFlushAdapter())
+      {
+        if (_processAdapter && _processAdapter->transferPendingParametersTo(*flushAdapter) > 0)
+        {
+          // Nothing else would ask: the transfer is not a SetParameter, and the
+          // idle tick only flushes when something has asked it to.
+          _requestedFlush = true;
+        }
+      }
+
       _processAdapter.reset();
     }
     if (_clapProcessing)
@@ -1379,10 +1635,10 @@ void WrapAsAUV2::deactivateCLAP()
       _plugin->stop_processing();
       _clapProcessing = false;
     }
-    if (_clapActivated)
+    if (_clapActive)
     {
       _plugin->deactivate();
-      _clapActivated = false;
+      _clapActive = false;
     }
   }
 }
@@ -1407,11 +1663,26 @@ void WrapAsAUV2::releaseHostMIDIOutput()
 OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags &inFlags, const AudioTimeStamp &inTimeStamp,
                             UInt32 inFrames)
 {
-  ClapWrapper::detail::shared::SpinLockGuard processGuard(_processLock);
-  if (_initialized)
+  // None of the flags a host may set on the way in mean "do not process":
+  // DoNotCheckRenderArgs only tells AUBase to skip its argument checks, and an
+  // input the upstream unit marked silent still has to reach a plugin that may
+  // have a tail. Only the offline phases that are not a render pass are refused,
+  // and this is not an offline unit, so they should never arrive at all.
+  constexpr AudioUnitRenderActionFlags cannotProcess =
+      kAudioOfflineUnitRenderAction_Preflight | kAudioOfflineUnitRenderAction_Complete;
+
+  // try_lock, not lock: onIdle() can hold this across clap_plugin_params.flush(),
+  // which is plugin code of unbounded duration. A block the render thread would
+  // have had to wait for is a block it renders silent instead.
+  std::unique_lock<ClapWrapper::detail::shared::SpinLock> processGuard(_processLock, std::try_to_lock);
+  if (processGuard.owns_lock() && _initialized && !(inFlags & cannotProcess))
   {
     // do the render dance
-    Clap::AUv2::ProcessData data{inFlags, inTimeStamp, inFrames, this};
+    // The adapter hands these to PullInput, which ORs in whatever the upstream
+    // unit reports -- including its own OutputIsSilence. Ours is set below, on
+    // purpose; inheriting it would tell the host this plugin rendered silence.
+    AudioUnitRenderActionFlags pullFlags = inFlags;
+    Clap::AUv2::ProcessData data{pullFlags, inTimeStamp, inFrames, this};
 
     // retrieve musical information for this render block
 
@@ -1486,6 +1757,32 @@ OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags &inFlags, const AudioTime
     //                                        ()
     //                                        {}
     //                                        );
+
+    // The plugin rendered: whatever silence the host or an upstream unit
+    // claimed on the way in does not describe this output.
+    inFlags &= static_cast<AudioUnitRenderActionFlags>(~kAudioUnitRenderAction_OutputIsSilence);
+  }
+  else
+  {
+    // Nothing rendered this cycle (the CLAP is down while onIdle() cycles it for
+    // a restart, or that tick still holds the process lock), and AUBase will not
+    // silence anything for us: the AU stays initialized throughout, so
+    // DoRenderBus copies the output element's cache into the host's buffer after
+    // every noErr Render and returning without writing replays the last block.
+    // Zero every output element, not just the bus being rendered - RenderBus
+    // answers the others from their caches - and the silence flag on top is only
+    // a hint. _renderedSinceIdle is left alone: the idle tick's flush still has
+    // to make up for this block.
+    const auto numOutputs = Outputs().GetNumberOfElements();
+    for (UInt32 i = 0; i < numOutputs; ++i)
+    {
+      AudioBufferList &buffers = Output(i).PrepareBuffer(inFrames);
+      for (UInt32 j = 0; j < buffers.mNumberBuffers; ++j)
+      {
+        std::memset(buffers.mBuffers[j].mData, 0, buffers.mBuffers[j].mDataByteSize);
+      }
+    }
+    inFlags |= kAudioUnitRenderAction_OutputIsSilence;
   }
   return noErr;
 }
@@ -1622,6 +1919,19 @@ void WrapAsAUV2::onIdle()
 
   pushQueuedEventsToHost();
 
+  if (_presetListChanged.exchange(false))
+  {
+    // The crawl finished (or found more). Rebuild and tell the host to
+    // re-read; PropertyChanged is main-thread work, which is why the crawl
+    // thread only set a flag.
+    {
+      std::lock_guard<std::mutex> lock(_presetCacheMutex);
+      _presetCacheBuilt = false;
+    }
+    rebuildPresetCache();
+    PropertyChanged(kAudioUnitProperty_FactoryPresets, kAudioUnitScope_Global, 0);
+  }
+
   if (_requestMarkDirty.exchange(false))
   {
     // The plugin's state no longer matches what the host last read. Apple's
@@ -1651,8 +1961,8 @@ void WrapAsAUV2::onIdle()
     // rebuild. Render holds it for its whole body, so once it is acquired no
     // render is inside the process adapter; clearing _initialized under it
     // keeps the ones that follow out while the plugin is torn down and stood
-    // back up. Those renders return without touching the buffers, exactly as
-    // they do before the AU is initialized.
+    // back up. The AU stays initialized throughout, so those renders still
+    // reach Render(), which zeroes the output (see the else branch there).
     bool wasInitialized;
     {
       ClapWrapper::detail::shared::SpinLockGuard processGuard(_processLock);
@@ -1662,8 +1972,10 @@ void WrapAsAUV2::onIdle()
     if (wasInitialized)
     {
       deactivateCLAP();
-      // Even unchanged formats can encounter a rejected CLAP lifecycle call.
-      // A failed restart leaves processing unavailable for a later retry.
+      // Cannot fail for the format-pair reason Initialize guards against:
+      // the formats have not changed since the last successful activation.
+      // If it fails anyway, _initialized stays false and renders are silent
+      // until request_process() below or the host's next Initialize recovers.
       if (!activateCLAP())
       {
         LOGINFO("[clap-wrapper] restart: could not reactivate the plugin");
@@ -1683,9 +1995,8 @@ void WrapAsAUV2::onIdle()
     // activate/start_processing pair, which it drives from AU Initialize() --
     // so if the AU is initialized and the CLAP is not running underneath it,
     // stand it back up. No lock is needed to decide that: activateCLAP()
-    // publishes _initialized last, and a render that reads it false returns
-    // without touching the plugin, exactly as it does before the AU is
-    // initialized at all.
+    // publishes _initialized last, and a render that reads it false outputs
+    // silence without touching the plugin.
     if (IsInitialized() && !_initialized)
     {
       activateCLAP();
@@ -1701,7 +2012,8 @@ void WrapAsAUV2::onIdle()
   // In CLAP a plugin can only push an output event -- a value its own editor
   // changed, the gesture around it -- from inside process() or flush(), and the
   // host's own parameter sets only reach the plugin the same way (SetParameter
-  // queues them on the process adapter). Both directions therefore stop dead
+  // queues them on the process adapter while the plugin is active, and on the
+  // flush adapter while it is not). Both directions therefore stop dead
   // whenever the host stops rendering, and AU hosts do stop: Logic will not run
   // a track it knows carries no signal, and an initialized unit can sit there
   // for minutes without a single Render() call. The VST3 SDK's AU wrapper and
@@ -1756,7 +2068,9 @@ void WrapAsAUV2::onIdle()
     else
     {
       // Deactivated: the real adapter does not exist, and flush() is
-      // [main-thread] here.
+      // [main-thread] here. This is also the path that carries the host's
+      // parameter sets on an uninitialized unit -- SetParameter queues them on
+      // the flush adapter -- so it is a real delivery, not a courtesy call.
       auto guarantee_mainthread = _plugin->AlwaysMainThread();
       flushParameters();
     }
@@ -1766,21 +2080,29 @@ void WrapAsAUV2::onIdle()
   pushQueuedEventsToHost();
 }
 
-// Builds a throwaway process adapter to flush against, for the deactivated case
-// only: the real one lives between activateCLAP() and deactivateCLAP(), and
-// clap_plugin_params.flush() is [main-thread] exactly while the plugin is
-// inactive. Callers check _initialized under _processLock.
-void WrapAsAUV2::flushParameters()
+// The process adapter for the deactivated case: the real one lives between
+// activateCLAP() and deactivateCLAP(), and this one is what SetParameter queues
+// onto and flushParameters() flushes while the CLAP is inactive. Built on first
+// use, and kept between flushes rather than built per call, the way the VST3
+// wrapper builds its throwaway: a gesture the plugin opens in one deactivated
+// flush and closes in the next has to find the same adapter, because that is
+// where the open was recorded -- a close arriving at a fresh one is dropped, and
+// the host stays armed on the parameter. activateCLAP() flushes and releases
+// it. No audio is involved: a zero numMaxSamples skips the silent-stream
+// buffers, and the plugin is handed no audio ports.
+// Callers hold _processLock. Null when the plugin has no params extension,
+// in which case there is nothing to queue and nothing to flush.
+//
+// Allocates on first use, so it must not be reached first from a render thread.
+// It cannot be: deactivateCLAP() builds it as it drops the process adapter, so
+// the restart window always has one ready, and the only other moment without a
+// process adapter is before the first Initialize -- where the host is setting
+// properties on an uninitialized unit from the main thread and no render exists
+// to call ScheduleParameter at all.
+Clap::AUv2::ProcessAdapter *WrapAsAUV2::ensureFlushAdapter()
 {
-  if (!_plugin || !_plugin->_ext._params) return;
+  if (!_plugin || !_plugin->_ext._params) return nullptr;
 
-  // Kept between flushes rather than built per call, the way the VST3 wrapper
-  // builds its throwaway: a gesture the plugin opens in one deactivated flush
-  // and closes in the next has to find the same adapter, because that is where
-  // the open was recorded -- a close arriving at a fresh one is dropped, and
-  // the host stays armed on the parameter. activateCLAP() releases it.
-  // No audio is involved: a zero numMaxSamples skips the silent-stream buffers,
-  // and the plugin is handed no audio ports.
   if (!_flushAdapter)
   {
     _flushAdapter = std::make_unique<Clap::AUv2::ProcessAdapter>();
@@ -1788,7 +2110,18 @@ void WrapAsAUV2::flushParameters()
                                    &_parametertree, this, 0, _midi_preferred_dialect,
                                    _midi_supported_dialects, 0, 0);
   }
-  _flushAdapter->flush();
+  return _flushAdapter.get();
+}
+
+// Flushes the deactivated-case adapter: clap_plugin_params.flush() is
+// [main-thread] exactly while the plugin is inactive. Callers check
+// _initialized under _processLock.
+void WrapAsAUV2::flushParameters()
+{
+  if (auto *flushAdapter = ensureFlushAdapter())
+  {
+    flushAdapter->flush();
+  }
 }
 
 OSStatus WrapAsAUV2::SaveState(CFPropertyListRef *ptPList)
@@ -2030,8 +2363,21 @@ UInt32 WrapAsAUV2::SupportedNumChannels(const AUChannelInfo **outInfo)
     // The PostConstructor probe found the plugin's accepted main-bus layouts
     // through clap.configurable-audio-ports: advertise exactly those (the
     // matching one is applied in activateCLAP once the host settles on it).
+    // One entry per main-bus pair. The probe records a layout per *shape* it
+    // got accepted, so the same pair can appear twice -- once with the non-main
+    // busses left alone and once with them moved along -- and AUChannelInfo has
+    // no way to say that, nor any need to: it describes main busses only.
     for (const auto &caps : _channelCapsCache)
     {
+      auto const already =
+          std::any_of(cinfo.begin(), cinfo.end(),
+                      [&caps](const AUChannelInfo &seen)
+                      {
+                        return seen.inChannels == static_cast<SInt16>(caps.inputChannels) &&
+                               seen.outChannels == static_cast<SInt16>(caps.outputChannels);
+                      });
+      if (already) continue;
+
       cinfo.emplace_back();
       cinfo.back().inChannels = static_cast<SInt16>(caps.inputChannels);
       cinfo.back().outChannels = static_cast<SInt16>(caps.outputChannels);
@@ -2198,15 +2544,30 @@ void WrapAsAUV2::PostConstructor()
         for (uint32_t out = minOut; out <= maxOut; ++out)
         {
           if (in == currentIn && out == currentOut) continue;  // seeded above
-          auto requests = mainBusConfigurationRequests(in, out);
-          const auto size = static_cast<uint32_t>(requests.size());
-          auto *cap = _plugin->_ext._configurable_audio_ports;
-          if (!cap->can_apply_configuration(_plugin->_plugin, requests.data(), size)) continue;
-          if (!cap->apply_configuration(_plugin->_plugin, requests.data(), size)) continue;
 
-          moved = true;
-          _channelCapsCache.push_back({in, out});
-          recordBusChannelCounts(_channelCapsCache.back());
+          // Two shapes per candidate, because a plugin may accept both and a
+          // host will ask for either. The first leaves every non-main port
+          // where it is, which is what a host that only moves the main busses
+          // sends; the second takes them along, which is what a host
+          // configuring a whole track sends. A plugin whose side chain must
+          // match its main bus accepts only the second, one whose side chain is
+          // fixed only the first, and one that can do both gets both recorded
+          // -- ValidFormat admits a bus width that *any* recorded layout gives
+          // that bus, so offering only one of the two is what makes a host's
+          // perfectly reasonable request come back as
+          // kAudioUnitErr_FormatNotSupported.
+          for (uint32_t nonMain : {uint32_t{0}, in})
+          {
+            auto requests = mainBusConfigurationRequests(in, out, nonMain);
+            const auto size = static_cast<uint32_t>(requests.size());
+            auto *cap = _plugin->_ext._configurable_audio_ports;
+            if (!cap->can_apply_configuration(_plugin->_plugin, requests.data(), size)) continue;
+            if (!cap->apply_configuration(_plugin->_plugin, requests.data(), size)) continue;
+
+            moved = true;
+            _channelCapsCache.push_back({in, out});
+            recordBusChannelCounts(_channelCapsCache.back());
+          }
         }
       }
 

@@ -85,6 +85,11 @@ fs::path getPluginPath();
 std::string getParentFolderName();
 std::string getBinaryName();
 
+#if MAC
+// empty when loaded into an xpc service or appex, where the real host is unknowable
+std::string getHostAppName();
+#endif
+
 #ifdef WIN32
 void init();
 void terminate();

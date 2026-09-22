@@ -294,6 +294,23 @@ void ProcessAdapter::process(Steinberg::Vst::ProcessData &data)
       auto param = (Vst3Parameter *)parameters->getParameter(paramid);
       if (param)
       {
+        if (param->isPreset)
+        {
+          // The preset selector. Only the last point in the block matters -
+          // loading three presets because a host sent three points would be
+          // absurd - and the load itself must happen on the main thread, so
+          // all that happens here is a request.
+          auto nums = k->getPointCount();
+          Vst::ParamValue value;
+          int32 offset;
+          if (nums > 0 && k->getPoint(nums - 1, offset, value) == kResultOk && _automation)
+          {
+            const auto index = static_cast<int64_t>(param->asClapValue(value) + 0.5);
+            if (index >= 0) _automation->onRequestPresetLoad(static_cast<size_t>(index));
+          }
+          continue;
+        }
+
         if (param->isMidi)
         {
           auto nums = k->getPointCount();

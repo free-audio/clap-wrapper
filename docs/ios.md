@@ -254,6 +254,7 @@ still installed and still works normally in external hosts.
 | Host shows "Factory class ... is not linked" | Host target missing the entry source / impl library, or AU codes differ between host and appex |
 | Plugin appears on iPhone but not on iPad | Device family mismatch; both bundles must be `1,2` |
 | GUI stays empty | Plugin does not implement the `CLAP_WINDOW_API_UIKIT` window API |
+| Errors in `clap_proxy.cpp` or `preset_discovery.cpp` about `std::filesystem` or `if` initializers | The project is building below C++17. The wrapper now carries a `cxx_std_17` floor, so this only appears against older wrapper versions; set `CMAKE_CXX_STANDARD` to 17 or higher in your own project |
 
 ## Current limitations
 

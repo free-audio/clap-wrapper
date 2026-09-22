@@ -79,6 +79,29 @@ is a complete standalone synth you can release.
 
 See [docs/ios.md](docs/ios.md) for the full iOS instructions.
 
+On **WebAssembly** nothing is wrapped at all. Rather than presenting your CLAP
+to a host as some other format, the build compiles the CLAP itself into a
+`.wclap` — a WebAssembly CLAP — so VST3, AUv2, AUv3, AAX and standalone are all
+unavailable there and `PLUGIN_FORMATS` defaults to `WCLAP` on its own. Either
+Emscripten or the WASI-SDK will do; the toolchain file you configure with picks
+one, and the build detects it from `CMAKE_SYSTEM_NAME` or a `wasm32`/`wasm64`
+processor. The module is compiled with SIMD (`-msimd128`) and exports
+`clap_entry` and `malloc` for the web host to call.
+
+The layout depends on whether you pass a `RESOURCE_DIRECTORY`. With one, you get
+a bundle — `YourPlugin.wclap/module.wasm` beside a copy of that directory, and a
+`.tar.gz` of the whole bundle for shipping. Without one, a single flat
+`YourPlugin.wclap.wasm`.
+
+## Contribution
+
+Development happens on `next`; `main` only moves at a release. Before opening an
+issue or a pull request:
+
+- Check whether the problem is already fixed on `next`. Issues are not closed
+  automatically when a fix lands, so an open issue is not proof of an unfixed bug.
+- Base pull requests on `next`, not `main`.
+
 ## Licensing
 
 The `clap-wrapper` project is released under the MIT license.

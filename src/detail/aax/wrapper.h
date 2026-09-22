@@ -246,6 +246,14 @@ class ClapAsAAX : public AAX_CEffectParameters,
 
   bool track_info_get(clap_track_info_t *info) override;
   const char *host_get_name() override;
+  const char *wrapper_flavor() const override
+  {
+    return CLAP_WRAPPER_HOST_FLAVOR_AAX;
+  }
+  const char *underlying_host_name() const override
+  {
+    return _underlying_hostname.empty() ? nullptr : _underlying_hostname.c_str();
+  }
 
   bool supportsContextMenu() const override;
   // context_menu
@@ -273,6 +281,7 @@ class ClapAsAAX : public AAX_CEffectParameters,
   os::State _os_attached;
 
   std::string _wrapper_hostname = "CLAP-As-AAX-Wrapper";
+  std::string _underlying_hostname;
 
   // _parameterMap maps the AAX CParamID to the wrapped parameter
   std::map<std::string, std::shared_ptr<AAXWrappedParameterInfo_t>> _parameterMap;

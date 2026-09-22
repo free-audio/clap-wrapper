@@ -66,6 +66,7 @@ using namespace Steinberg::Vst;
 //------------------------------------------------------------------------
 
 #include "detail/clap/fsutil.h"
+#include "detail/clap/preset_discovery.h"
 #include "detail/vst3/categories.h"
 #include "clap_proxy.h"
 
@@ -102,6 +103,11 @@ Clap::Library &hostedClapLibrary()
 static Steinberg::ModuleTerminator gReleaseHostedClapLibrary(
     []()
     {
+      // First: the crawl thread runs inside the hosted .clap and must be joined
+      // before it is deinit()ed and unmapped. And here rather than at static
+      // destruction - the host calls ExitDll(), so no loader lock is held.
+      Clap::PresetIndex::resetCache();
+
       delete gHostedClapLibrary;
       gHostedClapLibrary = nullptr;
     });

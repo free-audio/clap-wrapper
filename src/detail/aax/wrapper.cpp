@@ -550,6 +550,9 @@ AAX_Result ClapAsAAX::EffectInit()
 
   LOGINFO(fmt::format("AAX Effect Init for '{}'", m.StdString().c_str()));
 
+  AAX_CString hostname;
+  if (AAX_SUCCESS == _aax_ctrl->GetHostName(&hostname)) _underlying_hostname = hostname.StdString();
+
   _library = CLAPAAX::guarantee_clap();
   _plugin = Clap::Plugin::createInstance(_library->_pluginFactory, m.StdString(), this);
 
@@ -1163,13 +1166,7 @@ bool ClapAsAAX::track_info_get(clap_track_info_t *info)
 
 const char *ClapAsAAX::host_get_name()
 {
-  AAX_IController *ctrl = Controller();
-  AAX_CString hostname;
-  if (AAX_SUCCESS == ctrl->GetHostName(&hostname))
-  {
-    _wrapper_hostname = hostname.StdString();
-    _wrapper_hostname.append(" (CLAP-as-AAX)");
-  }
+  if (!_underlying_hostname.empty()) _wrapper_hostname = _underlying_hostname + " (CLAP-as-AAX)";
   return _wrapper_hostname.c_str();
 }
 

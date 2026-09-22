@@ -29,6 +29,7 @@
 #include "detail/shared/fixedqueue.h"
 #include "detail/shared/spinlock.h"
 #include "detail/shared/midi_translation.h"
+#include "detail/clap/preset_discovery.h"
 #include "detail/os/osutil.h"
 #include "detail/clap/automation.h"
 
@@ -616,10 +617,11 @@ class WrapAsAUV2 : public ausdk::AUBase,
     // call that reported dirty. The flag also collapses bursts into one
     // notification per idle tick.
     //
-    // Deliberately not accompanied by kAudioUnitProperty_PresentPreset: the
-    // wrapper exposes no presets, so AUBase's mCurrentPreset stays {-1,
-    // "Untitled"} and notifying it would only make hosts re-read an unchanged
-    // value. That belongs with CLAP preset-load support, when it arrives.
+    // Deliberately not accompanied by kAudioUnitProperty_PresentPreset. That
+    // is now a real property (the wrapper does publish factory presets - see
+    // GetPresets below), but it changes when a preset is *loaded*, not when
+    // the plugin's state drifts from what the host cached; preset_loaded() is
+    // what notifies it.
     _requestMarkDirty = true;
   }
   void restartPlugin() override
@@ -696,6 +698,15 @@ class WrapAsAUV2 : public ausdk::AUBase,
     return false;
   }
 
+  const char *wrapper_flavor() const override
+  {
+    return CLAP_WRAPPER_HOST_FLAVOR_AUV2;
+  }
+  const char *underlying_host_name() const override
+  {
+    return _underlying_hostname.empty() ? nullptr : _underlying_hostname.c_str();
+  }
+
   const char *host_get_name() override
   {
     char text[65];
@@ -756,6 +767,18 @@ class WrapAsAUV2 : public ausdk::AUBase,
   void onPerformEdit(const clap_event_param_value_t *value) override;
   void onEndEdit(clap_id id) override;
 
+  // --------------- factory presets, from clap.preset-load
+  // AU's preset list is flat and numbered, and a host stores the *number*.
+  // Clap::PresetIndex is what makes that number mean the same preset twice -
+  // see its header on ordering.
+  OSStatus GetPresets(CFArrayRef *outData) const override;
+  OSStatus NewFactoryPresetSet(const AUPreset &inNewFactoryPreset) override;
+
+  // --------------- Clap::IHost, preset-load
+  void preset_loaded(uint32_t locationKind, const char *location, const char *loadKey) override;
+  void preset_load_error(uint32_t locationKind, const char *location, const char *loadKey,
+                         int32_t osError, const char *msg) override;
+
   // --------------- IPlugObject
   void onIdle() override;
 
@@ -800,10 +823,11 @@ class WrapAsAUV2 : public ausdk::AUBase,
   void addOutputBus(int bus, const clap_audio_port_info_t *info);
 
   // Configuration requests for the main busses: main ports get the given
-  // channel counts, non-main ports keep their current ones. Shared by the
+  // channel counts, non-main ports keep their current ones -- or, when
+  // nonMainChannels is non-zero, move to that instead. Shared by the
   // PostConstructor probe and applyConfigurationFromBusFormats.
   std::vector<clap_audio_port_configuration_request_t> mainBusConfigurationRequests(
-      uint32_t mainInChannels, uint32_t mainOutChannels) const;
+      uint32_t mainInChannels, uint32_t mainOutChannels, uint32_t nonMainChannels = 0) const;
 
   // If the host chose main-bus stream formats that differ from the current
   // CLAP port layout (ValidFormat admits every probed layout), push the
@@ -819,7 +843,11 @@ class WrapAsAUV2 : public ausdk::AUBase,
   // caller must treat that as a failed initialization.
   bool activateCLAP();
   void deactivateCLAP();
-  // parameter-only round trip on a throwaway process adapter, for when no render
+  // the process adapter used while the CLAP is deactivated: SetParameter queues
+  // the host's values on it and flushParameters() delivers them. Built on first
+  // use; call under _processLock. Null when the plugin has no params extension.
+  Clap::AUv2::ProcessAdapter *ensureFlushAdapter();
+  // parameter-only round trip on the deactivated-case adapter, for when no render
   // is running to carry the events. Only legal while the CLAP is deactivated.
   void flushParameters();
   // the AU-level half of the teardown, which an internal restart must not do
@@ -845,12 +873,18 @@ class WrapAsAUV2 : public ausdk::AUBase,
   std::shared_ptr<Clap::Plugin> _plugin = nullptr;
 
   std::unique_ptr<Clap::AUv2::ProcessAdapter> _processAdapter;
-  // Only for the deactivated-plugin flush, where _processAdapter does not
-  // exist. Lives across flushes so gestures pair up; see flushParameters().
+  // Only while the plugin is deactivated, where _processAdapter does not exist:
+  // SetParameter queues the host's values on it (a host sets bypass and
+  // parameters on a unit before it calls Initialize), and the idle flush or
+  // activateCLAP() -- whichever comes first -- delivers them. Lives across
+  // flushes so gestures pair up; see ensureFlushAdapter().
   std::unique_ptr<Clap::AUv2::ProcessAdapter> _flushAdapter;
   std::atomic<bool> _initialized = false;
-  /// Whether CLAP activation succeeded and requires a matching deactivation.
-  bool _clapActivated = false;
+  // Whether clap_plugin.activate() succeeded and has not been matched by a
+  // deactivate() yet -- not the same fact as _initialized, which also goes
+  // false while the AU keeps running but nothing may enter the plugin. Main
+  // thread only (activateCLAP()/deactivateCLAP()).
+  bool _clapActive = false;
   /// Whether CLAP processing started and requires a matching stop notification.
   bool _clapProcessing = false;
 
@@ -912,6 +946,7 @@ class WrapAsAUV2 : public ausdk::AUBase,
   // std::vector<clap_note_port_info_t> _midi_outports_info;
 
   std::string _hostname = "CLAP-as-AUv2";
+  std::string _underlying_hostname;
 
 #ifdef DUAL_SCHEDULING_ENABLED
   bool _midi_dualscheduling_mode = false;
@@ -946,6 +981,29 @@ class WrapAsAUV2 : public ausdk::AUBase,
 #endif
 
   std::atomic_bool _requestUICallback = false;
+  // ---- clap.preset-load, published as AU factory presets ----
+  void setupPresets();
+  // Builds _presetCache from the index. const because GetPresets() is: AU asks
+  // for the preset list early and synchronously, often before the first idle
+  // tick, so building it lazily there is the only way to answer with anything.
+  void rebuildPresetCache() const;
+
+  std::shared_ptr<Clap::PresetIndex> _presetIndex;
+  uint64_t _presetIndexToken = 0;
+  // Set from the index's crawl thread, serviced in onIdle(): notifying a host
+  // is not something to do from a background thread.
+  std::atomic_bool _presetListChanged = false;
+
+  mutable std::mutex _presetCacheMutex;
+  mutable std::vector<AUPreset> _presetCache;
+  mutable bool _presetCacheBuilt = false;
+  // Every CFString ever handed to a host in an AUPreset, kept alive until this
+  // instance dies. A host may still hold an array from before a rebuild, and
+  // the AU API gives it no way to tell us it is done with one - so retiring
+  // the strings early would be a use-after-free with a very long fuse. There
+  // are at most two generations (empty, then crawled), so nothing accumulates.
+  mutable std::vector<CFStringRef> _presetNameStrings;
+
   // set by mark_dirty(), serviced in onIdle()
   std::atomic_bool _requestMarkDirty = false;
   std::atomic_bool _requestRestart = false;

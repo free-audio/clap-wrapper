@@ -832,14 +832,17 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
 
                  case Menu::Identifier::MuteInput:
                  {
+                   // The one place the user states input intent, so persist it here.
                    if (menu.item[1].fState == MFS_UNCHECKED)
                    {
                      sah->audioInputUsed = false;
+                     sah->settings.audioInputUsed = false;
                      menu.item[1].fState = MFS_CHECKED;
                    }
                    else
                    {
                      sah->audioInputUsed = true;
+                     sah->settings.audioInputUsed = true;
                      menu.item[1].fState = MFS_UNCHECKED;
                    }
 
@@ -991,6 +994,11 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                               sah->deviceOutputChannels = devices[*index].outputChannels;
                               sah->audioOutputUsed = true;
 
+                              // Persist the choice here; the device actually
+                              // opened may be a fallback.
+                              sah->settings.outputDeviceName = devices[*index].name;
+                              sah->settings.audioOutputUsed = true;
+
                               refreshSampleRates();
                               refreshBufferSizes();
 
@@ -1008,6 +1016,10 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                               sah->audioInputDeviceID = devices[*index].ID;
                               sah->deviceInputChannels = devices[*index].inputChannels;
                               sah->audioInputUsed = true;
+
+                              // Picking an input device unmutes it.
+                              sah->settings.inputDeviceName = devices[*index].name;
+                              sah->settings.audioInputUsed = true;
 
                               refreshSampleRates();
                               refreshBufferSizes();
@@ -1029,6 +1041,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                             if (auto index{settings.sampleRate.selection(sampleRates.size())}; index)
                             {
                               sah->currentSampleRate = sampleRates[*index];
+                              sah->settings.sampleRate = sampleRates[*index];
 
                               saveSettings();
                               startAudio();
@@ -1240,7 +1253,9 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
     saveSettings();
   }
 
-  menu.item[1].fState = sah->audioInputUsed ? MFS_UNCHECKED : MFS_CHECKED;
+  // Show what the user chose, not the runtime flag, which is also false when
+  // there is no capture device at all.
+  menu.item[1].fState = sah->settings.audioInputUsed ? MFS_UNCHECKED : MFS_CHECKED;
   SetMenuItemInfoW(getSystemMenu(hwnd.get()), 1, FALSE, &menu.item[1]);
 
   if (plugin.gui)
@@ -1355,6 +1370,10 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
   refreshLayout();
 
   startAudio();
+
+  // The rate asked for may have been 0 ("device preferred") or unsupported, so the
+  // combo can only show the truth once the stream is open.
+  refreshSampleRates();
 
   // Honor the show state requested by the launcher (shortcut "Run:" / STARTUPINFO),
   // falling back to a normal window. SW_HIDE would otherwise leave us invisible-but-running.
@@ -1572,13 +1591,20 @@ void Plugin::selectDefaultDevices()
 {
   auto [input, output, sampleRate]{sah->getDefaultAudioInOutSampleRate()};
 
+  // No device chosen under this API; empty means "follow the system default".
+  // Names from the previous API would not resolve here anyway.
+  sah->settings.inputDeviceName.clear();
+  sah->settings.outputDeviceName.clear();
+
   // RtAudio hands back a default input device id even on a machine with no
   // capture device at all, so take the id only if it names something real.
+  // The probe is a fact about the machine, not a choice: AND it with the user's
+  // wish, which survives an API switch, and never persist it.
   sah->audioInputDeviceID = input;
-  sah->audioInputUsed = sah->isKnownDevice(input);
+  sah->audioInputUsed = sah->settings.audioInputUsed && sah->isKnownDevice(input);
 
   sah->audioOutputDeviceID = output;
-  sah->audioOutputUsed = sah->isKnownDevice(output);
+  sah->audioOutputUsed = sah->settings.audioOutputUsed && sah->isKnownDevice(output);
 
   sah->currentSampleRate = sampleRate;
   sah->currentBufferSize = StandaloneSettings::defaultBufferSize;
