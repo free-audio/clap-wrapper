@@ -839,7 +839,7 @@ class WrapAsAUV2 : public ausdk::AUBase,
   // buffer sizes).
   bool applyConfigurationFromBusFormats();
 
-  // Returns false when the plugin rejects the host-chosen bus formats; the
+  // Returns false when the plugin rejects the bus formats or fails to start;
   // caller must treat that as a failed initialization.
   bool activateCLAP();
   void deactivateCLAP();
@@ -859,6 +859,9 @@ class WrapAsAUV2 : public ausdk::AUBase,
   void SetBypassEffect(bool bypass);
 
   // --------------- internals
+
+  /// Shares the SDK's non-realtime entry lock with idle callbacks and the Cocoa editor.
+  std::shared_ptr<ausdk::AUMutex> _mainThreadMutex = std::make_shared<ausdk::AUMutex>();
 
   // the wrapped CLAP:
   std::string _clapname;
@@ -882,6 +885,8 @@ class WrapAsAUV2 : public ausdk::AUBase,
   // false while the AU keeps running but nothing may enter the plugin. Main
   // thread only (activateCLAP()/deactivateCLAP()).
   bool _clapActive = false;
+  /// Whether CLAP processing started and requires a matching stop notification.
+  bool _clapProcessing = false;
 
   // some info about the wrapped clap
   // audio-port layout captured at PostConstructor. Scanning the CLAP

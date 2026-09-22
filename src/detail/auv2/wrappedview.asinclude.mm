@@ -46,7 +46,7 @@
 
 - (NSView *)uiViewForAudioUnit:(AudioUnit)inAudioUnit withSize:(NSSize)inPreferredSize
 {
-  static free_audio::auv2_wrapper::ui_connection uiconn;
+  free_audio::auv2_wrapper::ui_connection uiconn;
 
   // free_audio::auv2_wrapper::ui_connection connection;
   // Remember we end up being called here because that's what AUCocoaUIView does in the initiation
@@ -89,6 +89,9 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
   LOGINFO("[clap-wrapper] creating NSView");
 
   ui = *cont;
+  // The property lookup has returned, so editor calls need their own SDK entry guard.
+  const auto mainThreadMutex = ui._mainThreadMutex;
+  const ausdk::AUEntryGuard mainThreadGuard(mainThreadMutex.get());
   canary = 0xbeebbeeb;
 
   if (ui._registerWindow)
@@ -151,6 +154,8 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
 }
 - (void)viewDidMoveToWindow
 {
+  const auto mainThreadMutex = ui._mainThreadMutex;
+  const ausdk::AUEntryGuard mainThreadGuard(mainThreadMutex.get());
   if ([self window] == nil)
   {
     LOGINFO("[clap-wrapper] - view removed from a window");
@@ -171,6 +176,9 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
 
 - (void)dealloc
 {
+  // Super deallocation releases the C++ ivars before this scope unlocks the mutex.
+  const auto mainThreadMutex = ui._mainThreadMutex;
+  const ausdk::AUEntryGuard mainThreadGuard(mainThreadMutex.get());
   LOGINFO("[clap-wrapper] NS View dealloc");
   if (idleTimer)
   {
@@ -186,6 +194,8 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
 - (void)setFrame:(NSRect)newSize
 {
   [super setFrame:newSize];
+  const auto mainThreadMutex = ui._mainThreadMutex;
+  const ausdk::AUEntryGuard mainThreadGuard(mainThreadMutex.get());
   if (canary)
   {
     auto gui = ui._plugin->_ext._gui;

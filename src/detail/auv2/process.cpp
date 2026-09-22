@@ -292,7 +292,9 @@ void ProcessAdapter::process(ProcessData &data)
     for (uint32_t i = 0; i < _numInputs; ++i)
     {
       auto &m = static_cast<ausdk::AUInputElement &>(*_audioInputScope->SafeGetElement(i));
-      if (m.PullInput(data.flags, data.timestamp, i, data.numSamples) == noErr)
+      // Silence reported by one input must not describe another input or the plugin output.
+      auto inputFlags = data.flags & ~kAudioUnitRenderAction_OutputIsSilence;
+      if (m.PullInput(inputFlags, data.timestamp, i, data.numSamples) == noErr)
       {
         AudioBufferList &myInBuffers = m.GetBufferList();
         auto num = myInBuffers.mNumberBuffers;
@@ -352,7 +354,6 @@ void ProcessAdapter::process(ProcessData &data)
 #endif
 
   _plugin->process(_plugin, &_processData);
-
   processOutputEvents();
 
   // clean up and prepare the events for the next cycle
