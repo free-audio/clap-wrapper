@@ -255,7 +255,7 @@ OSStatus WrapAsAUV2::Initialize()
   {
     // A rejected configuration or lifecycle call leaves the CLAP deactivated.
     // Report the failure so the host does not render an unavailable processor.
-    return kAudioUnitErr_FormatNotSupported;
+    return kAudioUnitErr_FailedInitialization;
   }
 
 #if 0

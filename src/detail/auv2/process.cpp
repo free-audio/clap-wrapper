@@ -354,10 +354,6 @@ void ProcessAdapter::process(ProcessData &data)
 #endif
 
   _plugin->process(_plugin, &_processData);
-
-  // A CLAP plugin may generate audible output even when its inputs are silent.
-  data.flags &= ~kAudioUnitRenderAction_OutputIsSilence;
-
   processOutputEvents();
 
   // clean up and prepare the events for the next cycle
