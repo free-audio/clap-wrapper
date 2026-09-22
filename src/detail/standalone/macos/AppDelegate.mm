@@ -340,7 +340,7 @@
     }
     else
     {
-      uint32_t w = frameSize.width, h = frameSize.height;
+      uint32_t w = cr.size.width, h = cr.size.height;
       plugin->_ext._gui->adjust_size(plugin->_plugin, &w, &h);
       cr.size.width = w;
       cr.size.height = h;
