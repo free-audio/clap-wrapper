@@ -677,6 +677,8 @@ OSStatus WrapAsAUV2::GetParameterList(AudioUnitScope inScope, AudioUnitParameter
 
 void WrapAsAUV2::param_rescan(clap_param_rescan_flags flags)
 {
+  const bool wasBypassed = _isBypassed;
+
   // Re-call setup parameters which will just reset info if the param exists
   setupParameters(_plugin->_plugin, _plugin->_ext._params);
 
@@ -685,6 +687,13 @@ void WrapAsAUV2::param_rescan(clap_param_rescan_flags flags)
     PropertyChanged(kAudioUnitProperty_ParameterList, kAudioUnitScope_Global, 0);
     PropertyChanged(kAudioUnitProperty_ParameterInfo, kAudioUnitScope_Global, 0);
     PropertyChanged(kAudioUnitProperty_ClassInfo, kAudioUnitScope_Global, 0);
+
+    // setupParameters() re-reads the bypass parameter's value and may have
+    // flipped _isBypassed with it (a plugin that restored a bypassed state and
+    // rescanned, say). Announced here rather than through _bypassChanged:
+    // param_rescan is [main-thread], which is where a property change belongs.
+    if (_isBypassed != wasBypassed)
+      PropertyChanged(kAudioUnitProperty_BypassEffect, kAudioUnitScope_Global, 0);
     return;
   }
 
@@ -809,8 +818,34 @@ OSStatus WrapAsAUV2::SetParameter(AudioUnitParameterID inID, AudioUnitScope inSc
     // and on a deactivated plugin it cannot come; either way onIdle() is the
     // only thing that will hand it to the plugin.
     _requestedFlush = true;
+
+    // A host writing the bypass *parameter* - an automation lane, a generic
+    // view, a preset - has moved the bypass, and until now the property knew
+    // nothing about it: GetProperty(kAudioUnitProperty_BypassEffect) went on
+    // reporting the state before the write, and the host's own bypass button
+    // with it. No recursion: SetBypassEffect() sets _isBypassed before it
+    // calls this, so its own write is not a change and is not announced.
+    noteBypassParameterValue(inID, inValue);
   }
   return AUBase::SetParameter(inID, inScope, inElement, inValue, inBufferOffsetInFrames);
+}
+
+void WrapAsAUV2::noteBypassParameterValue(clap_id id, double value)
+{
+  if (id != _bypassParamID || _bypassParamID == CLAP_INVALID_ID) return;
+
+  // The midpoint, the same test setupParameters() uses. The info lookup is
+  // skipped: this runs on the audio thread and the parameter tree is rebuilt
+  // under a mutex on the main one. Every bypass parameter is a two-state
+  // control and the wrapper already relies on min/max being its two states
+  // (SetBypassEffect writes exactly those), so 0.5 of the declared range is
+  // knowable without reading the tree - and 0.5 is that for the 0..1 range
+  // every CLAP bypass has.
+  const bool bypassed = value >= 0.5;
+  if (bypassed == _isBypassed) return;
+
+  _isBypassed = bypassed;
+  _bypassChanged.store(true);
 }
 
 void WrapAsAUV2::SetBypassEffect(bool bypass)
@@ -952,6 +987,15 @@ OSStatus WrapAsAUV2::GetPropertyInfo(AudioUnitPropertyID inID, AudioUnitScope in
         break;
       case kAudioUnitProperty_BypassEffect:
         // case kAudioUnitProperty_InPlaceProcessing:
+        //
+        // Only when the plugin can actually do it. Render() has no bypass
+        // branch - the CLAP is processed whatever the property says - so the
+        // whole of the wrapper's bypass is SetBypassEffect() writing the
+        // plugin's bypass parameter. A CLAP that declares none cannot be
+        // bypassed at all, and advertising the property anyway leaves the host
+        // showing a bypassed effect that is still processing. Refusing it
+        // sends the host to its own way of bypassing an insert.
+        if (_bypassParamID == CLAP_INVALID_ID) return kAudioUnitErr_InvalidProperty;
         outWritable = true;
         outDataSize = sizeof(UInt32);
         return noErr;
@@ -1054,6 +1098,7 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         // return  GetInstrumentCount(*static_cast<UInt32*>(outData));
 
       case kAudioUnitProperty_BypassEffect:
+        LOGDETAIL("[clap-wrapper] auv2: host read BypassEffect={}", IsBypassEffect() ? 1 : 0);
         *static_cast<UInt32 *>(outData) = (IsBypassEffect() ? 1 : 0);  // NOLINT
         return noErr;
         //    case kAudioUnitProperty_InPlaceProcessing:
@@ -1171,6 +1216,8 @@ OSStatus WrapAsAUV2::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         }
 
         const bool tempNewSetting = *static_cast<const UInt32 *>(inData) != 0;
+        LOGDETAIL("[clap-wrapper] auv2: host set BypassEffect={} (was {})", tempNewSetting ? 1 : 0,
+                  IsBypassEffect() ? 1 : 0);
         // we're changing the state of bypass
         if (tempNewSetting != IsBypassEffect())
         {
@@ -1815,6 +1862,13 @@ void WrapAsAUV2::onPerformEdit(const clap_event_param_value_t *value)
 {
 #ifdef NOTIFYDIRECT
   Globals()->SetParameter(value->param_id, value->value);
+
+  // A plugin that moves its own bypass - restoring a project, or a bypass
+  // control in its own UI - has to move the host's bypass button with it, and
+  // a parameter value change is not that: the button is a property. The queued
+  // branch below has carried this since the bypass parameter was supported,
+  // but NOTIFYDIRECT means that branch never runs.
+  noteBypassParameterValue(value->param_id, value->value);
   AudioUnitEvent myEvent;
   myEvent.mEventType = kAudioUnitEvent_ParameterValueChange;
   myEvent.mArgument.mParameter.mAudioUnit = GetComponentInstance();
@@ -1874,32 +1928,19 @@ void WrapAsAUV2::pushQueuedEventsToHost()
       break;
       case queueEvent::type::editvalue:
       {
-        Globals()->SetParameter(e._data._id, e._data._value.value);
-        if (e._data._id == _bypassParamID)
-        {
-          // Decided under the lock, announced outside it: PropertyChanged runs
-          // the host's listeners synchronously and they are free to come back in
-          // through the property getters.
-          std::optional<bool> bypassed;
-          {
-            std::lock_guard<std::mutex> guard(_paramTreeMutex);
-            auto p = _parametertree.find(_bypassParamID);
-            if (p != _parametertree.end())
-            {
-              const auto &info = p->second->info();
-              bypassed = (e._data._value.value >= 0.5 * (info.min_value + info.max_value));
-            }
-          }
-          if (bypassed && *bypassed != _isBypassed)
-          {
-            _isBypassed = *bypassed;
-            PropertyChanged(kAudioUnitProperty_BypassEffect, kAudioUnitScope_Global, 0);
-          }
-        }
+        // `_data._id` is the wrong member here and always has been: a
+        // ValueEvent fills `_data._value`, and `_id` aliases the event
+        // header's `size` field, so every parameter in this branch was
+        // addressed as 32. The two other wrappers read `_value.param_id`.
+        const auto paramId = (AudioUnitParameterID)e._data._value.param_id;
+
+        Globals()->SetParameter(paramId, e._data._value.value);
+        noteBypassParameterValue(e._data._value.param_id, e._data._value.value);
+
         AudioUnitEvent myEvent;
         myEvent.mEventType = kAudioUnitEvent_ParameterValueChange;
         myEvent.mArgument.mParameter.mAudioUnit = GetComponentInstance();
-        myEvent.mArgument.mParameter.mParameterID = (AudioUnitParameterID)e._data._id;
+        myEvent.mArgument.mParameter.mParameterID = paramId;
         myEvent.mArgument.mParameter.mScope = kAudioUnitScope_Global;
         myEvent.mArgument.mParameter.mElement = 0;
         AUEventListenerNotify(NULL, NULL, &myEvent);
@@ -1930,6 +1971,17 @@ void WrapAsAUV2::onIdle()
     }
     rebuildPresetCache();
     PropertyChanged(kAudioUnitProperty_FactoryPresets, kAudioUnitScope_Global, 0);
+  }
+
+  if (_bypassChanged.exchange(false))
+  {
+    // The bypass moved from the plugin's side (see noteBypassParameterValue).
+    // The host's own bypass button follows this property and nothing else, so
+    // without it the button and the audio disagree until something else
+    // happens to refresh it.
+    LOGINFO("[clap-wrapper] auv2: bypass now {} (announced from the plugin side)",
+            _isBypassed ? "on" : "off");
+    PropertyChanged(kAudioUnitProperty_BypassEffect, kAudioUnitScope_Global, 0);
   }
 
   if (_requestMarkDirty.exchange(false))
