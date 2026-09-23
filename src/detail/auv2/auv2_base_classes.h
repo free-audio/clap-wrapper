@@ -965,6 +965,22 @@ class WrapAsAUV2 : public ausdk::AUBase,
   clap_id _bypassParamID = CLAP_INVALID_ID;
   bool _isBypassed = false;
 
+  // Set when the bypass parameter moved from the plugin's side of the wrapper
+  // - a value the plugin emitted, or a host write of the parameter rather than
+  // of the property - and drained by onIdle(), which fires the property change
+  // for it. Deferred because both of those arrive on the audio thread, and
+  // PropertyChanged() runs the host's listeners synchronously; the preset-list
+  // and mark-dirty flags below take the same route for the same reason.
+  std::atomic_bool _bypassChanged{false};
+
+  // The bypass parameter and kAudioUnitProperty_BypassEffect are one control
+  // with two faces, and this is what keeps them in step: give it whatever a
+  // parameter value says and it records the change for onIdle() to announce.
+  // Audio-thread safe. Does nothing when the value did not change, which is
+  // what keeps SetBypassEffect() - which sets _isBypassed itself before
+  // writing the parameter - from announcing the host's own write back to it.
+  void noteBypassParameterValue(clap_id id, double value);
+
   CFStringRef _current_program_name = 0;
 
   // ------------- for the MIDI output
