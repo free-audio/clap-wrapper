@@ -101,6 +101,7 @@ issue or a pull request:
 - Check whether the problem is already fixed on `next`. Issues are not closed
   automatically when a fix lands, so an open issue is not proof of an unfixed bug.
 - Base pull requests on `next`, not `main`.
+- Make sure your commit is clang-formatted according to the `.clang-format` file.
 
 ## Licensing
 
