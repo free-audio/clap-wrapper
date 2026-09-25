@@ -269,16 +269,15 @@ tresult PLUGIN_API WrappedView::checkSizeConstraint(ViewRect *rect)
 
 bool WrappedView::request_resize(uint32_t width, uint32_t height)
 {
-  auto oldrect = _rect;
-  _rect.right = _rect.left + (int32)width;
-  _rect.bottom = _rect.top + (int32)height;
+  if (!_plugFrame) return false;
 
-  if (_plugFrame && !_plugFrame->resizeView(this, &_rect))
-  {
-    _rect = oldrect;
-    return false;
-  }
-  return true;
+  // Hosts can query getSize before onSize, which updates _rect with current geometry.
+  // Keep the requested rectangle independent so that query cannot alter the request.
+  auto requestedRect = _rect;
+  requestedRect.right = requestedRect.left + (int32)width;
+  requestedRect.bottom = requestedRect.top + (int32)height;
+
+  return _plugFrame->resizeView(this, &requestedRect) == kResultOk;
 }
 tresult WrappedView::setContentScaleFactor(IPlugViewContentScaleSupport::ScaleFactor factor)
 {
