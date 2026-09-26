@@ -100,8 +100,14 @@ AAXWrapper_inInstanceInitProc(const SAAX_Wrapper_AlgorithmicContext *inInstanceC
   {
     case AAX_eComponentInstanceInitAction_AddingNewInstance:
       LOGDETAIL("adding new instance");
-      self->activatePlugin();
-      self->startProcessing();
+      // A plugin that refuses to activate must not be asked to start processing.
+      // The instance is still reported as created: Pro Tools has no documented
+      // handling for a failed instance init, and the render path answers with
+      // silence for as long as the plugin stays down.
+      if (self->activatePlugin())
+      {
+        self->startProcessing();
+      }
       break;
     case AAX_eComponentInstanceInitAction_RemovingInstance:
       LOGDETAIL("removing instance");
@@ -1219,7 +1225,7 @@ void ClapAsAAX::onIdle()
   }
 }
 
-void ClapAsAAX::activatePlugin()
+bool ClapAsAAX::activatePlugin()
 {
   if (!_activated)
   {
@@ -1248,8 +1254,18 @@ void ClapAsAAX::activatePlugin()
                                      _paramsToProcess, _midi_first_portid, _midi_prefer_mididialect,
                                      placeholderInChannels, placeholderOutChannels);
 
-    _activated = true;
-    _plugin->activate();
+    // Latch on the plugin's answer, not ahead of it: CLAP forbids deactivate()
+    // on a plugin that never activated, and _activated is what deactivatePlugin()
+    // and the destructor decide that from. The adapter stays: Pro Tools renders
+    // the instance whatever this returns, and process() needs the adapter to know
+    // the channel layout it has to silence. onIdle() may still flush through it,
+    // which is legal on a deactivated plugin and runs on the main thread.
+    _activated = _plugin->activate();
+    if (!_activated)
+    {
+      LOGINFO("[ERROR] Plugin activate() failed; plugin remains deactivated");
+      return false;
+    }
 
     // pass latency when activated
     auto scope = _plugin->AlwaysMainThread();
@@ -1260,6 +1276,7 @@ void ClapAsAAX::activatePlugin()
       _aax_ctrl->SetSignalLatency(_latency);
     }
   }
+  return _activated;
 }
 
 void ClapAsAAX::deactivatePlugin()
@@ -1274,6 +1291,10 @@ void ClapAsAAX::deactivatePlugin()
 
 void ClapAsAAX::startProcessing()
 {
+  // CLAP only allows start_processing() on an active plugin, and activatePlugin()
+  // can now legitimately have left it deactivated.
+  if (!_activated) return;
+
   if (!_processing)
   {
     // Latch the flag on the plugin's answer, not ahead of it. CLAP is explicit

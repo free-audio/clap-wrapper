@@ -269,7 +269,9 @@ class ClapAsAAX : public AAX_CEffectParameters,
 
   void onIdle() override;
 
-  void activatePlugin();
+  // Returns false when the plugin refused to activate, in which case it is left
+  // deactivated and must not be started.
+  bool activatePlugin();
   void deactivatePlugin();
   void startProcessing();
   void stopProcessing();
