@@ -22,6 +22,7 @@
 #include "detail/vst3/process.h"
 #include "detail/vst3/parameter.h"
 #include "detail/clap/fsutil.h"
+#include <cstring>
 #include <locale>
 #include <sstream>
 
@@ -259,10 +260,36 @@ tresult PLUGIN_API ClapAsVst3::setActive(TBool state)
   return super::setActive(state);
 }
 
+// Write silence into the host's output buffers. Used on the paths where CLAP
+// forbids process() - an inactive plugin, or one whose start_processing()
+// returned false. The host does not have to clear the buffers it hands us and
+// not every host honours the kResultFalse out of setProcessing(), so leaving
+// them untouched would repeat whatever the last rendered block left behind.
+static void silenceOutputBuffers(Steinberg::Vst::ProcessData &data)
+{
+  if (data.symbolicSampleSize != Steinberg::Vst::kSample32) return;
+  if (data.numSamples <= 0 || !data.outputs) return;
+
+  for (Steinberg::int32 bus = 0; bus < data.numOutputs; ++bus)
+  {
+    auto &out = data.outputs[bus];
+    if (!out.channelBuffers32) continue;
+
+    for (Steinberg::int32 ch = 0; ch < out.numChannels; ++ch)
+    {
+      if (out.channelBuffers32[ch])
+        memset(out.channelBuffers32[ch], 0, sizeof(float) * (size_t)data.numSamples);
+    }
+    out.silenceFlags = (out.numChannels >= 64) ? ~Steinberg::uint64(0)
+                                               : ((Steinberg::uint64(1) << out.numChannels) - 1);
+  }
+}
+
 tresult PLUGIN_API ClapAsVst3::process(Vst::ProcessData &data)
 {
   if (!_active || !_processing)
   {
+    silenceOutputBuffers(data);
     return kNotInitialized;
   }
 
