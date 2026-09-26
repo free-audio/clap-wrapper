@@ -479,9 +479,16 @@ tresult PLUGIN_API ClapAsVst3::setProcessing(TBool state)
   {
     if (!_processing)
     {
-      _processing = true;
+      // Latch the flag on the plugin's answer, not ahead of it. CLAP is explicit
+      // that a false return means processing did not start: process() must not be
+      // called, and the stop_processing() that setProcessing(false) pairs with it
+      // must not happen either. Setting it first also made a refusal permanent -
+      // the host's next setProcessing(true) found _processing already true and
+      // never asked the plugin again, so a transiently refused start stayed
+      // refused until the next deactivate/activate cycle.
+      _processing = _plugin->start_processing();
 
-      result = (_plugin->start_processing() ? Steinberg::kResultOk : Steinberg::kResultFalse);
+      result = (_processing ? Steinberg::kResultOk : Steinberg::kResultFalse);
     }
   }
   else

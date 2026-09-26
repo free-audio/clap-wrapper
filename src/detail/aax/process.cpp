@@ -59,11 +59,48 @@ void AAX_CALLBACK AAXWrapper_AlgorithmProcessProc(
 
 void ClapAsAAX::process(SAAX_Wrapper_AlgorithmicContext *context)
 {
+  if (!_processAdapter) return;
+
+  // CLAP forbids process() on a plugin that is not processing, which is where a
+  // start_processing() that returned false leaves this wrapper. Pro Tools does
+  // not clear the algorithm's output buffers between renders, so hand it silence
+  // rather than whatever they happened to hold. The flush request stays pending:
+  // no render is going to carry those events, so onIdle() still owes them.
+  if (!_processing)
+  {
+    _processAdapter->silenceOutputs(context);
+    return;
+  }
+
   // abort any flush request
   _flushRequested.store(false);
 
   // process
   _processAdapter->process(context);
+}
+
+void AAXProcessAdapter::silenceOutputs(SAAX_Wrapper_AlgorithmicContext *context)
+{
+  if (!context->mAudioOutputs || !context->mNumSamples) return;
+  const size_t bytes = sizeof(float) * (size_t)*(context->mNumSamples);
+
+  // The CLAP's own output ports, walked across the AAX channel array in the
+  // same order process() distributes the pointers.
+  uint32_t channel = 0;
+  for (uint32_t i = 0; i < _proc.audio_outputs_count; ++i)
+  {
+    for (uint32_t c = 0; c < _output_ports[i].channel_count; ++c, ++channel)
+    {
+      if (context->mAudioOutputs[channel]) memset(context->mAudioOutputs[channel], 0, bytes);
+    }
+  }
+
+  // A pure-MIDI CLAP has no audio ports at all, but the AAX component still
+  // carries a placeholder stem which process() writes from channel 0.
+  for (uint32_t c = 0; c < _placeholderOutChannels; ++c)
+  {
+    if (context->mAudioOutputs[c]) memset(context->mAudioOutputs[c], 0, bytes);
+  }
 }
 
 inline clap_beattime doubleToBeatTime(double t)

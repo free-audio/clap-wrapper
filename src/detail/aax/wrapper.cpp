@@ -1276,8 +1276,13 @@ void ClapAsAAX::startProcessing()
 {
   if (!_processing)
   {
-    _processing = true;
-    _plugin->start_processing();
+    // Latch the flag on the plugin's answer, not ahead of it. CLAP is explicit
+    // that a false return means processing did not start: process() must not be
+    // called, and the stop_processing() that stopProcessing() would pair with it
+    // must not happen either. Leaving the flag clear also lets a later
+    // startProcessing() ask again instead of short-circuiting on a state the
+    // plugin never reached.
+    _processing = _plugin->start_processing();
   }
 }
 
