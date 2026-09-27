@@ -17,6 +17,7 @@
 #include <AudioUnitSDK/AUBase.h>
 #include <CoreMIDI/CoreMIDI.h>
 #include "auv2_shared.h"
+#include <atomic>
 #include <iostream>
 #include <memory>
 #include <map>
@@ -370,7 +371,9 @@ class WrapAsAUV2 : public ausdk::AUBase,
 
   // connection from plugin to view
   ui_connection _uiconn;
-  bool _uiIsOpened;
+  // Written on the main thread as the editor comes and goes, read from whatever
+  // thread the plugin calls gui_request_resize() on.
+  std::atomic_bool _uiIsOpened;
 
   bool initializeClapDesc();
 
@@ -673,12 +676,40 @@ class WrapAsAUV2 : public ausdk::AUBase,
 
   bool gui_can_resize() override
   {
-    return false;
+    // The Cocoa view is the only thing in AUv2 the wrapper can give a size to,
+    // so this is true exactly while there is one.
+    return _uiIsOpened.load();
   }
   bool gui_request_resize(uint32_t width, uint32_t height) override
   {
-    extern bool auv2shared_mm_request_resize(const clap_window_t *, uint32_t, uint32_t);
-    return auv2shared_mm_request_resize(_uiconn._window, width, height);
+    // 0 is the sentinel in the packed request below, and UIs with 65kx65k
+    // resolution are not supported.
+    if (width == 0 || height == 0) return false;
+    if ((width > 0xffff) || (height > 0xffff)) return false;
+    if (!_uiIsOpened.load()) return false;
+
+    // On the main thread the view is resized right here, and its -setFrame:
+    // override hands the size straight back through set_size() before this
+    // returns. That echo is deliberate and is what AU Cocoa hosts rely on: the
+    // content is laid out to the new frame before control goes back to the host,
+    // and the frame change is what the host follows. Logic's AU view wrapper
+    // resizes its own window from the AU view's NSViewFrameDidChangeNotification,
+    // and places the view at (0, 0) itself - so the frame here is always given
+    // origin (0, 0) too. Keeping the view's current origin instead, or deferring
+    // the resize and suppressing the echo, left the editor drawn out of place in
+    // Logic (#574, reverted in #575).
+    if (auv2shared_mm_is_main_thread())
+    {
+      return auv2shared_mm_request_resize(_uiconn._window, width, height);
+    }
+
+    // request_resize is [thread-safe], AppKit and set_size() are not. Off the
+    // main thread the request is parked for onIdle(), which applies it the same
+    // way. A request that has not been serviced yet is simply replaced: only the
+    // last size the plugin asked for is worth anything. true says it was
+    // accepted and will be handled asynchronously.
+    _requestedUISize.store((width << 16) | height);
+    return true;
   }
   bool gui_request_show() override
   {
@@ -1003,6 +1034,11 @@ class WrapAsAUV2 : public ausdk::AUBase,
   // the strings early would be a use-after-free with a very long fuse. There
   // are at most two generations (empty, then crawled), so nothing accumulates.
   mutable std::vector<CFStringRef> _presetNameStrings;
+
+  // Set by gui_request_resize() when it is called off the main thread, serviced
+  // in onIdle(): width in the high 16 bits, height in the low ones, 0 when
+  // nothing is pending.
+  std::atomic<uint32_t> _requestedUISize = 0;
 
   // set by mark_dirty(), serviced in onIdle()
   std::atomic_bool _requestMarkDirty = false;
