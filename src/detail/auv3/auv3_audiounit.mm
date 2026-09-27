@@ -1777,6 +1777,10 @@ static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
     _impl->_idleTicksBeforeFlush = std::max(_impl->kMinIdleTicksBeforeFlush, ticks);
   }
 
+  // Set when the plugin refuses to come up, and acted on below once the lock
+  // this block takes has been dropped again.
+  BOOL clapStartFailed = NO;
+
   {
     // Under _processLock from here to _initialized: no flush can slip in
     // between activate() and start_processing() and claim the wrong thread
@@ -1798,11 +1802,57 @@ static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
 
     // Activate the CLAP plugin
     AUV3LOG("allocateRenderResources: calling activate()");
-    _impl->_plugin->activate();
+    const bool clapActivated = _impl->_plugin->activate();
 
+    // Both returns have to be honoured, and they have to be honoured together.
+    // CLAP forbids process() on a plugin whose start_processing() returned
+    // false, and forbids the matching stop_processing() as well; a plugin that
+    // never activated must not be asked to start in the first place, nor
+    // deactivated afterwards. There is no half-allocated state to park the
+    // unit in — _initialized is what tells the idle flush whether the plugin
+    // is active — so undo the whole allocation and fail the host's call.
     AUV3LOG("allocateRenderResources: calling start_processing()");
-    _impl->_plugin->start_processing();
-    _impl->_initialized = true;
+    if (!clapActivated || !_impl->_plugin->start_processing())
+    {
+      AUV3ERR("allocateRenderResources: %{public}s failed",
+              clapActivated ? "start_processing()" : "activate()");
+
+      if (clapActivated)
+      {
+        AUV3LOG("allocateRenderResources: calling deactivate()");
+        _impl->_plugin->deactivate();
+      }
+
+      // Unwind in the reverse order of the setup above. Nothing has rendered
+      // and nothing can have been queued for a render — producers check
+      // _renderResourcesAllocated under _paramCacheMutex, which is cleared
+      // here — so the adapter holds no events anyone is still owed.
+      _impl->_processAdapterLive.store(nullptr);
+      {
+        std::lock_guard<std::mutex> lock(_impl->_paramCacheMutex);
+        _renderResourcesAllocated = NO;
+      }
+      _impl->_processAdapter.reset();
+
+      clapStartFailed = YES;
+    }
+    else
+    {
+      _impl->_initialized = true;
+    }
+  }
+
+  if (clapStartFailed)
+  {
+    if (outError)
+      *outError = [NSError
+          errorWithDomain:NSOSStatusErrorDomain
+                     code:kAudioUnitErr_FailedInitialization
+                 userInfo:@{NSLocalizedDescriptionKey : @"The CLAP plugin refused to start processing"}];
+    // Tell the base class the allocation did not stand, so the host does not
+    // see an audio unit that reports allocated render resources it cannot use.
+    [super deallocateRenderResources];
+    return NO;
   }
 
   // Re-cache latency — the plugin may have set it during activation. Outside

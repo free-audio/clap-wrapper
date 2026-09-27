@@ -85,6 +85,9 @@ class AAXProcessAdapter
                        ParamChangeQueue &inqueue, uint32_t midiportid, bool preferMIDI,
                        uint32_t placeholderInChannels, uint32_t placeholderOutChannels);
   void process(SAAX_Wrapper_AlgorithmicContext *context);
+  // Zero every output channel of this render context. Used in place of
+  // process() when CLAP does not allow the plugin to be rendered.
+  void silenceOutputs(SAAX_Wrapper_AlgorithmicContext *context);
   void flush();
 
  private:
@@ -266,7 +269,9 @@ class ClapAsAAX : public AAX_CEffectParameters,
 
   void onIdle() override;
 
-  void activatePlugin();
+  // Returns false when the plugin refused to activate, in which case it is left
+  // deactivated and must not be started.
+  bool activatePlugin();
   void deactivatePlugin();
   void startProcessing();
   void stopProcessing();

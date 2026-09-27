@@ -615,7 +615,17 @@ bool StandaloneHost::activatePlugin(int32_t sr, int32_t minBlock, int32_t maxBlo
   }
   isActive = true;
 
-  clapPlugin->start_processing();
+  if (!clapPlugin->start_processing())
+  {
+    // CLAP: a false return means processing never started, so process() must not
+    // be called and stop_processing() must not be paired with it. Take the
+    // activation we just made back down rather than hand the audio callback a
+    // plugin that is not allowed to render - deactivatePlugin() skips the
+    // stop_processing() because isProcessing was never set.
+    LOGINFO("[ERROR] Plugin start_processing() failed; plugin remains deactivated");
+    deactivatePlugin();
+    return false;
+  }
   isProcessing = true;
 
   // Only now let the callback back in. Taking the lock keeps a callback which is
