@@ -221,6 +221,7 @@ WrapAsAUV2::~WrapAsAUV2()
 
       // close destroy the gui ourselves
       _plugin->_ext._gui->destroy(_plugin->_plugin);
+      _uiconn._window = nullptr;
       _uiIsOpened = false;
     }
 
@@ -1078,6 +1079,9 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
           // this must exist
           _plugin->_ext._gui->destroy(_plugin->_plugin);
 
+          // Nothing may message the view after this point: onIdle() services
+          // resize requests through it, and the view is on its way out.
+          this->_uiconn._window = nullptr;
           this->_uiIsOpened = false;
           if (this->_uiconn._canary)
           {
@@ -1947,6 +1951,18 @@ void WrapAsAUV2::onIdle()
     {
       auto guarantee_mainthread = _plugin->AlwaysMainThread();
       _plugin->_plugin->on_main_thread(_plugin->_plugin);
+    }
+  }
+
+  // A resize the plugin asked for, parked by gui_request_resize() because this
+  // is the main thread and because the view calls back into the plugin. The
+  // exchange also drops a request whose editor has gone away in the meantime.
+  if (const auto packedSize = _requestedUISize.exchange(0); packedSize != 0 && _uiconn._window)
+  {
+    auto guarantee_mainthread = _plugin->AlwaysMainThread();
+    if (!auv2shared_mm_request_resize(_uiconn._window, packedSize >> 16, packedSize & 0xffff))
+    {
+      LOGINFO("[clap-wrapper] the view did not take the size the plugin asked for");
     }
   }
 

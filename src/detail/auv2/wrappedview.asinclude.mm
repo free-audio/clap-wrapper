@@ -19,12 +19,13 @@
 //#define CLAP_WRAPPER_UI_CLASSNAME_NSVIEW CLAP_WRAPPER_COCOA_CLASS_NSVIEW
 //#define CLAP_WRAPPER_UI_CLASSNAME_COCOAUI CLAP_WRAPPER_COCOA_CLASS
 
-@interface CLAP_WRAPPER_COCOA_CLASS_NSVIEW : NSView
+@interface CLAP_WRAPPER_COCOA_CLASS_NSVIEW : NSView <ClapWrapperAUv2ResizableView>
 {
   free_audio::auv2_wrapper::ui_connection ui;
   uint32_t canary;
   CFRunLoopTimerRef idleTimer;
-  float lastScale;
+  // the size the plugin was last told to be, so a host laying the view out
+  // repeatedly at the same size does not keep calling back into it
   NSSize underlyingUISize;
   bool setSizeByZoom;  // use this flag to see if resize comes from here or from external
 }
@@ -135,6 +136,7 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
 
     [self setAutoresizingMask:mask];
     gui->set_size(ui._plugin->_plugin, size.width, size.height);
+    underlyingUISize = size;
   }
 
   idleTimer = nil;
@@ -193,17 +195,61 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
 }
 - (void)setFrame:(NSRect)newSize
 {
-  [super setFrame:newSize];
   const auto mainThreadMutex = ui._mainThreadMutex;
   const ausdk::AUEntryGuard mainThreadGuard(mainThreadMutex.get());
-  if (canary)
+
+  // setSizeByZoom means the size below is one the plugin just asked for through
+  // request_resize. It already knows it, so the echo back into set_size() is
+  // skipped - a plugin that recomputes its layout there and asks again for what
+  // it settles on would otherwise bounce between the two sizes. A resize the
+  // host initiated still has to reach the plugin.
+  const bool tellPlugin =
+      canary && !setSizeByZoom && ui._plugin->_ext._gui->can_resize(ui._plugin->_plugin);
+
+  uint32_t w = (uint32_t)newSize.size.width;
+  uint32_t h = (uint32_t)newSize.size.height;
+  if (tellPlugin)
   {
-    auto gui = ui._plugin->_ext._gui;
+    // CLAP wants set_size() to carry a size the plugin agreed to, and the size a
+    // host lays the view out at is nothing of the sort - a fixed aspect ratio or
+    // a step size snaps it here. The VST3 view does the same in onSize().
+    if (ui._plugin->_ext._gui->adjust_size(ui._plugin->_plugin, &w, &h))
+    {
+      newSize.size = NSMakeSize(w, h);
+    }
+  }
+
+  [super setFrame:newSize];
+
+  if (tellPlugin && !NSEqualSizes(NSMakeSize(w, h), underlyingUISize))
+  {
     // gui->set_scale is intentionally not called because
     // AUv2 gui always uses logical size
-    gui->set_size(ui._plugin->_plugin, newSize.size.width, newSize.size.height);
+    ui._plugin->_ext._gui->set_size(ui._plugin->_plugin, w, h);
+    underlyingUISize = NSMakeSize(w, h);
   }
   // gui->show(ui._plugin->_plugin);
+}
+
+- (BOOL)clapWrapperRequestResizeToWidth:(uint32_t)width height:(uint32_t)height
+{
+  const auto mainThreadMutex = ui._mainThreadMutex;
+  const ausdk::AUEntryGuard mainThreadGuard(mainThreadMutex.get());
+  if (!canary) return NO;
+
+  // Telling AppKit is the whole job here: the plugin picked these numbers, so
+  // -setFrame: must not hand them straight back to it. The host sees the frame
+  // change and comes back through -setFrame: with what it could actually give
+  // us, which is the size the plugin then hears about.
+  NSRect frame = [self frame];
+  frame.size = NSMakeSize(width, height);
+
+  setSizeByZoom = true;
+  [self setFrame:frame];
+  setSizeByZoom = false;
+
+  underlyingUISize = frame.size;
+  return YES;
 }
 
 @end

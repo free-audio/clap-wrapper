@@ -17,6 +17,7 @@
 #include <AudioUnitSDK/AUBase.h>
 #include <CoreMIDI/CoreMIDI.h>
 #include "auv2_shared.h"
+#include <atomic>
 #include <iostream>
 #include <memory>
 #include <map>
@@ -370,7 +371,9 @@ class WrapAsAUV2 : public ausdk::AUBase,
 
   // connection from plugin to view
   ui_connection _uiconn;
-  bool _uiIsOpened;
+  // Written on the main thread as the editor comes and goes, read from whatever
+  // thread the plugin calls gui_request_resize() on.
+  std::atomic_bool _uiIsOpened;
 
   bool initializeClapDesc();
 
@@ -673,12 +676,33 @@ class WrapAsAUV2 : public ausdk::AUBase,
 
   bool gui_can_resize() override
   {
-    return false;
+    // The Cocoa view is the only thing in AUv2 the wrapper can give a size to,
+    // so this is true exactly while there is one. gui_request_resize() answers
+    // the plugin on the same terms.
+    return _uiIsOpened.load();
   }
   bool gui_request_resize(uint32_t width, uint32_t height) override
   {
-    extern bool auv2shared_mm_request_resize(const clap_window_t *, uint32_t, uint32_t);
-    return auv2shared_mm_request_resize(_uiconn._window, width, height);
+    // 0 is the sentinel in the packed request below, and UIs with 65kx65k
+    // resolution are not supported
+    if (width == 0 || height == 0) return false;
+    if ((width > 0xffff) || (height > 0xffff)) return false;
+
+    if (!_uiIsOpened.load()) return false;
+
+    // Not serviced here. -setFrame: on the wrapper's view calls the plugin's
+    // set_size() straight back, so doing the work now would reenter the plugin
+    // from inside its own request_resize(); and request_resize is [thread-safe]
+    // while both AppKit and set_size() are main-thread only. Park it for
+    // onIdle(), which is where everything else the plugin asks for is done.
+    //
+    // A request that has not been serviced yet is simply replaced: only the last
+    // size the plugin asked for is worth anything. Returning true says the
+    // request was accepted and will be handled asynchronously, which is what
+    // clap/ext/gui.h asks a host to mean by it - the round trip through the host
+    // comes back as a set_size() carrying whatever size it could actually give.
+    _requestedUISize.store((width << 16) | height);
+    return true;
   }
   bool gui_request_show() override
   {
@@ -1003,6 +1027,10 @@ class WrapAsAUV2 : public ausdk::AUBase,
   // the strings early would be a use-after-free with a very long fuse. There
   // are at most two generations (empty, then crawled), so nothing accumulates.
   mutable std::vector<CFStringRef> _presetNameStrings;
+
+  // Set by gui_request_resize() from any thread, serviced in onIdle(): width in
+  // the high 16 bits, height in the low ones, 0 when nothing is pending.
+  std::atomic<uint32_t> _requestedUISize = 0;
 
   // set by mark_dirty(), serviced in onIdle()
   std::atomic_bool _requestMarkDirty = false;
