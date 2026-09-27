@@ -39,28 +39,4 @@ typedef struct ui_connection
   std::function<void()> _destroyWindow = nullptr;
 } ui_connection;
 
-// Implemented in auv2_shared.mm: hands a size the plugin asked for to the Cocoa
-// view behind `win`. Main thread only - it messages AppKit, and the view calls
-// back into the plugin. \see WrapAsAUV2::onIdle()
-bool auv2shared_mm_request_resize(const clap_window_t *win, uint32_t width, uint32_t height);
-
 }  // namespace free_audio::auv2_wrapper
-
-#ifdef __OBJC__
-#import <Foundation/Foundation.h>
-
-/*
- * The wrapper's NSView subclass is generated per plugin under a process-wide
- * unique class name (see wrappedview.mm), so no other translation unit can name
- * the type. This protocol is the one thing they need from it.
- *
- * It is only ever used as a compile time cast target - the call site asks
- * -respondsToSelector: instead of -conformsToProtocol: - so two wrapped plugins
- * in one process do not have to agree on whose copy of it the ObjC runtime
- * registered.
- */
-@protocol ClapWrapperAUv2ResizableView <NSObject>
-// Applies a size the plugin requested without echoing it back into set_size().
-- (BOOL)clapWrapperRequestResizeToWidth:(uint32_t)width height:(uint32_t)height;
-@end
-#endif
