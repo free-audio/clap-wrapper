@@ -39,4 +39,13 @@ typedef struct ui_connection
   std::function<void()> _destroyWindow = nullptr;
 } ui_connection;
 
+// Implemented in auv2_shared.mm. Sets the Cocoa view behind `win` to a size the
+// plugin asked for, at origin (0, 0); its -setFrame: override hands the size
+// back to the plugin through set_size(). Main thread only.
+bool auv2shared_mm_request_resize(const clap_window_t *win, uint32_t width, uint32_t height);
+
+// Whether this is the process's real main thread - AppKit's, not the CLAP
+// main-thread role AlwaysMainThread() lends to other threads.
+bool auv2shared_mm_is_main_thread();
+
 }  // namespace free_audio::auv2_wrapper
