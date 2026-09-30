@@ -620,11 +620,9 @@ class WrapAsAUV2 : public ausdk::AUBase,
     // call that reported dirty. The flag also collapses bursts into one
     // notification per idle tick.
     //
-    // Deliberately not accompanied by kAudioUnitProperty_PresentPreset. That
-    // is now a real property (the wrapper does publish factory presets - see
-    // GetPresets below), but it changes when a preset is *loaded*, not when
-    // the plugin's state drifts from what the host cached; preset_loaded() is
-    // what notifies it.
+    // Accompanied by a kAudioUnitProperty_PresentPreset notification, though
+    // the preset has not changed: Logic Pro ignores ClassInfo, and only that
+    // lights its Compare button. See onIdle().
     _requestMarkDirty = true;
   }
   void restartPlugin() override

@@ -1942,6 +1942,12 @@ void WrapAsAUV2::onIdle()
     // v2->v3 bridge turns this into a KVO notification on the AUAudioUnit's
     // fullState, so v3 hosts hear it too.
     PropertyChanged(kAudioUnitProperty_ClassInfo, kAudioUnitScope_Global, 0);
+    // Logic Pro does not listen to ClassInfo: a plugin whose state is not
+    // (only) its parameters changed, called mark_dirty, and Logic's Compare
+    // button stayed dark. What Logic does hear is the preset changing, so that
+    // is announced as well. The preset itself is unchanged, and a host that
+    // reads it gets the same answer as before.
+    PropertyChanged(kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0);
   }
 
   if (_requestUICallback)
