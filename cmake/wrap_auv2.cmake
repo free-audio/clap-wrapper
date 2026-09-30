@@ -276,11 +276,30 @@ function(target_add_auv2_wrapper)
             MACOSX_BUNDLE_SHORT_VERSION_STRING ${AUV2_BUNDLE_VERSION}
             )
 
-    # This is "PRE_BUILD" because the target is created at cmake time and we want to beat xcode signing in order
-    # it is *not* a MACOSX_BUNDLE_INFO_PLIST since that is a configure not build time concept so doesn't work
-    # with compile time generated files
-    add_custom_command(TARGET ${AUV2_TARGET} PRE_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy ${bhtgoutdir}/auv2_Info.plist $<TARGET_FILE_DIR:${AUV2_TARGET}>/../Info.plist)
+    # The real Info.plist is generated at build time by the build helper, but a BUNDLE target
+    # also gets CMake's default one (no AudioComponents), so make the real one a build input.
+    if (${CMAKE_GENERATOR} STREQUAL "Xcode")
+        # same approach as wrap_auv3.cmake
+        set_target_properties(${AUV2_TARGET} PROPERTIES XCODE_ATTRIBUTE_INFOPLIST_FILE "${bhtgoutdir}/auv2_Info.plist")
+    else()
+        # CMake rewrites the default plist on every configure, so restore it through a stamp
+        # that each configure deletes; LINK_DEPENDS reruns POST_BUILD signing. The stamp is a
+        # target source, not its own target, which would cycle below CMP0112.
+        set(plist_stamp_dir "${CMAKE_CURRENT_BINARY_DIR}/${AUV2_TARGET}-info-plist")
+        set(plist_stamp "${plist_stamp_dir}/$<CONFIG>.stamp")
+        file(REMOVE_RECURSE "${plist_stamp_dir}")
+        # Makefiles don't create a custom command's OUTPUT directory
+        add_custom_command(
+            OUTPUT "${plist_stamp}"
+            COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_BUNDLE_CONTENT_DIR:${AUV2_TARGET}>" "${plist_stamp_dir}"
+            COMMAND ${CMAKE_COMMAND} -E copy "${bhtgoutdir}/auv2_Info.plist" "$<TARGET_BUNDLE_CONTENT_DIR:${AUV2_TARGET}>/Info.plist"
+            COMMAND ${CMAKE_COMMAND} -E touch "${plist_stamp}"
+            DEPENDS "${bhtgoutdir}/auv2_Info.plist"
+            COMMENT "clap-wrapper: restoring the generated Info.plist in ${AUV2_OUTPUT_NAME}.component"
+            VERBATIM)
+        target_sources(${AUV2_TARGET} PRIVATE "${plist_stamp}")
+        set_property(TARGET ${AUV2_TARGET} APPEND PROPERTY LINK_DEPENDS "${plist_stamp}")
+    endif()
 
     # XCode needs a special extra flag
     set_target_properties(${AUV2_TARGET} PROPERTIES XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${AUV2_BUNDLE_IDENTIFIER}.component")
