@@ -1,6 +1,7 @@
 #pragma once
 
 #include "clap/private/macros.h"
+#include "clap/private/std.h"
 
 /*
     Some information for the VST3 factory/plugin structures can not
@@ -161,6 +162,34 @@ extern "C"
     uint32_t(CLAP_ABI *supportedNoteExpressions)(
         const clap_plugin *plugin);  // returns a bitmap of clap_supported_note_expressions
   } clap_plugin_as_vst3_t;
+
+  // the plugin extension for keyboard input
+  static const CLAP_CONSTEXPR char CLAP_PLUGIN_AS_VST3_KEYS[] = "clap.plugin-keys-as-vst3/0";
+
+  /*
+  receive the key events of IPlugView::onKeyDown and onKeyUp.
+
+  Some hosts take the keyboard away from a plugin's window and offer keys through the VST3 interface
+  instead, which is the only way a plugin sees them there. CLAP has no key event to forward those to, by
+  design, so a plugin that wants them implements this extension; one that does not is unaffected and the
+  host keeps the key, as before.
+
+  The arguments are IPlugView's own: key is the unicode code point the key produced and 0 when it
+  produced none, virtual_key is a VirtualKeyCodes value (keycodes.h) for a key that produces no
+  character and 0 otherwise, and modifiers is a combination of KeyModifier.
+
+  Return true ONLY when the plugin really used the key, since the host takes that as kResultTrue and
+  stops handling the key itself.
+
+  This extension is optionally returned by the plugin when asked for extension CLAP_PLUGIN_AS_VST3_KEYS
+*/
+  typedef struct clap_plugin_as_vst3_keys
+  {
+    bool(CLAP_ABI *on_key_down)(const clap_plugin *plugin, uint32_t key, int32_t virtual_key,
+                                uint32_t modifiers);
+    bool(CLAP_ABI *on_key_up)(const clap_plugin *plugin, uint32_t key, int32_t virtual_key,
+                              uint32_t modifiers);
+  } clap_plugin_as_vst3_keys_t;
 
 #ifdef __cplusplus
 }

@@ -1,5 +1,6 @@
 #include "plugview.h"
 #include <clap/clap.h>
+#include "clapwrapper/vst3.h"
 #include <cassert>
 #include <iostream>
 
@@ -146,14 +147,34 @@ tresult PLUGIN_API WrappedView::onWheel(float /*distance*/)
   return kResultFalse;
 }
 
-tresult PLUGIN_API WrappedView::onKeyDown(char16 /*key*/, int16 /*keyCode*/, int16 /*modifiers*/)
+// A host that keeps the keyboard to itself offers keys here instead of letting them reach the plugin's
+// window, and this is the only way a plugin sees them there. CLAP has no key event to forward them to, so
+// the CLAP_PLUGIN_AS_VST3_KEYS extension carries them for a plugin that wants them. A plugin without that
+// extension is unaffected: kResultFalse, and the host goes on handling the key itself.
+tresult WrappedView::keyEvent(bool down, char16 key, int16 keyCode, int16 modifiers)
 {
-  return kResultFalse;
+  if (!_plugin) return kResultFalse;
+
+  auto *keys =
+      (const clap_plugin_as_vst3_keys_t *)_plugin->get_extension(_plugin, CLAP_PLUGIN_AS_VST3_KEYS);
+
+  if (!keys) return kResultFalse;
+
+  auto *fn = down ? keys->on_key_down : keys->on_key_up;
+
+  if (!fn) return kResultFalse;
+
+  return fn(_plugin, (uint32_t)key, (int32_t)keyCode, (uint32_t)modifiers) ? kResultTrue : kResultFalse;
 }
 
-tresult PLUGIN_API WrappedView::onKeyUp(char16 /*key*/, int16 /*keyCode*/, int16 /*modifiers*/)
+tresult PLUGIN_API WrappedView::onKeyDown(char16 key, int16 keyCode, int16 modifiers)
 {
-  return kResultFalse;
+  return keyEvent(true, key, keyCode, modifiers);
+}
+
+tresult PLUGIN_API WrappedView::onKeyUp(char16 key, int16 keyCode, int16 modifiers)
+{
+  return keyEvent(false, key, keyCode, modifiers);
 }
 
 tresult PLUGIN_API WrappedView::getSize(ViewRect *size)

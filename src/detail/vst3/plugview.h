@@ -95,6 +95,9 @@ class WrappedView : public Steinberg::IPlugView,
   bool request_resize(uint32_t width, uint32_t height);
 
  private:
+  // onKeyDown and onKeyUp both go here, and reach the plugin through CLAP_PLUGIN_AS_VST3_KEYS when it
+  // implements that extension.
+  tresult keyEvent(bool down, char16 key, int16 keyCode, int16 modifiers);
   void ensure_ui();
   void drop_ui();
   void releaseAdditionalReferences();
