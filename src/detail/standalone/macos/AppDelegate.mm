@@ -1,4 +1,5 @@
 #import "AppDelegate.h"
+#import "StandardMenuBar.h"
 
 #include <AVFoundation/AVFoundation.h>
 
@@ -10,9 +11,9 @@
 
 #include "detail/clap/fsutil.h"
 
-@interface ClapWrapperAppDelegate ()
-
-@end
+#if !__has_feature(objc_arc)
+#error "the macOS standalone sources are built with -fobjc-arc"
+#endif
 
 @interface AudioSettingsWindow : NSWindow
 {
@@ -24,6 +25,23 @@
 - (void)resetSampleRateSelection;
 
 @end
+
+@interface ClapWrapperAppDelegate ()
+{
+  AudioSettingsWindow *audioSettingsWindow;
+  NSURL *currentFile;
+}
+
+@end
+
+static void showError(NSString *message, NSString *info)
+{
+  NSAlert *alert = [[NSAlert alloc] init];
+  [alert setMessageText:message];
+  [alert setInformativeText:info];
+  [alert addButtonWithTitle:@"OK"];
+  [alert runModal];
+}
 
 @implementation ClapWrapperAppDelegate
 
@@ -63,9 +81,53 @@
   }
 }
 
+- (void)createWindowWithContentSize:(NSSize)size resizable:(BOOL)resizable
+{
+  auto style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable;
+  if (resizable) style |= NSWindowStyleMaskResizable;
+
+  auto *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, size.width, size.height)
+                                             styleMask:style
+                                               backing:NSBackingStoreBuffered
+                                                 defer:NO];
+  // we own it; AppKit releasing it on close left the timer and gui talking to a freed window
+  window.releasedWhenClosed = NO;
+  window.title = [NSString stringWithUTF8String:OUTPUT_NAME];
+  window.delegate = self;
+  [window center];
+
+  // restores the saved frame, then we put the size back to what the plugin asked for
+  [window setFrameAutosaveName:@"ClapWrapperStandaloneMainWindow"];
+  auto frame = window.frame;
+  auto top = NSMaxY(frame);
+  frame.size = [window frameRectForContentRect:NSMakeRect(0, 0, size.width, size.height)].size;
+  frame.origin.y = top - frame.size.height;
+  [window setFrame:frame display:NO];
+
+  self.window = window;
+}
+
+- (void)showWindow
+{
+  [self.window makeKeyAndOrderFront:nil];
+#if defined(MAC_OS_VERSION_14_0)
+  if (@available(macOS 14.0, *))
+  {
+    [NSApp activate];
+    return;
+  }
+#endif
+  [NSApp activateIgnoringOtherApps:YES];
+}
+
+- (void)showEmptyWindow
+{
+  [self createWindowWithContentSize:NSMakeSize(480, 360) resizable:NO];
+  [self showWindow];
+}
+
 - (void)doSetup
 {
-  // Insert code here to initialize your application
   const char *argv[2] = {OUTPUT_NAME, 0};
 
   const clap_plugin_entry *entry{nullptr};
@@ -95,6 +157,7 @@
 
   if (!entry)
   {
+    [self showEmptyWindow];
     return;
   }
   self.requestCallbackTimer = [NSTimer timerWithTimeInterval:0.08
@@ -129,16 +192,10 @@
   auto plugin =
       freeaudio::clap_wrapper::standalone::mainCreatePlugin(entry, pid, pindex, 1, (char **)argv);
 
-  [[self window] orderFrontRegardless];
-  [[self window] setDelegate:self];
-
   freeaudio::clap_wrapper::standalone::getStandaloneHost()->onRequestResize =
       [self](uint32_t w, uint32_t h)
   {
-    NSSize sz;
-    sz.width = w;
-    sz.height = h;
-    [[self window] setContentSize:sz];
+    [self.window setContentSize:NSMakeSize(w, h)];
     // The size was accepted -- it has just been applied. Returning false said the
     // opposite, and a plugin that believed it left its own GUI a size behind the
     // window it is drawn in. Windows answers true from the same place.
@@ -155,14 +212,8 @@
     if (!ui->create(p, CLAP_WINDOW_API_COCOA, false))
     {
       LOGINFO("[ERROR] Plugin GUI create() failed");
-      @autoreleasepool
-      {
-        NSAlert *alert = [[NSAlert alloc] init];
-        [alert setMessageText:@"Plugin Error"];
-        [alert setInformativeText:@"The plugin failed to create its user interface."];
-        [alert addButtonWithTitle:@"OK"];
-        [alert runModal];
-      }
+      [self showEmptyWindow];
+      showError(@"Plugin Error", @"The plugin failed to create its user interface.");
       return;
     }
     ui->set_scale(p, 1);
@@ -179,49 +230,39 @@
     if (sizeError)
     {
       LOGINFO("[ERROR] Plugin GUI get_size() failed: {}", [sizeError UTF8String]);
-      @autoreleasepool
-      {
-        NSAlert *alert = [[NSAlert alloc] init];
-        [alert setMessageText:@"Plugin Error"];
-        [alert setInformativeText:sizeError];
-        [alert addButtonWithTitle:@"OK"];
-        [alert runModal];
-      }
       ui->destroy(p);
+      [self showEmptyWindow];
+      showError(@"Plugin Error", sizeError);
       return;
     }
 
-    if (ui->can_resize(p))
+    auto canResize = ui->can_resize(p);
+    if (canResize)
     {
       ui->adjust_size(p, &w, &h);
     }
 
-    NSView *view = [[self window] contentView];
-
-    NSSize sz;
-    sz.width = w;
-    sz.height = h;
-    [[self window] setContentSize:sz];
+    [self createWindowWithContentSize:NSMakeSize(w, h) resizable:canResize];
 
     clap_window win;
     win.api = CLAP_WINDOW_API_COCOA;
-    win.cocoa = view;
+    win.cocoa = (__bridge void *)self.window.contentView;
     if (!ui->set_parent(p, &win))
     {
       LOGINFO("[ERROR] Plugin GUI set_parent() failed");
-      @autoreleasepool
-      {
-        NSAlert *alert = [[NSAlert alloc] init];
-        [alert setMessageText:@"Plugin Error"];
-        [alert
-            setInformativeText:
-                @"The plugin failed to embed its user interface. Please contact the plugin developer."];
-        [alert addButtonWithTitle:@"OK"];
-        [alert runModal];
-      }
+      [self showWindow];
+      showError(@"Plugin Error",
+                @"The plugin failed to embed its user interface. Please contact the plugin "
+                @"developer.");
       return;
     }
     ui->show(p);
+    // after the embed, so the window never flashes up blank
+    [self showWindow];
+  }
+  else
+  {
+    [self showEmptyWindow];
   }
 
   freeaudio::clap_wrapper::standalone::getStandaloneHost()->displayAudioError = [](auto &s)
@@ -229,20 +270,32 @@
     NSLog(@"Error Reported: %s", s.c_str());
     @autoreleasepool
     {
-      NSAlert *alert = [[NSAlert alloc] init];
-      [alert setMessageText:@"Unable to configure audio"];
-      [alert setInformativeText:[[NSString alloc] initWithUTF8String:s.c_str()]];
-      [alert addButtonWithTitle:@"OK"];
-      [alert runModal];
+      showError(@"Unable to configure audio", [[NSString alloc] initWithUTF8String:s.c_str()]);
     }
   };
 
   freeaudio::clap_wrapper::standalone::mainStartAudio();
 }
 
+- (void)applicationWillFinishLaunching:(NSNotification *)aNotification
+{
+  auto *file = freeaudio::clap_wrapper::standalone::macos::installStandardMenuBar(
+      @selector(openAudioSettingsWindow:), @"Audio/MIDI Settings…");
+
+  auto *open = [[NSMenuItem alloc] initWithTitle:@"Open…"
+                                          action:@selector(openWrapperFile:)
+                                   keyEquivalent:@"o"];
+  [file insertItem:open atIndex:0];
+  [file insertItem:NSMenuItem.separatorItem atIndex:1];
+  [file addItemWithTitle:@"Save" action:@selector(streamWrapperFile:) keyEquivalent:@"s"];
+  auto *saveAs = [file addItemWithTitle:@"Save As…"
+                                 action:@selector(streamWrapperFileAs:)
+                          keyEquivalent:@"s"];
+  saveAs.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
+}
+
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification
 {
-  [NSApp activateIgnoringOtherApps:YES];
   [NSTimer scheduledTimerWithTimeInterval:0.001
                                    target:self
                                  selector:@selector(doSetup)
@@ -253,6 +306,11 @@
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender
 {
   return true;
+}
+
+- (BOOL)applicationSupportsSecureRestorableState:(NSApplication *)app
+{
+  return YES;
 }
 
 - (void)applicationWillTerminate:(NSNotification *)aNotification
@@ -283,99 +341,106 @@
 
 - (IBAction)openAudioSettingsWindow:(id)sender
 {
-  @autoreleasepool
+  if (audioSettingsWindow.visible)
   {
-    NSRect windowRect = NSMakeRect(0, 0, 400, 360);
-
-    auto *window = [[AudioSettingsWindow alloc]
-        initWithContentRect:windowRect
-                  styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
-                            NSWindowStyleMaskResizable | NSWindowStyleMaskMiniaturizable
-                    backing:NSBackingStoreBuffered
-                      defer:NO];
-
-    [window setupContents];
-
-    // Center the window and make it key window and front.
-    [window center];
-    [window makeKeyAndOrderFront:nil];
+    [audioSettingsWindow makeKeyAndOrderFront:nil];
+    return;
   }
+
+  audioSettingsWindow = [[AudioSettingsWindow alloc]
+      initWithContentRect:NSMakeRect(0, 0, 400, 360)
+                styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
+                          NSWindowStyleMaskResizable | NSWindowStyleMaskMiniaturizable
+                  backing:NSBackingStoreBuffered
+                    defer:NO];
+  audioSettingsWindow.releasedWhenClosed = NO;
+
+  [audioSettingsWindow setupContents];
+  [audioSettingsWindow center];
+  [audioSettingsWindow makeKeyAndOrderFront:nil];
+}
+
+- (void)windowWillClose:(NSNotification *)notification
+{
+  if (notification.object != self.window) return;
+
+  // the plugin window is the app, so an open settings window must not keep it alive
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [NSApp terminate:nil];
+  });
 }
 
 - (void)windowDidResize:(NSNotification *)notification
 {
   auto plugin = freeaudio::clap_wrapper::standalone::getMainPlugin();
 
-  if (plugin && plugin->_ext._gui)
+  if (plugin && plugin->_ext._gui && plugin->_ext._gui->can_resize(plugin->_plugin))
   {
-    auto canRS = plugin->_ext._gui->can_resize(plugin->_plugin);
-    if (canRS)
-    {
-      auto w = [self window];
-      auto f = [w frame];
-      auto cr = [w contentRectForFrameRect:f];
-      plugin->_ext._gui->set_size(plugin->_plugin, cr.size.width, cr.size.height);
-    }
+    auto cr = [self.window contentRectForFrameRect:self.window.frame];
+    plugin->_ext._gui->set_size(plugin->_plugin, cr.size.width, cr.size.height);
   }
 }
 
 - (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)frameSize
 {
+  // only reachable when resizable, which means can_resize() said yes
   auto plugin = freeaudio::clap_wrapper::standalone::getMainPlugin();
+  if (!plugin || !plugin->_ext._gui) return frameSize;
 
-  if (plugin && plugin->_ext._gui)
+  auto *gui = plugin->_ext._gui;
+  auto current = [sender contentRectForFrameRect:sender.frame].size;
+  auto f = sender.frame;
+  f.size = frameSize;
+  auto cr = [sender contentRectForFrameRect:f];
+
+  clap_gui_resize_hints hints{};
+  if (gui->get_resize_hints(plugin->_plugin, &hints))
   {
-    auto w = [self window];
-    auto f = [w frame];
-    f.size = frameSize;
-    auto cr = [w contentRectForFrameRect:f];
-
-    auto canRS = plugin->_ext._gui->can_resize(plugin->_plugin);
-    if (!canRS)
-    {
-      uint32_t w, h;
-      plugin->_ext._gui->get_size(plugin->_plugin, &w, &h);
-      cr.size.width = w;
-      cr.size.height = h;
-    }
-    else
-    {
-      uint32_t w = cr.size.width, h = cr.size.height;
-      plugin->_ext._gui->adjust_size(plugin->_plugin, &w, &h);
-      cr.size.width = w;
-      cr.size.height = h;
-    }
-    auto fr = [w frameRectForContentRect:cr];
-    frameSize = fr.size;
+    if (!hints.can_resize_horizontally) cr.size.width = current.width;
+    if (!hints.can_resize_vertically) cr.size.height = current.height;
   }
-  return frameSize;
+
+  uint32_t w = cr.size.width, h = cr.size.height;
+  gui->adjust_size(plugin->_plugin, &w, &h);
+  cr.size.width = w;
+  cr.size.height = h;
+  return [sender frameRectForContentRect:cr].size;
+}
+
+- (void)saveToURL:(NSURL *)url
+{
+  auto fsp = fs::path{[[url path] UTF8String]};
+  auto fn = fsp.replace_extension(".cwstream");
+
+  auto standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
+
+  try
+  {
+    standaloneHost->saveStandaloneAndPluginSettings(fn.parent_path(), fn.filename());
+    currentFile = [[url URLByDeletingPathExtension] URLByAppendingPathExtension:@"cwstream"];
+  }
+  catch (const fs::filesystem_error &e)
+  {
+    showError(@"Unable to save file", [[NSString alloc] initWithUTF8String:e.what()]);
+  }
+}
+
+- (IBAction)streamWrapperFile:(id)sender
+{
+  if (currentFile)
+    [self saveToURL:currentFile];
+  else
+    [self streamWrapperFileAs:sender];
 }
 
 - (IBAction)streamWrapperFileAs:(id)sender
 {
   NSSavePanel *savePanel = [NSSavePanel savePanel];
-  [savePanel setNameFieldStringValue:@"Untitled"];  //
+  [savePanel setNameFieldStringValue:@"Untitled"];
 
   if ([savePanel runModal] == NSModalResponseOK)
   {
-    NSURL *documentURL = [savePanel URL];
-    auto fsp = fs::path{[[documentURL path] UTF8String]};
-    auto fn = fsp.replace_extension(".cwstream");
-
-    auto standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
-
-    try
-    {
-      standaloneHost->saveStandaloneAndPluginSettings(fn.parent_path(), fn.filename());
-    }
-    catch (const fs::filesystem_error &e)
-    {
-      NSAlert *alert = [[NSAlert alloc] init];
-      [alert setMessageText:@"Unable to save file"];
-      [alert setInformativeText:[[NSString alloc] initWithUTF8String:e.what()]];
-      [alert addButtonWithTitle:@"OK"];
-      [alert runModal];
-    }
+    [self saveToURL:[savePanel URL]];
   }
 }
 
@@ -398,14 +463,11 @@
     try
     {
       standaloneHost->tryLoadStandaloneAndPluginSettings(fn.parent_path(), fn.filename());
+      currentFile = selectedUrl;
     }
     catch (const fs::filesystem_error &e)
     {
-      NSAlert *alert = [[NSAlert alloc] init];
-      [alert setMessageText:@"Unable to open file"];
-      [alert setInformativeText:[[NSString alloc] initWithUTF8String:e.what()]];
-      [alert addButtonWithTitle:@"OK"];
-      [alert runModal];
+      showError(@"Unable to open file", [[NSString alloc] initWithUTF8String:e.what()]);
     }
   }
 }
