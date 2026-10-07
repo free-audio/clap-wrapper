@@ -2,6 +2,7 @@
 
 #include <AVFoundation/AVFoundation.h>
 
+#include <algorithm>
 #include <map>
 
 #include "detail/standalone/entry.h"
@@ -11,6 +12,10 @@
 #include "detail/clap/fsutil.h"
 
 @interface ClapWrapperAppDelegate ()
+
+// Set once the main window has closed. It is released when it closes, so after
+// that [self window] must not be touched - and its position was saved on the way.
+@property(assign) BOOL windowClosed;
 
 @end
 
@@ -224,6 +229,10 @@
     ui->show(p);
   }
 
+  // After the content size: the saved point is the top-left corner, and a window
+  // that has just taken the plugin's size keeps it where it was left.
+  [self restoreWindowPosition];
+
   freeaudio::clap_wrapper::standalone::getStandaloneHost()->displayAudioError = [](auto &s)
   {
     NSLog(@"Error Reported: %s", s.c_str());
@@ -258,6 +267,10 @@
 - (void)applicationWillTerminate:(NSNotification *)aNotification
 {
   LOGDETAIL("Application terminating");
+
+  // Quitting with the window still open; a closed one saved in windowWillClose.
+  if (!self.windowClosed) [self saveWindowPosition];
+
   freeaudio::clap_wrapper::standalone::getStandaloneHost()->displayAudioError = nullptr;
   freeaudio::clap_wrapper::standalone::getStandaloneHost()->onRequestResize = nullptr;
 
@@ -300,6 +313,78 @@
     [window center];
     [window makeKeyAndOrderFront:nil];
   }
+}
+
+// windowX/windowY hold the frame's top-left corner in Cocoa screen coordinates
+// (origin at the bottom-left of the primary screen, y up), and the size is the frame
+// size. Only the position is restored: the plugin decides the size.
+- (void)restoreWindowPosition
+{
+  auto *standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
+  if (!standaloneHost->loadStandaloneSettings() || !standaloneHost->settings.hasWindowPosition) return;
+
+  auto *window = [self window];
+  const NSPoint topLeft =
+      NSMakePoint(standaloneHost->settings.windowX, standaloneHost->settings.windowY);
+
+  // The screens may have changed since - a display unplugged, the arrangement
+  // edited. Only go back where at least part of the title bar lands on one, so the
+  // window can always be grabbed and moved.
+  const NSRect frame = [window frame];
+  const NSRect content = [window contentRectForFrameRect:frame];
+  const CGFloat titleHeight = std::max<CGFloat>(NSHeight(frame) - NSHeight(content), 1);
+  const NSRect titleBar = NSMakeRect(topLeft.x, topLeft.y - titleHeight, NSWidth(frame), titleHeight);
+
+  for (NSScreen *screen in [NSScreen screens])
+  {
+    if (NSIntersectsRect(titleBar, [screen visibleFrame]))
+    {
+      [window setFrameTopLeftPoint:topLeft];
+      return;
+    }
+  }
+
+  LOGINFO("[WARNING] The saved window position ({}, {}) is on no screen; leaving the window where it is",
+          standaloneHost->settings.windowX, standaloneHost->settings.windowY);
+}
+
+- (void)saveWindowPosition
+{
+  auto *window = [self window];
+  auto plugin = freeaudio::clap_wrapper::standalone::getMainPlugin();
+
+  // A minimized or full-screen frame is not one to come back to, and without a
+  // plugin there is no settings file to keep it in.
+  if (!window || !plugin || [window isMiniaturized] ||
+      ([window styleMask] & NSWindowStyleMaskFullScreen) != 0)
+    return;
+
+  auto *standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
+  const NSRect frame = [window frame];
+
+  // Like the Windows frontend, the file also records the audio API and buffer size
+  // in use - but only once there is an engine to ask. The save that restoring the
+  // position sets off comes before audio starts, and would record "unspecified".
+  if (standaloneHost->isActive) standaloneHost->captureAudioSettings();
+  standaloneHost->settings.hasWindowPosition = true;
+  standaloneHost->settings.windowX = static_cast<int32_t>(NSMinX(frame));
+  standaloneHost->settings.windowY = static_cast<int32_t>(NSMaxY(frame));
+  standaloneHost->settings.windowWidth = static_cast<uint32_t>(NSWidth(frame));
+  standaloneHost->settings.windowHeight = static_cast<uint32_t>(NSHeight(frame));
+  standaloneHost->saveStandaloneSettings();
+}
+
+- (void)windowDidMove:(NSNotification *)notification
+{
+  [self saveWindowPosition];
+}
+
+- (void)windowWillClose:(NSNotification *)notification
+{
+  if ([notification object] != [self window]) return;
+
+  [self saveWindowPosition];
+  self.windowClosed = YES;
 }
 
 - (void)windowDidResize:(NSNotification *)notification

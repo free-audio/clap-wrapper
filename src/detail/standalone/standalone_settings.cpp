@@ -2,6 +2,7 @@
 #include "standalone_details.h"
 
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 
 namespace freeaudio::clap_wrapper::standalone
@@ -92,9 +93,61 @@ const char *fromBool(bool v)
 {
   return v ? "true" : "false";
 }
+
+// One `key=value` line, trimmed and unescaped. False for blank lines, comments and
+// anything without a key.
+bool splitLine(const std::string &line, std::string &key, std::string &value)
+{
+  auto trimmed = trim(line);
+  if (trimmed.empty() || trimmed[0] == '#') return false;
+
+  auto eq = trimmed.find('=');
+  if (eq == std::string::npos) return false;
+
+  // Split on the first '=' only: device names are allowed to contain one.
+  key = trim(trimmed.substr(0, eq));
+  value = unescape(trim(trimmed.substr(eq + 1)));
+  return !key.empty();
+}
+
+const char *const windowFields[] = {"windowX", "windowY", "windowWidth", "windowHeight"};
+
+// "windowX" for the first instance, "windowX.2" for the third.
+std::string windowKey(const char *field, uint32_t instance)
+{
+  if (instance == 0) return field;
+  return std::string(field) + "." + std::to_string(instance);
+}
+
+// Whether `key` is one of the window fields, and if so which field and instance.
+bool isWindowKey(const std::string &key, std::string &field, uint32_t &instance)
+{
+  for (auto *name : windowFields)
+  {
+    const auto length{std::strlen(name)};
+    if (key.compare(0, length, name) != 0) continue;
+
+    if (key.size() == length)
+    {
+      field = name;
+      instance = 0;
+      return true;
+    }
+
+    // Only a dot and digits may follow, or "windowXYZ" would pass for windowX.
+    if (key[length] != '.' || key.size() == length + 1) continue;
+    if (key.find_first_not_of("0123456789", length + 1) != std::string::npos) continue;
+
+    field = name;
+    instance = static_cast<uint32_t>(std::strtoul(key.c_str() + length + 1, nullptr, 10));
+    return true;
+  }
+
+  return false;
+}
 }  // namespace
 
-bool StandaloneSettings::load(const fs::path &fromFile)
+bool StandaloneSettings::load(const fs::path &fromFile, uint32_t instance)
 {
   try
   {
@@ -108,21 +161,33 @@ bool StandaloneSettings::load(const fs::path &fromFile)
     bool sawMidiSelection{false};
     bool sawAnyKey{false};
 
-    std::string line;
+    std::string line, key, value, windowField;
+    uint32_t windowInstance{0};
     while (std::getline(ifs, line))
     {
-      auto trimmed = trim(line);
-      if (trimmed.empty() || trimmed[0] == '#') continue;
-
-      auto eq = trimmed.find('=');
-      if (eq == std::string::npos) continue;
-
-      // Split on the first '=' only: device names are allowed to contain one.
-      auto key = trim(trimmed.substr(0, eq));
-      auto value = unescape(trim(trimmed.substr(eq + 1)));
-      if (key.empty()) continue;
+      if (!splitLine(line, key, value)) continue;
 
       sawAnyKey = true;
+
+      if (isWindowKey(key, windowField, windowInstance))
+      {
+        // Another instance's window is that instance's business; save() carries it
+        // over from the file as it is then.
+        if (windowInstance != instance) continue;
+
+        if (windowField == "windowX")
+        {
+          loaded.windowX = static_cast<int32_t>(std::atol(value.c_str()));
+          loaded.hasWindowPosition = true;
+        }
+        else if (windowField == "windowY")
+          loaded.windowY = static_cast<int32_t>(std::atol(value.c_str()));
+        else if (windowField == "windowWidth")
+          loaded.windowWidth = static_cast<uint32_t>(std::atol(value.c_str()));
+        else if (windowField == "windowHeight")
+          loaded.windowHeight = static_cast<uint32_t>(std::atol(value.c_str()));
+        continue;
+      }
 
       if (key == "version")
         loaded.version = std::atoi(value.c_str());
@@ -150,17 +215,6 @@ bool StandaloneSettings::load(const fs::path &fromFile)
         loaded.midiPortNames.push_back(value);
         sawMidiSelection = true;
       }
-      else if (key == "windowX")
-      {
-        loaded.windowX = static_cast<int32_t>(std::atol(value.c_str()));
-        loaded.hasWindowPosition = true;
-      }
-      else if (key == "windowY")
-        loaded.windowY = static_cast<int32_t>(std::atol(value.c_str()));
-      else if (key == "windowWidth")
-        loaded.windowWidth = static_cast<uint32_t>(std::atol(value.c_str()));
-      else if (key == "windowHeight")
-        loaded.windowHeight = static_cast<uint32_t>(std::atol(value.c_str()));
       else
         loaded.unknownKeys.emplace_back(key, value);
     }
@@ -198,10 +252,27 @@ bool StandaloneSettings::load(const fs::path &fromFile)
   }
 }
 
-bool StandaloneSettings::save(const fs::path &intoFile) const
+bool StandaloneSettings::save(const fs::path &intoFile, uint32_t instance) const
 {
   try
   {
+    // The other instances' windows, as the file has them now. Read before the
+    // truncating open below, which would leave nothing to read.
+    std::vector<std::pair<std::string, std::string>> otherWindows;
+    {
+      std::ifstream ifs(intoFile, std::ios::in | std::ios::binary);
+      std::string line, key, value, windowField;
+      uint32_t windowInstance{0};
+      while (ifs.is_open() && std::getline(ifs, line))
+      {
+        if (splitLine(line, key, value) && isWindowKey(key, windowField, windowInstance) &&
+            windowInstance != instance)
+        {
+          otherWindows.emplace_back(key, value);
+        }
+      }
+    }
+
     std::ofstream ofs(intoFile, std::ios::out | std::ios::binary | std::ios::trunc);
     if (!ofs.is_open())
     {
@@ -230,10 +301,15 @@ bool StandaloneSettings::save(const fs::path &intoFile) const
 
     if (hasWindowPosition)
     {
-      ofs << "windowX=" << windowX << "\n";
-      ofs << "windowY=" << windowY << "\n";
-      ofs << "windowWidth=" << windowWidth << "\n";
-      ofs << "windowHeight=" << windowHeight << "\n";
+      ofs << windowKey("windowX", instance) << "=" << windowX << "\n";
+      ofs << windowKey("windowY", instance) << "=" << windowY << "\n";
+      ofs << windowKey("windowWidth", instance) << "=" << windowWidth << "\n";
+      ofs << windowKey("windowHeight", instance) << "=" << windowHeight << "\n";
+    }
+
+    for (const auto &[key, value] : otherWindows)
+    {
+      ofs << key << "=" << escape(value) << "\n";
     }
 
     for (const auto &[key, value] : unknownKeys)
