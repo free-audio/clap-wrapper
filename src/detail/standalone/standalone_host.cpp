@@ -149,6 +149,8 @@ void StandaloneHost::clapProcess(void *pOutput, const void *pInput, uint32_t fra
     {
       memset(f, 0, frameCount * currentOutputChannels * sizeof(float));
     }
+    dropStaleMidi();
+    midiBacklogStale = true;
     finishedRunning = true;
     return;
   }
@@ -238,20 +240,15 @@ void StandaloneHost::clapProcess(void *pOutput, const void *pInput, uint32_t fra
     }
   }
 
-  clearInputEvents();
-  clap_event_midi midi;
-  midiChunk ck;
-  while (midiToAudioQueue.pop(ck))
+  // what queued up while the stream was down or the plugin was restarting
+  if (midiBacklogStale)
   {
-    midi.port_index = 0;
-    midi.header.size = sizeof(clap_event_midi);
-    midi.header.time = 0;
-    midi.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-    midi.header.type = CLAP_EVENT_MIDI;
-    midi.header.flags = 0;
-    memcpy(midi.data, ck.dat, sizeof(ck.dat));
-    pushInputEvent(&(midi.header));
+    dropStaleMidi();
+    midiBacklogStale = false;
   }
+
+  clearInputEvents();
+  pushMidiInputEvents();
 
   clapPlugin->_plugin->process(clapPlugin->_plugin, &process);
 

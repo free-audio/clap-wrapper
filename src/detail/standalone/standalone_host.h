@@ -302,6 +302,17 @@ struct StandaloneHost : Clap::IHost
     }
   };
   ClapWrapper::detail::shared::fixedqueue<midiChunk, 4096> midiToAudioQueue;
+  // the queue is single producer, but each RtMidiIn may call back on its own thread
+  std::mutex midiPushMutex;
+
+  // audio thread only: releases kept from a backlog that was otherwise dropped
+  midiChunk heldMidiReleases[maxEventsPerCycle];
+  int heldMidiReleaseCount{0};
+  bool midiBacklogStale{true};
+  static bool isMidiRelease(const midiChunk &ck);
+  void dropStaleMidi();
+  void pushMidiInputEvents();
+
   std::vector<std::unique_ptr<RtMidiIn>> midiIns;
   uint32_t numMidiPorts{0};
   std::vector<uint32_t> currentMidiPorts;
