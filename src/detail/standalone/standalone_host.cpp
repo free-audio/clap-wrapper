@@ -153,7 +153,8 @@ void StandaloneHost::clapProcess(void *pOutput, const void *pInput, uint32_t fra
     return;
   }
 
-  clap_process process;
+  clap_process process{};
+  process.steady_time = steadyTime;
   process.transport = nullptr;  // this is a freefloating host
   process.in_events = &inputEvents;
   process.out_events = &outputEvents;
@@ -254,6 +255,7 @@ void StandaloneHost::clapProcess(void *pOutput, const void *pInput, uint32_t fra
   }
 
   clapPlugin->_plugin->process(clapPlugin->_plugin, &process);
+  steadyTime += frameCount;
 
   if (mainOutIdx >= 0 && f && currentOutputChannels > 0)
   {
