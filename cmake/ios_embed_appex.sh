@@ -39,10 +39,14 @@ if [ "$IDENTITY" = "-" ] && [ "${PLATFORM_NAME:-}" = "iphoneos" ]; then
     exit 1
 fi
 
-# Clean + copy
+# Clean + copy. -H: under an Archive, the appex's build-products path is a
+# symbolic link Xcode points at its intermediates, and a plain -R copies the
+# link itself -- App Store Connect then rejects the upload (ITMS-90332, an
+# invalid symbolic link at PlugIns/<name>.appex). Follow the one link named
+# here; anything inside the appex is copied as it is.
 rm -rf "$APPEX_DST"
 mkdir -p "$(dirname "$APPEX_DST")"
-cp -R "$APPEX_SRC" "$APPEX_DST"
+cp -RH "$APPEX_SRC" "$APPEX_DST"
 
 # Re-sign the host (nested-code hash changed when we added the appex).
 # --preserve-metadata=entitlements keeps the host's own entitlements that
