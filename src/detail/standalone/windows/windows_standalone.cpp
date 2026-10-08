@@ -1107,7 +1107,8 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                    plugin.plugin->on_main_thread(plugin.plugin);
                  }
 
-                 if (sah->restartRequested.exchange(false))
+                 // an inactive plugin has nothing to restart
+                 if (sah->restartRequested.exchange(false) && sah->isActive)
                  {
                    // Reactivate in place rather than bouncing the whole audio
                    // engine. activatePlugin parks the callback, reactivates, and

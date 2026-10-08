@@ -36,7 +36,8 @@
     plugin->on_main_thread(plugin);
   }
 
-  if (standaloneHost->restartRequested.exchange(false))
+  // an inactive plugin has nothing to restart
+  if (standaloneHost->restartRequested.exchange(false) && standaloneHost->isActive)
   {
     // manually set running to false to make clapProcess a no-op
     // while the plugin is being reactivated. otherwise,
