@@ -102,7 +102,60 @@ void StandaloneHost::processMIDIEvents(double deltatime, std::vector<unsigned ch
     midiChunk ck;
     memset(ck.dat, 0, sizeof(ck.dat));
     memcpy(ck.dat, message->data(), nBytes);
-    midiToAudioQueue.push(ck);
+    std::lock_guard<std::mutex> g(midiPushMutex);
+    midiToAudioQueue.try_push(ck);
+  }
+}
+
+bool StandaloneHost::isMidiRelease(const midiChunk &ck)
+{
+  auto status = (uint8_t)ck.dat[0] & 0xF0;
+  auto d1 = (uint8_t)ck.dat[1];
+  auto d2 = (uint8_t)ck.dat[2];
+
+  if (status == 0x80) return true;
+  if (status == 0x90 && d2 == 0) return true;
+  // sustain up, all sound off, all notes off
+  if (status == 0xB0 && ((d1 == 64 && d2 < 64) || d1 == 120 || d1 == 123)) return true;
+  return false;
+}
+
+void StandaloneHost::dropStaleMidi()
+{
+  // a backlog replayed at time 0 is a burst of old notes, but its releases still matter
+  midiChunk ck;
+  while (midiToAudioQueue.pop(ck))
+  {
+    if (isMidiRelease(ck) && heldMidiReleaseCount < maxEventsPerCycle)
+    {
+      heldMidiReleases[heldMidiReleaseCount++] = ck;
+    }
+  }
+}
+
+void StandaloneHost::pushMidiInputEvents()
+{
+  clap_event_midi midi{};
+  midi.port_index = 0;
+  midi.header.size = sizeof(clap_event_midi);
+  midi.header.time = 0;
+  midi.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+  midi.header.type = CLAP_EVENT_MIDI;
+  midi.header.flags = 0;
+
+  for (auto i = 0; i < heldMidiReleaseCount; ++i)
+  {
+    memcpy(midi.data, heldMidiReleases[i].dat, sizeof(midi.data));
+    pushInputEvent(&(midi.header));
+  }
+  heldMidiReleaseCount = 0;
+
+  // anything past the per-block limit stays queued for the next block
+  midiChunk ck;
+  while ((int)inputEventSize() < maxEventsPerCycle && midiToAudioQueue.pop(ck))
+  {
+    memcpy(midi.data, ck.dat, sizeof(midi.data));
+    pushInputEvent(&(midi.header));
   }
 }
 
