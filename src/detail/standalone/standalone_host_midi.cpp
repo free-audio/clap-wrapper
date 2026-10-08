@@ -63,6 +63,7 @@ void StandaloneHost::openMidiPorts(const std::vector<std::string> &names, bool b
       midiIn->setCallback(midiCallback, this);
       midiIns.push_back(std::move(midiIn));
       currentMidiPorts.push_back(port);
+      currentMidiPortNames.push_back(available[port]);
     }
     catch (RtMidiError &error)
     {
@@ -118,6 +119,7 @@ void StandaloneHost::stopMIDIThread()
   // walked a list of nothing and a reopen appended to the stale entries.
   midiIns.clear();
   currentMidiPorts.clear();
+  currentMidiPortNames.clear();
 }
 
 }  // namespace freeaudio::clap_wrapper::standalone

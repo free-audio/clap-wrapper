@@ -25,6 +25,7 @@
 #endif
 
 #include "detail/clap/fsutil.h"
+#include "clapwrapper/standalone_features.h"
 #include <clap/ext/draft/gain-adjustment-metering.h>
 
 namespace Clap
@@ -78,6 +79,12 @@ class IHost
   virtual const char *wrapper_flavor() const = 0;
   // set before the plugin is created and not changed after; nullptr when unknowable
   virtual const char *underlying_host_name() const = 0;
+
+  // CLAP_WRAPPER_STANDALONE_FEATURES; only the standalone answers
+  virtual const clap_wrapper_standalone_features_t *standalone_features()
+  {
+    return nullptr;
+  }
 
   // clap.preset-load, host side. Defaulted rather than pure: only the formats
   // that can show a preset list (VST3 program lists, AU factory presets) have
@@ -295,6 +302,10 @@ class Plugin
   const char *underlying_host_name() const
   {
     return _parentHost->underlying_host_name();
+  }
+  const clap_wrapper_standalone_features_t *standalone_features()
+  {
+    return _parentHost->standalone_features();
   }
 
   // clap_timer support
