@@ -678,6 +678,11 @@ OSStatus WrapAsAUV2::GetParameterList(AudioUnitScope inScope, AudioUnitParameter
 
 void WrapAsAUV2::param_rescan(clap_param_rescan_flags flags)
 {
+  // A plugin may ask for a rescan from its own init(), which runs inside
+  // Clap::Plugin::createInstance - before _plugin has been assigned. There is
+  // nothing to rescan yet: the parameters are set up as soon as
+  // createInstance returns.
+  if (!_plugin) return;
   const bool wasBypassed = _isBypassed;
 
   // Re-call setup parameters which will just reset info if the param exists

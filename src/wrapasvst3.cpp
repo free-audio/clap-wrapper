@@ -1621,6 +1621,12 @@ Steinberg::tresult PLUGIN_API ClapAsVst3::getProgramName(Vst::ProgramListID list
 
 void ClapAsVst3::param_rescan(clap_param_rescan_flags flags)
 {
+  // A plugin may ask for a rescan from its own init(), which runs inside
+  // Clap::Plugin::createInstance - before _plugin has been assigned. There is
+  // nothing to rescan yet: initialize() sets the parameters up as soon as
+  // createInstance returns.
+  if (!_plugin) return;
+
   auto vstflags = 0u;
   if (flags & CLAP_PARAM_RESCAN_ALL)
   {
