@@ -603,6 +603,13 @@ bool StandaloneHost::activatePlugin(int32_t sr, int32_t minBlock, int32_t maxBlo
 {
   if (!clapPlugin) return false;
 
+  // no device has run yet, or none is attached
+  if (sr <= 0 || maxBlock < minBlock || minBlock < 1)
+  {
+    LOGINFO("[ERROR] Not activating with sampleRate={} blockBounds={} to {}", sr, minBlock, maxBlock);
+    return false;
+  }
+
   deactivatePlugin();
 
   LOGINFO("Activating plugin : sampleRate={} blockBounds={} to {}", sr, minBlock, maxBlock);
