@@ -322,6 +322,8 @@ struct StandaloneHost : Clap::IHost
 
   // in standalone_host.cpp
   void clapProcess(void *pOutput, const void *pInoput, uint32_t frameCount);
+  // samples processed so far; never reset, so it stays monotonic across restarts
+  int64_t steadyTime{0};
 
   // Actual audio IO In standalone_host_audio.cpp
   std::unique_ptr<RtAudio> rtaDac;
