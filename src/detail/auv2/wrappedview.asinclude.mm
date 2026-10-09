@@ -27,6 +27,9 @@
   float lastScale;
   NSSize underlyingUISize;
   bool setSizeByZoom;  // use this flag to see if resize comes from here or from external
+  bool creating;       // inside gui->create(), before [super initWithFrame:] has run
+  bool sizeRequested;  // a request_resize arrived while creating
+  NSSize requestedSize;
 }
 
 - (id)initWithAUv2:(free_audio::auv2_wrapper::ui_connection *)cont preferredSize:(NSSize)size;
@@ -98,7 +101,11 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
   {
     ui._registerWindow((clap_window_t *)self, &canary);
   }
+  // create() may call request_resize (#582), which lands in -setFrame: below before this view is
+  // initialized; the size it asks for becomes the initial frame instead
+  creating = true;
   ui._createWindow();
+  creating = false;
   auto gui = ui._plugin->_ext._gui;
 
   // actually, the host should send an appropriate size,
@@ -107,7 +114,11 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
   {
     // gui->get_size(ui._plugin->_plugin,)
     uint32_t w, h;
-    if (gui->get_size(ui._plugin->_plugin, &w, &h))
+    if (sizeRequested)
+    {
+      size = requestedSize;
+    }
+    else if (gui->get_size(ui._plugin->_plugin, &w, &h))
     {
       size = {(double)w, (double)h};
     }
@@ -193,6 +204,12 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
 }
 - (void)setFrame:(NSRect)newSize
 {
+  if (creating)
+  {
+    requestedSize = newSize.size;
+    sizeRequested = true;
+    return;
+  }
   [super setFrame:newSize];
   const auto mainThreadMutex = ui._mainThreadMutex;
   const ausdk::AUEntryGuard mainThreadGuard(mainThreadMutex.get());
