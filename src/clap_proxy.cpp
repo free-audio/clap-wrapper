@@ -578,7 +578,7 @@ void Plugin::param_request_flush()
 
 // Query an extension.
 // [thread-safe]
-const void *Plugin::clapExtension(const clap_host * /*host*/, const char *extension)
+const void *Plugin::clapExtension(const clap_host *host, const char *extension)
 {
   // TODO: add 'audio-ports' host-side extension
   if (!strcmp(extension, CLAP_EXT_LOG)) return &HostExt::log;
@@ -594,6 +594,8 @@ const void *Plugin::clapExtension(const clap_host * /*host*/, const char *extens
   if (!strcmp(extension, CLAP_EXT_PRESET_LOAD) || !strcmp(extension, CLAP_EXT_PRESET_LOAD_COMPAT))
     return &HostExt::preset_load;
   if (!strcmp(extension, CLAP_WRAPPER_HOST_INFORMATION)) return &HostExt::wrapper_host_information;
+  if (!strcmp(extension, CLAP_WRAPPER_STANDALONE_FEATURES))
+    return HostExt::self(host)->standalone_features();
 
 #if LIN
   if (!strcmp(extension, CLAP_EXT_POSIX_FD_SUPPORT)) return &HostExt::hostposixfd;

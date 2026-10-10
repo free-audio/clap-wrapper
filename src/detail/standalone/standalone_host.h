@@ -252,6 +252,17 @@ struct StandaloneHost : Clap::IHost
     return false;
   }
 
+  // standalone features extension, in standalone_host_features.cpp
+  const clap_wrapper_standalone_features_t *standalone_features() override;
+
+  // set by the platform frontend; null means it has no settings screen to offer
+  std::function<bool()> onShowSettingsScreen{nullptr};
+
+  std::vector<clap_wrapper_standalone_endpoint_t> endpointSnapshot[4];
+  uint32_t snapshotEndpoints(uint32_t kind);
+  std::vector<uint32_t> sampleRateSnapshot;
+  uint32_t snapshotSampleRates(const char *outputId, const char *inputId);
+
   // context menu extension
   bool supportsContextMenu() const override
   {
@@ -305,6 +316,8 @@ struct StandaloneHost : Clap::IHost
   std::vector<std::unique_ptr<RtMidiIn>> midiIns;
   uint32_t numMidiPorts{0};
   std::vector<uint32_t> currentMidiPorts;
+  // indices go stale on a replug; names do not
+  std::vector<std::string> currentMidiPortNames;
   // Port names as the MIDI system reports them right now; also refreshes
   // numMidiPorts. Returns empty (rather than throwing or exiting) when there is
   // no usable MIDI system.
@@ -328,6 +341,10 @@ struct StandaloneHost : Clap::IHost
   // Actual audio IO In standalone_host_audio.cpp
   std::unique_ptr<RtAudio> rtaDac;
   std::function<void(const std::string &)> displayAudioError{nullptr};
+  // why the most recent startAudioThreadOn failed; empty if it succeeded
+  std::string lastAudioError;
+  // session only: a launch never starts muted on a previous session's say-so
+  std::atomic<bool> inputMuted{false};
 
   // RtAudio reports enumeration failures through the same error callback it uses
   // for stream failures, and we enumerate every time a settings panel refreshes.
