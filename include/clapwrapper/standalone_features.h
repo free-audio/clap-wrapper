@@ -50,7 +50,7 @@ extern "C"
 #endif
 
   static const CLAP_CONSTEXPR char CLAP_WRAPPER_STANDALONE_FEATURES[] =
-      "clap-wrapper.standalone-features.draft/1";
+      "clap-wrapper.standalone-features.draft/2";
 
   enum clap_wrapper_standalone_endpoint_kind
   {
@@ -121,6 +121,9 @@ extern "C"
 
     // false if no stream is open, e.g. no output device attached or the open failed
     bool running;
+
+    // see set_input_muted
+    bool input_muted;
 
     // the api the stream is on, as in clap_wrapper_standalone_audio_api.id
     char api_id[CLAP_NAME_SIZE];
@@ -224,6 +227,21 @@ extern "C"
     // [main-thread]
     bool(CLAP_ABI *get_audio_status)(const clap_host_t *host,
                                      clap_wrapper_standalone_audio_status_t *status);
+
+    /* -- input mute -- */
+
+    // [main-thread]
+    bool(CLAP_ABI *supports_input_mute)(const clap_host_t *host);
+
+    // feeds the plugin silence in place of the input device, from the next block. the
+    // stream stays open and the plugin stays active, so this is cheap and click-free
+    // to toggle. lets a plugin which sees a first launch, or a changed device, mute
+    // before a laptop's built-in mic and speakers can feed back, show the settings
+    // screen, and unmute once the user has chosen. not persisted: every launch starts
+    // unmuted. called from init() it is in effect before the first block is processed.
+    // returns false if unsupported
+    // [main-thread]
+    bool(CLAP_ABI *set_input_muted)(const clap_host_t *host, bool muted);
 
     /* -- rebinding -- */
 

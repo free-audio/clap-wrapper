@@ -343,6 +343,8 @@ struct StandaloneHost : Clap::IHost
   std::function<void(const std::string &)> displayAudioError{nullptr};
   // why the most recent startAudioThreadOn failed; empty if it succeeded
   std::string lastAudioError;
+  // session only: a launch never starts muted on a previous session's say-so
+  std::atomic<bool> inputMuted{false};
 
   // RtAudio reports enumeration failures through the same error callback it uses
   // for stream failures, and we enumerate every time a settings panel refreshes.

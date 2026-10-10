@@ -130,6 +130,18 @@ bool getAudioStatus(const clap_host_t *, clap_wrapper_standalone_audio_status_t 
     status->output_channels = sah->currentOutputChannels;
   }
   copyString(status->last_error, sizeof(status->last_error), sah->lastAudioError);
+  status->input_muted = sah->inputMuted.load();
+  return true;
+}
+
+bool supportsInputMute(const clap_host_t *)
+{
+  return true;
+}
+
+bool setInputMuted(const clap_host_t *, bool muted)
+{
+  getStandaloneHost()->inputMuted = muted;
   return true;
 }
 
@@ -159,10 +171,10 @@ bool resetStandaloneState(const clap_host_t *, uint32_t)
 }
 
 const clap_wrapper_standalone_features_t features = {
-    supportsScreen,      showScreen,          countAudioApis,   getAudioApi,        supportsListing,
-    countEndpoints,      getEndpoint,         countSampleRates, getSampleRate,      countBufferSizes,
-    getBufferSize,       getAudioStatus,      supportsBinding,  requestAudioConfig, requestMidiBindings,
-    supportedResetFlags, resetStandaloneState};
+    supportsScreen,     showScreen,          countAudioApis,      getAudioApi,         supportsListing,
+    countEndpoints,     getEndpoint,         countSampleRates,    getSampleRate,       countBufferSizes,
+    getBufferSize,      getAudioStatus,      supportsInputMute,   setInputMuted,       supportsBinding,
+    requestAudioConfig, requestMidiBindings, supportedResetFlags, resetStandaloneState};
 }  // namespace
 
 const clap_wrapper_standalone_features_t *StandaloneHost::standalone_features()
