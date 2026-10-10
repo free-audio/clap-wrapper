@@ -132,6 +132,8 @@ struct ClapPluginExtensions
   const clap_plugin_audio_ports_t *_audioports = nullptr;
   const clap_plugin_audio_ports_activation_t *_audio_ports_activation = nullptr;
   const clap_plugin_configurable_audio_ports_t *_configurable_audio_ports = nullptr;
+  const clap_plugin_surround_t *_surround = nullptr;
+  const clap_plugin_ambisonic_t *_ambisonic = nullptr;
   const clap_plugin_gui_t *_gui = nullptr;
   const clap_plugin_note_ports_t *_noteports = nullptr;
   const clap_plugin_latency_t *_latency = nullptr;

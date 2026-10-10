@@ -27,6 +27,8 @@ function(private_add_vst3_wrapper_sources)
             ${sd}/src/detail/vst3/process.cpp
             ${sd}/src/detail/vst3/categories.h
             ${sd}/src/detail/vst3/categories.cpp
+            ${sd}/src/detail/vst3/channelmap.h
+            ${sd}/src/detail/vst3/channelmap.cpp
             ${sd}/src/detail/vst3/aravst3.h
             )
 
