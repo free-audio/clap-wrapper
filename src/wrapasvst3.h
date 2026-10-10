@@ -418,7 +418,11 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
 
  private:
   // helper functions
-  void addAudioBusFrom(const clap_audio_port_info_t *info, bool is_input);
+  void addAudioBusFrom(uint32_t index, const clap_audio_port_info_t *info, bool is_input);
+  // the VST3 arrangement a CLAP port describes: its channel map when it implements
+  // clap.surround or clap.ambisonic, and otherwise a guess from the channel count
+  Vst::SpeakerArrangement speakerArrangementFor(uint32_t index, const clap_audio_port_info_t *info,
+                                                bool is_input);
   void addMIDIBusFrom(const clap_note_port_info_t *info, uint32_t index, bool is_input);
   void updateAudioBusses();
 
