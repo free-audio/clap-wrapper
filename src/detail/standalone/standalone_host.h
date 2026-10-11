@@ -10,6 +10,7 @@
 
 #include "standalone_details.h"
 #include "standalone_settings.h"
+#include "standalone_instance.h"
 
 #include "detail/clap/fsutil.h"
 
@@ -139,6 +140,12 @@ struct StandaloneHost : Clap::IHost
   // standalone_settings.h for the format and for why devices are held by name.
   StandaloneSettings settings;
   bool settingsLoaded{false};
+
+  // Which of this plugin's running standalones we are, which is what tells their
+  // window positions apart in the shared settings file. Claimed on first use of
+  // that file and held until the host goes away.
+  InstanceSlot instanceSlot;
+  uint32_t settingsInstance(const fs::path &settingsDirectory);
 
   // <settings path>/<plugin id>/standalone-settings.conf, or nullopt when the
   // platform has no settings path or no plugin is loaded yet.

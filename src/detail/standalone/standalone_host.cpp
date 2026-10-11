@@ -447,9 +447,19 @@ bool StandaloneHost::loadStandaloneSettings()
   auto path = standaloneSettingsFile();
   if (!path.has_value()) return false;
 
-  settingsLoaded = settings.load(*path);
+  settingsLoaded = settings.load(*path, settingsInstance(path->parent_path()));
 
   return settingsLoaded;
+}
+
+uint32_t StandaloneHost::settingsInstance(const fs::path &settingsDirectory)
+{
+  // The lock files sit next to the settings they tell apart, and a first run has
+  // yet to create that directory. A failure here only means no slot, i.e. the first.
+  std::error_code ec;
+  fs::create_directories(settingsDirectory, ec);
+
+  return instanceSlot.claim(settingsDirectory);
 }
 
 bool StandaloneHost::saveStandaloneSettings()
@@ -470,7 +480,7 @@ bool StandaloneHost::saveStandaloneSettings()
     return false;
   }
 
-  return settings.save(*path);
+  return settings.save(*path, settingsInstance(path->parent_path()));
 }
 
 void StandaloneHost::captureAudioSettings()

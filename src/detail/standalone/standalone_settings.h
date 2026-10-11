@@ -26,6 +26,13 @@ namespace freeaudio::clap_wrapper::standalone
  *
  * Leading and trailing whitespace is trimmed from both key and value, so a value
  * cannot begin or end with a space. No device or port name in practice does.
+ *
+ * The window geometry is kept per instance (see standalone_instance.h): the first
+ * standalone of a plugin uses windowX/windowY/windowWidth/windowHeight, the ones
+ * started while it runs append their index, windowX.1 and so on. Every instance
+ * rewrites this one file, so save() takes the other instances' geometry from what is
+ * on disk at that moment rather than from what it loaded at startup - otherwise the
+ * last instance to quit would put every other window back where it found it.
  */
 struct StandaloneSettings
 {
@@ -56,6 +63,7 @@ struct StandaloneSettings
   bool midiBindAllPorts{true};
   std::vector<std::string> midiPortNames;
 
+  // This instance's window, in the frontend's own screen coordinates.
   bool hasWindowPosition{false};
   int32_t windowX{0}, windowY{0};
   uint32_t windowWidth{0}, windowHeight{0};
@@ -63,8 +71,9 @@ struct StandaloneSettings
   // Keys from a future version, carried through verbatim on rewrite.
   std::vector<std::pair<std::string, std::string>> unknownKeys;
 
-  // Neither of these throws; both report failure by returning false.
-  bool load(const fs::path &fromFile);
-  bool save(const fs::path &intoFile) const;
+  // Neither of these throws; both report failure by returning false. `instance`
+  // selects whose window geometry is read and written.
+  bool load(const fs::path &fromFile, uint32_t instance = 0);
+  bool save(const fs::path &intoFile, uint32_t instance = 0) const;
 };
 }  // namespace freeaudio::clap_wrapper::standalone
