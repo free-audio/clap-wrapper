@@ -1,4 +1,5 @@
 #import "AUv3HostAppDelegate.h"
+#import "../StandardMenuBar.h"
 
 #import <AVFoundation/AVFoundation.h>
 #import <AudioToolbox/AudioToolbox.h>
@@ -36,8 +37,25 @@ static MIDIPortRef sMIDIInputPort = 0;
 #pragma mark - Application lifecycle
 // ---------------------------------------------------------------------------
 
+- (void)applicationWillFinishLaunching:(NSNotification *)notification
+{
+  freeaudio::clap_wrapper::standalone::macos::installStandardMenuBar(nil, nil);
+
+  auto *window =
+      [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 480, 360)
+                                  styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
+                                            NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable
+                                    backing:NSBackingStoreBuffered
+                                      defer:NO];
+  window.releasedWhenClosed = NO;
+  window.title = @AUV3_STANDALONE_OUTPUT_NAME;
+  [window center];
+  self.window = window;
+}
+
 - (void)applicationDidFinishLaunching:(NSNotification *)notification
 {
+  [self.window makeKeyAndOrderFront:nil];
   [NSApp activateIgnoringOtherApps:YES];
 
   // Defer setup slightly so the window is visible

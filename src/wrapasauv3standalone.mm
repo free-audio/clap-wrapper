@@ -10,8 +10,19 @@
 */
 
 #import <Cocoa/Cocoa.h>
+#import "AUv3HostAppDelegate.h"
 
 int main(int argc, const char *argv[])
 {
-  return NSApplicationMain(argc, argv);
+  @autoreleasepool
+  {
+    // NSApp.delegate is weak
+    static AUv3HostAppDelegate *delegate = [[AUv3HostAppDelegate alloc] init];
+
+    auto *app = NSApplication.sharedApplication;
+    app.delegate = delegate;
+    [app setActivationPolicy:NSApplicationActivationPolicyRegular];
+    [app run];
+  }
+  return 0;
 }

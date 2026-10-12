@@ -89,16 +89,16 @@ function(target_add_standalone_wrapper)
     endif()
 
     if (APPLE)
-        set(MAIN_XIB "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/macos/MainMenu.xib")
-        set(GEN_XIB "${CMAKE_BINARY_DIR}/generated_xib/${SA_TARGET}/MainMenu.xib")
-        configure_file(${MAIN_XIB} ${GEN_XIB})
-
-        target_sources(${SA_TARGET} PRIVATE
+        set(SA_MACOS_SOURCES
                 "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/wrapasstandalone.mm"
                 ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/macos/AppDelegate.mm
+                ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/macos/StandardMenuBar.mm
                 ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/macos/StandaloneFunctions.mm
-                ${GEN_XIB}
                 )
+        target_sources(${SA_TARGET} PRIVATE ${SA_MACOS_SOURCES})
+        # per source, so the caller's own objc in this target keeps its memory model
+        set_source_files_properties(${SA_MACOS_SOURCES} TARGET_DIRECTORY ${SA_TARGET}
+                PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 
 
         set_target_properties(${SA_TARGET} PROPERTIES
@@ -114,17 +114,7 @@ function(target_add_standalone_wrapper)
                 MACOSX_BUNDLE TRUE
                 MACOSX_BUNDLE_INFO_PLIST ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/macos/Info.plist.in
                 XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${SA_BUNDLE_IDENTIFIER}"
-                RESOURCE "${GEN_XIB}"
                 )
-
-        if (NOT ${CMAKE_GENERATOR} STREQUAL "Xcode")
-            message(STATUS "cmake-wrapper: ejecting xib->nib rules manually for ${CMAKE_GENERATOR} on ${SA_TARGET}")
-            find_program(IBTOOL ibtool REQUIRED)
-            add_custom_command(TARGET ${SA_TARGET} PRE_BUILD
-                    COMMAND ${CMAKE_COMMAND} -E echo ${IBTOOL} --compile "$<TARGET_FILE_DIR:${SA_TARGET}>/../Resources/MainMenu.nib" ${GEN_XIB}
-                    COMMAND ${IBTOOL} --compile "$<TARGET_FILE_DIR:${SA_TARGET}>/../Resources/MainMenu.nib" ${GEN_XIB}
-                    )
-        endif()
 
         if(NOT "${SA_MACOS_ICON}" STREQUAL "")
             add_custom_command(TARGET ${SA_TARGET} POST_BUILD

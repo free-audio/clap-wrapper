@@ -65,17 +65,11 @@ function(target_add_auv3_standalone_wrapper)
 
     message(STATUS "clap-wrapper: Adding AUv3 Standalone to target ${AUSA_TARGET} for '${AUSA_OUTPUT_NAME}'")
 
-    # --- XIB ---
-    set(MAIN_XIB "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/macos/auv3/MainMenu.xib")
-    set(SA_OUTPUT_NAME "${AUSA_OUTPUT_NAME}")
-    set(GEN_XIB "${CMAKE_BINARY_DIR}/generated_xib/${AUSA_TARGET}/MainMenu.xib")
-    configure_file(${MAIN_XIB} ${GEN_XIB})
-
     # --- Sources ---
     target_sources(${AUSA_TARGET} PRIVATE
             "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/wrapasauv3standalone.mm"
             "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/macos/auv3/AUv3HostAppDelegate.mm"
-            ${GEN_XIB}
+            "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/macos/StandardMenuBar.mm"
             )
 
     target_include_directories(${AUSA_TARGET} PRIVATE
@@ -118,18 +112,7 @@ function(target_add_auv3_standalone_wrapper)
             MACOSX_BUNDLE TRUE
             MACOSX_BUNDLE_INFO_PLIST "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/macos/auv3/Info.plist.in"
             XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${AUSA_BUNDLE_IDENTIFIER}"
-            RESOURCE "${GEN_XIB}"
             )
-
-    # --- XIB -> NIB for non-Xcode generators ---
-    if (NOT ${CMAKE_GENERATOR} STREQUAL "Xcode")
-        message(STATUS "clap-wrapper: ejecting xib->nib rules manually for ${CMAKE_GENERATOR} on ${AUSA_TARGET}")
-        find_program(IBTOOL ibtool REQUIRED)
-        add_custom_command(TARGET ${AUSA_TARGET} PRE_BUILD
-                COMMAND ${CMAKE_COMMAND} -E echo ${IBTOOL} --compile "$<TARGET_FILE_DIR:${AUSA_TARGET}>/../Resources/MainMenu.nib" ${GEN_XIB}
-                COMMAND ${IBTOOL} --compile "$<TARGET_FILE_DIR:${AUSA_TARGET}>/../Resources/MainMenu.nib" ${GEN_XIB}
-                )
-    endif()
 
     # --- Icon ---
     if(NOT "${AUSA_MACOS_ICON}" STREQUAL "")
