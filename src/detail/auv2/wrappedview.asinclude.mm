@@ -88,31 +88,47 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
 {
   LOGINFO("[clap-wrapper] creating NSView");
 
+  // AppKit has to be finished with the view before the plugin's GUI exists: create() may
+  // call request_resize (#582), which lands in -setFrame: below, and that throws on a view
+  // whose -initWithFrame: has not run yet.
+  self = [super initWithFrame:NSMakeRect(0, 0, size.width, size.height)];
+  if (!self) return nil;
+
   ui = *cont;
   // The property lookup has returned, so editor calls need their own SDK entry guard.
   const auto mainThreadMutex = ui._mainThreadMutex;
   const ausdk::AUEntryGuard mainThreadGuard(mainThreadMutex.get());
-  canary = 0xbeebbeeb;
 
   if (ui._registerWindow)
   {
     ui._registerWindow((clap_window_t *)self, &canary);
   }
   ui._createWindow();
+  // Only now may -setFrame: hand a size back to the plugin: a resize requested from inside
+  // create() has already landed on the frame, and echoing it into set_size() would re-enter
+  // create().
+  canary = 0xbeebbeeb;
+
   auto gui = ui._plugin->_ext._gui;
 
   // actually, the host should send an appropriate size,
   // yet, they actually just send utter garbage, so: don't care
   // if (size.width == 0 || size.height == 0)
+  if (NSEqualSizes([self frame].size, size))
   {
-    // gui->get_size(ui._plugin->_plugin,)
+    // create() did not ask for a size of its own, so the plugin's answer decides
     uint32_t w, h;
     if (gui->get_size(ui._plugin->_plugin, &w, &h))
     {
       size = {(double)w, (double)h};
+      [self setFrameSize:size];
     }
   }
-  self = [super initWithFrame:NSMakeRect(0, 0, size.width, size.height)];
+  else
+  {
+    // a request_resize from inside create() wins over get_size()
+    size = [self frame].size;
+  }
 
   // gui->show(ui._plugin->_plugin);
 
