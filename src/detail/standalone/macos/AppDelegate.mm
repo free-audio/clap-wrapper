@@ -18,12 +18,20 @@
 {
   NSPopUpButton *outputSelection, *inputSelection, *sampleRateSelection;
   std::vector<RtAudio::DeviceInfo> outDevices, inDevices;
+
+  // OK reopened audio with what the window shows; Cancel and the close button did not
+  bool applied;
+  bool closeReported;
 }
 
 - (void)setupContents;
 - (void)resetSampleRateSelection;
 
 @end
+
+// the settings window while it is open. not retained: it is released when it closes
+// (isReleasedWhenClosed), and clears this before that
+static AudioSettingsWindow *openAudioSettings{nil};
 
 @implementation ClapWrapperAppDelegate
 
@@ -126,6 +134,15 @@
       break;
   }
 #endif
+
+  // before the plugin is created: a plugin asks supports_audio_midi_configuration_screen
+  // from init() or from its GUI's create(), and both run inside mainCreatePlugin and the
+  // block below it
+  freeaudio::clap_wrapper::standalone::getStandaloneHost()->onShowSettingsScreen = [self]()
+  {
+    [self openAudioSettingsWindow:nil];
+    return true;
+  };
 
   auto plugin =
       freeaudio::clap_wrapper::standalone::mainCreatePlugin(entry, pid, pindex, 1, (char **)argv);
@@ -238,12 +255,6 @@
     }
   };
 
-  freeaudio::clap_wrapper::standalone::getStandaloneHost()->onShowSettingsScreen = [self]()
-  {
-    [self openAudioSettingsWindow:nil];
-    return true;
-  };
-
   freeaudio::clap_wrapper::standalone::mainStartAudio();
 }
 
@@ -291,6 +302,13 @@
 
 - (IBAction)openAudioSettingsWindow:(id)sender
 {
+  // one window at a time, as show_audio_midi_configuration_screen promises
+  if (openAudioSettings)
+  {
+    [openAudioSettings makeKeyAndOrderFront:nil];
+    return;
+  }
+
   @autoreleasepool
   {
     NSRect windowRect = NSMakeRect(0, 0, 400, 360);
@@ -303,6 +321,7 @@
                       defer:NO];
 
     [window setupContents];
+    openAudioSettings = window;
 
     // Center the window and make it key window and front.
     [window center];
@@ -556,7 +575,24 @@
     const auto sr = [[[sampleRateSelection selectedItem] title] integerValue];
 
     auto standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
+
+    // persist the choice, per plugin id, before opening it - as the windows frontend
+    // does at each of its selections. startAudioThread() opens what the file names on
+    // the next launch, which otherwise falls back to the system default input, a
+    // laptop's built-in microphone. by name and at the point of choice, because the
+    // device actually opened may be a fallback (standalone_settings.h)
+    auto &settings = standaloneHost->settings;
+    if (useOut) settings.outputDeviceName = outDevices[oidx].name;
+    settings.audioOutputUsed = useOut;
+    if (useIn) settings.inputDeviceName = inDevices[iidx - 1].name;
+    settings.audioInputUsed = useIn;
+    settings.sampleRate = (int32_t)sr;
+    standaloneHost->captureAudioSettings();
+    if (!standaloneHost->saveStandaloneSettings())
+      LOGINFO("[WARNING] Unable to save the audio settings; the next launch will not have them");
+
     standaloneHost->startAudioThreadOn(inId, 2, useIn, outId, 2, useOut, (int32_t)sr);
+    applied = true;
 
     [self close];
   }
@@ -596,6 +632,25 @@
       [sampleRateSelection selectItem:item];
     }
   }
+}
+
+- (void)close
+{
+  // once, whichever way the window goes - OK, Cancel or the title bar's close button,
+  // which all end here. the plugin hears it on the next turn of the run loop, after the
+  // window is gone and never from inside a call of its own
+  if (!closeReported)
+  {
+    closeReported = true;
+    if (openAudioSettings == self) openAudioSettings = nil;
+
+    const uint32_t result = applied ? CLAP_WRAPPER_STANDALONE_CONFIGURATION_APPLIED
+                                    : CLAP_WRAPPER_STANDALONE_CONFIGURATION_CANCELLED;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      freeaudio::clap_wrapper::standalone::getStandaloneHost()->settingsScreenClosed(result);
+    });
+  }
+  [super close];
 }
 
 - (void)cancelButtonPressed:(id)sender

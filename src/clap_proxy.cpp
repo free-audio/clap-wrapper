@@ -272,6 +272,7 @@ void Plugin::connectClap(const clap_plugin_t *clap)
   getExtension(_plugin, _ext._preset_load, CLAP_EXT_PRESET_LOAD);
   if (!_ext._preset_load) getExtension(_plugin, _ext._preset_load, CLAP_EXT_PRESET_LOAD_COMPAT);
   getExtension(_plugin, _ext._auv2_param_ordering, CLAP_PLUGIN_AUV2_PARAM_ORDERING);
+  getExtension(_plugin, _ext._standalone_features, CLAP_WRAPPER_STANDALONE_FEATURES);
 
 #if LIN
   getExtension(_plugin, _ext._posixfd, CLAP_EXT_POSIX_FD_SUPPORT);

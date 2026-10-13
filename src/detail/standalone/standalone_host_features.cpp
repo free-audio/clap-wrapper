@@ -256,4 +256,15 @@ uint32_t StandaloneHost::snapshotSampleRates(const char *outputId, const char *i
 
   return (uint32_t)sampleRateSnapshot.size();
 }
+
+void StandaloneHost::settingsScreenClosed(uint32_t result)
+{
+  auto plugin = getMainPlugin();
+  if (!plugin || !plugin->_ext._standalone_features) return;
+
+  auto *ext = plugin->_ext._standalone_features;
+  if (ext->audio_midi_configuration_screen_closed)
+    ext->audio_midi_configuration_screen_closed(plugin->_plugin, result);
+}
+
 }  // namespace freeaudio::clap_wrapper::standalone

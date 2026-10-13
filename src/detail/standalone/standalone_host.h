@@ -258,6 +258,11 @@ struct StandaloneHost : Clap::IHost
   // set by the platform frontend; null means it has no settings screen to offer
   std::function<bool()> onShowSettingsScreen{nullptr};
 
+  // called by the platform frontend once per close of its settings screen, after the
+  // screen is gone; passes it on to the plugin's side of the standalone features
+  // extension, if it has one. result is a clap_wrapper_standalone_configuration_result
+  void settingsScreenClosed(uint32_t result);
+
   std::vector<clap_wrapper_standalone_endpoint_t> endpointSnapshot[4];
   uint32_t snapshotEndpoints(uint32_t kind);
   std::vector<uint32_t> sampleRateSnapshot;
