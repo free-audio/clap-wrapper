@@ -167,6 +167,24 @@ void StandaloneHost::startAudioThread()
       guaranteeRtAudioDAC();
 
       auto [in, out, sr] = getDefaultAudioInOutSampleRate();
+
+      // nothing chosen yet. the system default input is usually a laptop's built-in
+      // microphone, which feeds the speakers beside it straight back, while an audio
+      // interface plugged in is what the user means. not saved: only a choice the
+      // user makes is (standalone_settings.h)
+      const auto inputs = getInputAudioDevices();
+      for (const auto &name : preferredFirstRunInputs())
+      {
+        auto device = std::find_if(inputs.begin(), inputs.end(),
+                                   [&name](const auto &d) { return d.name == name; });
+        if (device != inputs.end())
+        {
+          LOGINFO("No saved audio settings; opening input '{}' rather than the system default", name);
+          in = device->ID;
+          break;
+        }
+      }
+
       audioInputDeviceID = in;
       audioOutputDeviceID = out;
       audioInputUsed = isKnownDevice(in);

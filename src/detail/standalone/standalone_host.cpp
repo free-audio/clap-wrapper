@@ -44,6 +44,13 @@ std::optional<fs::path> getStandaloneSettingsPath()
 }
 #endif
 
+#if !MAC
+std::vector<std::string> preferredFirstRunInputs()
+{
+  return {};
+}
+#endif
+
 StandaloneHost::~StandaloneHost()
 {
   // safety net for shutdown paths which don't run through mainFinish

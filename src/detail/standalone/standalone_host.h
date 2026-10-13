@@ -40,6 +40,13 @@ struct X11Gui;
 
 std::optional<fs::path> getStandaloneSettingsPath();
 
+// the inputs a launch with no saved settings should open in place of the system default
+// input, best first, as rtaudio names them; empty keeps the system default. on macOS that
+// is an audio interface (usb, thunderbolt, firewire, pci or avb) when the system default
+// is a built-in, bluetooth or iphone microphone. elsewhere there is no way to tell yet,
+// and the answer is always empty
+std::vector<std::string> preferredFirstRunInputs();
+
 struct StandaloneHost : Clap::IHost
 {
   StandaloneHost()

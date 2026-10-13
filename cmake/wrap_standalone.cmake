@@ -85,7 +85,8 @@ function(target_add_standalone_wrapper)
     if (APPLE)
         target_sources(${salib} PRIVATE)
         target_link_libraries(${salib}
-                PUBLIC "-framework AVFoundation" "-framework Foundation" "-framework CoreFoundation" "-framework AppKit")
+                PUBLIC "-framework AVFoundation" "-framework Foundation" "-framework CoreFoundation" "-framework AppKit"
+                "-framework CoreAudio")
 
     endif()
 
