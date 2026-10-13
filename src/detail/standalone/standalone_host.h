@@ -355,6 +355,13 @@ struct StandaloneHost : Clap::IHost
   std::function<void(const std::string &)> displayAudioError{nullptr};
   // why the most recent startAudioThreadOn failed; empty if it succeeded
   std::string lastAudioError;
+
+  // a stream is open and the plugin is processing it. startAudioThreadOn() settles this
+  // before it returns, so it answers whether that open worked
+  bool isAudioRunning() const
+  {
+    return isActive && (currentOutputChannels > 0 || currentInputChannels > 0);
+  }
   // session only: a launch never starts muted on a previous session's say-so
   std::atomic<bool> inputMuted{false};
 

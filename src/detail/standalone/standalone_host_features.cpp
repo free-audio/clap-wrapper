@@ -120,7 +120,7 @@ bool getAudioStatus(const clap_host_t *, clap_wrapper_standalone_audio_status_t 
   auto *sah = getStandaloneHost();
   *status = {};
   status->request_pending = false;
-  status->running = sah->isActive && (sah->currentOutputChannels > 0 || sah->currentInputChannels > 0);
+  status->running = sah->isAudioRunning();
   copyString(status->api_id, sizeof(status->api_id), sah->audioApiName);
   if (status->running)
   {

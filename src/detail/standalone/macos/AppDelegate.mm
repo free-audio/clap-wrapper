@@ -22,6 +22,11 @@
   // OK reopened audio with what the window shows; Cancel and the close button did not
   bool applied;
   bool closeReported;
+
+  // OK is off, and the note says why, while the input and output have no sample rate in
+  // common: one stream runs both at one rate, so the devices could not be opened together
+  NSButton *okButton;
+  NSTextField *noRateNote;
 }
 
 - (void)setupContents;
@@ -465,7 +470,7 @@ static AudioSettingsWindow *openAudioSettings{nil};
     [self setTitle:@"Audio/MIDI Settings"];
 
     // Create the button
-    NSButton *okButton = [[NSButton alloc] initWithFrame:NSMakeRect(400 - 80 - 80, 0, 80, 30)];
+    okButton = [[NSButton alloc] initWithFrame:NSMakeRect(400 - 80 - 80, 0, 80, 30)];
     [okButton setTitle:@"OK"];
     [okButton setTarget:self];
     [okButton setAction:@selector(okButtonPressed:)];
@@ -495,6 +500,12 @@ static AudioSettingsWindow *openAudioSettings{nil};
     NSBox *horizontalRule = [[NSBox alloc] initWithFrame:NSMakeRect(10, 205, 380, 1)];
     [horizontalRule setBoxType:NSBoxSeparator];
     [[self contentView] addSubview:horizontalRule];
+
+    noRateNote = addLabel(@"These devices have no sample rate in common.", 10, 40);
+    [noRateNote setFrameSize:NSMakeSize(380, 30)];
+    [noRateNote setTextColor:[NSColor systemRedColor]];
+    [noRateNote setHidden:YES];
+    [[self contentView] addSubview:noRateNote];
 
     [[self contentView] addSubview:addLabel(@"MIDI", 10, 165)];
     [[self contentView] addSubview:addLabel(@"Coming Soon", 100, 165)];
@@ -576,11 +587,31 @@ static AudioSettingsWindow *openAudioSettings{nil};
 
     auto standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
 
-    // persist the choice, per plugin id, before opening it - as the windows frontend
-    // does at each of its selections. startAudioThread() opens what the file names on
-    // the next launch, which otherwise falls back to the system default input, a
-    // laptop's built-in microphone. by name and at the point of choice, because the
-    // device actually opened may be a fallback (standalone_settings.h)
+    // the stream running now, to go back to if the new one cannot be opened
+    const bool wasRunning = standaloneHost->isAudioRunning();
+    const auto previousIn = standaloneHost->audioInputDeviceID;
+    const auto previousOut = standaloneHost->audioOutputDeviceID;
+    const bool previousUseIn = standaloneHost->audioInputUsed;
+    const bool previousUseOut = standaloneHost->audioOutputUsed;
+    const auto previousRate = standaloneHost->currentSampleRate;
+
+    standaloneHost->startAudioThreadOn(inId, 2, useIn, outId, 2, useOut, (int32_t)sr);
+    if (!standaloneHost->isAudioRunning())
+    {
+      // neither kept nor saved, and the window stays up for another choice: the
+      // devices are put back as they were, and the error callback has already told
+      // the user why these did not open
+      if (wasRunning)
+        standaloneHost->startAudioThreadOn(previousIn, 2, previousUseIn, previousOut, 2, previousUseOut,
+                                           previousRate);
+      return;
+    }
+
+    // persist the choice, per plugin id - startAudioThread() opens what the file names
+    // on the next launch, which otherwise falls back to the system default input, a
+    // laptop's built-in microphone. only once it has opened, so a combination that
+    // cannot run is never what a launch starts with; and by name, what the user chose,
+    // not what was opened, which may be a fallback (standalone_settings.h)
     auto &settings = standaloneHost->settings;
     if (useOut) settings.outputDeviceName = outDevices[oidx].name;
     settings.audioOutputUsed = useOut;
@@ -591,7 +622,6 @@ static AudioSettingsWindow *openAudioSettings{nil};
     if (!standaloneHost->saveStandaloneSettings())
       LOGINFO("[WARNING] Unable to save the audio settings; the next launch will not have them");
 
-    standaloneHost->startAudioThreadOn(inId, 2, useIn, outId, 2, useOut, (int32_t)sr);
     applied = true;
 
     [self close];
@@ -711,6 +741,11 @@ static AudioSettingsWindow *openAudioSettings{nil};
     }
   }
   if (selIdx >= 0) [sampleRateSelection selectItemAtIndex:selIdx];
+
+  // no rate in common, nothing to open the two devices at
+  const bool canOpen = [sampleRateSelection numberOfItems] > 0;
+  [okButton setEnabled:canOpen];
+  [noRateNote setHidden:canOpen];
 }
 
 @end

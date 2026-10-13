@@ -289,9 +289,9 @@ extern "C"
     // any other way out that is not a confirmation
     CLAP_WRAPPER_STANDALONE_CONFIGURATION_CANCELLED = 0,
 
-    // they confirmed a configuration and the standalone has reopened audio with it. a
-    // reopen can fail: get_audio_status says what the stream opened at, or, in
-    // last_error, why it did not
+    // they confirmed a configuration and the standalone is running audio with it, at
+    // what get_audio_status reports. a configuration that does not open is neither
+    // kept nor reported: the screen stays up for another choice
     CLAP_WRAPPER_STANDALONE_CONFIGURATION_APPLIED = 1,
   };
 
