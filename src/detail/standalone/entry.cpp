@@ -88,8 +88,10 @@ std::shared_ptr<Clap::Plugin> mainCreatePlugin(const clap_plugin_entry *ee, cons
 
 void mainStartAudio()
 {
-  standaloneHost->startMIDIThread();
+  // audio first: startAudioThread() is what loads the saved settings, and the midi ports
+  // opened before it were the defaults' - every input and no output - on every launch
   standaloneHost->startAudioThread();
+  standaloneHost->startMIDIThread();
 }
 
 std::shared_ptr<Clap::Plugin> getMainPlugin()

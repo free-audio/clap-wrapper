@@ -271,7 +271,8 @@ struct Plugin final : public Window
       AudioInput,
       AudioSamplerate,
       AudioBuffersize,
-      MidiInputs
+      MidiInputs,
+      MidiOutputs
     };
 
     ComboBox api;
@@ -280,6 +281,7 @@ struct Plugin final : public Window
     ComboBox sampleRate;
     ComboBox bufferSize;
     ListBox midiIn;
+    ListBox midiOut;
   };
 
   struct ClapPlugin
@@ -300,6 +302,7 @@ struct Plugin final : public Window
   void refreshSampleRates();
   void refreshBufferSizes();
   void refreshMIDIInputs();
+  void refreshMIDIOutputs();
 
   bool saveSettings();
   bool loadSettings();

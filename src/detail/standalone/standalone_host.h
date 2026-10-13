@@ -61,7 +61,8 @@ struct StandaloneHost : Clap::IHost
 
   static bool oe_try_push(const struct clap_output_events *oe, const clap_event_header_t *evt)
   {
-    return true;
+    auto sh = (StandaloneHost *)oe->ctx;
+    return sh->outputEventPush(evt);
   }
 
   static uint32_t ie_getsize(const struct clap_input_events *ie)
@@ -325,6 +326,9 @@ struct StandaloneHost : Clap::IHost
     }
   };
   ClapWrapper::detail::shared::fixedqueue<midiChunk, 4096> midiToAudioQueue;
+  // the queue takes one producer at a time, and rtmidi may call each open input back on
+  // a thread of its own
+  ClapWrapper::detail::shared::SpinLock midiToAudioPushLock;
   std::vector<std::unique_ptr<RtMidiIn>> midiIns;
   uint32_t numMidiPorts{0};
   std::vector<uint32_t> currentMidiPorts;
@@ -339,7 +343,52 @@ struct StandaloneHost : Clap::IHost
   // ignores the list and opens everything - which is a different thing from an
   // empty list, that being a user who deliberately wants no MIDI input.
   void openMidiPorts(const std::vector<std::string> &names, bool bindAll);
+  void closeMidiPorts();
 
+  // Virtual ports: a destination other applications send to, which feeds the plugin like
+  // an input, and a source they receive the plugin's output from. Each lives on its own,
+  // so reopening the port lists never makes another application lose its connection.
+  // Named after the plugin, with a suffix - Kemper's hardware, for one, has a port named
+  // like its plugin - and left out of the port lists, so that binding every input can
+  // never loop the plugin's output back into it.
+  static bool supportsVirtualMidiPorts();
+  std::string virtualMidiPortName(bool input) const;
+  std::unique_ptr<RtMidiIn> midiVirtualIn;
+  std::unique_ptr<RtMidiOut> midiVirtualOut;
+  void setVirtualMidiInput(bool open);
+  void setVirtualMidiOutput(bool open);
+
+  // MIDI output. what the plugin sends from its note output ports goes to every open
+  // output port: the audio thread queues it in outputEventPush() and a thread of its own
+  // sends it, since an rtmidi send is no call to make from the audio thread
+  ClapWrapper::detail::shared::fixedqueue<midiChunk, 4096> midiFromAudioQueue;
+  std::vector<std::unique_ptr<RtMidiOut>> midiOuts;
+  uint32_t numMidiOutputPorts{0};
+  std::vector<std::string> currentMidiOutputPortNames;
+  // set while midiOutputThread runs; the audio thread queues nothing while it is clear
+  std::atomic<bool> midiOutputOpen{false};
+  std::thread midiOutputThread;
+  // the thread runs while there is a port to send to, the virtual output included
+  void stopMidiOutputThread();
+  void startMidiOutputThreadIfNeeded();
+
+  // as getMidiPortNames(), for outputs; refreshes numMidiOutputPorts
+  std::vector<std::string> getMidiOutputPortNames();
+
+  // Close whatever outputs are open and open exactly these, matched by name. Unlike the
+  // inputs there is no bind-all: an empty list opens none, which is also the first run,
+  // since sending to every port would play into whatever is plugged in. A plugin with no
+  // MIDI output opens none either - on Windows a MIDI port is held exclusively.
+  void openMidiOutputPorts(const std::vector<std::string> &names);
+  // closes every output, the virtual one included
+  void closeMidiOutputPorts();
+  void midiOutputLoop();
+
+  // [audio-thread] the plugin's output events. MIDI and note on/off events go to the MIDI
+  // outputs, anything else is taken and dropped
+  bool outputEventPush(const clap_event_header_t *evt);
+
+  // inputs and outputs, from the settings
   void startMIDIThread();
   void stopMIDIThread();
   void processMIDIEvents(double deltatime, std::vector<unsigned char> *message);
