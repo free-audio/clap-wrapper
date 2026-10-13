@@ -18,12 +18,25 @@
 {
   NSPopUpButton *outputSelection, *inputSelection, *sampleRateSelection;
   std::vector<RtAudio::DeviceInfo> outDevices, inDevices;
+
+  // OK reopened audio with what the window shows; Cancel and the close button did not
+  bool applied;
+  bool closeReported;
+
+  // OK is off, and the note says why, while the input and output have no sample rate in
+  // common: one stream runs both at one rate, so the devices could not be opened together
+  NSButton *okButton;
+  NSTextField *noRateNote;
 }
 
 - (void)setupContents;
 - (void)resetSampleRateSelection;
 
 @end
+
+// the settings window while it is open. not retained: it is released when it closes
+// (isReleasedWhenClosed), and clears this before that
+static AudioSettingsWindow *openAudioSettings{nil};
 
 @implementation ClapWrapperAppDelegate
 
@@ -126,6 +139,15 @@
       break;
   }
 #endif
+
+  // before the plugin is created: a plugin asks supports_audio_midi_configuration_screen
+  // from init() or from its GUI's create(), and both run inside mainCreatePlugin and the
+  // block below it
+  freeaudio::clap_wrapper::standalone::getStandaloneHost()->onShowSettingsScreen = [self]()
+  {
+    [self openAudioSettingsWindow:nil];
+    return true;
+  };
 
   auto plugin =
       freeaudio::clap_wrapper::standalone::mainCreatePlugin(entry, pid, pindex, 1, (char **)argv);
@@ -238,12 +260,6 @@
     }
   };
 
-  freeaudio::clap_wrapper::standalone::getStandaloneHost()->onShowSettingsScreen = [self]()
-  {
-    [self openAudioSettingsWindow:nil];
-    return true;
-  };
-
   freeaudio::clap_wrapper::standalone::mainStartAudio();
 }
 
@@ -291,6 +307,13 @@
 
 - (IBAction)openAudioSettingsWindow:(id)sender
 {
+  // one window at a time, as show_audio_midi_configuration_screen promises
+  if (openAudioSettings)
+  {
+    [openAudioSettings makeKeyAndOrderFront:nil];
+    return;
+  }
+
   @autoreleasepool
   {
     NSRect windowRect = NSMakeRect(0, 0, 400, 360);
@@ -303,6 +326,7 @@
                       defer:NO];
 
     [window setupContents];
+    openAudioSettings = window;
 
     // Center the window and make it key window and front.
     [window center];
@@ -446,7 +470,7 @@
     [self setTitle:@"Audio/MIDI Settings"];
 
     // Create the button
-    NSButton *okButton = [[NSButton alloc] initWithFrame:NSMakeRect(400 - 80 - 80, 0, 80, 30)];
+    okButton = [[NSButton alloc] initWithFrame:NSMakeRect(400 - 80 - 80, 0, 80, 30)];
     [okButton setTitle:@"OK"];
     [okButton setTarget:self];
     [okButton setAction:@selector(okButtonPressed:)];
@@ -476,6 +500,12 @@
     NSBox *horizontalRule = [[NSBox alloc] initWithFrame:NSMakeRect(10, 205, 380, 1)];
     [horizontalRule setBoxType:NSBoxSeparator];
     [[self contentView] addSubview:horizontalRule];
+
+    noRateNote = addLabel(@"These devices have no sample rate in common.", 10, 40);
+    [noRateNote setFrameSize:NSMakeSize(380, 30)];
+    [noRateNote setTextColor:[NSColor systemRedColor]];
+    [noRateNote setHidden:YES];
+    [[self contentView] addSubview:noRateNote];
 
     [[self contentView] addSubview:addLabel(@"MIDI", 10, 165)];
     [[self contentView] addSubview:addLabel(@"Coming Soon", 100, 165)];
@@ -556,7 +586,43 @@
     const auto sr = [[[sampleRateSelection selectedItem] title] integerValue];
 
     auto standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
+
+    // the stream running now, to go back to if the new one cannot be opened
+    const bool wasRunning = standaloneHost->isAudioRunning();
+    const auto previousIn = standaloneHost->audioInputDeviceID;
+    const auto previousOut = standaloneHost->audioOutputDeviceID;
+    const bool previousUseIn = standaloneHost->audioInputUsed;
+    const bool previousUseOut = standaloneHost->audioOutputUsed;
+    const auto previousRate = standaloneHost->currentSampleRate;
+
     standaloneHost->startAudioThreadOn(inId, 2, useIn, outId, 2, useOut, (int32_t)sr);
+    if (!standaloneHost->isAudioRunning())
+    {
+      // neither kept nor saved, and the window stays up for another choice: the
+      // devices are put back as they were, and the error callback has already told
+      // the user why these did not open
+      if (wasRunning)
+        standaloneHost->startAudioThreadOn(previousIn, 2, previousUseIn, previousOut, 2, previousUseOut,
+                                           previousRate);
+      return;
+    }
+
+    // persist the choice, per plugin id - startAudioThread() opens what the file names
+    // on the next launch, which otherwise falls back to the system default input, a
+    // laptop's built-in microphone. only once it has opened, so a combination that
+    // cannot run is never what a launch starts with; and by name, what the user chose,
+    // not what was opened, which may be a fallback (standalone_settings.h)
+    auto &settings = standaloneHost->settings;
+    if (useOut) settings.outputDeviceName = outDevices[oidx].name;
+    settings.audioOutputUsed = useOut;
+    if (useIn) settings.inputDeviceName = inDevices[iidx - 1].name;
+    settings.audioInputUsed = useIn;
+    settings.sampleRate = (int32_t)sr;
+    standaloneHost->captureAudioSettings();
+    if (!standaloneHost->saveStandaloneSettings())
+      LOGINFO("[WARNING] Unable to save the audio settings; the next launch will not have them");
+
+    applied = true;
 
     [self close];
   }
@@ -596,6 +662,25 @@
       [sampleRateSelection selectItem:item];
     }
   }
+}
+
+- (void)close
+{
+  // once, whichever way the window goes - OK, Cancel or the title bar's close button,
+  // which all end here. the plugin hears it on the next turn of the run loop, after the
+  // window is gone and never from inside a call of its own
+  if (!closeReported)
+  {
+    closeReported = true;
+    if (openAudioSettings == self) openAudioSettings = nil;
+
+    const uint32_t result = applied ? CLAP_WRAPPER_STANDALONE_CONFIGURATION_APPLIED
+                                    : CLAP_WRAPPER_STANDALONE_CONFIGURATION_CANCELLED;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      freeaudio::clap_wrapper::standalone::getStandaloneHost()->settingsScreenClosed(result);
+    });
+  }
+  [super close];
 }
 
 - (void)cancelButtonPressed:(id)sender
@@ -656,6 +741,11 @@
     }
   }
   if (selIdx >= 0) [sampleRateSelection selectItemAtIndex:selIdx];
+
+  // no rate in common, nothing to open the two devices at
+  const bool canOpen = [sampleRateSelection numberOfItems] > 0;
+  [okButton setEnabled:canOpen];
+  [noRateNote setHidden:canOpen];
 }
 
 @end

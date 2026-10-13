@@ -153,6 +153,41 @@ std::tuple<unsigned int, unsigned int, int32_t> StandaloneHost::getDefaultAudioI
 }
 void StandaloneHost::startAudioThread()
 {
+  // the system default devices, for a launch with nothing saved or with a saved
+  // configuration that does not open
+  auto openSystemDefaults = [this]()
+  {
+    guaranteeRtAudioDAC();
+
+    auto [in, out, sr] = getDefaultAudioInOutSampleRate();
+
+    // the system default input is usually a laptop's built-in microphone, which feeds the
+    // speakers beside it straight back, while an audio interface plugged in is what the
+    // user means. not saved: only a choice the user makes is (standalone_settings.h)
+    const auto inputs = getInputAudioDevices();
+    for (const auto &name : preferredFirstRunInputs())
+    {
+      auto device =
+          std::find_if(inputs.begin(), inputs.end(), [&name](const auto &d) { return d.name == name; });
+      if (device != inputs.end())
+      {
+        LOGINFO("Opening input '{}' rather than the system default", name);
+        in = device->ID;
+        break;
+      }
+    }
+
+    audioInputDeviceID = in;
+    audioOutputDeviceID = out;
+    audioInputUsed = isKnownDevice(in);
+    audioOutputUsed = isKnownDevice(out);
+    currentSampleRate = sr;
+
+    startAudioThreadOn(audioInputDeviceID, deviceInputChannels, audioInputUsed && numAudioInputs > 0,
+                       audioOutputDeviceID, deviceOutputChannels, audioOutputUsed && numAudioOutputs > 0,
+                       currentSampleRate);
+  };
+
   try
   {
     // Persisted configuration wins when we have some; otherwise take the system
@@ -161,22 +196,28 @@ void StandaloneHost::startAudioThread()
     if (loadStandaloneSettings())
     {
       applyAudioSettings();
-    }
-    else
-    {
-      guaranteeRtAudioDAC();
 
-      auto [in, out, sr] = getDefaultAudioInOutSampleRate();
-      audioInputDeviceID = in;
-      audioOutputDeviceID = out;
-      audioInputUsed = isKnownDevice(in);
-      audioOutputUsed = isKnownDevice(out);
-      currentSampleRate = sr;
+      // tried quietly. a saved configuration can stop opening - a device's rate was
+      // changed, another device took its name, or it is a pair with no rate in common
+      // saved before the settings screen refused those - and a launch should still come
+      // up with sound. if it does not open, this run uses the system defaults, and only
+      // their failure is shown. the file keeps the user's choice, as it does for a
+      // device that is not connected
+      {
+        SilenceAudioErrors silence(this);
+        startAudioThreadOn(audioInputDeviceID, deviceInputChannels, audioInputUsed && numAudioInputs > 0,
+                           audioOutputDeviceID, deviceOutputChannels,
+                           audioOutputUsed && numAudioOutputs > 0, currentSampleRate);
+      }
+      if (isAudioRunning()) return;
+
+      LOGINFO(
+          "[WARNING] The saved audio settings did not open ('{}'); using the system "
+          "defaults for this run",
+          lastAudioError);
     }
 
-    startAudioThreadOn(audioInputDeviceID, deviceInputChannels, audioInputUsed && numAudioInputs > 0,
-                       audioOutputDeviceID, deviceOutputChannels, audioOutputUsed && numAudioOutputs > 0,
-                       currentSampleRate);
+    openSystemDefaults();
   }
   catch (const std::exception &e)
   {
@@ -327,14 +368,15 @@ void StandaloneHost::startAudioThreadOn(unsigned int inputDeviceID, uint32_t inp
     LOGINFO("[ERROR] Exception starting audio : '{}'", e.what());
     lastAudioError = e.what();
     deactivatePlugin();
-    if (displayAudioError) displayAudioError(e.what());
+    if (displayAudioError && !audioErrorsAreSilent()) displayAudioError(e.what());
   }
   catch (...)
   {
     LOGINFO("[ERROR] Unknown exception starting audio");
     lastAudioError = "Unknown error while starting audio";
     deactivatePlugin();
-    if (displayAudioError) displayAudioError("Unknown error while starting audio");
+    if (displayAudioError && !audioErrorsAreSilent())
+      displayAudioError("Unknown error while starting audio");
   }
 }
 

@@ -42,6 +42,11 @@
 
   changes made through this extension persist exactly as if the user had made them
   in the standalone's own settings screen.
+
+  the plugin side: a plugin which returns clap_wrapper_plugin_standalone_features from
+  get_extension under the same id hears when the user is done with that screen, so it
+  can, say, unmute an input it muted before showing it. a standalone asks for it once,
+  after init().
 */
 
 #ifdef __cplusplus
@@ -50,7 +55,7 @@ extern "C"
 #endif
 
   static const CLAP_CONSTEXPR char CLAP_WRAPPER_STANDALONE_FEATURES[] =
-      "clap-wrapper.standalone-features.draft/2";
+      "clap-wrapper.standalone-features.draft/3";
 
   enum clap_wrapper_standalone_endpoint_kind
   {
@@ -276,6 +281,37 @@ extern "C"
     // [main-thread]
     bool(CLAP_ABI *reset_standalone_state)(const clap_host_t *host, uint32_t flags);
   } clap_wrapper_standalone_features_t;
+
+  // how the user left the audio/midi configuration screen
+  enum clap_wrapper_standalone_configuration_result
+  {
+    // they closed it without applying anything: cancel, the window's close button, or
+    // any other way out of a screen in which nothing was chosen
+    CLAP_WRAPPER_STANDALONE_CONFIGURATION_CANCELLED = 0,
+
+    // they applied a configuration: confirmed one, on a screen with an OK button
+    // (macos), or chose one, on a screen that applies each choice as it is made
+    // (windows). get_audio_status says what the stream runs at, or why it does not. on
+    // macos a configuration that does not open is neither kept nor reported - the
+    // screen stays up for another choice - so there this also means it is running
+    CLAP_WRAPPER_STANDALONE_CONFIGURATION_APPLIED = 1,
+  };
+
+  // declared, not included: a plugin's own source tree may well have a clap/plugin.h
+  // ahead of the sdk's on its include path
+  struct clap_plugin;
+
+  typedef struct clap_wrapper_plugin_standalone_features
+  {
+    // the user closed the standalone's audio/midi configuration screen, however it
+    // was opened: by show_audio_midi_configuration_screen or from the standalone's
+    // own menu. result is a clap_wrapper_standalone_configuration_result. called once
+    // per close, after the screen is gone, and never from inside a call the plugin
+    // is making
+    // [main-thread]
+    void(CLAP_ABI *audio_midi_configuration_screen_closed)(const struct clap_plugin *plugin,
+                                                           uint32_t result);
+  } clap_wrapper_plugin_standalone_features_t;
 
 #ifdef __cplusplus
 }

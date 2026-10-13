@@ -153,6 +153,8 @@ struct ClapPluginExtensions
   const clap_plugin_gain_adjustment_metering_t *_gainreduc = nullptr;
   const clap_plugin_auv2_param_ordering_t *_auv2_param_ordering = nullptr;
   const clap_plugin_preset_load_t *_preset_load = nullptr;
+  // the plugin side of CLAP_WRAPPER_STANDALONE_FEATURES; only the standalone asks
+  const clap_wrapper_plugin_standalone_features_t *_standalone_features = nullptr;
 #if LIN
   const clap_plugin_posix_fd_support *_posixfd = nullptr;
 #endif

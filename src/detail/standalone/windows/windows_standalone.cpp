@@ -688,6 +688,43 @@ void SystemMenu::populate(::HWND hwnd)
   }
 }
 
+namespace
+{
+// the plugin window whose settings window the standalone features extension shows;
+// null before it is created and after it is destroyed
+Plugin *settingsWindowOwner{nullptr};
+}  // namespace
+
+bool showSettingsScreen()
+{
+  if (!settingsWindowOwner) return false;
+
+  settingsWindowOwner->showSettings();
+  return true;
+}
+
+void Plugin::showSettings()
+{
+  if (!settings.hwnd) return;
+
+  // a new showing: nothing applied in it yet
+  if (!settings.isVisible())
+  {
+    settingsApplied = false;
+    settings.show();
+  }
+
+  ::SetForegroundWindow(settings.hwnd.get());
+}
+
+void Plugin::hideSettings()
+{
+  if (!settings.isVisible()) return;
+
+  settings.hide();
+  ::PostMessageW(hwnd.get(), WM_SETTINGS_CLOSED, settingsApplied ? 1 : 0, 0);
+}
+
 Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
 {
   plugin.clap = clapPlugin;
@@ -825,7 +862,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                {
                  case Menu::Identifier::AudioMidiSettings:
                  {
-                   settings.isVisible() ? settings.hide() : settings.show();
+                   settings.isVisible() ? hideSettings() : showSettings();
 
                    return 0;
                  }
@@ -979,6 +1016,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                               settings.sampleRate.set(std::to_string(sah->currentSampleRate));
                               settings.bufferSize.set(std::to_string(sah->currentBufferSize));
 
+                              settingsApplied = true;
                               saveSettings();
                               startAudio();
                             }
@@ -1002,6 +1040,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                               refreshSampleRates();
                               refreshBufferSizes();
 
+                              settingsApplied = true;
                               saveSettings();
                               startAudio();
                             }
@@ -1024,6 +1063,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                               refreshSampleRates();
                               refreshBufferSizes();
 
+                              settingsApplied = true;
                               saveSettings();
                               startAudio();
                             }
@@ -1043,6 +1083,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                               sah->currentSampleRate = sampleRates[*index];
                               sah->settings.sampleRate = sampleRates[*index];
 
+                              settingsApplied = true;
                               saveSettings();
                               startAudio();
                             }
@@ -1056,6 +1097,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                             {
                               sah->currentBufferSize = bufferSizes[*index];
 
+                              settingsApplied = true;
                               saveSettings();
                               startAudio();
                             }
@@ -1088,6 +1130,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                             sah->settings.midiBindAllPorts = false;
                             sah->settings.midiPortNames = chosen;
 
+                            settingsApplied = true;
                             saveSettings();
                           }
                         }
@@ -1142,6 +1185,8 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
 
                sah->onRequestResize = nullptr;
                sah->displayAudioError = nullptr;
+               sah->onShowSettingsScreen = nullptr;
+               settingsWindowOwner = nullptr;
 
                if (plugin.gui)
                {
@@ -1188,10 +1233,22 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
   settings.message.on(WM_CLOSE,
                       [this](Message msg)
                       {
-                        settings.hide();
+                        hideSettings();
 
                         return 0;
                       });
+
+  // the settings window was closed: tell the plugin, now that it is gone and from the
+  // message loop rather than from whichever handler hid it
+  message.on(WM_SETTINGS_CLOSED,
+             [this](Message msg)
+             {
+               if (sah)
+                 sah->settingsScreenClosed(msg.wparam ? CLAP_WRAPPER_STANDALONE_CONFIGURATION_APPLIED
+                                                      : CLAP_WRAPPER_STANDALONE_CONFIGURATION_CANCELLED);
+
+               return 0;
+             });
 
   settings.message.on(
       WM_PAINT,
@@ -1231,6 +1288,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
   create(OUTPUT_NAME);
 
   settings.create("Audio/MIDI Settings");
+  settingsWindowOwner = this;
 
   isTimerRunning = startTimer(timerId, 8);
 

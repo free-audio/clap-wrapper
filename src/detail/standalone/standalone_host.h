@@ -40,6 +40,13 @@ struct X11Gui;
 
 std::optional<fs::path> getStandaloneSettingsPath();
 
+// the inputs a launch with no saved settings should open in place of the system default
+// input, best first, as rtaudio names them; empty keeps the system default. on macOS that
+// is an audio interface (usb, thunderbolt, firewire, pci or avb) when the system default
+// is a built-in, bluetooth or iphone microphone. elsewhere there is no way to tell yet,
+// and the answer is always empty
+std::vector<std::string> preferredFirstRunInputs();
+
 struct StandaloneHost : Clap::IHost
 {
   StandaloneHost()
@@ -258,6 +265,11 @@ struct StandaloneHost : Clap::IHost
   // set by the platform frontend; null means it has no settings screen to offer
   std::function<bool()> onShowSettingsScreen{nullptr};
 
+  // called by the platform frontend once per close of its settings screen, after the
+  // screen is gone; passes it on to the plugin's side of the standalone features
+  // extension, if it has one. result is a clap_wrapper_standalone_configuration_result
+  void settingsScreenClosed(uint32_t result);
+
   std::vector<clap_wrapper_standalone_endpoint_t> endpointSnapshot[4];
   uint32_t snapshotEndpoints(uint32_t kind);
   std::vector<uint32_t> sampleRateSnapshot;
@@ -343,6 +355,13 @@ struct StandaloneHost : Clap::IHost
   std::function<void(const std::string &)> displayAudioError{nullptr};
   // why the most recent startAudioThreadOn failed; empty if it succeeded
   std::string lastAudioError;
+
+  // a stream is open and the plugin is processing it. startAudioThreadOn() settles this
+  // before it returns, so it answers whether that open worked
+  bool isAudioRunning() const
+  {
+    return isActive && (currentOutputChannels > 0 || currentInputChannels > 0);
+  }
   // session only: a launch never starts muted on a previous session's say-so
   std::atomic<bool> inputMuted{false};
 
