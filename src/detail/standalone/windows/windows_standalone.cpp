@@ -762,6 +762,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
         settings.bufferSize.create("Buffer Size", Settings::Identifier::AudioBuffersize,
                                    settings.hwnd.get());
         settings.midiIn.create("MIDI Inputs", Settings::Identifier::MidiInputs, settings.hwnd.get());
+        settings.midiOut.create("MIDI Outputs", Settings::Identifier::MidiOutputs, settings.hwnd.get());
 
         return 0;
       });
@@ -1133,6 +1134,29 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                             settingsApplied = true;
                             saveSettings();
                           }
+
+                          if (LOWORD(msg.wparam) == Settings::Identifier::MidiOutputs)
+                          {
+                            std::vector<int> selected;
+                            settings.midiOut.getItems(selected);
+
+                            auto available{sah->getMidiOutputPortNames()};
+
+                            std::vector<std::string> chosen;
+                            for (auto index : selected)
+                            {
+                              if (index >= 0 && static_cast<size_t>(index) < available.size())
+                              {
+                                chosen.push_back(available[index]);
+                              }
+                            }
+
+                            sah->openMidiOutputPorts(chosen);
+                            sah->settings.midiOutputPortNames = chosen;
+
+                            settingsApplied = true;
+                            saveSettings();
+                          }
                         }
 
                         return 0;
@@ -1280,6 +1304,11 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                      L"MIDI Inputs: ", 13);
         }
 
+        if (sah->numMidiOutputPorts != 0)
+        {
+          ::TextOutW(hdc, 10, settings.midiOut.position.y, L"MIDI Outputs: ", 14);
+        }
+
         ::EndPaint(msg.hwnd, &ps);
 
         return 0;
@@ -1374,6 +1403,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
 
   startMIDI();
   refreshMIDIInputs();
+  refreshMIDIOutputs();
 
   // Never put the message box up from here. RtAudio calls this from wherever the
   // failure happened - including from inside the combo-box handler that asked for
@@ -1464,6 +1494,7 @@ void Plugin::refreshLayout()
   settings.sampleRate.refreshFont(settings.scale);
   settings.bufferSize.refreshFont(settings.scale);
   settings.midiIn.refreshFont(settings.scale);
+  settings.midiOut.refreshFont(settings.scale);
 
   auto x{static_cast<uint32_t>(150 * settings.scale)};
   auto width{static_cast<uint32_t>(500 * settings.scale)};
@@ -1488,15 +1519,17 @@ void Plugin::refreshLayout()
       x, settings.bufferSize.position.y + settings.bufferSize.position.height + 10, width - x - 10,
       (static_cast<uint32_t>(settings.midiIn.getItemHeight() * sah->numMidiPorts)));
 
-  if (sah->numMidiPorts != 0)
-  {
-    settings.adjustSize(width, (settings.api.position.height * 5) + (10 * 6) +
-                                   (settings.midiIn.position.height) + (10 * 1));
-  }
-  else
-  {
-    settings.adjustSize(width, (settings.api.position.height * 5) + (10 * 6));
-  }
+  // an empty list takes no room, and no gap either
+  settings.midiOut.setPosition(
+      x,
+      settings.midiIn.position.y + settings.midiIn.position.height + (sah->numMidiPorts != 0 ? 10 : 0),
+      width - x - 10,
+      (static_cast<uint32_t>(settings.midiOut.getItemHeight() * sah->numMidiOutputPorts)));
+
+  auto windowHeight{(settings.api.position.height * 5) + (10 * 6)};
+  if (sah->numMidiPorts != 0) windowHeight += settings.midiIn.position.height + 10;
+  if (sah->numMidiOutputPorts != 0) windowHeight += settings.midiOut.position.height + 10;
+  settings.adjustSize(width, windowHeight);
 }
 
 void Plugin::refreshApis()
@@ -1593,6 +1626,28 @@ void Plugin::refreshMIDIInputs()
       settings.midiIn.set(name);
     }
   }
+}
+
+void Plugin::refreshMIDIOutputs()
+{
+  settings.midiOut.reset();
+
+  auto available{sah->getMidiOutputPortNames()};
+
+  for (const auto &name : available)
+  {
+    settings.midiOut.add(name);
+  }
+
+  settings.midiOut.clearSelection();
+
+  for (const auto &name : sah->settings.midiOutputPortNames)
+  {
+    settings.midiOut.set(name);
+  }
+
+  // listed, so the ports can be seen, but a plugin that sends no midi has nothing for them
+  ::EnableWindow(settings.midiOut.hwnd.get(), sah->createsMidiOutput ? TRUE : FALSE);
 }
 
 bool Plugin::saveSettings()

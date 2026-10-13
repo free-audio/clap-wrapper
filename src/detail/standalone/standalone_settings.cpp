@@ -150,6 +150,12 @@ bool StandaloneSettings::load(const fs::path &fromFile)
         loaded.midiPortNames.push_back(value);
         sawMidiSelection = true;
       }
+      else if (key == "midiOutputPort")
+        loaded.midiOutputPortNames.push_back(value);
+      else if (key == "midiVirtualInput")
+        loaded.midiVirtualInput = asBool(value);
+      else if (key == "midiVirtualOutput")
+        loaded.midiVirtualOutput = asBool(value);
       else if (key == "windowX")
       {
         loaded.windowX = static_cast<int32_t>(std::atol(value.c_str()));
@@ -227,6 +233,12 @@ bool StandaloneSettings::save(const fs::path &intoFile) const
     {
       ofs << "midiPort=" << escape(port) << "\n";
     }
+    for (const auto &port : midiOutputPortNames)
+    {
+      ofs << "midiOutputPort=" << escape(port) << "\n";
+    }
+    ofs << "midiVirtualInput=" << fromBool(midiVirtualInput) << "\n";
+    ofs << "midiVirtualOutput=" << fromBool(midiVirtualOutput) << "\n";
 
     if (hasWindowPosition)
     {

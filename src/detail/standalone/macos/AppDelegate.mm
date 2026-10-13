@@ -2,7 +2,10 @@
 
 #include <AVFoundation/AVFoundation.h>
 
+#include <algorithm>
 #include <map>
+#include <string>
+#include <vector>
 
 #include "detail/standalone/entry.h"
 #include "detail/standalone/standalone_details.h"
@@ -14,10 +17,39 @@
 
 @end
 
+namespace
+{
+// a checkbox in one of the settings window's midi port lists
+struct MidiPortRow
+{
+  std::string name;
+  NSButton *check;  // owned by the window's views
+  bool wasOn;       // when the window opened
+};
+}  // namespace
+
+@interface AudioSettingsFlippedView : NSView
+@end
+
+@implementation AudioSettingsFlippedView
+- (BOOL)isFlipped
+{
+  return YES;
+}
+@end
+
 @interface AudioSettingsWindow : NSWindow
 {
   NSPopUpButton *outputSelection, *inputSelection, *sampleRateSelection;
   std::vector<RtAudio::DeviceInfo> outDevices, inDevices;
+
+  // a list nobody touched leaves its settings as they were, which for the inputs may be
+  // "every port", including any plugged in later
+  std::vector<MidiPortRow> midiInRows, midiOutRows;
+
+  // the optional virtual ports, and whether each was asked for when the window opened
+  NSButton *virtualInCheck, *virtualOutCheck;
+  bool virtualInWasOn, virtualOutWasOn;
 
   // OK reopened audio with what the window shows; Cancel and the close button did not
   bool applied;
@@ -26,7 +58,7 @@
   // OK is off, and the note says why, while the input and output have no sample rate in
   // common: one stream runs both at one rate, so the devices could not be opened together
   NSButton *okButton;
-  NSTextField *noRateNote;
+  NSGridRow *noRateRow;
 }
 
 - (void)setupContents;
@@ -316,12 +348,13 @@ static AudioSettingsWindow *openAudioSettings{nil};
 
   @autoreleasepool
   {
-    NSRect windowRect = NSMakeRect(0, 0, 400, 360);
+    // sized to its contents by setupContents
+    NSRect windowRect = NSMakeRect(0, 0, 480, 400);
 
     auto *window = [[AudioSettingsWindow alloc]
         initWithContentRect:windowRect
                   styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
-                            NSWindowStyleMaskResizable | NSWindowStyleMaskMiniaturizable
+                            NSWindowStyleMaskMiniaturizable
                     backing:NSBackingStoreBuffered
                       defer:NO];
 
@@ -444,73 +477,171 @@ static AudioSettingsWindow *openAudioSettings{nil};
 
 @end
 
+namespace
+{
+// the width of the device menus and port lists
+constexpr CGFloat controlWidth{320};
+// from the window's edges, and so clear of its rounded corners
+constexpr CGFloat windowMargin{20};
+// port lists show this many rows and scroll the rest
+constexpr size_t visiblePortRows{5};
+
+NSString *pluginDisplayName()
+{
+  auto plugin = freeaudio::clap_wrapper::standalone::getMainPlugin();
+  if (plugin && plugin->_plugin && plugin->_plugin->desc && plugin->_plugin->desc->name &&
+      *plugin->_plugin->desc->name)
+    return [NSString stringWithUTF8String:plugin->_plugin->desc->name];
+  return [NSString stringWithUTF8String:OUTPUT_NAME];
+}
+
+NSTextField *makeLabel(NSString *s)
+{
+  return [NSTextField labelWithString:s];
+}
+
+NSTextField *makeNote(NSString *s, NSColor *color)
+{
+  NSTextField *note = [NSTextField wrappingLabelWithString:s];
+  [note setFont:[NSFont systemFontOfSize:[NSFont smallSystemFontSize]]];
+  [note setTextColor:color];
+  [note setPreferredMaxLayoutWidth:controlWidth];
+  return note;
+}
+
+NSBox *makeRule()
+{
+  NSBox *rule = [[[NSBox alloc] init] autorelease];
+  [rule setBoxType:NSBoxSeparator];
+  return rule;
+}
+
+bool contains(const std::vector<std::string> &names, const std::string &name)
+{
+  return std::find(names.begin(), names.end(), name) != names.end();
+}
+
+// one checkbox per port. ports saved but not plugged in now are listed too, marked, so
+// that unticking one is a way to forget it; a plugin that could not use the ports gets
+// them listed and greyed
+NSScrollView *makePortList(std::vector<MidiPortRow> &rows, const std::vector<std::string> &available,
+                           const std::vector<std::string> &on, bool allOn, bool usable,
+                           NSString *emptyText)
+{
+  rows.clear();
+  auto addRow = [&rows, usable](const std::string &name, bool connected, bool isOn)
+  {
+    NSString *title = [NSString stringWithUTF8String:name.c_str()];
+    if (!connected) title = [title stringByAppendingString:@" (not connected)"];
+    NSButton *check = [NSButton checkboxWithTitle:title target:nil action:nil];
+    [check setState:isOn ? NSControlStateValueOn : NSControlStateValueOff];
+    [check setEnabled:usable];
+    [[check cell] setLineBreakMode:NSLineBreakByTruncatingTail];
+    rows.push_back({name, check, isOn});
+  };
+  for (const auto &name : available) addRow(name, true, allOn || contains(on, name));
+  if (!allOn)
+    for (const auto &name : on)
+      if (!contains(available, name)) addRow(name, false, true);
+
+  NSTextField *empty = nil;
+  if (rows.empty())
+  {
+    empty = makeLabel(emptyText);
+    [empty setTextColor:[NSColor secondaryLabelColor]];
+  }
+
+  // laid out by hand inside the scroll view, which is simpler there than constraints
+  const CGFloat inset{4}, gap{2};
+  const CGFloat rowHeight =
+      rows.empty() ? [empty fittingSize].height : [rows.front().check fittingSize].height;
+  const size_t shown = std::clamp(rows.size(), (size_t)1, visiblePortRows);
+  const size_t total = std::max(rows.size(), (size_t)1);
+
+  // a list that scrolls shows half a row more, so that it plainly does
+  const bool scrolls = rows.size() > visiblePortRows;
+  const CGFloat shownRows = shown + (scrolls ? 0.5 : 0);
+  const NSSize frame =
+      NSMakeSize(controlWidth, 2 * inset + shownRows * rowHeight + (shownRows - 1) * gap + 2);
+  const NSSize content = [NSScrollView contentSizeForFrameSize:frame
+                                       horizontalScrollerClass:nil
+                                         verticalScrollerClass:scrolls ? [NSScroller class] : nil
+                                                    borderType:NSBezelBorder
+                                                   controlSize:NSControlSizeRegular
+                                                 scrollerStyle:[NSScroller preferredScrollerStyle]];
+
+  const CGFloat docHeight = 2 * inset + total * rowHeight + (total - 1) * gap;
+  NSView *doc = [[[AudioSettingsFlippedView alloc]
+      initWithFrame:NSMakeRect(0, 0, content.width, std::max(docHeight, content.height))] autorelease];
+  if (empty)
+  {
+    [empty setFrame:NSMakeRect(2 * inset, inset, content.width - 4 * inset, rowHeight)];
+    [doc addSubview:empty];
+  }
+  for (size_t i = 0; i < rows.size(); ++i)
+  {
+    [rows[i].check setFrame:NSMakeRect(2 * inset, inset + i * (rowHeight + gap),
+                                       content.width - 4 * inset, rowHeight)];
+    [doc addSubview:rows[i].check];
+  }
+
+  NSScrollView *list =
+      [[[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, frame.width, frame.height)] autorelease];
+  [list setBorderType:NSBezelBorder];
+  [list setHasVerticalScroller:scrolls];
+  [list setAutohidesScrollers:YES];
+  [list setDrawsBackground:YES];
+  [list setBackgroundColor:[NSColor controlBackgroundColor]];
+  [list setDocumentView:doc];
+  [list setTranslatesAutoresizingMaskIntoConstraints:NO];
+  [[list widthAnchor] constraintEqualToConstant:frame.width].active = YES;
+  [[list heightAnchor] constraintEqualToConstant:frame.height].active = YES;
+  return list;
+}
+
+bool listChanged(const std::vector<MidiPortRow> &rows)
+{
+  for (const auto &row : rows)
+    if (([row.check state] == NSControlStateValueOn) != row.wasOn) return true;
+  return false;
+}
+
+std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
+{
+  std::vector<std::string> names;
+  for (const auto &row : rows)
+    if ([row.check state] == NSControlStateValueOn) names.push_back(row.name);
+  return names;
+}
+}  // namespace
+
 @implementation AudioSettingsWindow
 
 - (void)setupContents
 {
   @autoreleasepool
   {
-    auto addLabel = [](NSString *s, int x, int y)
-    {
-      NSTextField *label = [[NSTextField alloc] initWithFrame:NSMakeRect(x, y, 200, 30)];
+    auto standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
+    NSString *pluginName = pluginDisplayName();
 
-      // Set the text of the label
-      [label setStringValue:s];
-
-      // By default, NSTextField objects are editable. Make this one non-editable and non-selectable to act like a label
-      [label setEditable:NO];
-      [label setSelectable:NO];
-      [label setBezeled:NO];
-      [label setDrawsBackground:NO];
-
-      // Add the label to the window
-      return label;
-    };
-    // Set the window title
     [self setTitle:@"Audio/MIDI Settings"];
 
-    // Create the button
-    okButton = [[NSButton alloc] initWithFrame:NSMakeRect(400 - 80 - 80, 0, 80, 30)];
-    [okButton setTitle:@"OK"];
-    [okButton setTarget:self];
-    [okButton setAction:@selector(okButtonPressed:)];
+    NSTextField *heading = makeLabel([NSString stringWithFormat:@"Audio/MIDI Setup for %@", pluginName]);
+    [heading setFont:[NSFont systemFontOfSize:15 weight:NSFontWeightSemibold]];
+    [heading setLineBreakMode:NSLineBreakByTruncatingTail];
+    NSBox *headingRule = makeRule();
 
-    [[self contentView] addSubview:okButton];
+    // audio
+    outputSelection = [[[NSPopUpButton alloc] init] autorelease];
+    inputSelection = [[[NSPopUpButton alloc] init] autorelease];
+    sampleRateSelection = [[[NSPopUpButton alloc] init] autorelease];
+    for (NSPopUpButton *menu : {outputSelection, inputSelection})
+    {
+      [[menu cell] setLineBreakMode:NSLineBreakByTruncatingTail];
+      [[menu widthAnchor] constraintEqualToConstant:controlWidth].active = YES;
+    }
+    [[sampleRateSelection widthAnchor] constraintEqualToConstant:120].active = YES;
 
-    NSButton *cancelButton = [[NSButton alloc] initWithFrame:NSMakeRect(400 - 80, 0, 80, 30)];
-    [cancelButton setTitle:@"Cancel"];
-    [cancelButton setTarget:self];
-    [cancelButton setAction:@selector(cancelButtonPressed:)];
-
-    [[self contentView] addSubview:addLabel(@"Output", 10, 320)];
-    outputSelection = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(100, 320, 290, 30)];
-
-    [[self contentView] addSubview:addLabel(@"Sample Rate", 10, 285)];
-    sampleRateSelection = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(100, 285, 120, 30)];
-
-    [[self contentView] addSubview:addLabel(@"Input", 10, 250)];
-    inputSelection = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(100, 250, 290, 30)];
-
-    NSButton *defaultButton = [[NSButton alloc] initWithFrame:NSMakeRect(95, 215, 300, 30)];
-    [defaultButton setTitle:@"Reset to System Default"];
-    [defaultButton setTarget:self];
-    [defaultButton setAction:@selector(defaultButtonPressed:)];
-    [[self contentView] addSubview:defaultButton];
-
-    NSBox *horizontalRule = [[NSBox alloc] initWithFrame:NSMakeRect(10, 205, 380, 1)];
-    [horizontalRule setBoxType:NSBoxSeparator];
-    [[self contentView] addSubview:horizontalRule];
-
-    noRateNote = addLabel(@"These devices have no sample rate in common.", 10, 40);
-    [noRateNote setFrameSize:NSMakeSize(380, 30)];
-    [noRateNote setTextColor:[NSColor systemRedColor]];
-    [noRateNote setHidden:YES];
-    [[self contentView] addSubview:noRateNote];
-
-    [[self contentView] addSubview:addLabel(@"MIDI", 10, 165)];
-    [[self contentView] addSubview:addLabel(@"Coming Soon", 100, 165)];
-
-    auto standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
     outDevices = standaloneHost->getOutputAudioDevices();
     // add items to menu
     int selIdx{-1}, idx{0};
@@ -518,7 +649,7 @@ static AudioSettingsWindow *openAudioSettings{nil};
 
     for (auto o : outDevices)
     {
-      [outputSelection addItemWithTitle:[[NSString alloc] initWithUTF8String:o.name.c_str()]];
+      [outputSelection addItemWithTitle:[NSString stringWithUTF8String:o.name.c_str()]];
       if (standaloneHost->audioOutputDeviceID == o.ID) selIdx = idx;
       idx++;
     }
@@ -536,11 +667,13 @@ static AudioSettingsWindow *openAudioSettings{nil};
 
     for (auto i : inDevices)
     {
-      [inputSelection addItemWithTitle:[[NSString alloc] initWithUTF8String:i.name.c_str()]];
+      [inputSelection addItemWithTitle:[NSString stringWithUTF8String:i.name.c_str()]];
       if (standaloneHost->audioInputDeviceID == i.ID) selIdx = idx;
       idx++;
     }
-    if (selIdx >= 0)
+    // the id is the default input's even with no input open, and showing that device
+    // would have OK open it
+    if (selIdx >= 0 && standaloneHost->audioInputUsed)
     {
       [inputSelection selectItemAtIndex:selIdx];
     }
@@ -548,15 +681,158 @@ static AudioSettingsWindow *openAudioSettings{nil};
     [inputSelection setAction:@selector(onSourceMenuChanged:)];
     [inputSelection setTarget:self];
 
+    NSButton *defaultButton = [NSButton buttonWithTitle:@"Reset to System Default"
+                                                 target:self
+                                                 action:@selector(defaultButtonPressed:)];
+
+    NSTextField *noRateNote =
+        makeNote(@"These devices have no sample rate in common.", [NSColor systemRedColor]);
+
+    // midi
+    const auto &settings = standaloneHost->settings;
+    const bool takesMidi = standaloneHost->hasMIDIInput || standaloneHost->hasClapNoteInput;
+    const bool sendsMidi = standaloneHost->createsMidiOutput;
+
+    NSScrollView *midiInList =
+        makePortList(midiInRows, standaloneHost->getMidiPortNames(), settings.midiPortNames,
+                     settings.midiBindAllPorts, takesMidi, @"No MIDI inputs found");
+    NSScrollView *midiOutList =
+        makePortList(midiOutRows, standaloneHost->getMidiOutputPortNames(), settings.midiOutputPortNames,
+                     false, sendsMidi, @"No MIDI outputs found");
+    NSTextField *midiInNote = makeNote([NSString stringWithFormat:@"%@ takes no MIDI.", pluginName],
+                                       [NSColor secondaryLabelColor]);
+    NSTextField *midiOutNote = makeNote([NSString stringWithFormat:@"%@ sends no MIDI.", pluginName],
+                                        [NSColor secondaryLabelColor]);
+
+    // offered where the midi api has virtual ports, which on macos is every version
+    const bool virtualPorts =
+        freeaudio::clap_wrapper::standalone::StandaloneHost::supportsVirtualMidiPorts();
+    auto makeVirtualCheck = [&](bool input, bool isOn, bool usable)
+    {
+      NSString *name =
+          [NSString stringWithUTF8String:standaloneHost->virtualMidiPortName(input).c_str()];
+      NSString *title = [NSString
+          stringWithFormat:input ? @"Virtual input \u201C%@\u201D" : @"Virtual output \u201C%@\u201D",
+                           name];
+      NSButton *check = [NSButton checkboxWithTitle:title target:nil action:nil];
+      [check setState:isOn ? NSControlStateValueOn : NSControlStateValueOff];
+      [check setEnabled:usable];
+      [check setToolTip:input ? @"A MIDI destination other applications can send to"
+                              : @"A MIDI source other applications can receive from"];
+      return check;
+    };
+    virtualInWasOn = settings.midiVirtualInput;
+    virtualOutWasOn = settings.midiVirtualOutput;
+    virtualInCheck = makeVirtualCheck(true, virtualInWasOn, takesMidi);
+    virtualOutCheck = makeVirtualCheck(false, virtualOutWasOn, sendsMidi);
+
+    NSTextField *midiInLabel = makeLabel(@"MIDI Inputs:");
+    NSTextField *midiOutLabel = makeLabel(@"MIDI Outputs:");
+    NSView *none = [NSGridCell emptyContentView];
+    NSBox *sectionRule = makeRule();
+
+    NSGridView *grid = [NSGridView gridViewWithViews:@[
+      @[ makeLabel(@"Output:"), outputSelection ],
+      @[ makeLabel(@"Input:"), inputSelection ],
+      @[ makeLabel(@"Sample Rate:"), sampleRateSelection ],
+      @[ none, defaultButton ],
+      @[ none, noRateNote ],
+      @[ sectionRule, none ],
+      @[ midiInLabel, midiInList ],
+      @[ none, virtualInCheck ],
+      @[ none, midiInNote ],
+      @[ midiOutLabel, midiOutList ],
+      @[ none, virtualOutCheck ],
+      @[ none, midiOutNote ],
+    ]];
+    [grid setRowSpacing:8];
+    [grid setColumnSpacing:8];
+    [grid setRowAlignment:NSGridRowAlignmentFirstBaseline];
+    [[grid columnAtIndex:0] setXPlacement:NSGridCellPlacementTrailing];
+
+    auto rowOf = [grid](NSView *v) { return [[grid cellForView:v] row]; };
+
+    noRateRow = rowOf(noRateNote);
+    [noRateRow setHidden:YES];
+    [rowOf(midiInNote) setHidden:takesMidi];
+    [rowOf(midiOutNote) setHidden:sendsMidi];
+    [rowOf(virtualInCheck) setHidden:!virtualPorts];
+    [rowOf(virtualOutCheck) setHidden:!virtualPorts];
+
+    NSGridRow *ruleRow = rowOf(sectionRule);
+    [ruleRow mergeCellsInRange:NSMakeRange(0, 2)];
+    [ruleRow setRowAlignment:NSGridRowAlignmentNone];
+    [ruleRow setYPlacement:NSGridCellPlacementCenter];
+    [ruleRow setTopPadding:6];
+    [ruleRow setBottomPadding:6];
+    [[ruleRow cellAtIndex:0] setXPlacement:NSGridCellPlacementFill];
+
+    // a list has no baseline: its label is centred on the list's first row instead,
+    // which puts the two lines of text level
+    auto alignListLabel = [&](NSView *label, NSView *list, const std::vector<MidiPortRow> &rows)
+    {
+      NSGridRow *row = rowOf(list);
+      [row setRowAlignment:NSGridRowAlignmentNone];
+      [row setYPlacement:NSGridCellPlacementTop];
+
+      NSGridCell *labelCell = [grid cellForView:label];
+      const CGFloat firstRow =
+          rows.empty() ? [label fittingSize].height : [rows.front().check fittingSize].height;
+      [labelCell setYPlacement:NSGridCellPlacementNone];
+      [labelCell setCustomPlacementConstraints:@[ [[label centerYAnchor]
+                                                   constraintEqualToAnchor:[list topAnchor]
+                                                                  constant:1 + 4 + firstRow / 2] ]];
+    };
+    alignListLabel(midiInLabel, midiInList, midiInRows);
+    alignListLabel(midiOutLabel, midiOutList, midiOutRows);
+
+    // buttons
+    NSButton *cancelButton = [NSButton buttonWithTitle:@"Cancel"
+                                                target:self
+                                                action:@selector(cancelButtonPressed:)];
+    [cancelButton setKeyEquivalent:@"\033"];
+    okButton = [NSButton buttonWithTitle:@"OK" target:self action:@selector(okButtonPressed:)];
+    [okButton setKeyEquivalent:@"\r"];
+
+    NSView *content = [self contentView];
+    for (NSView *v : {(NSView *)heading, (NSView *)headingRule, (NSView *)grid, (NSView *)cancelButton,
+                      (NSView *)okButton})
+    {
+      [v setTranslatesAutoresizingMaskIntoConstraints:NO];
+      [content addSubview:v];
+    }
+
+    [NSLayoutConstraint activateConstraints:@[
+      [[heading topAnchor] constraintEqualToAnchor:[content topAnchor] constant:windowMargin - 4],
+      [[heading leadingAnchor] constraintEqualToAnchor:[content leadingAnchor] constant:windowMargin],
+      [[heading trailingAnchor] constraintLessThanOrEqualToAnchor:[content trailingAnchor]
+                                                         constant:-windowMargin],
+
+      [[headingRule topAnchor] constraintEqualToAnchor:[heading bottomAnchor] constant:8],
+      [[headingRule leadingAnchor] constraintEqualToAnchor:[content leadingAnchor]
+                                                  constant:windowMargin],
+      [[headingRule trailingAnchor] constraintEqualToAnchor:[content trailingAnchor]
+                                                   constant:-windowMargin],
+
+      [[grid topAnchor] constraintEqualToAnchor:[headingRule bottomAnchor] constant:16],
+      [[grid leadingAnchor] constraintEqualToAnchor:[content leadingAnchor] constant:windowMargin],
+      [[grid trailingAnchor] constraintEqualToAnchor:[content trailingAnchor] constant:-windowMargin],
+
+      [[okButton topAnchor] constraintEqualToAnchor:[grid bottomAnchor] constant:24],
+      [[okButton trailingAnchor] constraintEqualToAnchor:[content trailingAnchor]
+                                                constant:-windowMargin],
+      [[okButton bottomAnchor] constraintEqualToAnchor:[content bottomAnchor] constant:-windowMargin],
+      [[okButton widthAnchor] constraintGreaterThanOrEqualToConstant:80],
+
+      [[cancelButton trailingAnchor] constraintEqualToAnchor:[okButton leadingAnchor] constant:-12],
+      [[cancelButton centerYAnchor] constraintEqualToAnchor:[okButton centerYAnchor]],
+      [[cancelButton widthAnchor] constraintEqualToAnchor:[okButton widthAnchor]],
+    ]];
+
     [self resetSampleRateSelection];
 
-    // Add the outputSelection to the window's content view
-    [[self contentView] addSubview:outputSelection];
-    [[self contentView] addSubview:inputSelection];
-    [[self contentView] addSubview:sampleRateSelection];
-
-    // Add the button to the window's content view
-    [[self contentView] addSubview:cancelButton];
+    [content layoutSubtreeIfNeeded];
+    [self setContentSize:[content fittingSize]];
   }
 }
 
@@ -595,16 +871,26 @@ static AudioSettingsWindow *openAudioSettings{nil};
     const bool previousUseOut = standaloneHost->audioOutputUsed;
     const auto previousRate = standaloneHost->currentSampleRate;
 
-    standaloneHost->startAudioThreadOn(inId, 2, useIn, outId, 2, useOut, (int32_t)sr);
-    if (!standaloneHost->isAudioRunning())
+    // a stream already running on what the window shows is left alone: reopening it, for
+    // a window in which only the midi ports changed, would drop out the audio for nothing
+    const bool audioAsShown =
+        wasRunning && (int32_t)sr == previousRate &&
+        useOut == (standaloneHost->currentOutputChannels > 0) && (!useOut || outId == previousOut) &&
+        useIn == (standaloneHost->currentInputChannels > 0) && (!useIn || inId == previousIn);
+
+    if (!audioAsShown)
     {
-      // neither kept nor saved, and the window stays up for another choice: the
-      // devices are put back as they were, and the error callback has already told
-      // the user why these did not open
-      if (wasRunning)
-        standaloneHost->startAudioThreadOn(previousIn, 2, previousUseIn, previousOut, 2, previousUseOut,
-                                           previousRate);
-      return;
+      standaloneHost->startAudioThreadOn(inId, 2, useIn, outId, 2, useOut, (int32_t)sr);
+      if (!standaloneHost->isAudioRunning())
+      {
+        // neither kept nor saved, and the window stays up for another choice: the
+        // devices are put back as they were, and the error callback has already told
+        // the user why these did not open
+        if (wasRunning)
+          standaloneHost->startAudioThreadOn(previousIn, 2, previousUseIn, previousOut, 2,
+                                             previousUseOut, previousRate);
+        return;
+      }
     }
 
     // persist the choice, per plugin id - startAudioThread() opens what the file names
@@ -618,6 +904,35 @@ static AudioSettingsWindow *openAudioSettings{nil};
     if (useIn) settings.inputDeviceName = inDevices[iidx - 1].name;
     settings.audioInputUsed = useIn;
     settings.sampleRate = (int32_t)sr;
+
+    // a port list is applied only when it was changed, so that an untouched input list
+    // keeps "every port" if that is what it had
+    if (listChanged(midiInRows))
+    {
+      settings.midiBindAllPorts = false;
+      settings.midiPortNames = ticked(midiInRows);
+      standaloneHost->openMidiPorts(settings.midiPortNames, false);
+    }
+    if (listChanged(midiOutRows))
+    {
+      settings.midiOutputPortNames = ticked(midiOutRows);
+      standaloneHost->openMidiOutputPorts(settings.midiOutputPortNames);
+    }
+
+    // likewise, so that an application connected to a virtual port keeps its connection
+    const bool virtualIn = [virtualInCheck state] == NSControlStateValueOn;
+    if (virtualIn != virtualInWasOn)
+    {
+      settings.midiVirtualInput = virtualIn;
+      standaloneHost->setVirtualMidiInput(virtualIn);
+    }
+    const bool virtualOut = [virtualOutCheck state] == NSControlStateValueOn;
+    if (virtualOut != virtualOutWasOn)
+    {
+      settings.midiVirtualOutput = virtualOut;
+      standaloneHost->setVirtualMidiOutput(virtualOut);
+    }
+
     standaloneHost->captureAudioSettings();
     if (!standaloneHost->saveStandaloneSettings())
       LOGINFO("[WARNING] Unable to save the audio settings; the next launch will not have them");
@@ -698,10 +1013,17 @@ static AudioSettingsWindow *openAudioSettings{nil};
 
 - (void)resetSampleRateSelection
 {
+  [sampleRateSelection removeAllItems];
+
   auto idx = [outputSelection indexOfSelectedItem];
+  if (idx < 0 || (size_t)idx >= outDevices.size())
+  {
+    // no output device at all: nothing to run a stream on
+    [okButton setEnabled:NO];
+    return;
+  }
   const auto &oDev = outDevices[idx];
 
-  [sampleRateSelection removeAllItems];
   auto csr = freeaudio::clap_wrapper::standalone::getStandaloneHost()->currentSampleRate;
 
   std::map<int, int> srAvail;
@@ -745,7 +1067,7 @@ static AudioSettingsWindow *openAudioSettings{nil};
   // no rate in common, nothing to open the two devices at
   const bool canOpen = [sampleRateSelection numberOfItems] > 0;
   [okButton setEnabled:canOpen];
-  [noRateNote setHidden:canOpen];
+  [noRateRow setHidden:canOpen];
 }
 
 @end

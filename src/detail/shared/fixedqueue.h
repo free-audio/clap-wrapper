@@ -19,6 +19,19 @@ class fixedqueue
     _elements[_head] = *val;
     _head = (_head + 1) & _wrapMask;
   }
+  // push() overwrites the oldest element when the queue is full, after which it reads as
+  // empty; this leaves a full queue alone and says so
+  inline bool tryPush(const T &val)
+  {
+    const uint32_t next = (_head + 1) & _wrapMask;
+    if (next == _tail)
+    {
+      return false;
+    }
+    _elements[_head] = val;
+    _head = next;
+    return true;
+  }
   inline bool pop(T &out)
   {
     if (_head == _tail)

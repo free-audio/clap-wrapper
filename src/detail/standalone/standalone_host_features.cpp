@@ -69,8 +69,7 @@ bool getAudioApi(const clap_host_t *, uint32_t index, clap_wrapper_standalone_au
 
 bool supportsListing(const clap_host_t *, uint32_t kind)
 {
-  // rtmidi output is not wired into the standalone yet
-  return kind < CLAP_WRAPPER_STANDALONE_MIDI_OUTPUT;
+  return kind < numEndpointKinds;
 }
 
 uint32_t countEndpoints(const clap_host_t *, uint32_t kind)
@@ -202,17 +201,21 @@ uint32_t StandaloneHost::snapshotEndpoints(uint32_t kind)
                                      d.ID == audioOutputDeviceID && currentOutputChannels > 0));
       break;
     case CLAP_WRAPPER_STANDALONE_MIDI_INPUT:
-      for (const auto &name : getMidiPortNames())
+    case CLAP_WRAPPER_STANDALONE_MIDI_OUTPUT:
+    {
+      const bool input = kind == CLAP_WRAPPER_STANDALONE_MIDI_INPUT;
+      const auto &bound = input ? currentMidiPortNames : currentMidiOutputPortNames;
+      for (const auto &name : input ? getMidiPortNames() : getMidiOutputPortNames())
       {
         clap_wrapper_standalone_endpoint_t ep{};
         copyString(ep.id, sizeof(ep.id), name);
         copyString(ep.name, sizeof(ep.name), name);
-        if (std::find(currentMidiPortNames.begin(), currentMidiPortNames.end(), name) !=
-            currentMidiPortNames.end())
+        if (std::find(bound.begin(), bound.end(), name) != bound.end())
           ep.flags |= CLAP_WRAPPER_STANDALONE_IS_BOUND;
         snap.push_back(ep);
       }
       break;
+    }
     default:
       break;
   }

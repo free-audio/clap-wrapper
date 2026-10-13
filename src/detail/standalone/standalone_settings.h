@@ -56,6 +56,15 @@ struct StandaloneSettings
   bool midiBindAllPorts{true};
   std::vector<std::string> midiPortNames;
 
+  // The MIDI outputs. Empty opens none, and there is no "open every port": that would
+  // play the plugin's output into everything plugged in.
+  std::vector<std::string> midiOutputPortNames;
+
+  // Virtual ports other applications connect to, where the MIDI API has them (CoreMIDI,
+  // ALSA, JACK - not Windows). Off unless asked for.
+  bool midiVirtualInput{false};
+  bool midiVirtualOutput{false};
+
   bool hasWindowPosition{false};
   int32_t windowX{0}, windowY{0};
   uint32_t windowWidth{0}, windowHeight{0};

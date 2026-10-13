@@ -55,6 +55,9 @@ StandaloneHost::~StandaloneHost()
 {
   // safety net for shutdown paths which don't run through mainFinish
   deactivatePlugin();
+
+  // a midi output thread still running would end the process from ~thread
+  closeMidiOutputPorts();
 }
 
 void StandaloneHost::setupAudioBusses(const clap_plugin_t *plugin,
@@ -136,11 +139,17 @@ void StandaloneHost::setupMIDIBusses(const clap_plugin_t *plugin,
       hasClapNoteInput = true;
     }
   }
+  // the midi outputs send the plugin's midi events and its note on/off, whichever port
+  // they come from
   auto numMIDIOutPorts = noteports->count(plugin, false);
-  if (numMIDIOutPorts > 0)
+  for (uint32_t i = 0; i < numMIDIOutPorts; ++i)
   {
-    createsMidiOutput = true;
-    LOGINFO("[WARNING] Midi Output not supported yet");
+    clap_note_port_info_t info;
+    if (noteports->get(plugin, i, false, &info) &&
+        (info.supported_dialects & (CLAP_NOTE_DIALECT_MIDI | CLAP_NOTE_DIALECT_CLAP)))
+    {
+      createsMidiOutput = true;
+    }
   }
 }
 
