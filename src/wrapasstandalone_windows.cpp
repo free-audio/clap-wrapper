@@ -43,6 +43,11 @@ int WINAPI wWinMain(HINSTANCE /* hInstance */, HINSTANCE /* hPrevInstance */, PW
     argv.emplace_back(args[i].data());
   }
 
+  // Before the plugin is created, so that supports_audio_midi_configuration_screen
+  // answers true from init() on. Showing works once the plugin window exists.
+  freeaudio::clap_wrapper::standalone::getStandaloneHost()->onShowSettingsScreen =
+      &freeaudio::clap_wrapper::standalone::windows_standalone::showSettingsScreen;
+
   auto clapPlugin{freeaudio::clap_wrapper::standalone::mainCreatePlugin(
       entry, PLUGIN_ID, PLUGIN_INDEX, static_cast<int>(argv.size()), argv.data())};
 

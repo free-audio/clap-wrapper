@@ -286,12 +286,14 @@ extern "C"
   enum clap_wrapper_standalone_configuration_result
   {
     // they closed it without applying anything: cancel, the window's close button, or
-    // any other way out that is not a confirmation
+    // any other way out of a screen in which nothing was chosen
     CLAP_WRAPPER_STANDALONE_CONFIGURATION_CANCELLED = 0,
 
-    // they confirmed a configuration and the standalone is running audio with it, at
-    // what get_audio_status reports. a configuration that does not open is neither
-    // kept nor reported: the screen stays up for another choice
+    // they applied a configuration: confirmed one, on a screen with an OK button
+    // (macos), or chose one, on a screen that applies each choice as it is made
+    // (windows). get_audio_status says what the stream runs at, or why it does not. on
+    // macos a configuration that does not open is neither kept nor reported - the
+    // screen stays up for another choice - so there this also means it is running
     CLAP_WRAPPER_STANDALONE_CONFIGURATION_APPLIED = 1,
   };
 

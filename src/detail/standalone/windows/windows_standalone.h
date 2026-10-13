@@ -234,6 +234,14 @@ struct SystemMenu
 // rather than from inside whatever handler or backend thread produced it.
 constexpr ::UINT WM_SHOW_AUDIO_ERROR{WM_APP + 1};
 
+// Posted to the plugin window once the settings window has been hidden, so the plugin
+// hears about it from the main loop. wparam is 1 if a choice was applied while it was up.
+constexpr ::UINT WM_SETTINGS_CLOSED{WM_APP + 2};
+
+// What the standalone features extension calls to show the settings window, installed
+// before the plugin is created. False until the plugin window exists.
+bool showSettingsScreen();
+
 struct Plugin final : public Window
 {
   struct Menu final : public SystemMenu
@@ -314,6 +322,14 @@ struct Plugin final : public Window
   void refreshDeviceChannelCounts();
 
   void startAudio();
+
+  // The settings window, as the system menu toggles it and the standalone features
+  // extension shows it. showSettings() brings it forward when it is already up;
+  // hideSettings() reports the close to the plugin, applied if settingsApplied.
+  // Choices apply as they are made, so a showing is applied once any choice was.
+  void showSettings();
+  void hideSettings();
+  bool settingsApplied{false};
 
   freeaudio::clap_wrapper::standalone::StandaloneHost *sah{
       freeaudio::clap_wrapper::standalone::getStandaloneHost()};
