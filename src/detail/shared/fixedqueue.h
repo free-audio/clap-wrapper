@@ -19,6 +19,18 @@ class fixedqueue
     _elements[_head] = *val;
     _head = (_head + 1) & _wrapMask;
   }
+  // drops the new value when full; push() instead laps the reader and empties the queue
+  inline bool try_push(const T &val)
+  {
+    auto next = (_head + 1) & _wrapMask;
+    if (next == _tail)
+    {
+      return false;
+    }
+    _elements[_head] = val;
+    _head = next;
+    return true;
+  }
   inline bool pop(T &out)
   {
     if (_head == _tail)
