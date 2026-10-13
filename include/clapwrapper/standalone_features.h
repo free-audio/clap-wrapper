@@ -55,7 +55,7 @@ extern "C"
 #endif
 
   static const CLAP_CONSTEXPR char CLAP_WRAPPER_STANDALONE_FEATURES[] =
-      "clap-wrapper.standalone-features.draft/2";
+      "clap-wrapper.standalone-features.draft/3";
 
   enum clap_wrapper_standalone_endpoint_kind
   {
