@@ -220,7 +220,9 @@ void StandaloneHost::clapProcess(void *pOutput, const void *pInput, uint32_t fra
     bufIdx++;
   }
 
-  if (mainInIdx >= 0 && pInput && currentInputChannels > 0)
+  // muted leaves the input buffers at the silence written above
+  if (mainInIdx >= 0 && pInput && currentInputChannels > 0 &&
+      !inputMuted.load(std::memory_order_relaxed))
   {
     // Route the interleaved device stream onto the plugin's main input bus.
     // When the bus is wider than the device the last device channel repeats

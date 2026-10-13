@@ -315,6 +315,8 @@ void StandaloneHost::startAudioThreadOn(unsigned int inputDeviceID, uint32_t inp
   // Backends can throw when no usable device is present. Letting that escape
   // would leave the standalone half-started, so trap it here; the plugin simply
   // stays deactivated and the app runs on without audio.
+  lastAudioError.clear();
+
   try
   {
     startAudioThreadOnImpl(inputDeviceID, inputChannels, useInput, outputDeviceID, outputChannels,
@@ -323,12 +325,14 @@ void StandaloneHost::startAudioThreadOn(unsigned int inputDeviceID, uint32_t inp
   catch (const std::exception &e)
   {
     LOGINFO("[ERROR] Exception starting audio : '{}'", e.what());
+    lastAudioError = e.what();
     deactivatePlugin();
     if (displayAudioError) displayAudioError(e.what());
   }
   catch (...)
   {
     LOGINFO("[ERROR] Unknown exception starting audio");
+    lastAudioError = "Unknown error while starting audio";
     deactivatePlugin();
     if (displayAudioError) displayAudioError("Unknown error while starting audio");
   }
@@ -382,6 +386,7 @@ void StandaloneHost::startAudioThreadOnImpl(unsigned int inputDeviceID, uint32_t
   if (!useOutput && !useInput)
   {
     LOGINFO("[ERROR] Neither an input nor an output device is available; audio is not starting");
+    lastAudioError = "No audio input or output device is available";
     return;
   }
 
@@ -436,6 +441,7 @@ void StandaloneHost::startAudioThreadOnImpl(unsigned int inputDeviceID, uint32_t
                          &options))
   {
     LOGINFO("[ERROR] Error opening rta stream '{}'", rtaDac->getErrorText());
+    lastAudioError = rtaDac->getErrorText();
     rtaDac->closeStream();
     return;
   }
@@ -445,6 +451,7 @@ void StandaloneHost::startAudioThreadOnImpl(unsigned int inputDeviceID, uint32_t
   if (!activatePlugin(sampleRate, 1, currentBufferSize * 2))
   {
     LOGINFO("[ERROR] Plugin activation failed; not starting the audio stream");
+    lastAudioError = "The plugin failed to activate";
     rtaDac->closeStream();
     return;
   }
@@ -463,12 +470,14 @@ void StandaloneHost::startAudioThreadOnImpl(unsigned int inputDeviceID, uint32_t
   if (!rtaDac->isStreamOpen())
   {
     LOGINFO("[ERROR] Stream failed to open :  {}", rtaDac->getErrorText());
+    lastAudioError = rtaDac->getErrorText();
     return;
   }
 
   if (rtaDac->startStream())
   {
     LOGINFO("[ERROR] startStream failed : {}", rtaDac->getErrorText());
+    lastAudioError = rtaDac->getErrorText();
     return;
   }
 }

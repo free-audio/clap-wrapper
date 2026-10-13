@@ -238,6 +238,12 @@
     }
   };
 
+  freeaudio::clap_wrapper::standalone::getStandaloneHost()->onShowSettingsScreen = [self]()
+  {
+    [self openAudioSettingsWindow:nil];
+    return true;
+  };
+
   freeaudio::clap_wrapper::standalone::mainStartAudio();
 }
 
@@ -261,6 +267,7 @@
   LOGDETAIL("Application terminating");
   freeaudio::clap_wrapper::standalone::getStandaloneHost()->displayAudioError = nullptr;
   freeaudio::clap_wrapper::standalone::getStandaloneHost()->onRequestResize = nullptr;
+  freeaudio::clap_wrapper::standalone::getStandaloneHost()->onShowSettingsScreen = nullptr;
 
   // Scoped so this shared_ptr copy is released before mainFinish, which
   // deinit()s the entry: were it the last owner, ~Plugin would then call
