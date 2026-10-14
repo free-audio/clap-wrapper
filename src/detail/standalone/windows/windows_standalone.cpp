@@ -1,5 +1,7 @@
 #include "windows_standalone.h"
 
+#include <algorithm>
+
 namespace freeaudio::clap_wrapper::standalone::windows_standalone
 {
 std::vector<std::string> getArgs()
@@ -1092,11 +1094,10 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
 
                           if (LOWORD(msg.wparam) == Settings::Identifier::AudioBuffersize)
                           {
-                            auto bufferSizes{sah->getBufferSizes()};
-
-                            if (auto index{settings.bufferSize.selection(bufferSizes.size())}; index)
+                            if (auto index{settings.bufferSize.selection(bufferSizesShown.size())};
+                                index)
                             {
-                              sah->currentBufferSize = bufferSizes[*index];
+                              sah->currentBufferSize = bufferSizesShown[*index];
 
                               settingsApplied = true;
                               saveSettings();
@@ -1598,9 +1599,18 @@ void Plugin::refreshBufferSizes()
 {
   settings.bufferSize.reset();
 
-  auto bufferSizes{sah->getBufferSizes()};
+  // the standalone's sizes, and the one the stream runs at where the list lacks it: a
+  // driver fixed at 1024 shows 1024, not the first entry
+  bufferSizesShown = sah->getBufferSizes();
+  const auto running{sah->currentBufferSize};
+  if (running > 0 &&
+      std::find(bufferSizesShown.begin(), bufferSizesShown.end(), running) == bufferSizesShown.end())
+  {
+    bufferSizesShown.insert(std::upper_bound(bufferSizesShown.begin(), bufferSizesShown.end(), running),
+                            running);
+  }
 
-  for (auto bufferSize : bufferSizes)
+  for (auto bufferSize : bufferSizesShown)
   {
     settings.bufferSize.add(std::to_string(bufferSize));
   }

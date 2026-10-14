@@ -355,5 +355,9 @@ struct Plugin final : public Window
   Position position;
   Menu menu;
   Settings settings;
+
+  // the buffer sizes the settings window lists, in its order: what a selection there
+  // indexes (refreshBufferSizes)
+  std::vector<uint32_t> bufferSizesShown;
 };
 }  // namespace freeaudio::clap_wrapper::standalone::windows_standalone
