@@ -64,6 +64,11 @@ std::pair<uint32_t, uint32_t> bufferFrameSizeRange(const std::string &)
 {
   return {0, 0};
 }
+
+uint32_t supportedScreenAppearances()
+{
+  return 0;
+}
 #endif
 
 StandaloneHost::~StandaloneHost()
@@ -482,7 +487,21 @@ bool StandaloneHost::loadStandaloneSettings()
 
   settingsLoaded = settings.load(*path);
 
+  // a plugin that has already set the appearance, from init() say, keeps it
+  if (settingsLoaded) setScreenAppearance(settings.screenAppearance, false);
+
   return settingsLoaded;
+}
+
+bool StandaloneHost::setScreenAppearance(uint32_t appearance, bool fromPlugin)
+{
+  if (appearance >= 32 || !(supportedScreenAppearances() & (1u << appearance))) return false;
+  if (!fromPlugin && screenAppearanceFromPlugin) return false;
+
+  screenAppearanceFromPlugin = screenAppearanceFromPlugin || fromPlugin;
+  screenAppearance = appearance;
+  if (onScreenAppearanceChanged) onScreenAppearanceChanged();
+  return true;
 }
 
 bool StandaloneHost::saveStandaloneSettings()

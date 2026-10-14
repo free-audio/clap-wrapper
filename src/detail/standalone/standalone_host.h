@@ -64,6 +64,10 @@ bool isBluetoothAudioDevice(const std::string &rtAudioName);
 // clamps a request to the range without a word, so a menu should not offer beyond it
 std::pair<uint32_t, uint32_t> bufferFrameSizeRange(const std::string &rtAudioName);
 
+// the clap_wrapper_standalone_appearance values the configuration screen can take, as
+// bits (1 << appearance); 0 where the frontend cannot set one
+uint32_t supportedScreenAppearances();
+
 struct StandaloneHost : Clap::IHost
 {
   StandaloneHost()
@@ -288,10 +292,22 @@ struct StandaloneHost : Clap::IHost
   // extension, if it has one. result is a clap_wrapper_standalone_configuration_result
   void settingsScreenClosed(uint32_t result);
 
+  // the settings screen's appearance, a clap_wrapper_standalone_appearance. a plugin that
+  // sets it owns it for the session: the settings file and the screen's own choice no
+  // longer count, and the plugin's value is never saved
+  uint32_t screenAppearance{CLAP_WRAPPER_STANDALONE_APPEARANCE_AUTO};
+  bool screenAppearanceFromPlugin{false};
+  // false if the appearance is unsupported, or the plugin owns it and this is not it
+  bool setScreenAppearance(uint32_t appearance, bool fromPlugin);
+  // set by the platform frontend, which applies screenAppearance to what it shows
+  std::function<void()> onScreenAppearanceChanged{nullptr};
+
   std::vector<clap_wrapper_standalone_endpoint_t> endpointSnapshot[4];
   uint32_t snapshotEndpoints(uint32_t kind);
   std::vector<uint32_t> sampleRateSnapshot;
   uint32_t snapshotSampleRates(const char *outputId, const char *inputId);
+  std::vector<uint32_t> bufferSizeSnapshot;
+  uint32_t snapshotBufferSizes(const char *outputId, const char *inputId);
 
   // context menu extension
   bool supportsContextMenu() const override
@@ -497,6 +513,9 @@ struct StandaloneHost : Clap::IHost
   std::vector<RtAudio::DeviceInfo> getOutputAudioDevices();
   std::vector<int32_t> getSampleRates();
   std::vector<uint32_t> getBufferSizes();
+  // getBufferSizes(), narrowed to what both devices accept where the platform can tell
+  // (bufferFrameSizeRange); an empty name narrows nothing
+  std::vector<uint32_t> getBufferSizesFor(const std::string &outputName, const std::string &inputName);
 
   clap_input_events inputEvents{};
   clap_output_events outputEvents{};

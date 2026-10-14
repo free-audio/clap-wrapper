@@ -65,6 +65,11 @@ struct StandaloneSettings
   bool midiVirtualInput{false};
   bool midiVirtualOutput{false};
 
+  // the settings screen's appearance as the screen's own menu chose it, a
+  // clap_wrapper_standalone_appearance: 0 auto, 1 light, 2 dark. a plugin that sets the
+  // appearance itself is never saved here
+  uint32_t screenAppearance{0};
+
   bool hasWindowPosition{false};
   int32_t windowX{0}, windowY{0};
   uint32_t windowWidth{0}, windowHeight{0};

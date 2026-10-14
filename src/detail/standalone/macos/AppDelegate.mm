@@ -3,7 +3,6 @@
 #include <AVFoundation/AVFoundation.h>
 
 #include <algorithm>
-#include <limits>
 #include <map>
 #include <string>
 #include <vector>
@@ -27,6 +26,28 @@ struct MidiPortRow
   NSButton *check;  // owned by the window's views
   bool wasOn;       // when the window opened
 };
+
+// what StandaloneHost::screenAppearance says, on the settings window or on one of the
+// standalone's alerts. nil appearance follows the system
+void applyScreenAppearance(NSWindow *window)
+{
+  if (@available(macOS 10.14, *))
+  {
+    NSAppearance *appearance{nil};
+    switch (freeaudio::clap_wrapper::standalone::getStandaloneHost()->screenAppearance)
+    {
+      case CLAP_WRAPPER_STANDALONE_APPEARANCE_LIGHT:
+        appearance = [NSAppearance appearanceNamed:NSAppearanceNameAqua];
+        break;
+      case CLAP_WRAPPER_STANDALONE_APPEARANCE_DARK:
+        appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+        break;
+      default:
+        break;
+    }
+    [window setAppearance:appearance];
+  }
+}
 }  // namespace
 
 @interface AudioSettingsFlippedView : NSView
@@ -66,6 +87,13 @@ struct MidiPortRow
   // opened
   NSTextField *inputNote;
   NSGridRow *inputNoteRow;
+
+  // the window's own appearance menu, offered while the plugin has not set the
+  // appearance itself (StandaloneHost::screenAppearanceFromPlugin)
+  NSPopUpButton *appearanceSelection;
+  NSGridRow *appearanceRow, *appearanceRuleRow;
+  bool offerAppearance;
+  uint32_t appearanceWhenOpened;
 }
 
 - (void)setupContents;
@@ -73,6 +101,7 @@ struct MidiPortRow
 - (void)resetBufferSizeSelectionPreferring:(uint32_t)frames;
 - (void)updateBufferSizeTitles;
 - (void)updateInputNote;
+- (void)applyAppearance;
 
 @end
 
@@ -190,6 +219,10 @@ static AudioSettingsWindow *openAudioSettings{nil};
     [self openAudioSettingsWindow:nil];
     return true;
   };
+  freeaudio::clap_wrapper::standalone::getStandaloneHost()->onScreenAppearanceChanged = []()
+  {
+    if (openAudioSettings) [openAudioSettings applyAppearance];
+  };
 
   auto plugin =
       freeaudio::clap_wrapper::standalone::mainCreatePlugin(entry, pid, pindex, 1, (char **)argv);
@@ -226,6 +259,7 @@ static AudioSettingsWindow *openAudioSettings{nil};
         [alert setMessageText:@"Plugin Error"];
         [alert setInformativeText:@"The plugin failed to create its user interface."];
         [alert addButtonWithTitle:@"OK"];
+        applyScreenAppearance([alert window]);
         [alert runModal];
       }
       return;
@@ -250,6 +284,7 @@ static AudioSettingsWindow *openAudioSettings{nil};
         [alert setMessageText:@"Plugin Error"];
         [alert setInformativeText:sizeError];
         [alert addButtonWithTitle:@"OK"];
+        applyScreenAppearance([alert window]);
         [alert runModal];
       }
       ui->destroy(p);
@@ -282,6 +317,7 @@ static AudioSettingsWindow *openAudioSettings{nil};
             setInformativeText:
                 @"The plugin failed to embed its user interface. Please contact the plugin developer."];
         [alert addButtonWithTitle:@"OK"];
+        applyScreenAppearance([alert window]);
         [alert runModal];
       }
       return;
@@ -298,6 +334,7 @@ static AudioSettingsWindow *openAudioSettings{nil};
       [alert setMessageText:@"Unable to configure audio"];
       [alert setInformativeText:[[NSString alloc] initWithUTF8String:s.c_str()]];
       [alert addButtonWithTitle:@"OK"];
+      applyScreenAppearance([alert window]);
       [alert runModal];
     }
   };
@@ -449,6 +486,7 @@ static AudioSettingsWindow *openAudioSettings{nil};
       [alert setMessageText:@"Unable to save file"];
       [alert setInformativeText:[[NSString alloc] initWithUTF8String:e.what()]];
       [alert addButtonWithTitle:@"OK"];
+      applyScreenAppearance([alert window]);
       [alert runModal];
     }
   }
@@ -480,6 +518,7 @@ static AudioSettingsWindow *openAudioSettings{nil};
       [alert setMessageText:@"Unable to open file"];
       [alert setInformativeText:[[NSString alloc] initWithUTF8String:e.what()]];
       [alert addButtonWithTitle:@"OK"];
+      applyScreenAppearance([alert window]);
       [alert runModal];
     }
   }
@@ -746,6 +785,26 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
     NSView *none = [NSGridCell emptyContentView];
     NSBox *sectionRule = makeRule();
 
+    // appearance
+    appearanceSelection = [[[NSPopUpButton alloc] init] autorelease];
+    [[appearanceSelection widthAnchor] constraintEqualToConstant:120].active = YES;
+    const auto appearances{freeaudio::clap_wrapper::standalone::supportedScreenAppearances()};
+    const std::pair<uint32_t, NSString *> appearanceItems[] = {
+        {CLAP_WRAPPER_STANDALONE_APPEARANCE_AUTO, @"Auto"},
+        {CLAP_WRAPPER_STANDALONE_APPEARANCE_LIGHT, @"Light"},
+        {CLAP_WRAPPER_STANDALONE_APPEARANCE_DARK, @"Dark"}};
+    for (const auto &[appearance, title] : appearanceItems)
+    {
+      if (!(appearances & (1u << appearance))) continue;
+      [appearanceSelection addItemWithTitle:title];
+      [[appearanceSelection lastItem] setTag:appearance];
+    }
+    [appearanceSelection setAction:@selector(onAppearanceChanged:)];
+    [appearanceSelection setTarget:self];
+    offerAppearance = [appearanceSelection numberOfItems] > 1;
+    appearanceWhenOpened = standaloneHost->screenAppearance;
+    NSBox *appearanceRule = makeRule();
+
     NSGridView *grid = [NSGridView gridViewWithViews:@[
       @[ makeLabel(@"Output:"), outputSelection ],
       @[ makeLabel(@"Input:"), inputSelection ],
@@ -761,6 +820,8 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
       @[ midiOutLabel, midiOutList ],
       @[ none, virtualOutCheck ],
       @[ none, midiOutNote ],
+      @[ appearanceRule, none ],
+      @[ makeLabel(@"Appearance:"), appearanceSelection ],
     ]];
     [grid setRowSpacing:8];
     [grid setColumnSpacing:8];
@@ -778,13 +839,18 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
     [rowOf(virtualInCheck) setHidden:!virtualPorts];
     [rowOf(virtualOutCheck) setHidden:!virtualPorts];
 
-    NSGridRow *ruleRow = rowOf(sectionRule);
-    [ruleRow mergeCellsInRange:NSMakeRange(0, 2)];
-    [ruleRow setRowAlignment:NSGridRowAlignmentNone];
-    [ruleRow setYPlacement:NSGridCellPlacementCenter];
-    [ruleRow setTopPadding:6];
-    [ruleRow setBottomPadding:6];
-    [[ruleRow cellAtIndex:0] setXPlacement:NSGridCellPlacementFill];
+    for (NSBox *rule : {sectionRule, appearanceRule})
+    {
+      NSGridRow *ruleRow = rowOf(rule);
+      [ruleRow mergeCellsInRange:NSMakeRange(0, 2)];
+      [ruleRow setRowAlignment:NSGridRowAlignmentNone];
+      [ruleRow setYPlacement:NSGridCellPlacementCenter];
+      [ruleRow setTopPadding:6];
+      [ruleRow setBottomPadding:6];
+      [[ruleRow cellAtIndex:0] setXPlacement:NSGridCellPlacementFill];
+    }
+    appearanceRow = rowOf(appearanceSelection);
+    appearanceRuleRow = rowOf(appearanceRule);
 
     // a list has no baseline: its label is centred on the list's first row instead,
     // which puts the two lines of text level
@@ -851,6 +917,7 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
     [self resetSampleRateSelection];
     [self resetBufferSizeSelectionPreferring:standaloneHost->currentBufferSize];
     [self updateInputNote];
+    [self applyAppearance];
 
     [content layoutSubtreeIfNeeded];
     [self setContentSize:[content fittingSize]];
@@ -959,6 +1026,10 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
       standaloneHost->setVirtualMidiOutput(virtualOut);
     }
 
+    // the window's own choice, never a plugin's (StandaloneHost::screenAppearanceFromPlugin)
+    if (!standaloneHost->screenAppearanceFromPlugin)
+      settings.screenAppearance = standaloneHost->screenAppearance;
+
     standaloneHost->captureAudioSettings();
     if (!standaloneHost->saveStandaloneSettings())
       LOGINFO("[WARNING] Unable to save the audio settings; the next launch will not have them");
@@ -1021,6 +1092,11 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
   // once, whichever way the window goes - OK, Cancel or the title bar's close button,
   // which all end here. the plugin hears it on the next turn of the run loop, after the
   // window is gone and never from inside a call of its own
+  // an appearance tried in the window and not confirmed with OK goes back
+  auto standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
+  if (!applied && !closeReported && standaloneHost->screenAppearance != appearanceWhenOpened)
+    standaloneHost->setScreenAppearance(appearanceWhenOpened, false);
+
   if (!closeReported)
   {
     closeReported = true;
@@ -1073,31 +1149,15 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
   namespace sa = freeaudio::clap_wrapper::standalone;
   auto standaloneHost = sa::getStandaloneHost();
 
-  // rtaudio clamps a size outside a device's range without a word, so the menu does not
-  // offer one. a device that cannot tell its range narrows nothing
-  uint32_t lowest{0}, highest{std::numeric_limits<uint32_t>::max()};
-  auto narrowTo = [&](const std::string &name)
-  {
-    const auto [min, max] = sa::bufferFrameSizeRange(name);
-    if (max == 0) return;
-    lowest = std::max(lowest, min);
-    highest = std::min(highest, max);
-  };
   const auto oidx = [outputSelection indexOfSelectedItem];
-  if (oidx >= 0 && (size_t)oidx < outDevices.size()) narrowTo(outDevices[oidx].name);
   const auto iidx = [inputSelection indexOfSelectedItem];
-  if (iidx > 0 && (size_t)iidx <= inDevices.size()) narrowTo(inDevices[iidx - 1].name);
-
-  std::vector<uint32_t> sizes;
-  for (auto size : standaloneHost->getBufferSizes())
-  {
-    if (size >= lowest && size <= highest) sizes.push_back(size);
-  }
+  auto sizes = standaloneHost->getBufferSizesFor(
+      oidx >= 0 && (size_t)oidx < outDevices.size() ? outDevices[oidx].name : std::string{},
+      iidx > 0 && (size_t)iidx <= inDevices.size() ? inDevices[iidx - 1].name : std::string{});
 
   // the stream may run at a size the list does not have, which the device chose
   const auto running = standaloneHost->currentBufferSize;
-  if (running >= lowest && running <= highest && running > 0 &&
-      std::find(sizes.begin(), sizes.end(), running) == sizes.end())
+  if (running > 0 && std::find(sizes.begin(), sizes.end(), running) == sizes.end())
   {
     sizes.insert(std::upper_bound(sizes.begin(), sizes.end(), running), running);
   }
@@ -1114,6 +1174,23 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
   }
   if (selected >= 0) [bufferSizeSelection selectItemAtIndex:selected];
   [self updateBufferSizeTitles];
+}
+
+- (void)onAppearanceChanged:(id)sender
+{
+  // applied at once, through onScreenAppearanceChanged; saved by OK
+  freeaudio::clap_wrapper::standalone::getStandaloneHost()->setScreenAppearance(
+      static_cast<uint32_t>([[appearanceSelection selectedItem] tag]), false);
+}
+
+- (void)applyAppearance
+{
+  auto standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
+  applyScreenAppearance(self);
+  [appearanceSelection selectItemWithTag:standaloneHost->screenAppearance];
+  const bool hidden = !offerAppearance || standaloneHost->screenAppearanceFromPlugin;
+  [appearanceRow setHidden:hidden];
+  [appearanceRuleRow setHidden:hidden];
 }
 
 - (void)updateInputNote

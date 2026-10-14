@@ -180,6 +180,15 @@ std::pair<uint32_t, uint32_t> bufferFrameSizeRange(const std::string &name)
   return {static_cast<uint32_t>(range.mMinimum), static_cast<uint32_t>(range.mMaximum)};
 }
 
+uint32_t supportedScreenAppearances()
+{
+  uint32_t res{(1u << CLAP_WRAPPER_STANDALONE_APPEARANCE_AUTO) |
+               (1u << CLAP_WRAPPER_STANDALONE_APPEARANCE_LIGHT)};
+  // dark aqua came with macos 10.14; before it, light is all there is
+  if (@available(macOS 10.14, *)) res |= 1u << CLAP_WRAPPER_STANDALONE_APPEARANCE_DARK;
+  return res;
+}
+
 std::optional<fs::path> getStandaloneSettingsPath()
 {
   auto *fileManager = [NSFileManager defaultManager];

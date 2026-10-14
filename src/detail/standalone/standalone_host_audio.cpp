@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <exception>
+#include <limits>
 
 #include "standalone_host.h"
 #include "entry.h"
@@ -356,6 +357,27 @@ std::vector<uint32_t> StandaloneHost::getBufferSizes()
   // chooses between, from as little latency as the machine manages to a safe 512;
   // a saved size beyond the last is clamped to it (applyAudioSettings)
   std::vector<uint32_t> res{32, 64, 128, 256, 512};
+  return res;
+}
+
+std::vector<uint32_t> StandaloneHost::getBufferSizesFor(const std::string &outputName,
+                                                        const std::string &inputName)
+{
+  // rtaudio clamps a size outside a device's range without a word, so none is offered
+  uint32_t lowest{0}, highest{std::numeric_limits<uint32_t>::max()};
+  for (const auto &name : {outputName, inputName})
+  {
+    const auto [min, max] = bufferFrameSizeRange(name);
+    if (max == 0) continue;
+    lowest = std::max(lowest, min);
+    highest = std::min(highest, max);
+  }
+
+  std::vector<uint32_t> res;
+  for (auto size : getBufferSizes())
+  {
+    if (size >= lowest && size <= highest) res.push_back(size);
+  }
   return res;
 }
 

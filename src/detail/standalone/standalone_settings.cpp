@@ -156,6 +156,8 @@ bool StandaloneSettings::load(const fs::path &fromFile)
         loaded.midiVirtualInput = asBool(value);
       else if (key == "midiVirtualOutput")
         loaded.midiVirtualOutput = asBool(value);
+      else if (key == "screenAppearance")
+        loaded.screenAppearance = value == "light" ? 1u : value == "dark" ? 2u : 0u;
       else if (key == "windowX")
       {
         loaded.windowX = static_cast<int32_t>(std::atol(value.c_str()));
@@ -239,6 +241,11 @@ bool StandaloneSettings::save(const fs::path &intoFile) const
     }
     ofs << "midiVirtualInput=" << fromBool(midiVirtualInput) << "\n";
     ofs << "midiVirtualOutput=" << fromBool(midiVirtualOutput) << "\n";
+    ofs << "screenAppearance="
+        << (screenAppearance == 1   ? "light"
+            : screenAppearance == 2 ? "dark"
+                                    : "auto")
+        << "\n";
 
     if (hasWindowPosition)
     {
