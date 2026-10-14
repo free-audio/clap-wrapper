@@ -60,13 +60,50 @@ std::string rtAudioName(AudioObjectID id, CFStringEncoding encoding)
   return result;
 }
 
+bool isBluetooth(UInt32 transport)
+{
+  return transport == kAudioDeviceTransportTypeBluetooth ||
+         transport == kAudioDeviceTransportTypeBluetoothLE;
+}
+
 // a microphone the user is unlikely to mean when an interface is plugged in: the
 // built-in one, a bluetooth headset, or an iphone's (continuity, wired and wireless)
 bool isMicrophone(UInt32 transport)
 {
-  return transport == kAudioDeviceTransportTypeBuiltIn ||
-         transport == kAudioDeviceTransportTypeBluetooth ||
-         transport == kAudioDeviceTransportTypeBluetoothLE || transport == 'ccwd' || transport == 'ccwl';
+  return transport == kAudioDeviceTransportTypeBuiltIn || isBluetooth(transport) ||
+         transport == 'ccwd' || transport == 'ccwl';
+}
+
+std::vector<AudioDeviceID> allDevices()
+{
+  AudioObjectPropertyAddress address{kAudioHardwarePropertyDevices, kAudioObjectPropertyScopeGlobal,
+                                     elementMain};
+  UInt32 size = 0;
+  if (AudioObjectGetPropertyDataSize(kAudioObjectSystemObject, &address, 0, nullptr, &size) != noErr)
+    return {};
+  std::vector<AudioDeviceID> devices(size / sizeof(AudioDeviceID));
+  if (AudioObjectGetPropertyData(kAudioObjectSystemObject, &address, 0, nullptr, &size,
+                                 devices.data()) != noErr)
+    return {};
+  devices.resize(size / sizeof(AudioDeviceID));
+  return devices;
+}
+
+// the transport type of the coreaudio device rtaudio calls by this name, in either
+// encoding it may have used; false if there is none
+bool transportNamed(const std::string &name, UInt32 &transport)
+{
+  if (name.empty()) return false;
+
+  for (auto id : allDevices())
+  {
+    for (auto encoding : {CFStringGetSystemEncoding(), (CFStringEncoding)kCFStringEncodingUTF8})
+    {
+      if (rtAudioName(id, encoding) == name)
+        return getProperty(id, kAudioDevicePropertyTransportType, transport);
+    }
+  }
+  return false;
 }
 
 // hardware an instrument or a line is plugged into. not virtual or aggregate devices,
@@ -91,20 +128,10 @@ std::vector<std::string> preferredFirstRunInputs()
       !isMicrophone(transport))
     return {};
 
-  AudioObjectPropertyAddress address{kAudioHardwarePropertyDevices, kAudioObjectPropertyScopeGlobal,
-                                     elementMain};
-  UInt32 size = 0;
-  if (AudioObjectGetPropertyDataSize(kAudioObjectSystemObject, &address, 0, nullptr, &size) != noErr)
-    return {};
-  std::vector<AudioDeviceID> devices(size / sizeof(AudioDeviceID));
-  if (AudioObjectGetPropertyData(kAudioObjectSystemObject, &address, 0, nullptr, &size,
-                                 devices.data()) != noErr)
-    return {};
-
   // the interface with the most inputs first: a usb microphone has one, an interface
   // two or more
   std::vector<std::pair<uint32_t, AudioDeviceID>> interfaces;
-  for (auto id : devices)
+  for (auto id : allDevices())
   {
     UInt32 t{0};
     if (!getProperty(id, kAudioDevicePropertyTransportType, t) || !isInterface(t)) continue;
@@ -124,6 +151,18 @@ std::vector<std::string> preferredFirstRunInputs()
     }
   }
   return names;
+}
+
+bool isMicrophoneAudioDevice(const std::string &name)
+{
+  UInt32 transport{0};
+  return transportNamed(name, transport) && isMicrophone(transport);
+}
+
+bool isBluetoothAudioDevice(const std::string &name)
+{
+  UInt32 transport{0};
+  return transportNamed(name, transport) && isBluetooth(transport);
 }
 
 std::optional<fs::path> getStandaloneSettingsPath()

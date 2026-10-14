@@ -47,6 +47,18 @@ std::optional<fs::path> getStandaloneSettingsPath();
 // and the answer is always empty
 std::vector<std::string> preferredFirstRunInputs();
 
+// whether the device of this rtaudio name is a microphone: the built-in one, a bluetooth
+// headset's or speaker's, or an iphone's. the standalone opens one only when the user
+// chose it by name, never as a default or a fallback: a built-in microphone picks up the
+// speakers beside it, and opening a bluetooth device's switches the whole device to its
+// hands-free profile - telephone quality and one sample rate, for every application on
+// the machine. false where there is no way to tell, which is everywhere but macos for now
+bool isMicrophoneAudioDevice(const std::string &rtAudioName);
+
+// whether the device of this rtaudio name is a bluetooth device; false where there is no
+// way to tell
+bool isBluetoothAudioDevice(const std::string &rtAudioName);
+
 struct StandaloneHost : Clap::IHost
 {
   StandaloneHost()

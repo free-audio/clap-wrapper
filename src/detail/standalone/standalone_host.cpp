@@ -49,6 +49,16 @@ std::vector<std::string> preferredFirstRunInputs()
 {
   return {};
 }
+
+bool isMicrophoneAudioDevice(const std::string &)
+{
+  return false;
+}
+
+bool isBluetoothAudioDevice(const std::string &)
+{
+  return false;
+}
 #endif
 
 StandaloneHost::~StandaloneHost()
@@ -527,6 +537,18 @@ void StandaloneHost::applyAudioSettings()
   // "did we get an id back" is not the question - "is it a real device" is.
   audioOutputUsed = settings.audioOutputUsed && isKnownDevice(audioOutputDeviceID);
   audioInputUsed = settings.audioInputUsed && isKnownDevice(audioInputDeviceID);
+
+  // an input saved by a name that is not here falls back to the system default above, as
+  // does an input saved with no name; neither is the user choosing a microphone
+  if (audioInputUsed)
+  {
+    const auto name{deviceName(audioInputDeviceID)};
+    if (name != settings.inputDeviceName && isMicrophoneAudioDevice(name))
+    {
+      LOGINFO("Not opening '{}': the default input is a microphone, and not the one chosen", name);
+      audioInputUsed = false;
+    }
+  }
 
   currentSampleRate = settings.sampleRate;
 

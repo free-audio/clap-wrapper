@@ -59,10 +59,17 @@ struct MidiPortRow
   // common: one stream runs both at one rate, so the devices could not be opened together
   NSButton *okButton;
   NSGridRow *noRateRow;
+
+  // under the input menu, while it matters: that a bluetooth microphone takes its whole
+  // device down to telephone quality, or that the default input is a microphone and was not
+  // opened
+  NSTextField *inputNote;
+  NSGridRow *inputNoteRow;
 }
 
 - (void)setupContents;
 - (void)resetSampleRateSelection;
+- (void)updateInputNote;
 
 @end
 
@@ -687,6 +694,7 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
 
     NSTextField *noRateNote =
         makeNote(@"These devices have no sample rate in common.", [NSColor systemRedColor]);
+    inputNote = makeNote(@"", [NSColor secondaryLabelColor]);
 
     // midi
     const auto &settings = standaloneHost->settings;
@@ -734,6 +742,7 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
     NSGridView *grid = [NSGridView gridViewWithViews:@[
       @[ makeLabel(@"Output:"), outputSelection ],
       @[ makeLabel(@"Input:"), inputSelection ],
+      @[ none, inputNote ],
       @[ makeLabel(@"Sample Rate:"), sampleRateSelection ],
       @[ none, defaultButton ],
       @[ none, noRateNote ],
@@ -754,6 +763,8 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
 
     noRateRow = rowOf(noRateNote);
     [noRateRow setHidden:YES];
+    inputNoteRow = rowOf(inputNote);
+    [inputNoteRow setHidden:YES];
     [rowOf(midiInNote) setHidden:takesMidi];
     [rowOf(midiOutNote) setHidden:sendsMidi];
     [rowOf(virtualInCheck) setHidden:!virtualPorts];
@@ -830,6 +841,7 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
     ]];
 
     [self resetSampleRateSelection];
+    [self updateInputNote];
 
     [content layoutSubtreeIfNeeded];
     [self setContentSize:[content fittingSize]];
@@ -947,14 +959,21 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
 {
   auto standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
   auto [in, out, sr] = standaloneHost->getDefaultAudioInOutSampleRate();
+
+  // a default never opens a microphone (isMicrophoneAudioDevice), so neither does this:
+  // "No Input", and the note says why
+  [inputSelection selectItemAtIndex:0];
   int idx = 1;
-  for (auto i : inDevices)
+  if (!freeaudio::clap_wrapper::standalone::isMicrophoneAudioDevice(standaloneHost->deviceName(in)))
   {
-    if ((int)i.ID == (int)in)
+    for (auto i : inDevices)
     {
-      [inputSelection selectItemAtIndex:idx];
+      if ((int)i.ID == (int)in)
+      {
+        [inputSelection selectItemAtIndex:idx];
+      }
+      idx++;
     }
-    idx++;
   }
 
   idx = 0;
@@ -968,6 +987,7 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
   }
 
   [self resetSampleRateSelection];
+  [self updateInputNote];
 
   for (NSMenuItem *item in [sampleRateSelection itemArray])
   {
@@ -1009,6 +1029,37 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
 - (void)onSourceMenuChanged:(id)sender
 {
   [self resetSampleRateSelection];
+  [self updateInputNote];
+}
+
+- (void)updateInputNote
+{
+  namespace sa = freeaudio::clap_wrapper::standalone;
+  auto standaloneHost = sa::getStandaloneHost();
+
+  NSString *text{nil};
+  NSColor *color{[NSColor secondaryLabelColor]};
+
+  auto idx = [inputSelection indexOfSelectedItem];
+  if (idx > 0 && (size_t)idx <= inDevices.size() && sa::isBluetoothAudioDevice(inDevices[idx - 1].name))
+  {
+    text = @"A Bluetooth microphone switches its device to telephone quality, for every "
+           @"application, while it is open.";
+    color = [NSColor systemOrangeColor];
+  }
+  else if (idx == 0 && standaloneHost->numAudioInputs > 0)
+  {
+    auto [in, out, sr] = standaloneHost->getDefaultAudioInOutSampleRate();
+    if (sa::isMicrophoneAudioDevice(standaloneHost->deviceName(in)))
+      text = @"The default input is a microphone, which is opened only when chosen here.";
+  }
+
+  if (text)
+  {
+    [inputNote setStringValue:text];
+    [inputNote setTextColor:color];
+  }
+  [inputNoteRow setHidden:text == nil];
 }
 
 - (void)resetSampleRateSelection

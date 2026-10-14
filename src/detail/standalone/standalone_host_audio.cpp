@@ -181,6 +181,14 @@ void StandaloneHost::startAudioThread()
     audioOutputDeviceID = out;
     audioInputUsed = isKnownDevice(in);
     audioOutputUsed = isKnownDevice(out);
+
+    // nor a microphone, which no default opens (isMicrophoneAudioDevice): with no
+    // interface to prefer, this launch runs without an input until one is chosen
+    if (audioInputUsed && isMicrophoneAudioDevice(deviceName(in)))
+    {
+      LOGINFO("Not opening '{}': the default input is a microphone", deviceName(in));
+      audioInputUsed = false;
+    }
     currentSampleRate = sr;
 
     startAudioThreadOn(audioInputDeviceID, deviceInputChannels, audioInputUsed && numAudioInputs > 0,
