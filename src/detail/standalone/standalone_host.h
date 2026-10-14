@@ -59,6 +59,11 @@ bool isMicrophoneAudioDevice(const std::string &rtAudioName);
 // way to tell
 bool isBluetoothAudioDevice(const std::string &rtAudioName);
 
+// the smallest and largest buffer, in frames, the device of this rtaudio name accepts;
+// {0, 0} where there is no way to tell, which is everywhere but macos for now. rtaudio
+// clamps a request to the range without a word, so a menu should not offer beyond it
+std::pair<uint32_t, uint32_t> bufferFrameSizeRange(const std::string &rtAudioName);
+
 struct StandaloneHost : Clap::IHost
 {
   StandaloneHost()

@@ -59,6 +59,11 @@ bool isBluetoothAudioDevice(const std::string &)
 {
   return false;
 }
+
+std::pair<uint32_t, uint32_t> bufferFrameSizeRange(const std::string &)
+{
+  return {0, 0};
+}
 #endif
 
 StandaloneHost::~StandaloneHost()

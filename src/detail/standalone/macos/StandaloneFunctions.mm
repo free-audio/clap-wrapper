@@ -89,21 +89,26 @@ std::vector<AudioDeviceID> allDevices()
   return devices;
 }
 
-// the transport type of the coreaudio device rtaudio calls by this name, in either
-// encoding it may have used; false if there is none
-bool transportNamed(const std::string &name, UInt32 &transport)
+// the coreaudio device rtaudio calls by this name, in either encoding it may have used
+AudioDeviceID deviceNamed(const std::string &name)
 {
-  if (name.empty()) return false;
+  if (name.empty()) return kAudioObjectUnknown;
 
   for (auto id : allDevices())
   {
     for (auto encoding : {CFStringGetSystemEncoding(), (CFStringEncoding)kCFStringEncodingUTF8})
     {
-      if (rtAudioName(id, encoding) == name)
-        return getProperty(id, kAudioDevicePropertyTransportType, transport);
+      if (rtAudioName(id, encoding) == name) return id;
     }
   }
-  return false;
+  return kAudioObjectUnknown;
+}
+
+// the transport type of that device; false if there is none
+bool transportNamed(const std::string &name, UInt32 &transport)
+{
+  auto id{deviceNamed(name)};
+  return id != kAudioObjectUnknown && getProperty(id, kAudioDevicePropertyTransportType, transport);
 }
 
 // hardware an instrument or a line is plugged into. not virtual or aggregate devices,
@@ -163,6 +168,16 @@ bool isBluetoothAudioDevice(const std::string &name)
 {
   UInt32 transport{0};
   return transportNamed(name, transport) && isBluetooth(transport);
+}
+
+std::pair<uint32_t, uint32_t> bufferFrameSizeRange(const std::string &name)
+{
+  AudioValueRange range{};
+  auto id{deviceNamed(name)};
+  if (id == kAudioObjectUnknown || !getProperty(id, kAudioDevicePropertyBufferFrameSizeRange, range) ||
+      range.mMaximum < range.mMinimum || range.mMinimum < 0)
+    return {0, 0};
+  return {static_cast<uint32_t>(range.mMinimum), static_cast<uint32_t>(range.mMaximum)};
 }
 
 std::optional<fs::path> getStandaloneSettingsPath()

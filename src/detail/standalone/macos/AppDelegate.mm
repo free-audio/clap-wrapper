@@ -3,6 +3,7 @@
 #include <AVFoundation/AVFoundation.h>
 
 #include <algorithm>
+#include <limits>
 #include <map>
 #include <string>
 #include <vector>
@@ -40,7 +41,7 @@ struct MidiPortRow
 
 @interface AudioSettingsWindow : NSWindow
 {
-  NSPopUpButton *outputSelection, *inputSelection, *sampleRateSelection;
+  NSPopUpButton *outputSelection, *inputSelection, *sampleRateSelection, *bufferSizeSelection;
   std::vector<RtAudio::DeviceInfo> outDevices, inDevices;
 
   // a list nobody touched leaves its settings as they were, which for the inputs may be
@@ -69,6 +70,8 @@ struct MidiPortRow
 
 - (void)setupContents;
 - (void)resetSampleRateSelection;
+- (void)resetBufferSizeSelectionPreferring:(uint32_t)frames;
+- (void)updateBufferSizeTitles;
 - (void)updateInputNote;
 
 @end
@@ -642,12 +645,16 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
     outputSelection = [[[NSPopUpButton alloc] init] autorelease];
     inputSelection = [[[NSPopUpButton alloc] init] autorelease];
     sampleRateSelection = [[[NSPopUpButton alloc] init] autorelease];
+    bufferSizeSelection = [[[NSPopUpButton alloc] init] autorelease];
     for (NSPopUpButton *menu : {outputSelection, inputSelection})
     {
       [[menu cell] setLineBreakMode:NSLineBreakByTruncatingTail];
       [[menu widthAnchor] constraintEqualToConstant:controlWidth].active = YES;
     }
     [[sampleRateSelection widthAnchor] constraintEqualToConstant:120].active = YES;
+    [[bufferSizeSelection widthAnchor] constraintEqualToConstant:120].active = YES;
+    [sampleRateSelection setAction:@selector(updateBufferSizeTitles)];
+    [sampleRateSelection setTarget:self];
 
     outDevices = standaloneHost->getOutputAudioDevices();
     // add items to menu
@@ -744,6 +751,7 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
       @[ makeLabel(@"Input:"), inputSelection ],
       @[ none, inputNote ],
       @[ makeLabel(@"Sample Rate:"), sampleRateSelection ],
+      @[ makeLabel(@"Buffer Size:"), bufferSizeSelection ],
       @[ none, defaultButton ],
       @[ none, noRateNote ],
       @[ sectionRule, none ],
@@ -841,6 +849,7 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
     ]];
 
     [self resetSampleRateSelection];
+    [self resetBufferSizeSelectionPreferring:standaloneHost->currentBufferSize];
     [self updateInputNote];
 
     [content layoutSubtreeIfNeeded];
@@ -872,6 +881,7 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
     }
 
     const auto sr = [[[sampleRateSelection selectedItem] title] integerValue];
+    const auto frames = static_cast<uint32_t>([[bufferSizeSelection selectedItem] tag]);
 
     auto standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
 
@@ -882,22 +892,26 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
     const bool previousUseIn = standaloneHost->audioInputUsed;
     const bool previousUseOut = standaloneHost->audioOutputUsed;
     const auto previousRate = standaloneHost->currentSampleRate;
+    const auto previousFrames = standaloneHost->currentBufferSize;
 
     // a stream already running on what the window shows is left alone: reopening it, for
     // a window in which only the midi ports changed, would drop out the audio for nothing
     const bool audioAsShown =
-        wasRunning && (int32_t)sr == previousRate &&
+        wasRunning && (int32_t)sr == previousRate && (frames == 0 || frames == previousFrames) &&
         useOut == (standaloneHost->currentOutputChannels > 0) && (!useOut || outId == previousOut) &&
         useIn == (standaloneHost->currentInputChannels > 0) && (!useIn || inId == previousIn);
 
     if (!audioAsShown)
     {
+      // the size to ask for; the stream reads back what the device granted
+      if (frames > 0) standaloneHost->currentBufferSize = frames;
       standaloneHost->startAudioThreadOn(inId, 2, useIn, outId, 2, useOut, (int32_t)sr);
       if (!standaloneHost->isAudioRunning())
       {
         // neither kept nor saved, and the window stays up for another choice: the
         // devices are put back as they were, and the error callback has already told
         // the user why these did not open
+        standaloneHost->currentBufferSize = previousFrames;
         if (wasRunning)
           standaloneHost->startAudioThreadOn(previousIn, 2, previousUseIn, previousOut, 2,
                                              previousUseOut, previousRate);
@@ -987,6 +1001,8 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
   }
 
   [self resetSampleRateSelection];
+  [self resetBufferSizeSelectionPreferring:freeaudio::clap_wrapper::standalone::StandaloneSettings::
+                                               defaultBufferSize];
   [self updateInputNote];
 
   for (NSMenuItem *item in [sampleRateSelection itemArray])
@@ -997,6 +1013,7 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
       [sampleRateSelection selectItem:item];
     }
   }
+  [self updateBufferSizeTitles];
 }
 
 - (void)close
@@ -1029,7 +1046,74 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
 - (void)onSourceMenuChanged:(id)sender
 {
   [self resetSampleRateSelection];
+  [self resetBufferSizeSelectionPreferring:static_cast<uint32_t>(
+                                               [[bufferSizeSelection selectedItem] tag])];
   [self updateInputNote];
+}
+
+// each size with how long it lasts at the selected rate, "256 (5.8 ms)". the item's tag
+// holds the size, so the title is free to say more
+- (void)updateBufferSizeTitles
+{
+  const auto rate = [[[sampleRateSelection selectedItem] title] integerValue];
+  for (NSMenuItem *item in [bufferSizeSelection itemArray])
+  {
+    const auto frames = [item tag];
+    [item setTitle:rate > 0 ? [NSString stringWithFormat:@"%ld (%.1f ms)", (long)frames,
+                                                         1000.0 * (double)frames / (double)rate]
+                            : [NSString stringWithFormat:@"%ld", (long)frames]];
+  }
+  [bufferSizeSelection synchronizeTitleAndSelectedItem];
+}
+
+// the sizes both selected devices accept, from the standalone's list; selects the
+// preferred size, or the largest below it, or the smallest there is
+- (void)resetBufferSizeSelectionPreferring:(uint32_t)preferred
+{
+  namespace sa = freeaudio::clap_wrapper::standalone;
+  auto standaloneHost = sa::getStandaloneHost();
+
+  // rtaudio clamps a size outside a device's range without a word, so the menu does not
+  // offer one. a device that cannot tell its range narrows nothing
+  uint32_t lowest{0}, highest{std::numeric_limits<uint32_t>::max()};
+  auto narrowTo = [&](const std::string &name)
+  {
+    const auto [min, max] = sa::bufferFrameSizeRange(name);
+    if (max == 0) return;
+    lowest = std::max(lowest, min);
+    highest = std::min(highest, max);
+  };
+  const auto oidx = [outputSelection indexOfSelectedItem];
+  if (oidx >= 0 && (size_t)oidx < outDevices.size()) narrowTo(outDevices[oidx].name);
+  const auto iidx = [inputSelection indexOfSelectedItem];
+  if (iidx > 0 && (size_t)iidx <= inDevices.size()) narrowTo(inDevices[iidx - 1].name);
+
+  std::vector<uint32_t> sizes;
+  for (auto size : standaloneHost->getBufferSizes())
+  {
+    if (size >= lowest && size <= highest) sizes.push_back(size);
+  }
+
+  // the stream may run at a size the list does not have, which the device chose
+  const auto running = standaloneHost->currentBufferSize;
+  if (running >= lowest && running <= highest && running > 0 &&
+      std::find(sizes.begin(), sizes.end(), running) == sizes.end())
+  {
+    sizes.insert(std::upper_bound(sizes.begin(), sizes.end(), running), running);
+  }
+
+  if (preferred == 0) preferred = sa::StandaloneSettings::defaultBufferSize;
+
+  [bufferSizeSelection removeAllItems];
+  NSInteger selected{sizes.empty() ? -1 : 0};
+  for (size_t i = 0; i < sizes.size(); ++i)
+  {
+    [bufferSizeSelection addItemWithTitle:[NSString stringWithFormat:@"%u", sizes[i]]];
+    [[bufferSizeSelection lastItem] setTag:sizes[i]];
+    if (sizes[i] <= preferred) selected = (NSInteger)i;
+  }
+  if (selected >= 0) [bufferSizeSelection selectItemAtIndex:selected];
+  [self updateBufferSizeTitles];
 }
 
 - (void)updateInputNote

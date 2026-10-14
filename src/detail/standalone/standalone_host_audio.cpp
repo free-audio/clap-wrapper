@@ -352,8 +352,10 @@ std::vector<uint32_t> StandaloneHost::getBufferSizes()
   // to open it, and openStream reports back what it actually granted. So this is
   // a menu of plausible sizes, not a claim about the device. 16 used to head the
   // list and was taken as the Windows first-run default, which is far too small
-  // to run reliably on any backend.
-  std::vector<uint32_t> res{32, 48, 64, 96, 128, 144, 160, 192, 224, 256, 480, 512, 1024, 2048, 4096};
+  // to run reliably on any backend. Powers of two from 32 to 512: what a player
+  // chooses between, from as little latency as the machine manages to a safe 512;
+  // a saved size beyond the last is clamped to it (applyAudioSettings)
+  std::vector<uint32_t> res{32, 64, 128, 256, 512};
   return res;
 }
 
