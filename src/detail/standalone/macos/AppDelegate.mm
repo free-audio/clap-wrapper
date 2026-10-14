@@ -571,20 +571,17 @@ bool contains(const std::vector<std::string> &names, const std::string &name)
 }
 
 // one checkbox per port. ports saved but not plugged in now are listed too, marked, so
-// that unticking one is a way to forget it; a plugin that could not use the ports gets
-// them listed and greyed
+// that unticking one is a way to forget it
 NSScrollView *makePortList(std::vector<MidiPortRow> &rows, const std::vector<std::string> &available,
-                           const std::vector<std::string> &on, bool allOn, bool usable,
-                           NSString *emptyText)
+                           const std::vector<std::string> &on, bool allOn, NSString *emptyText)
 {
   rows.clear();
-  auto addRow = [&rows, usable](const std::string &name, bool connected, bool isOn)
+  auto addRow = [&rows](const std::string &name, bool connected, bool isOn)
   {
     NSString *title = [NSString stringWithUTF8String:name.c_str()];
     if (!connected) title = [title stringByAppendingString:@" (not connected)"];
     NSButton *check = [NSButton checkboxWithTitle:title target:nil action:nil];
     [check setState:isOn ? NSControlStateValueOn : NSControlStateValueOff];
-    [check setEnabled:usable];
     [[check cell] setLineBreakMode:NSLineBreakByTruncatingTail];
     rows.push_back({name, check, isOn});
   };
@@ -742,26 +739,22 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
         makeNote(@"These devices have no sample rate in common.", [NSColor systemRedColor]);
     inputNote = makeNote(@"", [NSColor secondaryLabelColor]);
 
-    // midi
+    // midi: a direction the plugin has no note port for gets no section at all
     const auto &settings = standaloneHost->settings;
     const bool takesMidi = standaloneHost->hasMIDIInput || standaloneHost->hasClapNoteInput;
     const bool sendsMidi = standaloneHost->createsMidiOutput;
 
     NSScrollView *midiInList =
         makePortList(midiInRows, standaloneHost->getMidiPortNames(), settings.midiPortNames,
-                     settings.midiBindAllPorts, takesMidi, @"No MIDI inputs found");
+                     settings.midiBindAllPorts, @"No MIDI inputs found");
     NSScrollView *midiOutList =
         makePortList(midiOutRows, standaloneHost->getMidiOutputPortNames(), settings.midiOutputPortNames,
-                     false, sendsMidi, @"No MIDI outputs found");
-    NSTextField *midiInNote = makeNote([NSString stringWithFormat:@"%@ takes no MIDI.", pluginName],
-                                       [NSColor secondaryLabelColor]);
-    NSTextField *midiOutNote = makeNote([NSString stringWithFormat:@"%@ sends no MIDI.", pluginName],
-                                        [NSColor secondaryLabelColor]);
+                     false, @"No MIDI outputs found");
 
     // offered where the midi api has virtual ports, which on macos is every version
     const bool virtualPorts =
         freeaudio::clap_wrapper::standalone::StandaloneHost::supportsVirtualMidiPorts();
-    auto makeVirtualCheck = [&](bool input, bool isOn, bool usable)
+    auto makeVirtualCheck = [&](bool input, bool isOn)
     {
       NSString *name =
           [NSString stringWithUTF8String:standaloneHost->virtualMidiPortName(input).c_str()];
@@ -770,15 +763,14 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
                            name];
       NSButton *check = [NSButton checkboxWithTitle:title target:nil action:nil];
       [check setState:isOn ? NSControlStateValueOn : NSControlStateValueOff];
-      [check setEnabled:usable];
       [check setToolTip:input ? @"A MIDI destination other applications can send to"
                               : @"A MIDI source other applications can receive from"];
       return check;
     };
     virtualInWasOn = settings.midiVirtualInput;
     virtualOutWasOn = settings.midiVirtualOutput;
-    virtualInCheck = makeVirtualCheck(true, virtualInWasOn, takesMidi);
-    virtualOutCheck = makeVirtualCheck(false, virtualOutWasOn, sendsMidi);
+    virtualInCheck = makeVirtualCheck(true, virtualInWasOn);
+    virtualOutCheck = makeVirtualCheck(false, virtualOutWasOn);
 
     NSTextField *midiInLabel = makeLabel(@"MIDI Inputs:");
     NSTextField *midiOutLabel = makeLabel(@"MIDI Outputs:");
@@ -816,10 +808,8 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
       @[ sectionRule, none ],
       @[ midiInLabel, midiInList ],
       @[ none, virtualInCheck ],
-      @[ none, midiInNote ],
       @[ midiOutLabel, midiOutList ],
       @[ none, virtualOutCheck ],
-      @[ none, midiOutNote ],
       @[ appearanceRule, none ],
       @[ makeLabel(@"Appearance:"), appearanceSelection ],
     ]];
@@ -834,10 +824,11 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
     [noRateRow setHidden:YES];
     inputNoteRow = rowOf(inputNote);
     [inputNoteRow setHidden:YES];
-    [rowOf(midiInNote) setHidden:takesMidi];
-    [rowOf(midiOutNote) setHidden:sendsMidi];
-    [rowOf(virtualInCheck) setHidden:!virtualPorts];
-    [rowOf(virtualOutCheck) setHidden:!virtualPorts];
+    [rowOf(sectionRule) setHidden:!takesMidi && !sendsMidi];
+    [rowOf(midiInList) setHidden:!takesMidi];
+    [rowOf(midiOutList) setHidden:!sendsMidi];
+    [rowOf(virtualInCheck) setHidden:!takesMidi || !virtualPorts];
+    [rowOf(virtualOutCheck) setHidden:!sendsMidi || !virtualPorts];
 
     for (NSBox *rule : {sectionRule, appearanceRule})
     {

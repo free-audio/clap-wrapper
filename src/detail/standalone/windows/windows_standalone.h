@@ -304,6 +304,10 @@ struct Plugin final : public Window
   void refreshMIDIInputs();
   void refreshMIDIOutputs();
 
+  // the rows the settings window gives each midi list; 0 is no list and no label
+  uint32_t midiInputRows() const;
+  uint32_t midiOutputRows() const;
+
   bool saveSettings();
   bool loadSettings();
 

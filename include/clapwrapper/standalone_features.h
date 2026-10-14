@@ -201,7 +201,9 @@ extern "C"
     bool(CLAP_ABI *supports_audio_midi_configuration_screen)(const clap_host_t *host);
 
     // opens the standalone's audio/midi settings window, or brings it to the front.
-    // non-modal: returns once the window is up, not when the user closes it.
+    // non-modal: returns once the window is up, not when the user closes it. the
+    // window has a midi input section only for a plugin with a note input port, and
+    // a midi output section only for one with a note output port.
     // returns false if unsupported or the window could not be shown
     // [main-thread]
     bool(CLAP_ABI *show_audio_midi_configuration_screen)(const clap_host_t *host);

@@ -1298,13 +1298,13 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
         ::TextOutW(hdc, 10, settings.sampleRate.position.y + settings.sampleRate.position.height + 10,
                    L"Buffer Size: ", 13);
 
-        if (sah->numMidiPorts != 0)
+        if (midiInputRows() != 0)
         {
           ::TextOutW(hdc, 10, settings.bufferSize.position.y + settings.bufferSize.position.height + 10,
                      L"MIDI Inputs: ", 13);
         }
 
-        if (sah->numMidiOutputPorts != 0)
+        if (midiOutputRows() != 0)
         {
           ::TextOutW(hdc, 10, settings.midiOut.position.y, L"MIDI Outputs: ", 14);
         }
@@ -1515,21 +1515,36 @@ void Plugin::refreshLayout()
       x, settings.sampleRate.position.y + settings.sampleRate.position.height + 10, width - x - 10,
       height);
 
+  const auto inRows{midiInputRows()};
+  const auto outRows{midiOutputRows()};
+
   settings.midiIn.setPosition(
       x, settings.bufferSize.position.y + settings.bufferSize.position.height + 10, width - x - 10,
-      (static_cast<uint32_t>(settings.midiIn.getItemHeight() * sah->numMidiPorts)));
+      (static_cast<uint32_t>(settings.midiIn.getItemHeight() * inRows)));
 
   // an empty list takes no room, and no gap either
   settings.midiOut.setPosition(
-      x,
-      settings.midiIn.position.y + settings.midiIn.position.height + (sah->numMidiPorts != 0 ? 10 : 0),
-      width - x - 10,
-      (static_cast<uint32_t>(settings.midiOut.getItemHeight() * sah->numMidiOutputPorts)));
+      x, settings.midiIn.position.y + settings.midiIn.position.height + (inRows != 0 ? 10 : 0),
+      width - x - 10, (static_cast<uint32_t>(settings.midiOut.getItemHeight() * outRows)));
+
+  ::ShowWindow(settings.midiIn.hwnd.get(), inRows != 0 ? SW_SHOW : SW_HIDE);
+  ::ShowWindow(settings.midiOut.hwnd.get(), outRows != 0 ? SW_SHOW : SW_HIDE);
 
   auto windowHeight{(settings.api.position.height * 5) + (10 * 6)};
-  if (sah->numMidiPorts != 0) windowHeight += settings.midiIn.position.height + 10;
-  if (sah->numMidiOutputPorts != 0) windowHeight += settings.midiOut.position.height + 10;
+  if (inRows != 0) windowHeight += settings.midiIn.position.height + 10;
+  if (outRows != 0) windowHeight += settings.midiOut.position.height + 10;
   settings.adjustSize(width, windowHeight);
+}
+
+// a direction the plugin has no note port for gets no list, as if there were no ports
+uint32_t Plugin::midiInputRows() const
+{
+  return sah && (sah->hasMIDIInput || sah->hasClapNoteInput) ? sah->numMidiPorts : 0;
+}
+
+uint32_t Plugin::midiOutputRows() const
+{
+  return sah && sah->createsMidiOutput ? sah->numMidiOutputPorts : 0;
 }
 
 void Plugin::refreshApis()
@@ -1645,9 +1660,6 @@ void Plugin::refreshMIDIOutputs()
   {
     settings.midiOut.set(name);
   }
-
-  // listed, so the ports can be seen, but a plugin that sends no midi has nothing for them
-  ::EnableWindow(settings.midiOut.hwnd.get(), sah->createsMidiOutput ? TRUE : FALSE);
 }
 
 bool Plugin::saveSettings()

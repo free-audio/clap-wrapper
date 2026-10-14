@@ -117,6 +117,10 @@ void StandaloneHost::openMidiPorts(const std::vector<std::string> &names, bool b
 {
   closeMidiPorts();
 
+  // a plugin with no note input has no port for what these would deliver; the
+  // selection stays in the settings, untouched
+  if (!(hasMIDIInput || hasClapNoteInput)) return;
+
   auto available = getMidiPortNames();
 
   for (const auto &name : available)
