@@ -18,11 +18,17 @@ std::vector<AudioApi> rtAudioApis();
 std::unique_ptr<AudioBackend> createRtAudioBackend(const std::string &apiId);
 #endif
 
+#if MAC
+// macos/coreaudio_backend.cpp: the devices as CoreAudio lists them, which the CoreAudio
+// backend shows and the RtAudio one takes what RtAudio cannot tell from
+std::vector<AudioDevice> listCoreAudioDevices();
+#endif
+
 #if CLAP_WRAPPER_STANDALONE_RTAUDIO
 // rtmidi_backend.cpp
 std::unique_ptr<MidiBackend> createRtMidiBackend();
 #elif MAC
-// macos/coreaudio_backend.mm, macos/coremidi_backend.mm
+// macos/coreaudio_backend.cpp, macos/coremidi_backend.cpp
 std::unique_ptr<AudioBackend> createCoreAudioBackend();
 std::unique_ptr<MidiBackend> createCoreMidiBackend();
 #elif WIN

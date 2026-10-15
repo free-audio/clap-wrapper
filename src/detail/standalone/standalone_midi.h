@@ -36,6 +36,10 @@ struct MidiPort
 // display name. null if none
 const MidiPort *findMidiPort(const std::vector<MidiPort> &ports, const std::string &reference);
 
+// the length of a short message from its status byte; 0 for what is not one: a data byte
+// where the status should be (running status), or the start or end of sysex
+size_t shortMidiMessageSize(uint8_t status);
+
 class MidiBackend
 {
  public:

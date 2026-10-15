@@ -108,6 +108,34 @@ std::string preferredFirstRunInput(const std::vector<AudioDevice> &devices,
   return best ? best->id : std::string{};
 }
 
+size_t shortMidiMessageSize(uint8_t status)
+{
+  if (status < 0x80) return 0;
+
+  switch (status & 0xF0)
+  {
+    case 0xC0:
+    case 0xD0:
+      return 2;
+    case 0xF0:
+      switch (status)
+      {
+        case 0xF0:
+        case 0xF7:
+          return 0;
+        case 0xF1:
+        case 0xF3:
+          return 2;
+        case 0xF2:
+          return 3;
+        default:
+          return 1;
+      }
+    default:
+      return 3;
+  }
+}
+
 const MidiPort *findMidiPort(const std::vector<MidiPort> &ports, const std::string &reference)
 {
   if (reference.empty()) return nullptr;

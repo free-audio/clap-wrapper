@@ -412,7 +412,8 @@ class WasapiBackend final : public AudioBackend
       notifications = new NotificationClient(
           [this]
           {
-            listed = false;
+            // listed again by refreshDevices(), on the main thread: the host holds on to
+            // the devices between its calls
             if (onEvent) onEvent(AudioBackendEvent::DevicesChanged, {});
           });
       if (FAILED(enumerator->RegisterEndpointNotificationCallback(notifications)))

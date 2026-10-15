@@ -19,10 +19,13 @@
 
 namespace
 {
+namespace sa = freeaudio::clap_wrapper::standalone;
+
 // a checkbox in one of the settings window's midi port lists
 struct MidiPortRow
 {
-  std::string name;
+  // the port's id, or for a port saved but not plugged in, its saved name
+  std::string reference;
   NSButton *check;  // owned by the window's views
   bool wasOn;       // when the window opened
 };
@@ -63,11 +66,14 @@ void applyScreenAppearance(NSWindow *window)
 @interface AudioSettingsWindow : NSWindow
 {
   NSPopUpButton *outputSelection, *inputSelection, *sampleRateSelection, *bufferSizeSelection;
-  std::vector<RtAudio::DeviceInfo> outDevices, inDevices;
+  std::vector<sa::AudioDevice> outDevices, inDevices;
 
   // a list nobody touched leaves its settings as they were, which for the inputs may be
   // "every port", including any plugged in later
   std::vector<MidiPortRow> midiInRows, midiOutRows;
+  NSScrollView *midiInList, *midiOutList;
+  // the input list's "every port" from the settings, for ports plugged in while it is open
+  bool midiInAllOn;
 
   // the optional virtual ports, and whether each was asked for when the window opened
   NSButton *virtualInCheck, *virtualOutCheck;
@@ -97,6 +103,8 @@ void applyScreenAppearance(NSWindow *window)
 }
 
 - (void)setupContents;
+- (void)fillDeviceMenusSelectingOutput:(const std::string &)output input:(const std::string &)input;
+- (void)devicesChanged;
 - (void)resetSampleRateSelection;
 - (void)resetBufferSizeSelectionPreferring:(uint32_t)frames;
 - (void)updateBufferSizeTitles;
@@ -114,6 +122,10 @@ static AudioSettingsWindow *openAudioSettings{nil};
 - (void)timerCallback:(NSTimer *)instance
 {
   auto *standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
+
+  // a stream that stopped on its own, devices that came or went
+  standaloneHost->pollAudioEvents();
+
   if (standaloneHost->callbackRequested.exchange(false))
   {
     auto *plugin = freeaudio::clap_wrapper::standalone::getMainPlugin()->_plugin;
@@ -339,6 +351,10 @@ static AudioSettingsWindow *openAudioSettings{nil};
     }
   };
 
+  // the settings window, while it is open, follows devices and ports coming and going
+  freeaudio::clap_wrapper::standalone::getStandaloneHost()->onAudioDevicesChanged = []()
+  { [openAudioSettings devicesChanged]; };
+
   freeaudio::clap_wrapper::standalone::mainStartAudio();
 }
 
@@ -361,6 +377,7 @@ static AudioSettingsWindow *openAudioSettings{nil};
 {
   LOGDETAIL("Application terminating");
   freeaudio::clap_wrapper::standalone::getStandaloneHost()->displayAudioError = nullptr;
+  freeaudio::clap_wrapper::standalone::getStandaloneHost()->onAudioDevicesChanged = nullptr;
   freeaudio::clap_wrapper::standalone::getStandaloneHost()->onRequestResize = nullptr;
   freeaudio::clap_wrapper::standalone::getStandaloneHost()->onShowSettingsScreen = nullptr;
 
@@ -571,25 +588,38 @@ bool contains(const std::vector<std::string> &names, const std::string &name)
 }
 
 // one checkbox per port. ports saved but not plugged in now are listed too, marked, so
-// that unticking one is a way to forget it
-NSScrollView *makePortList(std::vector<MidiPortRow> &rows, const std::vector<std::string> &available,
-                           const std::vector<std::string> &on, bool allOn, NSString *emptyText)
+// that unticking one is a way to forget it. a row already there keeps its state, so that a
+// port coming or going while the window is open changes nothing else
+void makePortRows(std::vector<MidiPortRow> &rows, const std::vector<sa::MidiPort> &ports,
+                  const std::vector<std::string> &onIds, const std::vector<std::string> &absentNames,
+                  bool allOn)
 {
+  const auto previous{rows};
   rows.clear();
-  auto addRow = [&rows](const std::string &name, bool connected, bool isOn)
+  auto addRow = [&](const std::string &reference, const std::string &name, bool connected, bool isOn)
   {
+    bool wasOn{isOn};
+    for (const auto &row : previous)
+    {
+      if (row.reference != reference) continue;
+      isOn = [row.check state] == NSControlStateValueOn;
+      wasOn = row.wasOn;
+    }
     NSString *title = [NSString stringWithUTF8String:name.c_str()];
     if (!connected) title = [title stringByAppendingString:@" (not connected)"];
     NSButton *check = [NSButton checkboxWithTitle:title target:nil action:nil];
     [check setState:isOn ? NSControlStateValueOn : NSControlStateValueOff];
     [[check cell] setLineBreakMode:NSLineBreakByTruncatingTail];
-    rows.push_back({name, check, isOn});
+    rows.push_back({reference, check, wasOn});
   };
-  for (const auto &name : available) addRow(name, true, allOn || contains(on, name));
+  for (const auto &port : ports) addRow(port.id, port.name, true, allOn || contains(onIds, port.id));
   if (!allOn)
-    for (const auto &name : on)
-      if (!contains(available, name)) addRow(name, false, true);
+    for (const auto &name : absentNames) addRow(name, name, false, true);
+}
 
+// the rows in a scroll view, made here or given to fill again
+NSScrollView *layoutPortList(NSScrollView *list, std::vector<MidiPortRow> &rows, NSString *emptyText)
+{
   NSTextField *empty = nil;
   if (rows.empty())
   {
@@ -631,15 +661,26 @@ NSScrollView *makePortList(std::vector<MidiPortRow> &rows, const std::vector<std
     [doc addSubview:rows[i].check];
   }
 
-  NSScrollView *list =
-      [[[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, frame.width, frame.height)] autorelease];
-  [list setBorderType:NSBezelBorder];
+  if (!list)
+  {
+    list =
+        [[[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, frame.width, frame.height)] autorelease];
+    [list setBorderType:NSBezelBorder];
+    [list setAutohidesScrollers:YES];
+    [list setDrawsBackground:YES];
+    [list setBackgroundColor:[NSColor controlBackgroundColor]];
+    [list setTranslatesAutoresizingMaskIntoConstraints:NO];
+  }
+  else
+  {
+    // its own size, from before
+    NSMutableArray *own = [NSMutableArray array];
+    for (NSLayoutConstraint *c in [list constraints])
+      if ([c firstItem] == list && [c secondItem] == nil) [own addObject:c];
+    [NSLayoutConstraint deactivateConstraints:own];
+  }
   [list setHasVerticalScroller:scrolls];
-  [list setAutohidesScrollers:YES];
-  [list setDrawsBackground:YES];
-  [list setBackgroundColor:[NSColor controlBackgroundColor]];
   [list setDocumentView:doc];
-  [list setTranslatesAutoresizingMaskIntoConstraints:NO];
   [[list widthAnchor] constraintEqualToConstant:frame.width].active = YES;
   [[list heightAnchor] constraintEqualToConstant:frame.height].active = YES;
   return list;
@@ -654,10 +695,10 @@ bool listChanged(const std::vector<MidiPortRow> &rows)
 
 std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
 {
-  std::vector<std::string> names;
+  std::vector<std::string> references;
   for (const auto &row : rows)
-    if ([row.check state] == NSControlStateValueOn) names.push_back(row.name);
-  return names;
+    if ([row.check state] == NSControlStateValueOn) references.push_back(row.reference);
+  return references;
 }
 }  // namespace
 
@@ -692,42 +733,14 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
     [sampleRateSelection setAction:@selector(updateBufferSizeTitles)];
     [sampleRateSelection setTarget:self];
 
-    outDevices = standaloneHost->getOutputAudioDevices();
-    // add items to menu
-    int selIdx{-1}, idx{0};
-    //[outputSelection addItemWithTitle:@"No Output"];
-
-    for (auto o : outDevices)
-    {
-      [outputSelection addItemWithTitle:[NSString stringWithUTF8String:o.name.c_str()]];
-      if (standaloneHost->audioOutputDeviceID == o.ID) selIdx = idx;
-      idx++;
-    }
-    if (selIdx >= 0)
-    {
-      [outputSelection selectItemAtIndex:selIdx];
-    }
+    // the input is the default's even with no input open, and showing that device would
+    // have OK open it
+    [self
+        fillDeviceMenusSelectingOutput:standaloneHost->audioOutputDevice
+                                 input:standaloneHost->audioInputUsed ? standaloneHost->audioInputDevice
+                                                                      : std::string{}];
     [outputSelection setAction:@selector(onSourceMenuChanged:)];
     [outputSelection setTarget:self];
-
-    inDevices = standaloneHost->getInputAudioDevices();
-    selIdx = -1;
-    idx = 1;
-    [inputSelection addItemWithTitle:@"No Input"];
-
-    for (auto i : inDevices)
-    {
-      [inputSelection addItemWithTitle:[NSString stringWithUTF8String:i.name.c_str()]];
-      if (standaloneHost->audioInputDeviceID == i.ID) selIdx = idx;
-      idx++;
-    }
-    // the id is the default input's even with no input open, and showing that device
-    // would have OK open it
-    if (selIdx >= 0 && standaloneHost->audioInputUsed)
-    {
-      [inputSelection selectItemAtIndex:selIdx];
-    }
-
     [inputSelection setAction:@selector(onSourceMenuChanged:)];
     [inputSelection setTarget:self];
 
@@ -744,16 +757,17 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
     const bool takesMidi = standaloneHost->hasMIDIInput || standaloneHost->hasClapNoteInput;
     const bool sendsMidi = standaloneHost->createsMidiOutput;
 
-    NSScrollView *midiInList =
-        makePortList(midiInRows, standaloneHost->getMidiPortNames(), settings.midiPortNames,
-                     settings.midiBindAllPorts, @"No MIDI inputs found");
-    NSScrollView *midiOutList =
-        makePortList(midiOutRows, standaloneHost->getMidiOutputPortNames(), settings.midiOutputPortNames,
-                     false, @"No MIDI outputs found");
+    std::vector<std::string> onIds, absentNames;
+    midiInAllOn = settings.midiBindAllPorts;
+    standaloneHost->savedMidiSelection(true, onIds, absentNames);
+    makePortRows(midiInRows, standaloneHost->getMidiInputPorts(), onIds, absentNames, midiInAllOn);
+    midiInList = layoutPortList(nil, midiInRows, @"No MIDI inputs found");
+    standaloneHost->savedMidiSelection(false, onIds, absentNames);
+    makePortRows(midiOutRows, standaloneHost->getMidiOutputPorts(), onIds, absentNames, false);
+    midiOutList = layoutPortList(nil, midiOutRows, @"No MIDI outputs found");
 
     // offered where the midi api has virtual ports, which on macos is every version
-    const bool virtualPorts =
-        freeaudio::clap_wrapper::standalone::StandaloneHost::supportsVirtualMidiPorts();
+    const bool virtualPorts = standaloneHost->supportsVirtualMidiPorts();
     auto makeVirtualCheck = [&](bool input, bool isOn)
     {
       NSString *name =
@@ -919,22 +933,20 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
 {
   @autoreleasepool
   {
-    unsigned int outId{0}, inId{0};
+    std::string outId, inId;
     bool useOut{false}, useIn{false};
 
     auto oidx = [outputSelection indexOfSelectedItem];
-    if (oidx >= 0)  // modify this to > and add a -1 below if we add no out
+    if (oidx >= 0 && (size_t)oidx < outDevices.size())
     {
-      const auto &oDev = outDevices[oidx];
-      outId = oDev.ID;
+      outId = outDevices[oidx].id;
       useOut = true;
     }
 
     auto iidx = [inputSelection indexOfSelectedItem];
-    if (iidx > 0)
+    if (iidx > 0 && (size_t)iidx <= inDevices.size())
     {
-      const auto &iDev = inDevices[iidx - 1];
-      inId = iDev.ID;
+      inId = inDevices[iidx - 1].id;
       useIn = true;
     }
 
@@ -945,8 +957,8 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
 
     // the stream running now, to go back to if the new one cannot be opened
     const bool wasRunning = standaloneHost->isAudioRunning();
-    const auto previousIn = standaloneHost->audioInputDeviceID;
-    const auto previousOut = standaloneHost->audioOutputDeviceID;
+    const auto previousIn = standaloneHost->audioInputDevice;
+    const auto previousOut = standaloneHost->audioOutputDevice;
     const bool previousUseIn = standaloneHost->audioInputUsed;
     const bool previousUseOut = standaloneHost->audioOutputUsed;
     const auto previousRate = standaloneHost->currentSampleRate;
@@ -980,12 +992,11 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
     // persist the choice, per plugin id - startAudioThread() opens what the file names
     // on the next launch, which otherwise falls back to the system default input, a
     // laptop's built-in microphone. only once it has opened, so a combination that
-    // cannot run is never what a launch starts with; and by name, what the user chose,
-    // not what was opened, which may be a fallback (standalone_settings.h)
+    // cannot run is never what a launch starts with; and what the user chose, not what was
+    // opened, which may be a fallback (standalone_settings.h)
     auto &settings = standaloneHost->settings;
-    if (useOut) settings.outputDeviceName = outDevices[oidx].name;
+    standaloneHost->setChosenDevices(useOut ? outId : std::string{}, useIn ? inId : std::string{});
     settings.audioOutputUsed = useOut;
-    if (useIn) settings.inputDeviceName = inDevices[iidx - 1].name;
     settings.audioInputUsed = useIn;
     settings.sampleRate = (int32_t)sr;
 
@@ -993,14 +1004,13 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
     // keeps "every port" if that is what it had
     if (listChanged(midiInRows))
     {
-      settings.midiBindAllPorts = false;
-      settings.midiPortNames = ticked(midiInRows);
-      standaloneHost->openMidiPorts(settings.midiPortNames, false);
+      standaloneHost->setChosenMidiPorts(true, ticked(midiInRows));
+      standaloneHost->openMidiPorts(ticked(midiInRows), false);
     }
     if (listChanged(midiOutRows))
     {
-      settings.midiOutputPortNames = ticked(midiOutRows);
-      standaloneHost->openMidiOutputPorts(settings.midiOutputPortNames);
+      standaloneHost->setChosenMidiPorts(false, ticked(midiOutRows));
+      standaloneHost->openMidiOutputPorts(ticked(midiOutRows));
     }
 
     // likewise, so that an application connected to a virtual port keeps its connection
@@ -1034,33 +1044,11 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
 - (void)defaultButtonPressed:(id)sender
 {
   auto standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
-  auto [in, out, sr] = standaloneHost->getDefaultAudioInOutSampleRate();
+  auto [systemIn, out, sr] = standaloneHost->getDefaultAudioInOutSampleRate();
 
-  // a default never opens a microphone (isMicrophoneAudioDevice), so neither does this:
-  // "No Input", and the note says why
-  [inputSelection selectItemAtIndex:0];
-  int idx = 1;
-  if (!freeaudio::clap_wrapper::standalone::isMicrophoneAudioDevice(standaloneHost->deviceName(in)))
-  {
-    for (auto i : inDevices)
-    {
-      if ((int)i.ID == (int)in)
-      {
-        [inputSelection selectItemAtIndex:idx];
-      }
-      idx++;
-    }
-  }
-
-  idx = 0;
-  for (auto o : outDevices)
-  {
-    if ((int)o.ID == (int)out)
-    {
-      [outputSelection selectItemAtIndex:idx];
-    }
-    idx++;
-  }
+  // what a first run opens: never a microphone, an interface in its place where there is
+  // one, otherwise "No Input", and the note says why
+  [self fillDeviceMenusSelectingOutput:out input:standaloneHost->defaultInputToOpen()];
 
   [self resetSampleRateSelection];
   [self resetBufferSizeSelectionPreferring:freeaudio::clap_wrapper::standalone::StandaloneSettings::
@@ -1143,8 +1131,8 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
   const auto oidx = [outputSelection indexOfSelectedItem];
   const auto iidx = [inputSelection indexOfSelectedItem];
   auto sizes = standaloneHost->getBufferSizesFor(
-      oidx >= 0 && (size_t)oidx < outDevices.size() ? outDevices[oidx].name : std::string{},
-      iidx > 0 && (size_t)iidx <= inDevices.size() ? inDevices[iidx - 1].name : std::string{});
+      oidx >= 0 && (size_t)oidx < outDevices.size() ? outDevices[oidx].id : std::string{},
+      iidx > 0 && (size_t)iidx <= inDevices.size() ? inDevices[iidx - 1].id : std::string{});
 
   // the stream may run at a size the list does not have, which the device chose
   const auto running = standaloneHost->currentBufferSize;
@@ -1193,7 +1181,7 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
   NSColor *color{[NSColor secondaryLabelColor]};
 
   auto idx = [inputSelection indexOfSelectedItem];
-  if (idx > 0 && (size_t)idx <= inDevices.size() && sa::isBluetoothAudioDevice(inDevices[idx - 1].name))
+  if (idx > 0 && (size_t)idx <= inDevices.size() && inDevices[idx - 1].isBluetooth)
   {
     text = @"A Bluetooth microphone switches its device to telephone quality, for every "
            @"application, while it is open.";
@@ -1202,7 +1190,8 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
   else if (idx == 0 && standaloneHost->numAudioInputs > 0)
   {
     auto [in, out, sr] = standaloneHost->getDefaultAudioInOutSampleRate();
-    if (sa::isMicrophoneAudioDevice(standaloneHost->deviceName(in)))
+    const auto *device = standaloneHost->findDevice(in);
+    if (device && device->isMicrophone)
       text = @"The default input is a microphone, which is opened only when chosen here.";
   }
 
@@ -1212,6 +1201,74 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
     [inputNote setTextColor:color];
   }
   [inputNoteRow setHidden:text == nil];
+}
+
+// the device menus from the host's list, with these selected; an output not there selects
+// the first, an input not there "No Input"
+- (void)fillDeviceMenusSelectingOutput:(const std::string &)output input:(const std::string &)input
+{
+  auto standaloneHost = sa::getStandaloneHost();
+
+  outDevices = standaloneHost->getOutputAudioDevices();
+  inDevices = standaloneHost->getInputAudioDevices();
+
+  auto titles = [](const std::vector<sa::AudioDevice> &devices)
+  {
+    std::vector<const sa::AudioDevice *> pointers;
+    for (const auto &d : devices) pointers.push_back(&d);
+    return sa::deviceMenuTitles(pointers);
+  };
+
+  [outputSelection removeAllItems];
+  const auto outTitles = titles(outDevices);
+  for (size_t i = 0; i < outDevices.size(); ++i)
+  {
+    [outputSelection addItemWithTitle:[NSString stringWithUTF8String:outTitles[i].c_str()]];
+    if (outDevices[i].id == output) [outputSelection selectItemAtIndex:(NSInteger)i];
+  }
+
+  [inputSelection removeAllItems];
+  [inputSelection addItemWithTitle:@"No Input"];
+  const auto inTitles = titles(inDevices);
+  for (size_t i = 0; i < inDevices.size(); ++i)
+  {
+    [inputSelection addItemWithTitle:[NSString stringWithUTF8String:inTitles[i].c_str()]];
+    if (!input.empty() && inDevices[i].id == input) [inputSelection selectItemAtIndex:(NSInteger)i + 1];
+  }
+}
+
+// a device or a port came or went while the window is open: the menus and lists follow,
+// and keep what is selected in them where it is still there
+- (void)devicesChanged
+{
+  auto standaloneHost = sa::getStandaloneHost();
+
+  const auto oidx = [outputSelection indexOfSelectedItem];
+  const auto iidx = [inputSelection indexOfSelectedItem];
+  const auto output =
+      oidx >= 0 && (size_t)oidx < outDevices.size() ? outDevices[oidx].id : std::string{};
+  const auto input =
+      iidx > 0 && (size_t)iidx <= inDevices.size() ? inDevices[iidx - 1].id : std::string{};
+  const auto rate = [[[sampleRateSelection selectedItem] title] integerValue];
+  const auto frames = static_cast<uint32_t>([[bufferSizeSelection selectedItem] tag]);
+
+  [self fillDeviceMenusSelectingOutput:output input:input];
+  [self resetSampleRateSelection];
+  for (NSMenuItem *item in [sampleRateSelection itemArray])
+    if ([[item title] integerValue] == rate) [sampleRateSelection selectItem:item];
+  [self resetBufferSizeSelectionPreferring:frames];
+  [self updateInputNote];
+
+  // a port plugged in while the window is open is ticked as "every port" would open it
+  std::vector<std::string> none;
+  makePortRows(midiInRows, standaloneHost->getMidiInputPorts(), none, none, midiInAllOn);
+  layoutPortList(midiInList, midiInRows, @"No MIDI inputs found");
+  makePortRows(midiOutRows, standaloneHost->getMidiOutputPorts(), none, none, false);
+  layoutPortList(midiOutList, midiOutRows, @"No MIDI outputs found");
+
+  NSView *content = [self contentView];
+  [content layoutSubtreeIfNeeded];
+  [self setContentSize:[content fittingSize]];
 }
 
 - (void)resetSampleRateSelection

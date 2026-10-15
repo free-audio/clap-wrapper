@@ -629,14 +629,27 @@ bool contains(const std::vector<std::string> &names, const std::string &name)
 }
 }  // namespace
 
-void PortList::fill(const std::vector<std::string> &available, const std::vector<std::string> &on,
-                    bool allOn)
+void PortList::fill(const std::vector<MidiPort> &ports, const std::vector<std::string> &onIds,
+                    const std::vector<std::string> &absentNames, bool allOn)
 {
+  // what the rows there now show, which a port coming or going does not change
+  std::vector<std::pair<Row, bool>> previous;
+  for (size_t i = 0; i < rows.size(); ++i) previous.emplace_back(rows[i], isOn(i));
+
   ListView_DeleteAllItems(hwnd.get());
   rows.clear();
 
-  auto addRow = [this](const std::string &name, bool connected, bool isOn)
+  auto addRow =
+      [this, &previous](const std::string &reference, const std::string &name, bool connected, bool isOn)
   {
+    bool wasOn{isOn};
+    for (const auto &[row, on] : previous)
+    {
+      if (row.reference != reference) continue;
+      isOn = on;
+      wasOn = row.wasOn;
+    }
+
     auto title{toUTF16(name)};
     if (!connected) title += L" (not connected)";
 
@@ -646,14 +659,13 @@ void PortList::fill(const std::vector<std::string> &available, const std::vector
     item.pszText = title.data();
     ListView_InsertItem(hwnd.get(), &item);
 
-    rows.push_back({name, isOn});
+    rows.push_back({reference, wasOn});
     setOn(rows.size() - 1, isOn);
   };
 
-  for (const auto &name : available) addRow(name, true, allOn || contains(on, name));
+  for (const auto &port : ports) addRow(port.id, port.name, true, allOn || contains(onIds, port.id));
   if (!allOn)
-    for (const auto &name : on)
-      if (!contains(available, name)) addRow(name, false, true);
+    for (const auto &name : absentNames) addRow(name, name, false, true);
 }
 
 bool PortList::isOn(size_t row)
@@ -675,10 +687,10 @@ bool PortList::changed()
 
 std::vector<std::string> PortList::ticked()
 {
-  std::vector<std::string> names;
+  std::vector<std::string> references;
   for (size_t i = 0; i < rows.size(); ++i)
-    if (isOn(i)) names.push_back(rows[i].name);
-  return names;
+    if (isOn(i)) references.push_back(rows[i].reference);
+  return references;
 }
 
 void PortList::setTheme(bool dark, ::COLORREF background, ::COLORREF text, ::COLORREF frame)
@@ -1401,6 +1413,9 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                    sah->activatePlugin(sah->currentSampleRate, 1, sah->currentBufferSize * 2);
                  }
 
+                 // a stream that stopped on its own, devices that came or went
+                 sah->pollAudioEvents();
+
                  // an asio driver asked for a reset, and rtaudio has closed the stream for
                  // it: the same setup again, which reads back what the driver now grants.
                  // not from inside the driver's own control panel call
@@ -1439,6 +1454,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
 
                sah->onRequestResize = nullptr;
                sah->displayAudioError = nullptr;
+               sah->onAudioDevicesChanged = nullptr;
                sah->onShowSettingsScreen = nullptr;
                sah->onScreenAppearanceChanged = nullptr;
                settingsWindowOwner = nullptr;
@@ -1602,11 +1618,14 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
 
   startMIDI();
 
-  // Never put the message box up from here. RtAudio calls this from wherever the
+  // Never put the message box up from here. The host calls this from wherever the
   // failure happened - including from inside the handler that asked for the device
-  // change, and from its own stream threads. A modal box runs a nested message
+  // change. A modal box runs a nested message
   // loop, so showing one there re-enters the handler that is still on the stack.
   // Queue the text and let the main loop show it once it is idle.
+  // the settings window, while it is up, follows devices and ports coming and going
+  sah->onAudioDevicesChanged = [this]() { devicesChanged(); };
+
   sah->displayAudioError = [this](auto &errorText)
   {
     {
@@ -1755,7 +1774,7 @@ void Plugin::populateSettings()
 {
   auto &saved{sah->settings};
 
-  settings.apiWhenOpened = sah->audioApi;
+  settings.apiWhenOpened = sah->audioApiName;
   settings.apiChanged = false;
   settings.audioOpenedEarly = false;
   settings.appearanceWhenOpened = sah->screenAppearance;
@@ -1765,20 +1784,26 @@ void Plugin::populateSettings()
   refreshApis();
   // the input is the default's even with no input open, and showing that device would have
   // OK open it
-  refreshDevices(sah->audioOutputDeviceID, sah->audioInputDeviceID, sah->audioInputUsed);
+  refreshDevices(sah->audioOutputDevice, sah->audioInputDevice, sah->audioInputUsed);
   refreshSampleRates(sah->currentSampleRate);
   refreshBufferSizes(sah->currentBufferSize);
   refreshInputNote();
   refreshDriverPanelButton();
 
   // midi: a direction the plugin has no note port for gets no section at all
-  settings.midiIn.fill(sah->getMidiPortNames(), saved.midiPortNames, saved.midiBindAllPorts);
-  settings.midiOut.fill(sah->getMidiOutputPortNames(), saved.midiOutputPortNames, false);
+  std::vector<std::string> onIds, absentNames;
+  settings.midiInAllOn = saved.midiBindAllPorts;
+  settings.midiIn.rows.clear();
+  settings.midiOut.rows.clear();
+  sah->savedMidiSelection(true, onIds, absentNames);
+  settings.midiIn.fill(sah->getMidiInputPorts(), onIds, absentNames, settings.midiInAllOn);
+  sah->savedMidiSelection(false, onIds, absentNames);
+  settings.midiOut.fill(sah->getMidiOutputPorts(), onIds, absentNames, false);
   settings.midiIn.empty.setText(" No MIDI inputs found");
   settings.midiOut.empty.setText(" No MIDI outputs found");
 
   // offered where the midi api has virtual ports, which winmm does not
-  const bool virtualPorts{StandaloneHost::supportsVirtualMidiPorts()};
+  const bool virtualPorts{sah->supportsVirtualMidiPorts()};
   settings.virtualInWasOn = saved.midiVirtualInput;
   settings.virtualOutWasOn = saved.midiVirtualOutput;
   settings.virtualIn.message.send(settings.virtualIn.hwnd.get(), BM_SETCHECK,
@@ -1821,19 +1846,19 @@ void Plugin::populateSettings()
 // driver, and usable once there is a driver to show it for
 void Plugin::refreshDriverPanelButton()
 {
-  settings.driverPanel.setVisible(StandaloneHost::hasDriverControlPanel(sah->audioApi));
+  settings.driverPanel.setVisible(sah->hasDriverControlPanel());
   ::EnableWindow(settings.driverPanel.hwnd.get(), shownOutput() ? TRUE : FALSE);
 }
 
 void Plugin::refreshApis()
 {
   settings.api.reset();
-  settings.apisShown = sah->getCompiledApi();
+  settings.apisShown = sah->getAudioApis();
 
   for (size_t i = 0; i < settings.apisShown.size(); ++i)
   {
-    settings.api.add(RtAudio::getApiDisplayName(settings.apisShown[i]));
-    if (settings.apisShown[i] == sah->audioApi) settings.api.set(static_cast<int>(i));
+    settings.api.add(settings.apisShown[i].name);
+    if (settings.apisShown[i].id == sah->audioApiName) settings.api.set(static_cast<int>(i));
   }
 
   // a choice of one is no choice
@@ -1841,29 +1866,63 @@ void Plugin::refreshApis()
   settings.api.setVisible(settings.apisShown.size() > 1);
 }
 
-void Plugin::refreshDevices(unsigned int outputId, unsigned int inputId, bool useInput)
+void Plugin::refreshDevices(const std::string &outputId, const std::string &inputId, bool useInput)
 {
   settings.outDevices = sah->getOutputAudioDevices();
   settings.inDevices = sah->getInputAudioDevices();
 
+  // two devices of one name get " (2)" and so on
+  auto titles = [](const std::vector<AudioDevice> &devices)
+  {
+    std::vector<const AudioDevice *> pointers;
+    for (const auto &device : devices) pointers.push_back(&device);
+    return deviceMenuTitles(pointers);
+  };
+
   settings.output.reset();
   int selected{settings.outDevices.empty() ? -1 : 0};
+  const auto outTitles{titles(settings.outDevices)};
   for (size_t i = 0; i < settings.outDevices.size(); ++i)
   {
-    settings.output.add(settings.outDevices[i].name);
-    if (settings.outDevices[i].ID == outputId) selected = static_cast<int>(i);
+    settings.output.add(outTitles[i]);
+    if (settings.outDevices[i].id == outputId) selected = static_cast<int>(i);
   }
   settings.output.set(selected);
 
   settings.input.reset();
   settings.input.add("No Input");
   selected = 0;
+  const auto inTitles{titles(settings.inDevices)};
   for (size_t i = 0; i < settings.inDevices.size(); ++i)
   {
-    settings.input.add(settings.inDevices[i].name);
-    if (useInput && settings.inDevices[i].ID == inputId) selected = static_cast<int>(i + 1);
+    settings.input.add(inTitles[i]);
+    if (useInput && settings.inDevices[i].id == inputId) selected = static_cast<int>(i + 1);
   }
   settings.input.set(selected);
+}
+
+void Plugin::devicesChanged()
+{
+  if (!settings.isVisible()) return;
+
+  const auto out{shownOutput()};
+  const auto in{shownInput()};
+  const auto rate{shownSampleRate()};
+  const auto frames{shownBufferSize()};
+
+  refreshDevices(out ? settings.outDevices[*out].id : std::string{},
+                 in ? settings.inDevices[*in].id : std::string{}, in.has_value());
+  refreshSampleRates(rate);
+  refreshBufferSizes(frames);
+  refreshInputNote();
+  refreshDriverPanelButton();
+
+  // a port plugged in while the window is open is ticked as "every port" would open it
+  const std::vector<std::string> none;
+  settings.midiIn.fill(sah->getMidiInputPorts(), none, none, settings.midiInAllOn);
+  settings.midiOut.fill(sah->getMidiOutputPorts(), none, none, false);
+
+  layoutSettings();
 }
 
 std::optional<size_t> Plugin::shownOutput()
@@ -1993,7 +2052,7 @@ void Plugin::refreshInputNote()
   settings.inputNoteCaution = false;
 
   const auto in{shownInput()};
-  if (in && isBluetoothAudioDevice(settings.inDevices[*in].name))
+  if (in && settings.inDevices[*in].isBluetooth)
   {
     text =
         "A Bluetooth microphone switches its device to telephone quality, for every application, "
@@ -2003,7 +2062,8 @@ void Plugin::refreshInputNote()
   else if (!in && sah->numAudioInputs > 0)
   {
     auto [input, output, rate] = sah->getDefaultAudioInOutSampleRate();
-    if (isMicrophoneAudioDevice(sah->deviceName(input)))
+    const auto *device{sah->findDevice(input)};
+    if (device && device->isMicrophone)
       text = "The default input is a microphone, which is opened only when chosen here.";
   }
 
@@ -2249,19 +2309,19 @@ void Plugin::layoutSettings()
 void Plugin::selectApiInSettings()
 {
   auto index{settings.api.selection(settings.apisShown.size())};
-  if (!index || settings.apisShown[*index] == sah->audioApi) return;
+  if (!index || settings.apisShown[*index].id == sah->audioApiName) return;
 
   // another api's devices can only be listed by switching to it, which stops the stream:
   // the one thing the window does before OK. OK opens a stream on it, and Cancel goes
   // back to the api, and the devices, it opened with
-  sah->setAudioApi(settings.apisShown[*index]);
+  sah->setAudioApi(settings.apisShown[*index].id);
   settings.apiChanged = true;
 
   // its default devices; the input stays off if it was, and if the default is a
-  // microphone, which no default opens (isMicrophoneAudioDevice)
+  // microphone, which no default opens (StandaloneHost::defaultInputToOpen)
   auto [input, output, rate] = sah->getDefaultAudioInOutSampleRate();
-  refreshDevices(output, input,
-                 shownInput().has_value() && !isMicrophoneAudioDevice(sah->deviceName(input)));
+  const auto openable{sah->defaultInputToOpen()};
+  refreshDevices(output, openable, shownInput().has_value() && !openable.empty());
   refreshSampleRates(rate);
   refreshBufferSizes(shownBufferSize());
   refreshInputNote();
@@ -2273,9 +2333,10 @@ void Plugin::resetSettingsToDefault()
 {
   auto [input, output, rate] = sah->getDefaultAudioInOutSampleRate();
 
-  // a default never opens a microphone (isMicrophoneAudioDevice), so neither does this:
-  // "No Input", and the note says why
-  refreshDevices(output, input, !isMicrophoneAudioDevice(sah->deviceName(input)));
+  // a default never opens a microphone (StandaloneHost::defaultInputToOpen), so neither
+  // does this: "No Input", and the note says why
+  const auto openable{sah->defaultInputToOpen()};
+  refreshDevices(output, openable, !openable.empty());
   refreshSampleRates(rate);
   refreshBufferSizes(StandaloneSettings::defaultBufferSize);
   refreshInputNote();
@@ -2291,8 +2352,8 @@ bool Plugin::openShownAudio()
   const auto in{shownInput()};
   const bool useOut{out.has_value()};
   const bool useIn{in.has_value()};
-  const unsigned int outId{useOut ? settings.outDevices[*out].ID : 0};
-  const unsigned int inId{useIn ? settings.inDevices[*in].ID : 0};
+  const std::string outId{useOut ? settings.outDevices[*out].id : std::string{}};
+  const std::string inId{useIn ? settings.inDevices[*in].id : std::string{}};
   const uint32_t outChannels{useOut ? settings.outDevices[*out].outputChannels : 0};
   const uint32_t inChannels{useIn ? settings.inDevices[*in].inputChannels : 0};
   const auto rate{shownSampleRate()};
@@ -2300,8 +2361,8 @@ bool Plugin::openShownAudio()
 
   // the stream running now, to go back to if the new one cannot be opened
   const bool wasRunning{sah->isAudioRunning()};
-  const auto previousIn{sah->audioInputDeviceID};
-  const auto previousOut{sah->audioOutputDeviceID};
+  const auto previousIn{sah->audioInputDevice};
+  const auto previousOut{sah->audioOutputDevice};
   const bool previousUseIn{sah->audioInputUsed};
   const bool previousUseOut{sah->audioOutputUsed};
   const auto previousInChannels{sah->deviceInputChannels};
@@ -2383,9 +2444,9 @@ void Plugin::okSettings()
   // starts with; and by name, what the user chose, not what was opened, which may be a
   // fallback (standalone_settings.h)
   auto &saved{sah->settings};
-  if (useOut) saved.outputDeviceName = settings.outDevices[*out].name;
+  sah->setChosenDevices(useOut ? settings.outDevices[*out].id : std::string{},
+                        useIn ? settings.inDevices[*in].id : std::string{});
   saved.audioOutputUsed = useOut;
-  if (useIn) saved.inputDeviceName = settings.inDevices[*in].name;
   saved.audioInputUsed = useIn;
   saved.sampleRate = shownSampleRate();
 
@@ -2393,14 +2454,13 @@ void Plugin::okSettings()
   // keeps "every port" if that is what it had
   if (settings.midiIn.changed())
   {
-    saved.midiBindAllPorts = false;
-    saved.midiPortNames = settings.midiIn.ticked();
-    sah->openMidiPorts(saved.midiPortNames, false);
+    sah->setChosenMidiPorts(true, settings.midiIn.ticked());
+    sah->openMidiPorts(settings.midiIn.ticked(), false);
   }
   if (settings.midiOut.changed())
   {
-    saved.midiOutputPortNames = settings.midiOut.ticked();
-    sah->openMidiOutputPorts(saved.midiOutputPortNames);
+    sah->setChosenMidiPorts(false, settings.midiOut.ticked());
+    sah->openMidiOutputPorts(settings.midiOut.ticked());
   }
 
   // likewise, so that an application connected to a virtual port keeps its connection
@@ -2519,12 +2579,12 @@ void Plugin::refreshDeviceChannelCounts()
   // bus totals, which is what totalInput/OutputChannels means in the host.
   for (const auto &device : sah->getOutputAudioDevices())
   {
-    if (device.ID == sah->audioOutputDeviceID) sah->deviceOutputChannels = device.outputChannels;
+    if (device.id == sah->audioOutputDevice) sah->deviceOutputChannels = device.outputChannels;
   }
 
   for (const auto &device : sah->getInputAudioDevices())
   {
-    if (device.ID == sah->audioInputDeviceID) sah->deviceInputChannels = device.inputChannels;
+    if (device.id == sah->audioInputDevice) sah->deviceInputChannels = device.inputChannels;
   }
 }
 
@@ -2533,20 +2593,21 @@ void Plugin::selectDefaultDevices()
   auto [input, output, sampleRate]{sah->getDefaultAudioInOutSampleRate()};
 
   // No device chosen under this API; empty means "follow the system default".
-  // Names from the previous API would not resolve here anyway.
+  // Devices from the previous API would not resolve here anyway.
+  sah->settings.inputDeviceId.clear();
   sah->settings.inputDeviceName.clear();
+  sah->settings.outputDeviceId.clear();
   sah->settings.outputDeviceName.clear();
 
-  // RtAudio hands back a default input device id even on a machine with no
-  // capture device at all, so take the id only if it names something real.
-  // The probe is a fact about the machine, not a choice: AND it with the user's
-  // wish, which survives an API switch, and never persist it. Nor is a default ever
-  // a microphone (isMicrophoneAudioDevice): with nothing chosen, there is no input.
-  sah->audioInputDeviceID = input;
-  sah->audioInputUsed = sah->settings.audioInputUsed && sah->isKnownDevice(input) &&
-                        !isMicrophoneAudioDevice(sah->deviceName(input));
+  // The default input only if it names something real, and never a microphone
+  // (StandaloneHost::defaultInputToOpen): with nothing chosen, there is no input then.
+  // The probe is a fact about the machine, not a choice: AND it with the user's wish,
+  // which survives an API switch, and never persist it.
+  const auto openable{sah->defaultInputToOpen()};
+  sah->audioInputDevice = openable.empty() ? input : openable;
+  sah->audioInputUsed = sah->settings.audioInputUsed && !openable.empty();
 
-  sah->audioOutputDeviceID = output;
+  sah->audioOutputDevice = output;
   sah->audioOutputUsed = sah->settings.audioOutputUsed && sah->isKnownDevice(output);
 
   sah->currentSampleRate = sampleRate;
@@ -2563,16 +2624,16 @@ void Plugin::applyLoadedAudio()
 
 void Plugin::applyDefaultAudio()
 {
-  // WASAPI is the backend that is always present and always works on a stock
-  // Windows, so it is what a first run gets.
-  sah->setAudioApi(RtAudio::Api::WINDOWS_WASAPI);
+  // The default api, which is WASAPI: always present and always working on a stock
+  // Windows, so it is what a first run gets, ASIO compiled in or not.
+  sah->setAudioApi({});
   selectDefaultDevices();
 }
 
 void Plugin::startAudio()
 {
-  sah->startAudioThreadOn(sah->audioInputDeviceID, sah->deviceInputChannels, sah->audioInputUsed,
-                          sah->audioOutputDeviceID, sah->deviceOutputChannels, sah->audioOutputUsed,
+  sah->startAudioThreadOn(sah->audioInputDevice, sah->deviceInputChannels, sah->audioInputUsed,
+                          sah->audioOutputDevice, sah->deviceOutputChannels, sah->audioOutputUsed,
                           sah->currentSampleRate);
 }
 }  // namespace freeaudio::clap_wrapper::standalone::windows_standalone

@@ -1,4 +1,13 @@
 
+# The standalone's audio and MIDI run on the platform's own apis on macOS (CoreAudio,
+# CoreMIDI) and Windows (WASAPI, WinMM). This switch takes RtAudio and RtMidi for both in
+# their place, as every standalone did before; Linux has no native backend and always
+# does. Windows built with RtAudio's ASIO (RTAUDIO_API_ASIO) takes ASIO from RtAudio next
+# to the native WASAPI either way.
+option(CLAP_WRAPPER_STANDALONE_RTAUDIO
+       "Standalone: RtAudio and RtMidi in place of CoreAudio/CoreMIDI and WASAPI/WinMM (Linux always uses them)"
+       OFF)
+
 function(target_add_standalone_wrapper)
     set(oneValueArgs
             TARGET
@@ -62,32 +71,61 @@ function(target_add_standalone_wrapper)
         set(SA_BUNDLE_VERSION "${PROJECT_VERSION}")
     endif()
 
-    guarantee_rtaudio()
-    guarantee_rtmidi()
+    # RtAudio and RtMidi for everything, or RtAudio for ASIO only
+    set(sa_rtaudio ${CLAP_WRAPPER_STANDALONE_RTAUDIO})
+    if (NOT APPLE AND NOT WIN32)
+        set(sa_rtaudio ON)
+    endif()
+    set(sa_asio OFF)
+    if (WIN32 AND RTAUDIO_API_ASIO)
+        set(sa_asio ON)
+    endif()
 
+    set(sasrc ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone)
     set(salib ${SA_TARGET}-clap-wrapper-standalone-lib)
     add_library(${salib} STATIC
-            ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/entry.cpp
-            ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/standalone_host.cpp
-            ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/standalone_host_audio.cpp
-            ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/standalone_host_midi.cpp
-            ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/standalone_host_features.cpp
-            ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/standalone_settings.cpp
+            ${sasrc}/entry.cpp
+            ${sasrc}/standalone_host.cpp
+            ${sasrc}/standalone_host_audio.cpp
+            ${sasrc}/standalone_host_midi.cpp
+            ${sasrc}/standalone_host_features.cpp
+            ${sasrc}/standalone_settings.cpp
+            ${sasrc}/standalone_audio.cpp
+            ${sasrc}/standalone_backends.cpp
             )
     target_link_libraries(${salib}
             PUBLIC
             clap-wrapper-shared-detail
-            base-sdk-rtmidi
-            base-sdk-rtaudio
             )
     target_link_libraries(${salib} PRIVATE clap-wrapper-compile-options)
 
+    if (sa_rtaudio OR sa_asio)
+        guarantee_rtaudio()
+        target_sources(${salib} PRIVATE ${sasrc}/rtaudio_backend.cpp)
+        target_link_libraries(${salib} PUBLIC base-sdk-rtaudio)
+    endif()
+    if (sa_rtaudio)
+        guarantee_rtmidi()
+        target_sources(${salib} PRIVATE ${sasrc}/rtmidi_backend.cpp)
+        target_link_libraries(${salib} PUBLIC base-sdk-rtmidi)
+        target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_RTAUDIO=1)
+    endif()
+
     if (APPLE)
-        target_sources(${salib} PRIVATE)
+        # the device listing is coreaudio's in both cases: rtaudio takes from it what it
+        # cannot tell itself
+        target_sources(${salib} PRIVATE ${sasrc}/macos/coreaudio_backend.cpp)
+        if (NOT sa_rtaudio)
+            target_sources(${salib} PRIVATE ${sasrc}/macos/coremidi_backend.cpp)
+        endif()
         target_link_libraries(${salib}
                 PUBLIC "-framework AVFoundation" "-framework Foundation" "-framework CoreFoundation" "-framework AppKit"
-                "-framework CoreAudio")
-
+                "-framework CoreAudio" "-framework CoreMIDI")
+    elseif (WIN32 AND NOT sa_rtaudio)
+        target_sources(${salib} PRIVATE
+                ${sasrc}/windows/wasapi_backend.cpp
+                ${sasrc}/windows/winmm_midi_backend.cpp)
+        target_link_libraries(${salib} PUBLIC winmm avrt ole32)
     endif()
 
     if (APPLE)
@@ -172,7 +210,7 @@ function(target_add_standalone_wrapper)
         # RuntimeObject was only ever needed for the C++/WinRT JSON parser the
         # settings code used to use; the shared settings store replaced it.
         # rtaudio built with asio: the settings window offers the driver's control panel
-        if(RTAUDIO_API_ASIO)
+        if(sa_asio)
             target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_ASIO=1)
         endif()
 

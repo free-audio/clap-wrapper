@@ -128,6 +128,10 @@ bool StandaloneSettings::load(const fs::path &fromFile)
         loaded.version = std::atoi(value.c_str());
       else if (key == "audioApiName")
         loaded.audioApiName = value;
+      else if (key == "inputDeviceId")
+        loaded.inputDeviceId = value;
+      else if (key == "outputDeviceId")
+        loaded.outputDeviceId = value;
       else if (key == "inputDeviceName")
         loaded.inputDeviceName = value;
       else if (key == "outputDeviceName")
@@ -150,8 +154,12 @@ bool StandaloneSettings::load(const fs::path &fromFile)
         loaded.midiPortNames.push_back(value);
         sawMidiSelection = true;
       }
+      else if (key == "midiPortId")
+        loaded.midiPortIds.push_back(value);
       else if (key == "midiOutputPort")
         loaded.midiOutputPortNames.push_back(value);
+      else if (key == "midiOutputPortId")
+        loaded.midiOutputPortIds.push_back(value);
       else if (key == "midiVirtualInput")
         loaded.midiVirtualInput = asBool(value);
       else if (key == "midiVirtualOutput")
@@ -188,6 +196,7 @@ bool StandaloneSettings::load(const fs::path &fromFile)
       // Written before port selection existed: keep binding everything.
       loaded.midiBindAllPorts = true;
       loaded.midiPortNames.clear();
+      loaded.midiPortIds.clear();
     }
 
     *this = loaded;
@@ -218,12 +227,14 @@ bool StandaloneSettings::save(const fs::path &intoFile) const
     }
 
     ofs << "# clap-wrapper standalone settings.\n";
-    ofs << "# Audio devices and MIDI ports are matched by name when the standalone starts.\n";
-    ofs << "# An unmatched name falls back to the system default for that run, and is kept.\n";
+    ofs << "# Audio devices and MIDI ports are matched by id, then by name, when the standalone\n";
+    ofs << "# starts. An unmatched one falls back to the system default for that run, and is kept.\n";
     ofs << "version=" << currentVersion << "\n";
 
     ofs << "audioApiName=" << escape(audioApiName) << "\n";
+    ofs << "outputDeviceId=" << escape(outputDeviceId) << "\n";
     ofs << "outputDeviceName=" << escape(outputDeviceName) << "\n";
+    ofs << "inputDeviceId=" << escape(inputDeviceId) << "\n";
     ofs << "inputDeviceName=" << escape(inputDeviceName) << "\n";
     ofs << "audioOutputUsed=" << fromBool(audioOutputUsed) << "\n";
     ofs << "audioInputUsed=" << fromBool(audioInputUsed) << "\n";
@@ -235,9 +246,17 @@ bool StandaloneSettings::save(const fs::path &intoFile) const
     {
       ofs << "midiPort=" << escape(port) << "\n";
     }
+    for (const auto &port : midiPortIds)
+    {
+      ofs << "midiPortId=" << escape(port) << "\n";
+    }
     for (const auto &port : midiOutputPortNames)
     {
       ofs << "midiOutputPort=" << escape(port) << "\n";
+    }
+    for (const auto &port : midiOutputPortIds)
+    {
+      ofs << "midiOutputPortId=" << escape(port) << "\n";
     }
     ofs << "midiVirtualInput=" << fromBool(midiVirtualInput) << "\n";
     ofs << "midiVirtualOutput=" << fromBool(midiVirtualOutput) << "\n";

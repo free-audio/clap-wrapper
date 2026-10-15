@@ -16,12 +16,12 @@ void copyString(char *into, size_t size, const std::string &from)
   into[size - 1] = 0;
 }
 
-clap_wrapper_standalone_endpoint_t audioEndpoint(const RtAudio::DeviceInfo &info, uint32_t channels,
+clap_wrapper_standalone_endpoint_t audioEndpoint(const AudioDevice &device, uint32_t channels,
                                                  bool isDefault, bool isBound)
 {
   clap_wrapper_standalone_endpoint_t res{};
-  copyString(res.id, sizeof(res.id), info.name);
-  copyString(res.name, sizeof(res.name), info.name);
+  copyString(res.id, sizeof(res.id), device.id);
+  copyString(res.name, sizeof(res.name), device.name);
   res.channel_count = channels;
   res.flags = (isDefault ? CLAP_WRAPPER_STANDALONE_IS_DEFAULT : 0) |
               (isBound ? CLAP_WRAPPER_STANDALONE_IS_BOUND : 0);
@@ -42,28 +42,23 @@ bool showScreen(const clap_host_t *)
 
 uint32_t countAudioApis(const clap_host_t *)
 {
-  return (uint32_t)getStandaloneHost()->getCompiledApi().size();
+  return (uint32_t)getStandaloneHost()->getAudioApis().size();
 }
 
 bool getAudioApi(const clap_host_t *, uint32_t index, clap_wrapper_standalone_audio_api_t *api)
 {
   auto *sah = getStandaloneHost();
-  const auto apis = sah->getCompiledApi();
+  const auto apis = sah->getAudioApis();
   if (!api || index >= apis.size()) return false;
 
-  const auto a = apis[index];
+  const auto &a = apis[index];
   *api = {};
-  copyString(api->id, sizeof(api->id), RtAudio::getApiName(a));
-  copyString(api->name, sizeof(api->name), RtAudio::getApiDisplayName(a));
-#if WIN
-  // the windows frontend starts a first run on wasapi
-  const bool isDefault = a == RtAudio::Api::WINDOWS_WASAPI;
-#else
-  // rtaudio lists compiled apis in its order of preference
+  copyString(api->id, sizeof(api->id), a.id);
+  copyString(api->name, sizeof(api->name), a.name);
+  // audioApis() lists the default first; the windows frontend starts a first run on it
   const bool isDefault = index == 0;
-#endif
   api->flags = (isDefault ? CLAP_WRAPPER_STANDALONE_IS_DEFAULT : 0) |
-               (a == sah->audioApi ? CLAP_WRAPPER_STANDALONE_IS_BOUND : 0);
+               (a.id == sah->audioApiName ? CLAP_WRAPPER_STANDALONE_IS_BOUND : 0);
   return true;
 }
 
@@ -127,6 +122,10 @@ bool getAudioStatus(const clap_host_t *, clap_wrapper_standalone_audio_status_t 
     status->buffer_size = sah->currentBufferSize;
     status->input_channels = sah->currentInputChannels;
     status->output_channels = sah->currentOutputChannels;
+    status->input_first_channel = sah->currentInputChannels > 0 ? sah->deviceInputFirstChannel : 0;
+    status->output_first_channel = sah->currentOutputChannels > 0 ? sah->deviceOutputFirstChannel : 0;
+    status->input_latency = sah->currentStream.inputLatency;
+    status->output_latency = sah->currentStream.outputLatency;
   }
   copyString(status->last_error, sizeof(status->last_error), sah->lastAudioError);
   status->input_muted = sah->inputMuted.load();
@@ -169,15 +168,29 @@ bool resetStandaloneState(const clap_host_t *, uint32_t)
   return false;
 }
 
-// both wait for the device model that knows a channel's name and opens at an offset
+// waits for request_audio_config, which is unsupported as a whole
 bool supportsChannelSelection(const clap_host_t *)
 {
   return false;
 }
 
-bool getEndpointChannelName(const clap_host_t *, uint32_t, uint32_t, uint32_t, char *)
+bool getEndpointChannelName(const clap_host_t *, uint32_t kind, uint32_t index, uint32_t channel,
+                            char *name)
 {
-  return false;
+  if (!name ||
+      (kind != CLAP_WRAPPER_STANDALONE_AUDIO_INPUT && kind != CLAP_WRAPPER_STANDALONE_AUDIO_OUTPUT))
+    return false;
+
+  auto *sah = getStandaloneHost();
+  const auto &snap = sah->endpointSnapshot[kind];
+  if (index >= snap.size() || channel >= snap[index].channel_count) return false;
+
+  const auto *device = sah->findDevice(snap[index].id);
+  if (!device) return false;
+
+  copyString(name, CLAP_NAME_SIZE,
+             channelName(*device, kind == CLAP_WRAPPER_STANDALONE_AUDIO_INPUT, channel));
+  return true;
 }
 
 uint32_t supportedAppearances(const clap_host_t *)
@@ -221,24 +234,24 @@ uint32_t StandaloneHost::snapshotEndpoints(uint32_t kind)
     case CLAP_WRAPPER_STANDALONE_AUDIO_INPUT:
       for (const auto &d : getInputAudioDevices())
         snap.push_back(audioEndpoint(d, d.inputChannels, d.isDefaultInput,
-                                     d.ID == audioInputDeviceID && currentInputChannels > 0));
+                                     d.id == audioInputDevice && currentInputChannels > 0));
       break;
     case CLAP_WRAPPER_STANDALONE_AUDIO_OUTPUT:
       for (const auto &d : getOutputAudioDevices())
         snap.push_back(audioEndpoint(d, d.outputChannels, d.isDefaultOutput,
-                                     d.ID == audioOutputDeviceID && currentOutputChannels > 0));
+                                     d.id == audioOutputDevice && currentOutputChannels > 0));
       break;
     case CLAP_WRAPPER_STANDALONE_MIDI_INPUT:
     case CLAP_WRAPPER_STANDALONE_MIDI_OUTPUT:
     {
       const bool input = kind == CLAP_WRAPPER_STANDALONE_MIDI_INPUT;
-      const auto &bound = input ? currentMidiPortNames : currentMidiOutputPortNames;
-      for (const auto &name : input ? getMidiPortNames() : getMidiOutputPortNames())
+      const auto &bound = input ? currentMidiInputIds : currentMidiOutputIds;
+      for (const auto &port : input ? getMidiInputPorts() : getMidiOutputPorts())
       {
         clap_wrapper_standalone_endpoint_t ep{};
-        copyString(ep.id, sizeof(ep.id), name);
-        copyString(ep.name, sizeof(ep.name), name);
-        if (std::find(bound.begin(), bound.end(), name) != bound.end())
+        copyString(ep.id, sizeof(ep.id), port.id);
+        copyString(ep.name, sizeof(ep.name), port.name);
+        if (std::find(bound.begin(), bound.end(), port.id) != bound.end())
           ep.flags |= CLAP_WRAPPER_STANDALONE_IS_BOUND;
         snap.push_back(ep);
       }
@@ -259,31 +272,11 @@ uint32_t StandaloneHost::snapshotSampleRates(const char *outputId, const char *i
   const bool useInput = inputId && numAudioInputs > 0;
   if (!outputId && !useInput) return 0;
 
-  std::vector<unsigned int> rates, inputRates;
-  if (outputId)
-  {
-    const auto id = resolveOutputDevice(outputId);
-    if (isKnownDevice(id)) rates = deviceInfoFor(id).sampleRates;
-  }
-  if (useInput)
-  {
-    const auto id = resolveInputDevice(inputId);
-    if (isKnownDevice(id)) inputRates = deviceInfoFor(id).sampleRates;
-  }
+  // ids, or names a plugin stored from before; one not present is the system default's
+  const auto *output = outputId ? findDevice(resolveOutputDevice(outputId)) : nullptr;
+  const auto *input = useInput ? findDevice(resolveInputDevice(inputId)) : nullptr;
 
-  if (!outputId)
-  {
-    rates = inputRates;
-  }
-  else if (useInput)
-  {
-    rates.erase(std::remove_if(
-                    rates.begin(), rates.end(), [&inputRates](auto r)
-                    { return std::find(inputRates.begin(), inputRates.end(), r) == inputRates.end(); }),
-                rates.end());
-  }
-
-  for (auto r : rates) sampleRateSnapshot.push_back((uint32_t)r);
+  sampleRateSnapshot = commonSampleRates(output, input);
 
   return (uint32_t)sampleRateSnapshot.size();
 }
@@ -292,8 +285,8 @@ uint32_t StandaloneHost::snapshotBufferSizes(const char *outputId, const char *i
 {
   // as with the rates, an instrument's input never narrows anything
   const bool useInput = inputId && numAudioInputs > 0;
-  const auto output = outputId ? deviceName(resolveOutputDevice(outputId)) : std::string{};
-  const auto input = useInput ? deviceName(resolveInputDevice(inputId)) : std::string{};
+  const auto output = outputId ? resolveOutputDevice(outputId) : std::string{};
+  const auto input = useInput ? resolveInputDevice(inputId) : std::string{};
 
   bufferSizeSnapshot = getBufferSizesFor(output, input);
   return (uint32_t)bufferSizeSnapshot.size();

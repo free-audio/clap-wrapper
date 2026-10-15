@@ -215,12 +215,17 @@ struct PortList final : public Control
 {
   struct Row
   {
-    std::string name;
+    // the port's id, or for a port saved but not plugged in, its saved name
+    std::string reference;
     bool wasOn;  // when the settings window opened
   };
 
   void create(uintptr_t id, ::HWND parentHwnd);
-  void fill(const std::vector<std::string> &available, const std::vector<std::string> &on, bool allOn);
+  // one row per port, ticked if its id is in onIds, or every port with allOn, and one
+  // marked "(not connected)" per name in absentNames. a row already there keeps its
+  // state, so that a port coming or going while the window is open changes nothing else
+  void fill(const std::vector<MidiPort> &ports, const std::vector<std::string> &onIds,
+            const std::vector<std::string> &absentNames, bool allOn);
 
   bool isOn(size_t row);
   void setOn(size_t row, bool on);
@@ -351,14 +356,16 @@ struct Plugin final : public Window
     std::vector<::RECT> rules;
 
     // what the window shows, in the order it shows it: what a selection there indexes
-    std::vector<RtAudio::Api> apisShown;
-    std::vector<RtAudio::DeviceInfo> outDevices, inDevices;  // the input list adds "No Input" first
+    std::vector<AudioApi> apisShown;
+    std::vector<AudioDevice> outDevices, inDevices;  // the input list adds "No Input" first
     std::vector<int32_t> sampleRatesShown;
     std::vector<uint32_t> bufferSizesShown;
     std::vector<uint32_t> appearancesShown;
 
     // as they were when the window was shown, to go back to
-    RtAudio::Api apiWhenOpened{RtAudio::Api::UNSPECIFIED};
+    std::string apiWhenOpened;
+    // the input list's "every port" from the settings, for ports plugged in while it is open
+    bool midiInAllOn{false};
     bool apiChanged{false};
     // a stream was opened before OK, for the driver's control panel
     bool audioOpenedEarly{false};
@@ -391,7 +398,9 @@ struct Plugin final : public Window
   void layoutSettings();
   void refreshSettingsFonts();
   void refreshApis();
-  void refreshDevices(unsigned int outputId, unsigned int inputId, bool useInput);
+  void refreshDevices(const std::string &outputId, const std::string &inputId, bool useInput);
+  // a device or port came or went: the window, if it is up, follows and keeps what it shows
+  void devicesChanged();
   void refreshSampleRates(int32_t preferred);
   void refreshBufferSizes(uint32_t preferred);
   void refreshBufferSizeTitles();
@@ -449,7 +458,8 @@ struct Plugin final : public Window
   bool isTimerRunning{false};
   const ::UINT_PTR timerId{0};
 
-  // Written from RtAudio's error callback, which can be any thread.
+  // Written by StandaloneHost::displayAudioError, which may be inside a handler that is
+  // still on the stack.
   std::mutex pendingErrorLock;
   std::string pendingError;
   std::string lastShownError;

@@ -12,8 +12,6 @@
 #if CLAP_WRAPPER_HAS_WIN32
 #include <Windows.h>
 #include <ShlObj.h>
-#include <mmdeviceapi.h>
-#include <propsys.h>
 #include <string>
 #endif
 #endif
@@ -46,114 +44,7 @@ std::optional<fs::path> getStandaloneSettingsPath()
 }
 #endif
 
-#if !MAC
-std::vector<std::string> preferredFirstRunInputs()
-{
-  return {};
-}
-
-#if !(WIN && CLAP_WRAPPER_HAS_WIN32)
-bool isMicrophoneAudioDevice(const std::string &)
-{
-  return false;
-}
-#endif
-
-bool isBluetoothAudioDevice(const std::string &)
-{
-  return false;
-}
-
-std::pair<uint32_t, uint32_t> bufferFrameSizeRange(const std::string &)
-{
-  return {0, 0};
-}
-
-#endif
-
 #if WIN && CLAP_WRAPPER_HAS_WIN32
-namespace
-{
-// PKEY_Device_FriendlyName and PKEY_AudioEndpoint_FormFactor, spelled out: the headers
-// only declare them, and defining them there (INITGUID) would clash with rtaudio's
-const PROPERTYKEY friendlyNameKey{
-    {0xa45c254e, 0xdf1c, 0x4efd, {0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0}}, 14};
-const PROPERTYKEY formFactorKey{
-    {0x1da5d803, 0xd492, 0x4edd, {0x8c, 0x23, 0xe0, 0xc0, 0xff, 0xee, 0x7f, 0x0e}}, 0};
-
-std::wstring toWide(const std::string &text)
-{
-  if (text.empty()) return {};
-  const auto length{
-      ::MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0)};
-  std::wstring wide(static_cast<size_t>(length), L'\0');
-  ::MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), wide.data(), length);
-  return wide;
-}
-
-// the form factor of the active capture endpoint wasapi calls by this name, which is the
-// name rtaudio gives it; false if there is none, as for every asio driver
-bool captureFormFactor(const std::string &name, UINT &formFactor)
-{
-  const auto wanted{toWide(name)};
-  if (wanted.empty()) return false;
-
-  IMMDeviceEnumerator *enumerator{nullptr};
-  if (FAILED(::CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
-                                __uuidof(IMMDeviceEnumerator), reinterpret_cast<void **>(&enumerator))))
-    return false;
-
-  bool found{false};
-  IMMDeviceCollection *endpoints{nullptr};
-  if (SUCCEEDED(enumerator->EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE, &endpoints)))
-  {
-    UINT count{0};
-    endpoints->GetCount(&count);
-    for (UINT i = 0; i < count && !found; ++i)
-    {
-      IMMDevice *endpoint{nullptr};
-      IPropertyStore *properties{nullptr};
-      if (SUCCEEDED(endpoints->Item(i, &endpoint)) &&
-          SUCCEEDED(endpoint->OpenPropertyStore(STGM_READ, &properties)))
-      {
-        PROPVARIANT value;
-        ::PropVariantInit(&value);
-        if (SUCCEEDED(properties->GetValue(friendlyNameKey, &value)) && value.vt == VT_LPWSTR &&
-            wanted == value.pwszVal)
-        {
-          PROPVARIANT factor;
-          ::PropVariantInit(&factor);
-          if (SUCCEEDED(properties->GetValue(formFactorKey, &factor)) && factor.vt == VT_UI4)
-          {
-            formFactor = factor.ulVal;
-            found = true;
-          }
-          ::PropVariantClear(&factor);
-        }
-        ::PropVariantClear(&value);
-      }
-      if (properties) properties->Release();
-      if (endpoint) endpoint->Release();
-    }
-    endpoints->Release();
-  }
-  enumerator->Release();
-
-  return found;
-}
-}  // namespace
-
-// a microphone by the form factor windows gives its endpoint, which is what names it
-// "Microphone (...)": a headset's and a phone's count too. that includes inputs of
-// simple usb interfaces that report themselves as one, which a default leaves closed all
-// the same
-bool isMicrophoneAudioDevice(const std::string &name)
-{
-  UINT formFactor{UnknownFormFactor};
-  return captureFormFactor(name, formFactor) &&
-         (formFactor == Microphone || formFactor == Headset || formFactor == Handset);
-}
-
 uint32_t supportedScreenAppearances()
 {
   // the settings window's own colours, and the dark title bar windows 10 has from 1809
@@ -175,6 +66,11 @@ StandaloneHost::~StandaloneHost()
 
   // a midi output thread still running would end the process from ~thread
   closeMidiOutputPorts();
+
+  // the backends call back into this host from their own threads
+  if (audioBackend) audioBackend->stop();
+  audioBackend.reset();
+  midiBackend.reset();
 }
 
 void StandaloneHost::setupAudioBusses(const clap_plugin_t *plugin,
@@ -270,18 +166,22 @@ void StandaloneHost::setupMIDIBusses(const clap_plugin_t *plugin,
   }
 }
 
-void StandaloneHost::clapProcess(void *pOutput, const void *pInput, uint32_t frameCount)
+void StandaloneHost::process(const float *const *inputs, uint32_t inputChannels, float *const *outputs,
+                             uint32_t outputChannels, uint32_t frameCount)
 {
   ClapWrapper::detail::shared::SpinLockGuard processLockGuard(processLock);
-  auto f = (float *)pOutput;
+
+  auto silenceOutputs = [&]()
+  {
+    for (auto ch = 0U; outputs && ch < outputChannels; ++ch)
+    {
+      memset(outputs[ch], 0, frameCount * sizeof(float));
+    }
+  };
 
   if (!running)
   {
-    // f is null when the stream has no output side (input-only device setup).
-    if (f && currentOutputChannels > 0)
-    {
-      memset(f, 0, frameCount * currentOutputChannels * sizeof(float));
-    }
+    silenceOutputs();
     finishedRunning = true;
     return;
   }
@@ -354,23 +254,15 @@ void StandaloneHost::clapProcess(void *pOutput, const void *pInput, uint32_t fra
   }
 
   // muted leaves the input buffers at the silence written above
-  if (mainInIdx >= 0 && pInput && currentInputChannels > 0 &&
-      !inputMuted.load(std::memory_order_relaxed))
+  if (mainInIdx >= 0 && inputs && inputChannels > 0 && !inputMuted.load(std::memory_order_relaxed))
   {
-    // Route the interleaved device stream onto the plugin's main input bus.
-    // When the bus is wider than the device the last device channel repeats
-    // (a mono device feeds both channels of a stereo bus); when the device is
-    // wider the surplus device channels are dropped.
-    auto *g = (const float *)pInput;
-    auto stride = currentInputChannels;
-
+    // Route the device channels onto the plugin's main input bus. When the bus is wider
+    // than the device the last device channel repeats (a mono device feeds both channels
+    // of a stereo bus); when the device is wider the surplus device channels are dropped.
     for (auto ch = 0U; ch < mainInChans; ++ch)
     {
-      auto devChan = (ch < currentInputChannels) ? ch : currentInputChannels - 1;
-      for (auto i = 0U; i < frameCount; ++i)
-      {
-        utilityBuffer[mainInIdx + ch][i] = g[stride * i + devChan];
-      }
+      auto devChan = (ch < inputChannels) ? ch : inputChannels - 1;
+      memcpy(utilityBuffer[mainInIdx + ch], inputs[devChan], frameCount * sizeof(float));
     }
   }
 
@@ -392,31 +284,27 @@ void StandaloneHost::clapProcess(void *pOutput, const void *pInput, uint32_t fra
   clapPlugin->_plugin->process(clapPlugin->_plugin, &process);
   steadyTime += frameCount;
 
-  if (mainOutIdx >= 0 && f && currentOutputChannels > 0)
+  if (mainOutIdx >= 0 && outputs && outputChannels > 0)
   {
     // A mono bus is duplicated onto the first two device channels, anything else
     // maps channel-for-channel. Surplus device channels are silenced rather than
     // fed the last bus channel: devices now open at their full width, so that
     // rule put a stereo plugin's right channel on outputs 3 to 8.
     const bool monoBus{mainOutChans == 1};
-    const auto fedChannels{std::min(monoBus ? 2U : mainOutChans, currentOutputChannels)};
+    const auto fedChannels{std::min(monoBus ? 2U : mainOutChans, outputChannels)};
 
-    for (auto i = 0U; i < frameCount; ++i)
+    for (auto ch = 0U; ch < fedChannels; ++ch)
     {
-      auto *frame = f + currentOutputChannels * i;
-      for (auto ch = 0U; ch < fedChannels; ++ch)
-      {
-        frame[ch] = utilityBuffer[mainOutIdx + (monoBus ? 0 : ch)][i];
-      }
-      for (auto ch = fedChannels; ch < currentOutputChannels; ++ch)
-      {
-        frame[ch] = 0.f;
-      }
+      memcpy(outputs[ch], utilityBuffer[mainOutIdx + (monoBus ? 0 : ch)], frameCount * sizeof(float));
+    }
+    for (auto ch = fedChannels; ch < outputChannels; ++ch)
+    {
+      memset(outputs[ch], 0, frameCount * sizeof(float));
     }
   }
-  else if (f && currentOutputChannels > 0)
+  else
   {
-    memset(f, 0, frameCount * currentOutputChannels * sizeof(float));
+    silenceOutputs();
   }
 }
 
@@ -636,46 +524,46 @@ void StandaloneHost::captureAudioSettings()
 
 void StandaloneHost::applyAudioSettings()
 {
-  // The API has to be selected first: every device id below is an index into a
-  // particular RtAudio instance's enumeration, so that instance has to be the one
-  // we are about to open a stream on.
-  auto api = RtAudio::Api::UNSPECIFIED;
-  if (!settings.audioApiName.empty())
+  // The API has to be selected first: the devices below are that api's.
+  setAudioApi(settings.audioApiName);
+  if (!settings.audioApiName.empty() && settings.audioApiName != audioApiName)
   {
-    api = RtAudio::getCompiledApiByName(settings.audioApiName);
-    if (api == RtAudio::Api::UNSPECIFIED)
-    {
-      LOGINFO("[WARNING] Audio API '{}' is not available in this build; using the default",
-              settings.audioApiName);
-    }
+    LOGINFO("[WARNING] Audio API '{}' is not available in this build; using '{}'", settings.audioApiName,
+            audioApiName);
   }
-  setAudioApi(api);
 
-  audioOutputDeviceID = resolveOutputDevice(settings.outputDeviceName);
-  audioInputDeviceID = resolveInputDevice(settings.inputDeviceName);
+  audioOutputDevice = resolveOutputDevice(settings.outputDeviceId, settings.outputDeviceName);
+  audioInputDevice = resolveInputDevice(settings.inputDeviceId, settings.inputDeviceName);
+  deviceInputFirstChannel = 0;
+  deviceOutputFirstChannel = 0;
 
-  // A machine with no capture device still reports a default input device id, so
-  // "did we get an id back" is not the question - "is it a real device" is.
-  audioOutputUsed = settings.audioOutputUsed && isKnownDevice(audioOutputDeviceID);
-  audioInputUsed = settings.audioInputUsed && isKnownDevice(audioInputDeviceID);
+  // "did we get a device back" is not the question - "is it a real device" is.
+  audioOutputUsed = settings.audioOutputUsed && isKnownDevice(audioOutputDevice);
+  audioInputUsed = settings.audioInputUsed && isKnownDevice(audioInputDevice);
 
-  // an input saved by a name that is not here falls back to the system default above, as
-  // does an input saved with no name; neither is the user choosing a microphone
+  // an input saved as one that is not here falls back to the system default above, as
+  // does an input saved with nothing; neither is the user choosing a microphone
   if (audioInputUsed)
   {
-    const auto name{deviceName(audioInputDeviceID)};
-    if (name != settings.inputDeviceName && isMicrophoneAudioDevice(name))
+    const auto *device{findDevice(audioInputDevice)};
+    const bool chosen{
+        device &&
+        ((!settings.inputDeviceId.empty() && device->id == settings.inputDeviceId) ||
+         (!settings.inputDeviceName.empty() && (device->legacyName == settings.inputDeviceName ||
+                                                device->name == settings.inputDeviceName)))};
+    if (device && !chosen && device->isMicrophone)
     {
-      LOGINFO("Not opening '{}': the default input is a microphone, and not the one chosen", name);
+      LOGINFO("Not opening '{}': the default input is a microphone, and not the one chosen",
+              device->name);
       audioInputUsed = false;
     }
   }
 
   currentSampleRate = settings.sampleRate;
 
-  // The .conf is hand-editable, and clapProcess() terminates the process if a
-  // callback delivers utilityBufferSize frames or more, so clamp to the largest
-  // size the settings panel offers. 0 still means "use the device default".
+  // The .conf is hand-editable, and process() terminates the process if a callback
+  // delivers utilityBufferSize frames or more, so clamp to the largest size the
+  // settings panel offers. 0 still means "use the device default".
   currentBufferSize = settings.bufferSize;
   const auto offered{getBufferSizes()};
   if (!offered.empty())
@@ -693,73 +581,68 @@ void StandaloneHost::applyAudioSettings()
   // device it is about to open.
 }
 
-bool StandaloneHost::isKnownDevice(unsigned int deviceID)
+void StandaloneHost::setChosenDevices(const std::string &outputId, const std::string &inputId)
 {
-  if (!rtaDac) return false;
+  // the name an older build finds the device by: rtaudio's, where there is one
+  auto savedName = [](const AudioDevice &d) { return d.legacyName.empty() ? d.name : d.legacyName; };
 
-  for (const auto &device : deviceList())
+  if (const auto *output{findDevice(outputId)})
   {
-    if (device.ID == deviceID) return true;
+    settings.outputDeviceId = output->id;
+    settings.outputDeviceName = savedName(*output);
   }
-
-  return false;
+  if (const auto *input{findDevice(inputId)})
+  {
+    settings.inputDeviceId = input->id;
+    settings.inputDeviceName = savedName(*input);
+  }
 }
 
-RtAudio::DeviceInfo StandaloneHost::deviceInfoFor(unsigned int deviceID)
+namespace
 {
-  for (const auto &device : deviceList())
+// the device a saved id and name refer to, as resolveInputDevice describes; null if none
+const AudioDevice *savedDevice(const std::vector<AudioDevice> &devices, const std::string &id,
+                               const std::string &savedName, bool input)
+{
+  const auto *byId{findDevice(devices, id, input)};
+  if (byId && (savedName.empty() || byId->legacyName == savedName || byId->name == savedName))
+    return byId;
+
+  if (const auto *byName{findDevice(devices, savedName, input)}) return byName;
+  return byId;
+}
+}  // namespace
+
+std::string StandaloneHost::resolveInputDevice(const std::string &id, const std::string &savedName)
+{
+  guaranteeAudioBackend();
+  if (!audioBackend) return {};
+
+  if (!id.empty() || !savedName.empty())
   {
-    if (device.ID == deviceID) return device;
+    if (const auto *device{savedDevice(deviceList(), id, savedName, true)}) return device->id;
+
+    LOGINFO("[WARNING] Input device '{}' is not available; using the default",
+            savedName.empty() ? id : savedName);
   }
 
-  return {};
+  return audioBackend->defaultInputDevice();
 }
 
-std::string StandaloneHost::deviceName(unsigned int deviceID)
+std::string StandaloneHost::resolveOutputDevice(const std::string &id, const std::string &savedName)
 {
-  // Answer from the cached enumeration rather than getDeviceInfo(): an id RtAudio
-  // does not recognise raises an error through the error callback, which a
-  // frontend may well be putting in front of the user as a modal dialog.
-  for (const auto &device : deviceList())
+  guaranteeAudioBackend();
+  if (!audioBackend) return {};
+
+  if (!id.empty() || !savedName.empty())
   {
-    if (device.ID == deviceID) return device.name;
+    if (const auto *device{savedDevice(deviceList(), id, savedName, false)}) return device->id;
+
+    LOGINFO("[WARNING] Output device '{}' is not available; using the default",
+            savedName.empty() ? id : savedName);
   }
 
-  return {};
-}
-
-unsigned int StandaloneHost::resolveInputDevice(const std::string &name)
-{
-  guaranteeRtAudioDAC();
-
-  if (!name.empty())
-  {
-    for (const auto &device : getInputAudioDevices())
-    {
-      if (device.name == name) return device.ID;
-    }
-
-    LOGINFO("[WARNING] Input device '{}' is not available; using the default", name);
-  }
-
-  return rtaDac->getDefaultInputDevice();
-}
-
-unsigned int StandaloneHost::resolveOutputDevice(const std::string &name)
-{
-  guaranteeRtAudioDAC();
-
-  if (!name.empty())
-  {
-    for (const auto &device : getOutputAudioDevices())
-    {
-      if (device.name == name) return device.ID;
-    }
-
-    LOGINFO("[WARNING] Output device '{}' is not available; using the default", name);
-  }
-
-  return rtaDac->getDefaultOutputDevice();
+  return audioBackend->defaultOutputDevice();
 }
 
 bool StandaloneHost::activatePlugin(int32_t sr, int32_t minBlock, int32_t maxBlock)

@@ -156,7 +156,8 @@ enum class AudioBackendEvent
   ResetRequested,
 
   // a device came or went, a default device changed, or a device's rates or channels
-  // changed. devices() lists them again from now on
+  // changed. the host calls refreshDevices() for it, on the main thread. several in a row
+  // are taken as one
   DevicesChanged,
 };
 
@@ -170,10 +171,12 @@ class AudioBackend
   virtual std::string apiId() const = 0;
   virtual std::string apiDisplayName() const = 0;
 
-  // [main-thread] the devices, as listed when first asked and again after a
-  // DevicesChanged event or refreshDevices(). listing may be costly - RtAudio's ASIO loads
-  // every driver to do it - so it is not done more often than that
+  // [main-thread] the devices, as listed when first asked and again by the first call
+  // after refreshDevices(), never in between: the host holds on to them between its
+  // calls. listing may be costly - RtAudio's ASIO loads every driver to do it - so it is
+  // not done more often than that
   virtual const std::vector<AudioDevice> &devices() = 0;
+  // [main-thread] the host calls it after a DevicesChanged event
   virtual void refreshDevices() = 0;
 
   // [main-thread] the system's default devices' ids; empty if there is none

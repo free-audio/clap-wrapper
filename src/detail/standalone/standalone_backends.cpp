@@ -36,8 +36,13 @@ std::unique_ptr<AudioBackend> createAudioBackend(const std::string &apiId)
   if (known == apis.end())
   {
     if (!apiId.empty())
-      LOGINFO("[WARNING] Audio API '{}' is not in this build; using '{}'", apiId, apis[0].id);
+      LOGINFO("[WARNING] Audio API '{}' is not in this build; using the default", apiId);
+#if CLAP_WRAPPER_STANDALONE_RTAUDIO
+    // rtaudio's own default, which may take the first api that has a device
+    return createRtAudioBackend({});
+#else
     known = apis.begin();
+#endif
   }
 
 #if !CLAP_WRAPPER_STANDALONE_RTAUDIO && MAC
