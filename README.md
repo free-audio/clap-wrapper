@@ -115,17 +115,20 @@ licenses:
 | [VST3 SDK](https://github.com/steinbergmedia/vst3sdk) (Steinberg) | VST3 wrapper | MIT (use of the VST trademark/logo per Steinberg's guidelines) |
 | [AudioUnitSDK](https://github.com/apple/AudioUnitSDK) (Apple) | AUv2 wrapper | Apache 2.0 |
 | AAX SDK (Avid) | AAX wrapper | GPL3 **or** commercial Avid AAX SDK License Agreement |
-| [RtAudio](https://github.com/thestk/rtaudio) | standalone audio I/O | MIT-like (RtAudio license) |
-| [RtMidi](https://github.com/thestk/rtmidi) | standalone MIDI I/O | MIT-like (RtMidi license) |
+| [RtAudio](https://github.com/thestk/rtaudio) | standalone audio I/O on Linux, on macOS and Windows only with `CLAP_WRAPPER_STANDALONE_RTAUDIO=ON` or (Windows) `RTAUDIO_API_ASIO=ON` | MIT-like (RtAudio license) |
+| [RtMidi](https://github.com/thestk/rtmidi) | standalone MIDI I/O on Linux, on macOS and Windows only with `CLAP_WRAPPER_STANDALONE_RTAUDIO=ON` | MIT-like (RtMidi license) |
 | [ASIO SDK](https://www.steinberg.net/developers/) (Steinberg), as bundled by RtAudio | standalone ASIO on Windows, only when built with `RTAUDIO_API_ASIO=ON` | GPL3 **or** Steinberg's proprietary ASIO SDK License Agreement |
 | [WIL](https://github.com/microsoft/wil) (Microsoft) | standalone, Windows only | MIT |
 | [gulrak/filesystem](https://github.com/gulrak/filesystem) | std::filesystem fallback on older toolchains | MIT |
 | [{fmt}](https://github.com/fmtlib/fmt) (vendored in `libs/fmt`) | string formatting | MIT |
 | [PreSonus plugin extensions](https://github.com/fenderdigital/presonus-plugin-extension) (vendored in `libs/psl`) | gain-reduction extension in VST3 | Public domain |
 
-RtAudio is built with its own defaults, which on Windows is WASAPI only. Configuring
-with `-DRTAUDIO_API_ASIO=ON` adds ASIO to the standalone, whose audio/MIDI settings
-window then offers the selected driver's control panel. Like AAX below, ASIO is
+On macOS and Windows the standalone uses the platform's own audio and MIDI APIs
+(CoreAudio and CoreMIDI, WASAPI and WinMM) and fetches neither RtAudio nor RtMidi.
+`-DCLAP_WRAPPER_STANDALONE_RTAUDIO=ON` builds it on RtAudio and RtMidi instead, as
+Linux always does. On Windows, `-DRTAUDIO_API_ASIO=ON` adds ASIO, taken from
+RtAudio, next to WASAPI; the audio/MIDI settings window then offers the selected
+driver's control panel. Like AAX below, ASIO is
 dual-licensed: a standalone built with it is either released under the GPL3 or
 covered by Steinberg's ASIO SDK License Agreement.
 
