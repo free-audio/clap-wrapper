@@ -9,12 +9,15 @@ int WINAPI wWinMain(HINSTANCE /* hInstance */, HINSTANCE /* hPrevInstance */, PW
   auto coUninitialize{wil::CoInitializeEx(COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE)};
 
   {
-    // a windows application has no console of its own: the listing goes to the one it was
-    // started from
+    // a windows application has no console of its own: the listing goes where its output
+    // was redirected to, else to the console it was started from
     auto args{freeaudio::clap_wrapper::standalone::windows_standalone::getArgs()};
     std::vector<const char *> argv;
     for (const auto &arg : args) argv.push_back(arg.c_str());
-    if (std::find(args.begin(), args.end(), "--list-audio-devices") != args.end() &&
+    const auto output{::GetStdHandle(STD_OUTPUT_HANDLE)};
+    const bool redirected{output && output != INVALID_HANDLE_VALUE &&
+                          ::GetFileType(output) != FILE_TYPE_UNKNOWN};
+    if (std::find(args.begin(), args.end(), "--list-audio-devices") != args.end() && !redirected &&
         ::AttachConsole(ATTACH_PARENT_PROCESS))
     {
       FILE *console{nullptr};
