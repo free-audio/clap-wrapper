@@ -173,6 +173,14 @@ void X11Gui::setPlugin(std::shared_ptr<Clap::Plugin> p)
     }
   }
 }
+void X11Gui::saveSettings()
+{
+  if (!host) return;
+  host->captureAudioSettings();
+  if (!host->saveStandaloneSettings())
+    LOGINFO("[WARNING] Unable to save the audio settings; the next launch will not have them");
+}
+
 void X11Gui::shutdown()
 {
   if (plugin && plugin->_ext._gui)

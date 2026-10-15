@@ -18,6 +18,11 @@ struct X11Gui
   void runloop();
   void shutdown();
 
+  // the audio settings into standalone-settings.conf: on a first run, and on quitting, as
+  // the Windows frontend does. there is no settings window to save them at the point of
+  // choice
+  void saveSettings();
+
   bool register_timer(int period_ms, clap_id *tid);
   bool unregister_timer(clap_id tid);
 
