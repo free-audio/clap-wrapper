@@ -11,6 +11,8 @@
 // an [NSApplicationMain ] and so on depending on platform
 int main(int argc, char **argv)
 {
+  if (freeaudio::clap_wrapper::standalone::mainListAudioDevices(argc, argv)) return 0;
+
   const clap_plugin_entry *entry{nullptr};
 #ifdef STATICALLY_LINKED_CLAP_ENTRY
   extern const clap_plugin_entry clap_entry;

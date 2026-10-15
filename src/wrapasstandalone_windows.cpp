@@ -1,9 +1,29 @@
+#include <algorithm>
+#include <cstdio>
+
 #include "detail/standalone/windows/windows_standalone.h"
 
 int WINAPI wWinMain(HINSTANCE /* hInstance */, HINSTANCE /* hPrevInstance */, PWSTR /* pCmdLine */,
                     int nCmdShow)
 {
   auto coUninitialize{wil::CoInitializeEx(COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE)};
+
+  {
+    // a windows application has no console of its own: the listing goes to the one it was
+    // started from
+    auto args{freeaudio::clap_wrapper::standalone::windows_standalone::getArgs()};
+    std::vector<const char *> argv;
+    for (const auto &arg : args) argv.push_back(arg.c_str());
+    if (std::find(args.begin(), args.end(), "--list-audio-devices") != args.end() &&
+        ::AttachConsole(ATTACH_PARENT_PROCESS))
+    {
+      FILE *console{nullptr};
+      freopen_s(&console, "CONOUT$", "w", stdout);
+    }
+    if (freeaudio::clap_wrapper::standalone::mainListAudioDevices(static_cast<int>(argv.size()),
+                                                                  argv.data()))
+      return 0;
+  }
 
   const clap_plugin_entry *entry{nullptr};
 #ifdef STATICALLY_LINKED_CLAP_ENTRY

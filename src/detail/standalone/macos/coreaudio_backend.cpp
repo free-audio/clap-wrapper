@@ -343,6 +343,10 @@ class CoreAudioBackend final : public AudioBackend
   {
     queue = dispatch_queue_create("org.free-audio.clap-wrapper.coreaudio", DISPATCH_QUEUE_SERIAL);
 
+    // what a change is told against, from the start: a listener can fire before the
+    // first devices() call
+    signature = signatureOf(listCoreAudioDevices());
+
     // devices coming and going, and the defaults changing
     for (auto selector : {kAudioHardwarePropertyDevices, kAudioHardwarePropertyDefaultInputDevice,
                           kAudioHardwarePropertyDefaultOutputDevice})
