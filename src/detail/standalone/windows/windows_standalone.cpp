@@ -1255,7 +1255,17 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
             break;
 
           case Settings::Identifier::AudioSamplerate:
-            if (code == CBN_SELCHANGE) refreshBufferSizeTitles();
+            if (code == CBN_SELCHANGE)
+            {
+              refreshBufferSizeTitles();
+              refreshLatencyNote();
+            }
+            break;
+
+          case Settings::Identifier::AudioBuffersize:
+          case Settings::Identifier::AudioOutputChannels:
+          case Settings::Identifier::AudioInputChannels:
+            if (code == CBN_SELCHANGE) refreshLatencyNote();
             break;
 
           // a checkbox's own text cannot take the window's colours, so its
@@ -1336,6 +1346,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
         if (control == settings.noRateNote.hwnd.get()) color = palette.critical;
         if (control == settings.inputNote.hwnd.get())
           color = settings.inputNoteCaution ? palette.caution : palette.secondary;
+        if (control == settings.latencyNote.hwnd.get()) color = palette.secondary;
 
         ::SetTextColor(dc, color);
         ::SetBkColor(dc, palette.background);
@@ -1750,6 +1761,8 @@ void Plugin::createSettingsControls()
   settings.driverPanel.create(WC_BUTTONW, "ASIO Control Panel...", BS_PUSHBUTTON | WS_TABSTOP,
                               Id::DriverControlPanel, parent);
   note(settings.noRateNote, "These devices have no sample rate in common.");
+  settings.latencyNote.create(WC_STATICW, "", SS_LEFT | SS_NOPREFIX | SS_ENDELLIPSIS, Id::Static,
+                              parent);
 
   label(settings.midiInLabel, "MIDI Inputs:");
   settings.midiIn.create(Id::MidiInputs, parent);
@@ -1787,6 +1800,7 @@ void Plugin::refreshSettingsFonts()
                         &settings.bufferSizeLabel,
                         &settings.inputNote,
                         &settings.noRateNote,
+                        &settings.latencyNote,
                         &settings.midiInLabel,
                         &settings.midiOutLabel,
                         &settings.virtualInLabel,
@@ -2143,6 +2157,41 @@ void Plugin::refreshBufferSizeTitles()
   settings.bufferSize.set(static_cast<int>(selected));
 }
 
+// the latencies the running stream's devices report, beside the buffer size and not added
+// to it: they are the device's and the driver's, which no buffer size changes. shown only
+// while the window shows what runs - another device, rate or size would have others - and
+// only what the backend could tell
+void Plugin::refreshLatencyNote()
+{
+  const auto out{shownOutput()};
+  const auto in{shownInput()};
+  const auto &stream{sah->currentStream};
+  const auto outChannels{shownChannels(false)};
+  const auto inChannels{shownChannels(true)};
+
+  const bool asRunning{sah->isAudioRunning() && !settings.apiChanged && stream.sampleRate > 0 &&
+                       shownSampleRate() == static_cast<int32_t>(stream.sampleRate) &&
+                       shownBufferSize() == stream.bufferFrames && out &&
+                       settings.outDevices[*out].id == sah->audioOutputDevice &&
+                       outChannels.first == sah->deviceOutputFirstChannel &&
+                       (in ? stream.inputChannels > 0 &&
+                                 settings.inDevices[*in].id == sah->audioInputDevice &&
+                                 inChannels.first == sah->deviceInputFirstChannel
+                           : stream.inputChannels == 0)};
+
+  std::string text;
+  if (asRunning)
+  {
+    auto ms = [&stream](uint32_t frames)
+    { return fmt::format("{:.1f} ms", 1000.0 * frames / static_cast<double>(stream.sampleRate)); };
+    if (in && stream.inputLatency > 0) text = "in " + ms(stream.inputLatency);
+    if (stream.outputLatency > 0) text += (text.empty() ? "out " : ", out ") + ms(stream.outputLatency);
+  }
+
+  settings.latencyNote.setText(text.empty() ? std::string{} : "Latency: " + text);
+  settings.latencyNote.setVisible(!text.empty());
+}
+
 // under the input menu, while it matters: that a bluetooth microphone takes its whole
 // device down to telephone quality, or that the default input is a microphone and was not
 // opened
@@ -2238,6 +2287,8 @@ void Plugin::applySettingsAppearance()
 
 void Plugin::layoutSettings()
 {
+  refreshLatencyNote();
+
   const auto dipScale{settings.scale};
   auto px = [dipScale](double dip) { return static_cast<int>(std::lround(dip * dipScale)); };
 
@@ -2367,7 +2418,17 @@ void Plugin::layoutSettings()
   comboRow(settings.inputChannelsLabel, settings.inputChannels, width);
   noteRow(settings.inputNote);
   comboRow(settings.sampleRateLabel, settings.sampleRate, px(smallControlWidth));
-  comboRow(settings.bufferSizeLabel, settings.bufferSize, px(smallControlWidth));
+  {
+    const int rowTop{y};
+    comboRow(settings.bufferSizeLabel, settings.bufferSize, px(smallControlWidth));
+    if (settings.latencyNote.visible)
+    {
+      const int noteX{controlX + px(smallControlWidth) + px(columnSpacing)};
+      const int rowHeight{y - px(rowSpacing) - rowTop};
+      settings.latencyNote.setPosition(noteX, rowTop + (rowHeight - lineHeight) / 2, right - noteX,
+                                       lineHeight);
+    }
+  }
 
   settings.resetToDefault.setPosition(controlX, y, buttonWidth(settings.resetToDefault),
                                       px(buttonHeight));

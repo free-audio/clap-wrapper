@@ -343,6 +343,9 @@ struct Plugin final : public Window
     Control resetToDefault;
     Control driverPanel;  // the asio driver's control panel
     Control noRateNote;
+    // beside the buffer size: what the running stream's device adds, while the window
+    // shows what runs
+    Control latencyNote;
 
     Control midiInLabel, midiOutLabel;
     PortList midiIn;
@@ -419,6 +422,7 @@ struct Plugin final : public Window
   // channels (0-based), or the first; the input's row only while there is an input
   void refreshChannelChoices(uint32_t outputFirst, uint32_t inputFirst);
   void refreshInputNote();
+  void refreshLatencyNote();
   void refreshAppearanceRow();
   void applySettingsAppearance();
   void selectApiInSettings();

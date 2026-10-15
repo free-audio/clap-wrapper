@@ -572,8 +572,16 @@ class WasapiBackend final : public AudioBackend
     granted.maxFramesPerCallback = bufferFrames;
     granted.inputChannels = input.count;
     granted.outputChannels = output.count;
-    granted.outputLatency = hasOutput ? latencyOf(output) + output.bufferSize : 0;
-    granted.inputLatency = hasInput ? latencyOf(input) + bufferFrames : 0;
+    // between the device and the plugin's block, the block itself not included (the
+    // standalone features' audio status): the engine's own latency, plus on the way out
+    // what the buffer holds ahead of a block - it is kept filled to within one block of
+    // full - and on the way in the capture's period, which a block beside an output
+    // waits for at most, since the input is read once per output event
+    granted.outputLatency =
+        hasOutput ? latencyOf(output) +
+                        (output.bufferSize > bufferFrames ? output.bufferSize - bufferFrames : 0)
+                  : 0;
+    granted.inputLatency = hasInput ? latencyOf(input) + (hasOutput ? capturePeriod(rate) : 0) : 0;
 
     opened = true;
     return true;
@@ -914,6 +922,14 @@ class WasapiBackend final : public AudioBackend
       }
     }
     return true;
+  }
+
+  // the capture engine's period in frames at the stream's rate
+  uint32_t capturePeriod(uint32_t rate) const
+  {
+    REFERENCE_TIME period{0}, minimum{0};
+    if (FAILED(input.client->GetDevicePeriod(&period, &minimum))) return 0;
+    return framesOf(period, rate);
   }
 
   uint32_t latencyOf(Side &side) const
