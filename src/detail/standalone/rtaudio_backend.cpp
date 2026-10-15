@@ -289,6 +289,8 @@ class RtAudioBackend final : public AudioBackend
     granted.maxFramesPerCallback = frames;
     granted.inputChannels = inputChannels;
     granted.outputChannels = outputChannels;
+    // the latencies stay 0, unknown: getStreamLatency() is both directions summed, and an
+    // asio driver's figure has the buffer in it, which these leave out
     return true;
   }
 

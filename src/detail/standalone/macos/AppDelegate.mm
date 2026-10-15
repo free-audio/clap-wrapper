@@ -98,6 +98,10 @@ void applyScreenAppearance(NSWindow *window)
   NSTextField *inputNote;
   NSGridRow *inputNoteRow;
 
+  // beside the buffer size: the running stream's latency each way, as its devices report
+  // it (the buffer not included), while the window shows what runs
+  NSTextField *latencyNote;
+
   // the window's own appearance menu, offered while the plugin has not set the
   // appearance itself (StandaloneHost::screenAppearanceFromPlugin)
   NSPopUpButton *appearanceSelection;
@@ -115,6 +119,7 @@ void applyScreenAppearance(NSWindow *window)
 - (void)resetBufferSizeSelectionPreferring:(uint32_t)frames;
 - (void)updateBufferSizeTitles;
 - (void)updateInputNote;
+- (void)updateLatencyNote;
 - (void)applyAppearance;
 
 @end
@@ -136,6 +141,8 @@ static bool showingAudioError{false};
 
   // a stream that stopped on its own, devices that came or went
   standaloneHost->pollAudioEvents();
+  // which may have stopped the stream the window's latency describes, or opened another
+  [openAudioSettings updateLatencyNote];
 
   if (standaloneHost->callbackRequested.exchange(false))
   {
@@ -752,6 +759,15 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
     [[bufferSizeSelection widthAnchor] constraintEqualToConstant:120].active = YES;
     [sampleRateSelection setAction:@selector(updateBufferSizeTitles)];
     [sampleRateSelection setTarget:self];
+    [bufferSizeSelection setAction:@selector(updateLatencyNote)];
+    [bufferSizeSelection setTarget:self];
+
+    latencyNote = makeLabel(@"");
+    [latencyNote setFont:[NSFont systemFontOfSize:[NSFont smallSystemFontSize]]];
+    [latencyNote setTextColor:[NSColor secondaryLabelColor]];
+    NSStackView *bufferSizeCell = [NSStackView stackViewWithViews:@[ bufferSizeSelection, latencyNote ]];
+    [bufferSizeCell setAlignment:NSLayoutAttributeFirstBaseline];
+    [bufferSizeCell setSpacing:12];
 
     // the input is the default's even with no input open, and showing that device would
     // have OK open it
@@ -770,6 +786,8 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
     {
       [[menu cell] setLineBreakMode:NSLineBreakByTruncatingTail];
       [[menu widthAnchor] constraintEqualToConstant:controlWidth].active = YES;
+      [menu setAction:@selector(updateLatencyNote)];
+      [menu setTarget:self];
     }
     // a mono main input takes one channel, anything else a pair
     NSString *inputChannelLabel =
@@ -849,7 +867,7 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
       @[ makeLabel(inputChannelLabel), inputChannelSelection ],
       @[ none, inputNote ],
       @[ makeLabel(@"Sample Rate:"), sampleRateSelection ],
-      @[ makeLabel(@"Buffer Size:"), bufferSizeSelection ],
+      @[ makeLabel(@"Buffer Size:"), bufferSizeCell ],
       @[ none, defaultButton ],
       @[ none, noRateNote ],
       @[ sectionRule, none ],
@@ -1176,6 +1194,7 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
                             : [NSString stringWithFormat:@"%ld", (long)frames]];
   }
   [bufferSizeSelection synchronizeTitleAndSelectedItem];
+  [self updateLatencyNote];
 }
 
 // the sizes both selected devices accept, from the standalone's list; selects the
@@ -1258,6 +1277,49 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
     [inputNote setTextColor:color];
   }
   [inputNoteRow setHidden:text == nil];
+}
+
+// "Latency: in 5.3 ms, out 30.0 ms" for the running stream, while the window shows its
+// devices, channels, rate and size: for anything else the numbers would describe another
+// stream. not shown when they are not known
+- (void)updateLatencyNote
+{
+  auto standaloneHost = sa::getStandaloneHost();
+  const auto &stream = standaloneHost->currentStream;
+
+  const auto oidx = [outputSelection indexOfSelectedItem];
+  const auto iidx = [inputSelection indexOfSelectedItem];
+  const std::string output{oidx >= 0 && (size_t)oidx < outDevices.size() ? outDevices[oidx].id
+                                                                         : std::string{}};
+  const std::string input{iidx > 0 && (size_t)iidx <= inDevices.size() ? inDevices[iidx - 1].id
+                                                                       : std::string{}};
+  const bool showsRunning{
+      standaloneHost->isAudioRunning() && stream.sampleRate > 0 &&
+      output == (standaloneHost->audioOutputUsed ? standaloneHost->audioOutputDevice : std::string{}) &&
+      input == (standaloneHost->audioInputUsed ? standaloneHost->audioInputDevice : std::string{}) &&
+      [[[sampleRateSelection selectedItem] title] integerValue] == (NSInteger)stream.sampleRate &&
+      [[bufferSizeSelection selectedItem] tag] == (NSInteger)stream.bufferFrames &&
+      [self shownChoice:false].first == standaloneHost->deviceOutputFirstChannel &&
+      (input.empty() || [self shownChoice:true].first == standaloneHost->deviceInputFirstChannel)};
+
+  NSString *text{nil};
+  if (showsRunning)
+  {
+    auto ms = [&stream](uint32_t frames) { return 1000.0 * frames / stream.sampleRate; };
+    const bool in{stream.inputChannels > 0 && stream.inputLatency > 0};
+    const bool out{stream.outputChannels > 0 && stream.outputLatency > 0};
+    if (in && out)
+      text = [NSString stringWithFormat:@"Latency: in %.1f ms, out %.1f ms", ms(stream.inputLatency),
+                                        ms(stream.outputLatency)];
+    else if (out)
+      text = [NSString stringWithFormat:@"Latency: out %.1f ms", ms(stream.outputLatency)];
+    else if (in)
+      text = [NSString stringWithFormat:@"Latency: in %.1f ms", ms(stream.inputLatency)];
+  }
+
+  // called from the polling timer too: the same text is left alone
+  if (text && ![[latencyNote stringValue] isEqualToString:text]) [latencyNote setStringValue:text];
+  [latencyNote setHidden:text == nil];
 }
 
 // the device menus from the host's list, with these selected; an output not there selects
