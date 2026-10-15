@@ -101,15 +101,15 @@ uint32_t getSampleRate(const clap_host_t *, uint32_t index)
   return index < snap.size() ? snap[index] : 0;
 }
 
-uint32_t countBufferSizes(const clap_host_t *)
+uint32_t countBufferSizes(const clap_host_t *, const char *outputId, const char *inputId)
 {
-  return (uint32_t)getStandaloneHost()->getBufferSizes().size();
+  return getStandaloneHost()->snapshotBufferSizes(outputId, inputId);
 }
 
 uint32_t getBufferSize(const clap_host_t *, uint32_t index)
 {
-  const auto sizes = getStandaloneHost()->getBufferSizes();
-  return index < sizes.size() ? sizes[index] : 0;
+  const auto &snap = getStandaloneHost()->bufferSizeSnapshot;
+  return index < snap.size() ? snap[index] : 0;
 }
 
 bool getAudioStatus(const clap_host_t *, clap_wrapper_standalone_audio_status_t *status)
@@ -169,11 +169,39 @@ bool resetStandaloneState(const clap_host_t *, uint32_t)
   return false;
 }
 
+// both wait for the device model that knows a channel's name and opens at an offset
+bool supportsChannelSelection(const clap_host_t *)
+{
+  return false;
+}
+
+bool getEndpointChannelName(const clap_host_t *, uint32_t, uint32_t, uint32_t, char *)
+{
+  return false;
+}
+
+uint32_t supportedAppearances(const clap_host_t *)
+{
+  return supportedScreenAppearances();
+}
+
+bool setAppearance(const clap_host_t *, uint32_t appearance)
+{
+  return getStandaloneHost()->setScreenAppearance(appearance, true);
+}
+
+uint32_t getAppearance(const clap_host_t *)
+{
+  return getStandaloneHost()->screenAppearance;
+}
+
 const clap_wrapper_standalone_features_t features = {
-    supportsScreen,     showScreen,          countAudioApis,      getAudioApi,         supportsListing,
-    countEndpoints,     getEndpoint,         countSampleRates,    getSampleRate,       countBufferSizes,
-    getBufferSize,      getAudioStatus,      supportsInputMute,   setInputMuted,       supportsBinding,
-    requestAudioConfig, requestMidiBindings, supportedResetFlags, resetStandaloneState};
+    supportsScreen,         showScreen,           countAudioApis,       getAudioApi,
+    supportsListing,        countEndpoints,       getEndpoint,          countSampleRates,
+    getSampleRate,          countBufferSizes,     getBufferSize,        getAudioStatus,
+    supportsInputMute,      setInputMuted,        supportsBinding,      requestAudioConfig,
+    requestMidiBindings,    supportedResetFlags,  resetStandaloneState, supportsChannelSelection,
+    getEndpointChannelName, supportedAppearances, setAppearance,        getAppearance};
 }  // namespace
 
 const clap_wrapper_standalone_features_t *StandaloneHost::standalone_features()
@@ -258,6 +286,17 @@ uint32_t StandaloneHost::snapshotSampleRates(const char *outputId, const char *i
   for (auto r : rates) sampleRateSnapshot.push_back((uint32_t)r);
 
   return (uint32_t)sampleRateSnapshot.size();
+}
+
+uint32_t StandaloneHost::snapshotBufferSizes(const char *outputId, const char *inputId)
+{
+  // as with the rates, an instrument's input never narrows anything
+  const bool useInput = inputId && numAudioInputs > 0;
+  const auto output = outputId ? deviceName(resolveOutputDevice(outputId)) : std::string{};
+  const auto input = useInput ? deviceName(resolveInputDevice(inputId)) : std::string{};
+
+  bufferSizeSnapshot = getBufferSizesFor(output, input);
+  return (uint32_t)bufferSizeSnapshot.size();
 }
 
 void StandaloneHost::settingsScreenClosed(uint32_t result)

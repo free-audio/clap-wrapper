@@ -171,7 +171,13 @@ function(target_add_standalone_wrapper)
 
         # RuntimeObject was only ever needed for the C++/WinRT JSON parser the
         # settings code used to use; the shared settings store replaced it.
-        target_link_libraries(${SA_TARGET} PRIVATE base-sdk-wil ComCtl32.Lib)
+        # rtaudio built with asio: the settings window offers the driver's control panel
+        if(RTAUDIO_API_ASIO)
+            target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_ASIO=1)
+        endif()
+
+        # Dwmapi and UxTheme give the settings window its dark title bar and controls
+        target_link_libraries(${SA_TARGET} PRIVATE base-sdk-wil ComCtl32.Lib Dwmapi.lib UxTheme.lib)
 
     elseif(UNIX)
         target_sources(${SA_TARGET} PRIVATE

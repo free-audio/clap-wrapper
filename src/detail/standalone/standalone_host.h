@@ -47,6 +47,28 @@ std::optional<fs::path> getStandaloneSettingsPath();
 // and the answer is always empty
 std::vector<std::string> preferredFirstRunInputs();
 
+// whether the device of this rtaudio name is a microphone: the built-in one, a bluetooth
+// headset's or speaker's, or an iphone's. the standalone opens one only when the user
+// chose it by name, never as a default or a fallback: a built-in microphone picks up the
+// speakers beside it, and opening a bluetooth device's switches the whole device to its
+// hands-free profile - telephone quality and one sample rate, for every application on
+// the machine. on windows, an endpoint whose form factor is a microphone, headset or
+// handset. false where there is no way to tell, which is linux for now
+bool isMicrophoneAudioDevice(const std::string &rtAudioName);
+
+// whether the device of this rtaudio name is a bluetooth device; false where there is no
+// way to tell
+bool isBluetoothAudioDevice(const std::string &rtAudioName);
+
+// the smallest and largest buffer, in frames, the device of this rtaudio name accepts;
+// {0, 0} where there is no way to tell, which is everywhere but macos for now. rtaudio
+// clamps a request to the range without a word, so a menu should not offer beyond it
+std::pair<uint32_t, uint32_t> bufferFrameSizeRange(const std::string &rtAudioName);
+
+// the clap_wrapper_standalone_appearance values the configuration screen can take, as
+// bits (1 << appearance); 0 where the frontend cannot set one
+uint32_t supportedScreenAppearances();
+
 struct StandaloneHost : Clap::IHost
 {
   StandaloneHost()
@@ -271,10 +293,22 @@ struct StandaloneHost : Clap::IHost
   // extension, if it has one. result is a clap_wrapper_standalone_configuration_result
   void settingsScreenClosed(uint32_t result);
 
+  // the settings screen's appearance, a clap_wrapper_standalone_appearance. a plugin that
+  // sets it owns it for the session: the settings file and the screen's own choice no
+  // longer count, and the plugin's value is never saved
+  uint32_t screenAppearance{CLAP_WRAPPER_STANDALONE_APPEARANCE_AUTO};
+  bool screenAppearanceFromPlugin{false};
+  // false if the appearance is unsupported, or the plugin owns it and this is not it
+  bool setScreenAppearance(uint32_t appearance, bool fromPlugin);
+  // set by the platform frontend, which applies screenAppearance to what it shows
+  std::function<void()> onScreenAppearanceChanged{nullptr};
+
   std::vector<clap_wrapper_standalone_endpoint_t> endpointSnapshot[4];
   uint32_t snapshotEndpoints(uint32_t kind);
   std::vector<uint32_t> sampleRateSnapshot;
   uint32_t snapshotSampleRates(const char *outputId, const char *inputId);
+  std::vector<uint32_t> bufferSizeSnapshot;
+  uint32_t snapshotBufferSizes(const char *outputId, const char *inputId);
 
   // context menu extension
   bool supportsContextMenu() const override
@@ -414,6 +448,18 @@ struct StandaloneHost : Clap::IHost
   // session only: a launch never starts muted on a previous session's say-so
   std::atomic<bool> inputMuted{false};
 
+  // the audio driver's own settings window, which only asio has: whether this standalone
+  // can show one for that api, which needs rtaudio built with asio
+  static bool hasDriverControlPanel(RtAudio::Api api);
+  // shows it for the stream open now; false if no asio stream is open
+  bool showDriverControlPanel();
+
+  // an asio driver asks for a reset when its own panel changed the buffer size or the
+  // rate, and rtaudio closes the stream for it, from a thread of its own. true, once, when
+  // that stream is closed: the frontend then opens it again, on the main thread
+  bool takeDriverReset();
+  std::atomic<bool> driverResetRequested{false};
+
   // RtAudio reports enumeration failures through the same error callback it uses
   // for stream failures, and we enumerate every time a settings panel refreshes.
   // Those are not events to put in front of the user, so the enumeration helpers
@@ -480,6 +526,9 @@ struct StandaloneHost : Clap::IHost
   std::vector<RtAudio::DeviceInfo> getOutputAudioDevices();
   std::vector<int32_t> getSampleRates();
   std::vector<uint32_t> getBufferSizes();
+  // getBufferSizes(), narrowed to what both devices accept where the platform can tell
+  // (bufferFrameSizeRange); an empty name narrows nothing
+  std::vector<uint32_t> getBufferSizesFor(const std::string &outputName, const std::string &inputName);
 
   clap_input_events inputEvents{};
   clap_output_events outputEvents{};

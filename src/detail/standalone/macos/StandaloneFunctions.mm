@@ -60,13 +60,55 @@ std::string rtAudioName(AudioObjectID id, CFStringEncoding encoding)
   return result;
 }
 
+bool isBluetooth(UInt32 transport)
+{
+  return transport == kAudioDeviceTransportTypeBluetooth ||
+         transport == kAudioDeviceTransportTypeBluetoothLE;
+}
+
 // a microphone the user is unlikely to mean when an interface is plugged in: the
 // built-in one, a bluetooth headset, or an iphone's (continuity, wired and wireless)
 bool isMicrophone(UInt32 transport)
 {
-  return transport == kAudioDeviceTransportTypeBuiltIn ||
-         transport == kAudioDeviceTransportTypeBluetooth ||
-         transport == kAudioDeviceTransportTypeBluetoothLE || transport == 'ccwd' || transport == 'ccwl';
+  return transport == kAudioDeviceTransportTypeBuiltIn || isBluetooth(transport) ||
+         transport == 'ccwd' || transport == 'ccwl';
+}
+
+std::vector<AudioDeviceID> allDevices()
+{
+  AudioObjectPropertyAddress address{kAudioHardwarePropertyDevices, kAudioObjectPropertyScopeGlobal,
+                                     elementMain};
+  UInt32 size = 0;
+  if (AudioObjectGetPropertyDataSize(kAudioObjectSystemObject, &address, 0, nullptr, &size) != noErr)
+    return {};
+  std::vector<AudioDeviceID> devices(size / sizeof(AudioDeviceID));
+  if (AudioObjectGetPropertyData(kAudioObjectSystemObject, &address, 0, nullptr, &size,
+                                 devices.data()) != noErr)
+    return {};
+  devices.resize(size / sizeof(AudioDeviceID));
+  return devices;
+}
+
+// the coreaudio device rtaudio calls by this name, in either encoding it may have used
+AudioDeviceID deviceNamed(const std::string &name)
+{
+  if (name.empty()) return kAudioObjectUnknown;
+
+  for (auto id : allDevices())
+  {
+    for (auto encoding : {CFStringGetSystemEncoding(), (CFStringEncoding)kCFStringEncodingUTF8})
+    {
+      if (rtAudioName(id, encoding) == name) return id;
+    }
+  }
+  return kAudioObjectUnknown;
+}
+
+// the transport type of that device; false if there is none
+bool transportNamed(const std::string &name, UInt32 &transport)
+{
+  auto id{deviceNamed(name)};
+  return id != kAudioObjectUnknown && getProperty(id, kAudioDevicePropertyTransportType, transport);
 }
 
 // hardware an instrument or a line is plugged into. not virtual or aggregate devices,
@@ -91,20 +133,10 @@ std::vector<std::string> preferredFirstRunInputs()
       !isMicrophone(transport))
     return {};
 
-  AudioObjectPropertyAddress address{kAudioHardwarePropertyDevices, kAudioObjectPropertyScopeGlobal,
-                                     elementMain};
-  UInt32 size = 0;
-  if (AudioObjectGetPropertyDataSize(kAudioObjectSystemObject, &address, 0, nullptr, &size) != noErr)
-    return {};
-  std::vector<AudioDeviceID> devices(size / sizeof(AudioDeviceID));
-  if (AudioObjectGetPropertyData(kAudioObjectSystemObject, &address, 0, nullptr, &size,
-                                 devices.data()) != noErr)
-    return {};
-
   // the interface with the most inputs first: a usb microphone has one, an interface
   // two or more
   std::vector<std::pair<uint32_t, AudioDeviceID>> interfaces;
-  for (auto id : devices)
+  for (auto id : allDevices())
   {
     UInt32 t{0};
     if (!getProperty(id, kAudioDevicePropertyTransportType, t) || !isInterface(t)) continue;
@@ -124,6 +156,37 @@ std::vector<std::string> preferredFirstRunInputs()
     }
   }
   return names;
+}
+
+bool isMicrophoneAudioDevice(const std::string &name)
+{
+  UInt32 transport{0};
+  return transportNamed(name, transport) && isMicrophone(transport);
+}
+
+bool isBluetoothAudioDevice(const std::string &name)
+{
+  UInt32 transport{0};
+  return transportNamed(name, transport) && isBluetooth(transport);
+}
+
+std::pair<uint32_t, uint32_t> bufferFrameSizeRange(const std::string &name)
+{
+  AudioValueRange range{};
+  auto id{deviceNamed(name)};
+  if (id == kAudioObjectUnknown || !getProperty(id, kAudioDevicePropertyBufferFrameSizeRange, range) ||
+      range.mMaximum < range.mMinimum || range.mMinimum < 0)
+    return {0, 0};
+  return {static_cast<uint32_t>(range.mMinimum), static_cast<uint32_t>(range.mMaximum)};
+}
+
+uint32_t supportedScreenAppearances()
+{
+  uint32_t res{(1u << CLAP_WRAPPER_STANDALONE_APPEARANCE_AUTO) |
+               (1u << CLAP_WRAPPER_STANDALONE_APPEARANCE_LIGHT)};
+  // dark aqua came with macos 10.14; before it, light is all there is
+  if (@available(macOS 10.14, *)) res |= 1u << CLAP_WRAPPER_STANDALONE_APPEARANCE_DARK;
+  return res;
 }
 
 std::optional<fs::path> getStandaloneSettingsPath()

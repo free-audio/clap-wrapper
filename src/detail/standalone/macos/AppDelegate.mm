@@ -26,6 +26,28 @@ struct MidiPortRow
   NSButton *check;  // owned by the window's views
   bool wasOn;       // when the window opened
 };
+
+// what StandaloneHost::screenAppearance says, on the settings window or on one of the
+// standalone's alerts. nil appearance follows the system
+void applyScreenAppearance(NSWindow *window)
+{
+  if (@available(macOS 10.14, *))
+  {
+    NSAppearance *appearance{nil};
+    switch (freeaudio::clap_wrapper::standalone::getStandaloneHost()->screenAppearance)
+    {
+      case CLAP_WRAPPER_STANDALONE_APPEARANCE_LIGHT:
+        appearance = [NSAppearance appearanceNamed:NSAppearanceNameAqua];
+        break;
+      case CLAP_WRAPPER_STANDALONE_APPEARANCE_DARK:
+        appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+        break;
+      default:
+        break;
+    }
+    [window setAppearance:appearance];
+  }
+}
 }  // namespace
 
 @interface AudioSettingsFlippedView : NSView
@@ -40,7 +62,7 @@ struct MidiPortRow
 
 @interface AudioSettingsWindow : NSWindow
 {
-  NSPopUpButton *outputSelection, *inputSelection, *sampleRateSelection;
+  NSPopUpButton *outputSelection, *inputSelection, *sampleRateSelection, *bufferSizeSelection;
   std::vector<RtAudio::DeviceInfo> outDevices, inDevices;
 
   // a list nobody touched leaves its settings as they were, which for the inputs may be
@@ -59,10 +81,27 @@ struct MidiPortRow
   // common: one stream runs both at one rate, so the devices could not be opened together
   NSButton *okButton;
   NSGridRow *noRateRow;
+
+  // under the input menu, while it matters: that a bluetooth microphone takes its whole
+  // device down to telephone quality, or that the default input is a microphone and was not
+  // opened
+  NSTextField *inputNote;
+  NSGridRow *inputNoteRow;
+
+  // the window's own appearance menu, offered while the plugin has not set the
+  // appearance itself (StandaloneHost::screenAppearanceFromPlugin)
+  NSPopUpButton *appearanceSelection;
+  NSGridRow *appearanceRow, *appearanceRuleRow;
+  bool offerAppearance;
+  uint32_t appearanceWhenOpened;
 }
 
 - (void)setupContents;
 - (void)resetSampleRateSelection;
+- (void)resetBufferSizeSelectionPreferring:(uint32_t)frames;
+- (void)updateBufferSizeTitles;
+- (void)updateInputNote;
+- (void)applyAppearance;
 
 @end
 
@@ -180,6 +219,10 @@ static AudioSettingsWindow *openAudioSettings{nil};
     [self openAudioSettingsWindow:nil];
     return true;
   };
+  freeaudio::clap_wrapper::standalone::getStandaloneHost()->onScreenAppearanceChanged = []()
+  {
+    if (openAudioSettings) [openAudioSettings applyAppearance];
+  };
 
   auto plugin =
       freeaudio::clap_wrapper::standalone::mainCreatePlugin(entry, pid, pindex, 1, (char **)argv);
@@ -216,6 +259,7 @@ static AudioSettingsWindow *openAudioSettings{nil};
         [alert setMessageText:@"Plugin Error"];
         [alert setInformativeText:@"The plugin failed to create its user interface."];
         [alert addButtonWithTitle:@"OK"];
+        applyScreenAppearance([alert window]);
         [alert runModal];
       }
       return;
@@ -240,6 +284,7 @@ static AudioSettingsWindow *openAudioSettings{nil};
         [alert setMessageText:@"Plugin Error"];
         [alert setInformativeText:sizeError];
         [alert addButtonWithTitle:@"OK"];
+        applyScreenAppearance([alert window]);
         [alert runModal];
       }
       ui->destroy(p);
@@ -272,6 +317,7 @@ static AudioSettingsWindow *openAudioSettings{nil};
             setInformativeText:
                 @"The plugin failed to embed its user interface. Please contact the plugin developer."];
         [alert addButtonWithTitle:@"OK"];
+        applyScreenAppearance([alert window]);
         [alert runModal];
       }
       return;
@@ -288,6 +334,7 @@ static AudioSettingsWindow *openAudioSettings{nil};
       [alert setMessageText:@"Unable to configure audio"];
       [alert setInformativeText:[[NSString alloc] initWithUTF8String:s.c_str()]];
       [alert addButtonWithTitle:@"OK"];
+      applyScreenAppearance([alert window]);
       [alert runModal];
     }
   };
@@ -439,6 +486,7 @@ static AudioSettingsWindow *openAudioSettings{nil};
       [alert setMessageText:@"Unable to save file"];
       [alert setInformativeText:[[NSString alloc] initWithUTF8String:e.what()]];
       [alert addButtonWithTitle:@"OK"];
+      applyScreenAppearance([alert window]);
       [alert runModal];
     }
   }
@@ -470,6 +518,7 @@ static AudioSettingsWindow *openAudioSettings{nil};
       [alert setMessageText:@"Unable to open file"];
       [alert setInformativeText:[[NSString alloc] initWithUTF8String:e.what()]];
       [alert addButtonWithTitle:@"OK"];
+      applyScreenAppearance([alert window]);
       [alert runModal];
     }
   }
@@ -522,20 +571,17 @@ bool contains(const std::vector<std::string> &names, const std::string &name)
 }
 
 // one checkbox per port. ports saved but not plugged in now are listed too, marked, so
-// that unticking one is a way to forget it; a plugin that could not use the ports gets
-// them listed and greyed
+// that unticking one is a way to forget it
 NSScrollView *makePortList(std::vector<MidiPortRow> &rows, const std::vector<std::string> &available,
-                           const std::vector<std::string> &on, bool allOn, bool usable,
-                           NSString *emptyText)
+                           const std::vector<std::string> &on, bool allOn, NSString *emptyText)
 {
   rows.clear();
-  auto addRow = [&rows, usable](const std::string &name, bool connected, bool isOn)
+  auto addRow = [&rows](const std::string &name, bool connected, bool isOn)
   {
     NSString *title = [NSString stringWithUTF8String:name.c_str()];
     if (!connected) title = [title stringByAppendingString:@" (not connected)"];
     NSButton *check = [NSButton checkboxWithTitle:title target:nil action:nil];
     [check setState:isOn ? NSControlStateValueOn : NSControlStateValueOff];
-    [check setEnabled:usable];
     [[check cell] setLineBreakMode:NSLineBreakByTruncatingTail];
     rows.push_back({name, check, isOn});
   };
@@ -635,12 +681,16 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
     outputSelection = [[[NSPopUpButton alloc] init] autorelease];
     inputSelection = [[[NSPopUpButton alloc] init] autorelease];
     sampleRateSelection = [[[NSPopUpButton alloc] init] autorelease];
+    bufferSizeSelection = [[[NSPopUpButton alloc] init] autorelease];
     for (NSPopUpButton *menu : {outputSelection, inputSelection})
     {
       [[menu cell] setLineBreakMode:NSLineBreakByTruncatingTail];
       [[menu widthAnchor] constraintEqualToConstant:controlWidth].active = YES;
     }
     [[sampleRateSelection widthAnchor] constraintEqualToConstant:120].active = YES;
+    [[bufferSizeSelection widthAnchor] constraintEqualToConstant:120].active = YES;
+    [sampleRateSelection setAction:@selector(updateBufferSizeTitles)];
+    [sampleRateSelection setTarget:self];
 
     outDevices = standaloneHost->getOutputAudioDevices();
     // add items to menu
@@ -687,27 +737,24 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
 
     NSTextField *noRateNote =
         makeNote(@"These devices have no sample rate in common.", [NSColor systemRedColor]);
+    inputNote = makeNote(@"", [NSColor secondaryLabelColor]);
 
-    // midi
+    // midi: a direction the plugin has no note port for gets no section at all
     const auto &settings = standaloneHost->settings;
     const bool takesMidi = standaloneHost->hasMIDIInput || standaloneHost->hasClapNoteInput;
     const bool sendsMidi = standaloneHost->createsMidiOutput;
 
     NSScrollView *midiInList =
         makePortList(midiInRows, standaloneHost->getMidiPortNames(), settings.midiPortNames,
-                     settings.midiBindAllPorts, takesMidi, @"No MIDI inputs found");
+                     settings.midiBindAllPorts, @"No MIDI inputs found");
     NSScrollView *midiOutList =
         makePortList(midiOutRows, standaloneHost->getMidiOutputPortNames(), settings.midiOutputPortNames,
-                     false, sendsMidi, @"No MIDI outputs found");
-    NSTextField *midiInNote = makeNote([NSString stringWithFormat:@"%@ takes no MIDI.", pluginName],
-                                       [NSColor secondaryLabelColor]);
-    NSTextField *midiOutNote = makeNote([NSString stringWithFormat:@"%@ sends no MIDI.", pluginName],
-                                        [NSColor secondaryLabelColor]);
+                     false, @"No MIDI outputs found");
 
     // offered where the midi api has virtual ports, which on macos is every version
     const bool virtualPorts =
         freeaudio::clap_wrapper::standalone::StandaloneHost::supportsVirtualMidiPorts();
-    auto makeVirtualCheck = [&](bool input, bool isOn, bool usable)
+    auto makeVirtualCheck = [&](bool input, bool isOn)
     {
       NSString *name =
           [NSString stringWithUTF8String:standaloneHost->virtualMidiPortName(input).c_str()];
@@ -716,34 +763,55 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
                            name];
       NSButton *check = [NSButton checkboxWithTitle:title target:nil action:nil];
       [check setState:isOn ? NSControlStateValueOn : NSControlStateValueOff];
-      [check setEnabled:usable];
       [check setToolTip:input ? @"A MIDI destination other applications can send to"
                               : @"A MIDI source other applications can receive from"];
       return check;
     };
     virtualInWasOn = settings.midiVirtualInput;
     virtualOutWasOn = settings.midiVirtualOutput;
-    virtualInCheck = makeVirtualCheck(true, virtualInWasOn, takesMidi);
-    virtualOutCheck = makeVirtualCheck(false, virtualOutWasOn, sendsMidi);
+    virtualInCheck = makeVirtualCheck(true, virtualInWasOn);
+    virtualOutCheck = makeVirtualCheck(false, virtualOutWasOn);
 
     NSTextField *midiInLabel = makeLabel(@"MIDI Inputs:");
     NSTextField *midiOutLabel = makeLabel(@"MIDI Outputs:");
     NSView *none = [NSGridCell emptyContentView];
     NSBox *sectionRule = makeRule();
 
+    // appearance
+    appearanceSelection = [[[NSPopUpButton alloc] init] autorelease];
+    [[appearanceSelection widthAnchor] constraintEqualToConstant:120].active = YES;
+    const auto appearances{freeaudio::clap_wrapper::standalone::supportedScreenAppearances()};
+    const std::pair<uint32_t, NSString *> appearanceItems[] = {
+        {CLAP_WRAPPER_STANDALONE_APPEARANCE_AUTO, @"Auto"},
+        {CLAP_WRAPPER_STANDALONE_APPEARANCE_LIGHT, @"Light"},
+        {CLAP_WRAPPER_STANDALONE_APPEARANCE_DARK, @"Dark"}};
+    for (const auto &[appearance, title] : appearanceItems)
+    {
+      if (!(appearances & (1u << appearance))) continue;
+      [appearanceSelection addItemWithTitle:title];
+      [[appearanceSelection lastItem] setTag:appearance];
+    }
+    [appearanceSelection setAction:@selector(onAppearanceChanged:)];
+    [appearanceSelection setTarget:self];
+    offerAppearance = [appearanceSelection numberOfItems] > 1;
+    appearanceWhenOpened = standaloneHost->screenAppearance;
+    NSBox *appearanceRule = makeRule();
+
     NSGridView *grid = [NSGridView gridViewWithViews:@[
       @[ makeLabel(@"Output:"), outputSelection ],
       @[ makeLabel(@"Input:"), inputSelection ],
+      @[ none, inputNote ],
       @[ makeLabel(@"Sample Rate:"), sampleRateSelection ],
+      @[ makeLabel(@"Buffer Size:"), bufferSizeSelection ],
       @[ none, defaultButton ],
       @[ none, noRateNote ],
       @[ sectionRule, none ],
       @[ midiInLabel, midiInList ],
       @[ none, virtualInCheck ],
-      @[ none, midiInNote ],
       @[ midiOutLabel, midiOutList ],
       @[ none, virtualOutCheck ],
-      @[ none, midiOutNote ],
+      @[ appearanceRule, none ],
+      @[ makeLabel(@"Appearance:"), appearanceSelection ],
     ]];
     [grid setRowSpacing:8];
     [grid setColumnSpacing:8];
@@ -754,18 +822,26 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
 
     noRateRow = rowOf(noRateNote);
     [noRateRow setHidden:YES];
-    [rowOf(midiInNote) setHidden:takesMidi];
-    [rowOf(midiOutNote) setHidden:sendsMidi];
-    [rowOf(virtualInCheck) setHidden:!virtualPorts];
-    [rowOf(virtualOutCheck) setHidden:!virtualPorts];
+    inputNoteRow = rowOf(inputNote);
+    [inputNoteRow setHidden:YES];
+    [rowOf(sectionRule) setHidden:!takesMidi && !sendsMidi];
+    [rowOf(midiInList) setHidden:!takesMidi];
+    [rowOf(midiOutList) setHidden:!sendsMidi];
+    [rowOf(virtualInCheck) setHidden:!takesMidi || !virtualPorts];
+    [rowOf(virtualOutCheck) setHidden:!sendsMidi || !virtualPorts];
 
-    NSGridRow *ruleRow = rowOf(sectionRule);
-    [ruleRow mergeCellsInRange:NSMakeRange(0, 2)];
-    [ruleRow setRowAlignment:NSGridRowAlignmentNone];
-    [ruleRow setYPlacement:NSGridCellPlacementCenter];
-    [ruleRow setTopPadding:6];
-    [ruleRow setBottomPadding:6];
-    [[ruleRow cellAtIndex:0] setXPlacement:NSGridCellPlacementFill];
+    for (NSBox *rule : {sectionRule, appearanceRule})
+    {
+      NSGridRow *ruleRow = rowOf(rule);
+      [ruleRow mergeCellsInRange:NSMakeRange(0, 2)];
+      [ruleRow setRowAlignment:NSGridRowAlignmentNone];
+      [ruleRow setYPlacement:NSGridCellPlacementCenter];
+      [ruleRow setTopPadding:6];
+      [ruleRow setBottomPadding:6];
+      [[ruleRow cellAtIndex:0] setXPlacement:NSGridCellPlacementFill];
+    }
+    appearanceRow = rowOf(appearanceSelection);
+    appearanceRuleRow = rowOf(appearanceRule);
 
     // a list has no baseline: its label is centred on the list's first row instead,
     // which puts the two lines of text level
@@ -830,6 +906,9 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
     ]];
 
     [self resetSampleRateSelection];
+    [self resetBufferSizeSelectionPreferring:standaloneHost->currentBufferSize];
+    [self updateInputNote];
+    [self applyAppearance];
 
     [content layoutSubtreeIfNeeded];
     [self setContentSize:[content fittingSize]];
@@ -860,6 +939,7 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
     }
 
     const auto sr = [[[sampleRateSelection selectedItem] title] integerValue];
+    const auto frames = static_cast<uint32_t>([[bufferSizeSelection selectedItem] tag]);
 
     auto standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
 
@@ -870,22 +950,26 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
     const bool previousUseIn = standaloneHost->audioInputUsed;
     const bool previousUseOut = standaloneHost->audioOutputUsed;
     const auto previousRate = standaloneHost->currentSampleRate;
+    const auto previousFrames = standaloneHost->currentBufferSize;
 
     // a stream already running on what the window shows is left alone: reopening it, for
     // a window in which only the midi ports changed, would drop out the audio for nothing
     const bool audioAsShown =
-        wasRunning && (int32_t)sr == previousRate &&
+        wasRunning && (int32_t)sr == previousRate && (frames == 0 || frames == previousFrames) &&
         useOut == (standaloneHost->currentOutputChannels > 0) && (!useOut || outId == previousOut) &&
         useIn == (standaloneHost->currentInputChannels > 0) && (!useIn || inId == previousIn);
 
     if (!audioAsShown)
     {
+      // the size to ask for; the stream reads back what the device granted
+      if (frames > 0) standaloneHost->currentBufferSize = frames;
       standaloneHost->startAudioThreadOn(inId, 2, useIn, outId, 2, useOut, (int32_t)sr);
       if (!standaloneHost->isAudioRunning())
       {
         // neither kept nor saved, and the window stays up for another choice: the
         // devices are put back as they were, and the error callback has already told
         // the user why these did not open
+        standaloneHost->currentBufferSize = previousFrames;
         if (wasRunning)
           standaloneHost->startAudioThreadOn(previousIn, 2, previousUseIn, previousOut, 2,
                                              previousUseOut, previousRate);
@@ -933,6 +1017,10 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
       standaloneHost->setVirtualMidiOutput(virtualOut);
     }
 
+    // the window's own choice, never a plugin's (StandaloneHost::screenAppearanceFromPlugin)
+    if (!standaloneHost->screenAppearanceFromPlugin)
+      settings.screenAppearance = standaloneHost->screenAppearance;
+
     standaloneHost->captureAudioSettings();
     if (!standaloneHost->saveStandaloneSettings())
       LOGINFO("[WARNING] Unable to save the audio settings; the next launch will not have them");
@@ -947,14 +1035,21 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
 {
   auto standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
   auto [in, out, sr] = standaloneHost->getDefaultAudioInOutSampleRate();
+
+  // a default never opens a microphone (isMicrophoneAudioDevice), so neither does this:
+  // "No Input", and the note says why
+  [inputSelection selectItemAtIndex:0];
   int idx = 1;
-  for (auto i : inDevices)
+  if (!freeaudio::clap_wrapper::standalone::isMicrophoneAudioDevice(standaloneHost->deviceName(in)))
   {
-    if ((int)i.ID == (int)in)
+    for (auto i : inDevices)
     {
-      [inputSelection selectItemAtIndex:idx];
+      if ((int)i.ID == (int)in)
+      {
+        [inputSelection selectItemAtIndex:idx];
+      }
+      idx++;
     }
-    idx++;
   }
 
   idx = 0;
@@ -968,6 +1063,9 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
   }
 
   [self resetSampleRateSelection];
+  [self resetBufferSizeSelectionPreferring:freeaudio::clap_wrapper::standalone::StandaloneSettings::
+                                               defaultBufferSize];
+  [self updateInputNote];
 
   for (NSMenuItem *item in [sampleRateSelection itemArray])
   {
@@ -977,6 +1075,7 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
       [sampleRateSelection selectItem:item];
     }
   }
+  [self updateBufferSizeTitles];
 }
 
 - (void)close
@@ -984,6 +1083,11 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
   // once, whichever way the window goes - OK, Cancel or the title bar's close button,
   // which all end here. the plugin hears it on the next turn of the run loop, after the
   // window is gone and never from inside a call of its own
+  // an appearance tried in the window and not confirmed with OK goes back
+  auto standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
+  if (!applied && !closeReported && standaloneHost->screenAppearance != appearanceWhenOpened)
+    standaloneHost->setScreenAppearance(appearanceWhenOpened, false);
+
   if (!closeReported)
   {
     closeReported = true;
@@ -1009,6 +1113,105 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
 - (void)onSourceMenuChanged:(id)sender
 {
   [self resetSampleRateSelection];
+  [self resetBufferSizeSelectionPreferring:static_cast<uint32_t>(
+                                               [[bufferSizeSelection selectedItem] tag])];
+  [self updateInputNote];
+}
+
+// each size with how long it lasts at the selected rate, "256 (5.8 ms)". the item's tag
+// holds the size, so the title is free to say more
+- (void)updateBufferSizeTitles
+{
+  const auto rate = [[[sampleRateSelection selectedItem] title] integerValue];
+  for (NSMenuItem *item in [bufferSizeSelection itemArray])
+  {
+    const auto frames = [item tag];
+    [item setTitle:rate > 0 ? [NSString stringWithFormat:@"%ld (%.1f ms)", (long)frames,
+                                                         1000.0 * (double)frames / (double)rate]
+                            : [NSString stringWithFormat:@"%ld", (long)frames]];
+  }
+  [bufferSizeSelection synchronizeTitleAndSelectedItem];
+}
+
+// the sizes both selected devices accept, from the standalone's list; selects the
+// preferred size, or the largest below it, or the smallest there is
+- (void)resetBufferSizeSelectionPreferring:(uint32_t)preferred
+{
+  namespace sa = freeaudio::clap_wrapper::standalone;
+  auto standaloneHost = sa::getStandaloneHost();
+
+  const auto oidx = [outputSelection indexOfSelectedItem];
+  const auto iidx = [inputSelection indexOfSelectedItem];
+  auto sizes = standaloneHost->getBufferSizesFor(
+      oidx >= 0 && (size_t)oidx < outDevices.size() ? outDevices[oidx].name : std::string{},
+      iidx > 0 && (size_t)iidx <= inDevices.size() ? inDevices[iidx - 1].name : std::string{});
+
+  // the stream may run at a size the list does not have, which the device chose
+  const auto running = standaloneHost->currentBufferSize;
+  if (running > 0 && std::find(sizes.begin(), sizes.end(), running) == sizes.end())
+  {
+    sizes.insert(std::upper_bound(sizes.begin(), sizes.end(), running), running);
+  }
+
+  if (preferred == 0) preferred = sa::StandaloneSettings::defaultBufferSize;
+
+  [bufferSizeSelection removeAllItems];
+  NSInteger selected{sizes.empty() ? -1 : 0};
+  for (size_t i = 0; i < sizes.size(); ++i)
+  {
+    [bufferSizeSelection addItemWithTitle:[NSString stringWithFormat:@"%u", sizes[i]]];
+    [[bufferSizeSelection lastItem] setTag:sizes[i]];
+    if (sizes[i] <= preferred) selected = (NSInteger)i;
+  }
+  if (selected >= 0) [bufferSizeSelection selectItemAtIndex:selected];
+  [self updateBufferSizeTitles];
+}
+
+- (void)onAppearanceChanged:(id)sender
+{
+  // applied at once, through onScreenAppearanceChanged; saved by OK
+  freeaudio::clap_wrapper::standalone::getStandaloneHost()->setScreenAppearance(
+      static_cast<uint32_t>([[appearanceSelection selectedItem] tag]), false);
+}
+
+- (void)applyAppearance
+{
+  auto standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
+  applyScreenAppearance(self);
+  [appearanceSelection selectItemWithTag:standaloneHost->screenAppearance];
+  const bool hidden = !offerAppearance || standaloneHost->screenAppearanceFromPlugin;
+  [appearanceRow setHidden:hidden];
+  [appearanceRuleRow setHidden:hidden];
+}
+
+- (void)updateInputNote
+{
+  namespace sa = freeaudio::clap_wrapper::standalone;
+  auto standaloneHost = sa::getStandaloneHost();
+
+  NSString *text{nil};
+  NSColor *color{[NSColor secondaryLabelColor]};
+
+  auto idx = [inputSelection indexOfSelectedItem];
+  if (idx > 0 && (size_t)idx <= inDevices.size() && sa::isBluetoothAudioDevice(inDevices[idx - 1].name))
+  {
+    text = @"A Bluetooth microphone switches its device to telephone quality, for every "
+           @"application, while it is open.";
+    color = [NSColor systemOrangeColor];
+  }
+  else if (idx == 0 && standaloneHost->numAudioInputs > 0)
+  {
+    auto [in, out, sr] = standaloneHost->getDefaultAudioInOutSampleRate();
+    if (sa::isMicrophoneAudioDevice(standaloneHost->deviceName(in)))
+      text = @"The default input is a microphone, which is opened only when chosen here.";
+  }
+
+  if (text)
+  {
+    [inputNote setStringValue:text];
+    [inputNote setTextColor:color];
+  }
+  [inputNoteRow setHidden:text == nil];
 }
 
 - (void)resetSampleRateSelection

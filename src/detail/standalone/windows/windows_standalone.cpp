@@ -1,7 +1,21 @@
 #include "windows_standalone.h"
 
+#include <dwmapi.h>
+#include <uxtheme.h>
+
+#include <algorithm>
+#include <cmath>
+#include <iterator>
+
 namespace freeaudio::clap_wrapper::standalone::windows_standalone
 {
+namespace
+{
+// the plugin window whose settings window the standalone features extension shows;
+// null before it is created and after it is destroyed
+Plugin *settingsWindowOwner{nullptr};
+}  // namespace
+
 std::vector<std::string> getArgs()
 {
   int argc{0};
@@ -33,13 +47,20 @@ std::vector<std::string> getArgs()
   return static_cast<::HFONT>(::GetStockObject(name));
 }
 
-::HFONT getScaledFontFromSystem(double scale)
+::HFONT getMessageFont(uint32_t dpi, int percent, int weight)
 {
-  ::LOGFONTW fontAttributes{};
-  ::GetObjectW(getFontFromSystem(), sizeof(fontAttributes), &fontAttributes);
-  fontAttributes.lfHeight = static_cast<::LONG>(fontAttributes.lfHeight * scale);
+  ::NONCLIENTMETRICSW metrics{sizeof(::NONCLIENTMETRICSW)};
+  if (!::SystemParametersInfoForDpi(SPI_GETNONCLIENTMETRICS, sizeof(metrics), &metrics, 0, dpi))
+  {
+    // DEFAULT_GUI_FONT is MS Sans Serif, which no dialog has used since Windows XP
+    ::GetObjectW(getFontFromSystem(), sizeof(metrics.lfMessageFont), &metrics.lfMessageFont);
+  }
 
-  return ::CreateFontIndirectW(&fontAttributes);
+  auto font{metrics.lfMessageFont};
+  font.lfHeight = ::MulDiv(font.lfHeight, percent, 100);
+  if (weight != 0) font.lfWeight = weight;
+
+  return ::CreateFontIndirectW(&font);
 }
 
 ::HBRUSH getBrushFromSystem(int name)
@@ -193,6 +214,13 @@ int run()
     if (r == -1)
     {
       return EXIT_FAILURE;
+    }
+
+    // the settings window's keyboard: Tab between its controls, Enter for OK, Esc for Cancel
+    else if (settingsWindowOwner && settingsWindowOwner->settings.hwnd &&
+             ::IsDialogMessageW(settingsWindowOwner->settings.hwnd.get(), &msg))
+    {
+      continue;
     }
 
     else
@@ -361,7 +389,7 @@ void Window::create(const std::string &title)
 
       self->suggested.x = rect->left;
       self->suggested.y = rect->top;
-      self->suggested.width = rect->left - rect->right;
+      self->suggested.width = rect->right - rect->left;
       self->suggested.height = rect->bottom - rect->top;
 
       self->dpi = static_cast<uint32_t>(::GetDpiForWindow(hwnd));
@@ -474,6 +502,13 @@ bool Window::stopTimer(::UINT_PTR timerId)
   return ::KillTimer(hwnd.get(), timerId);
 }
 
+void Control::create(::LPCWSTR className, const std::string &text, ::DWORD style, uintptr_t id,
+                     ::HWND parentHwnd, ::DWORD exStyle)
+{
+  hwnd.reset(::CreateWindowExW(exStyle, className, toUTF16(text).c_str(), WS_CHILD | WS_VISIBLE | style,
+                               0, 0, 0, 0, parentHwnd, (::HMENU)id, getInstance(), nullptr));
+}
+
 void Control::setPosition(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
 {
   position.x = x;
@@ -485,21 +520,27 @@ void Control::setPosition(uint32_t x, uint32_t y, uint32_t width, uint32_t heigh
                  SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
-void Control::refreshFont(double scale)
+void Control::setFont(::HFONT font)
 {
-  font.reset(getScaledFontFromSystem(scale));
-  message.send(hwnd.get(), WM_SETFONT, font.get(), TRUE);
+  message.send(hwnd.get(), WM_SETFONT, font, TRUE);
+}
+
+void Control::setText(const std::string &text)
+{
+  ::SetWindowTextW(hwnd.get(), toUTF16(text).c_str());
+}
+
+void Control::setVisible(bool show)
+{
+  visible = show;
+  ::ShowWindow(hwnd.get(), show ? SW_SHOW : SW_HIDE);
 }
 
 void ComboBox::create(const std::string &name, uintptr_t id, ::HWND parentHwnd)
 {
-  hwnd.reset(::CreateWindowExW(0, WC_COMBOBOXW, toUTF16(name).c_str(),
-                               WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST, 0, 0, 0, 0, parentHwnd,
-                               (::HMENU)id, getInstance(), nullptr));
+  Control::create(WC_COMBOBOXW, name, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, id, parentHwnd);
 
   ::SetWindowSubclass(hwnd.get(), &procedure, id, reinterpret_cast<::DWORD_PTR>(this));
-
-  message.send(hwnd.get(), WM_SETFONT, getFontFromSystem(), TRUE);
 }
 
 void ComboBox::reset()
@@ -562,99 +603,164 @@ std::optional<size_t> ComboBox::selection(size_t containerSize)
   return ::DefSubclassProc(hwnd, msg, wparam, lparam);
 }
 
-void ListBox::create(const std::string &name, uintptr_t id, ::HWND parentHwnd)
+void PortList::create(uintptr_t id, ::HWND parentHwnd)
 {
-  hwnd.reset(::CreateWindowExW(0, WC_LISTBOXW, toUTF16(name).c_str(),
-                               WS_CHILD | WS_VISIBLE | LBS_MULTIPLESEL | LBS_NOTIFY, 0, 0, 0, 0,
-                               parentHwnd, (::HMENU)id, getInstance(), nullptr));
+  Control::create(WC_LISTVIEWW, "",
+                  LVS_REPORT | LVS_NOCOLUMNHEADER | LVS_SINGLESEL | LVS_SHOWSELALWAYS | WS_TABSTOP, id,
+                  parentHwnd, WS_EX_CLIENTEDGE);
 
-  ::SetWindowSubclass(hwnd.get(), &procedure, id, reinterpret_cast<::DWORD_PTR>(this));
+  ListView_SetExtendedListViewStyleEx(hwnd.get(), LVS_EX_CHECKBOXES | LVS_EX_DOUBLEBUFFER,
+                                      LVS_EX_CHECKBOXES | LVS_EX_DOUBLEBUFFER);
 
-  message.send(hwnd.get(), WM_SETFONT, getFontFromSystem(), TRUE);
+  ::LVCOLUMNW column{};
+  column.mask = LVCF_WIDTH;
+  column.cx = 100;
+  ListView_InsertColumn(hwnd.get(), 0, &column);
+
+  empty.create(WC_STATICW, "", SS_LEFT | SS_ENDELLIPSIS | SS_CENTERIMAGE | SS_NOPREFIX,
+               Plugin::Settings::Identifier::Static, parentHwnd, WS_EX_CLIENTEDGE);
 }
 
-void ListBox::reset()
+namespace
 {
-  message.send(hwnd.get(), LB_RESETCONTENT, 0, 0);
+bool contains(const std::vector<std::string> &names, const std::string &name)
+{
+  return std::find(names.begin(), names.end(), name) != names.end();
 }
+}  // namespace
 
-void ListBox::add(const std::string &string)
+void PortList::fill(const std::vector<std::string> &available, const std::vector<std::string> &on,
+                    bool allOn)
 {
-  message.send(hwnd.get(), LB_ADDSTRING, 0, toUTF16(string).c_str());
-}
+  ListView_DeleteAllItems(hwnd.get());
+  rows.clear();
 
-// This is an LBS_MULTIPLESEL listbox, so the single-selection messages don't
-// apply to it: LB_SETCURSEL is documented as having no effect on a multi-select
-// listbox, and LB_GETCURSEL is not the way to read one. Using them meant a
-// restored multi-port MIDI selection could never be shown.
-bool ListBox::set(int index)
-{
-  return message.send(hwnd.get(), LB_SETSEL, TRUE, index) != LB_ERR;
-}
-
-bool ListBox::set(const std::string &searchString)
-{
-  auto index{message.send(hwnd.get(), LB_FINDSTRINGEXACT, -1, toUTF16(searchString).c_str())};
-
-  if (index == LB_ERR) return false;
-
-  return set(static_cast<int>(index));
-}
-
-void ListBox::clearSelection()
-{
-  message.send(hwnd.get(), LB_SETSEL, FALSE, -1);
-}
-
-::LRESULT ListBox::get()
-{
-  return message.send(hwnd.get(), LB_GETCURSEL, 0, 0);
-}
-
-::LRESULT ListBox::getItems(std::vector<int> &buffer)
-{
-  auto count{getItemsCount()};
-
-  // LB_GETSELCOUNT answers LB_ERR (-1) on a single-selection listbox; resizing
-  // to that would be an enormous allocation rather than an empty list.
-  if (count == LB_ERR || count <= 0)
+  auto addRow = [this](const std::string &name, bool connected, bool isOn)
   {
-    buffer.clear();
-    return 0;
-  }
+    auto title{toUTF16(name)};
+    if (!connected) title += L" (not connected)";
 
-  buffer.resize(static_cast<size_t>(count));
+    ::LVITEMW item{};
+    item.mask = LVIF_TEXT;
+    item.iItem = static_cast<int>(rows.size());
+    item.pszText = title.data();
+    ListView_InsertItem(hwnd.get(), &item);
 
-  return message.send(hwnd.get(), LB_GETSELITEMS, count, buffer.data());
+    rows.push_back({name, isOn});
+    setOn(rows.size() - 1, isOn);
+  };
+
+  for (const auto &name : available) addRow(name, true, allOn || contains(on, name));
+  if (!allOn)
+    for (const auto &name : on)
+      if (!contains(available, name)) addRow(name, false, true);
 }
 
-::LRESULT ListBox::getItemsCount()
+bool PortList::isOn(size_t row)
 {
-  return message.send(hwnd.get(), LB_GETSELCOUNT, 0, 0);
+  return ListView_GetCheckState(hwnd.get(), static_cast<int>(row)) != FALSE;
 }
 
-::LRESULT ListBox::getItemHeight()
+void PortList::setOn(size_t row, bool on)
 {
-  return message.send(hwnd.get(), LB_GETITEMHEIGHT, 0, 0);
+  ListView_SetCheckState(hwnd.get(), static_cast<int>(row), on ? TRUE : FALSE);
 }
 
-::LRESULT CALLBACK ListBox::procedure(::HWND hwnd, ::UINT msg, ::WPARAM wparam, ::LPARAM lparam,
-                                      ::UINT_PTR id, ::DWORD_PTR data)
+bool PortList::changed()
 {
-  if (auto self{reinterpret_cast<ComboBox *>(data)}; self)
+  for (size_t i = 0; i < rows.size(); ++i)
+    if (isOn(i) != rows[i].wasOn) return true;
+  return false;
+}
+
+std::vector<std::string> PortList::ticked()
+{
+  std::vector<std::string> names;
+  for (size_t i = 0; i < rows.size(); ++i)
+    if (isOn(i)) names.push_back(rows[i].name);
+  return names;
+}
+
+void PortList::setTheme(bool dark, ::COLORREF background, ::COLORREF text, ::COLORREF frame)
+{
+  ::SetWindowTheme(hwnd.get(), dark ? L"DarkMode_Explorer" : L"Explorer", nullptr);
+  ListView_SetBkColor(hwnd.get(), background);
+  ListView_SetTextBkColor(hwnd.get(), background);
+  ListView_SetTextColor(hwnd.get(), text);
+
+  // turning the checkboxes off and on again makes their images in the new theme, and
+  // loses the ticks, so they are put back
+  std::vector<bool> on;
+  for (size_t i = 0; i < rows.size(); ++i) on.push_back(isOn(i));
+  ListView_SetExtendedListViewStyleEx(hwnd.get(), LVS_EX_CHECKBOXES, 0);
+  ListView_SetExtendedListViewStyleEx(hwnd.get(), LVS_EX_CHECKBOXES, LVS_EX_CHECKBOXES);
+
+  // a list view draws its checkboxes from the light button theme whatever its own, and
+  // the dark button theme has no dark checkbox on windows 10 either, so in the dark the
+  // two images, unticked and ticked, are drawn here
+  if (dark)
   {
-    if (msg == WM_WINDOWPOSCHANGED)
+    const auto dpi{::GetDpiForWindow(hwnd.get())};
+    const int cell{::MulDiv(16, static_cast<int>(dpi), USER_DEFAULT_SCREEN_DPI)};
+    const int box{::MulDiv(13, static_cast<int>(dpi), USER_DEFAULT_SCREEN_DPI)};
+    const int inset{(cell - box) / 2};
+    const int line{std::max(1, ::MulDiv(1, static_cast<int>(dpi), USER_DEFAULT_SCREEN_DPI))};
+
+    auto images{::ImageList_Create(cell, cell, ILC_COLOR32, 2, 0)};
+    auto dc{::GetDC(hwnd.get())};
+    wil::unique_hbrush fill{::CreateSolidBrush(background)};
+    wil::unique_hbrush border{::CreateSolidBrush(frame)};
+    wil::unique_hpen tick{::CreatePen(PS_SOLID, std::max(2, box / 7), text)};
+
+    for (bool ticked : {false, true})
     {
-      auto windowPos{reinterpret_cast<::LPWINDOWPOS>(lparam)};
+      wil::unique_hbitmap bitmap{::CreateCompatibleBitmap(dc, cell, cell)};
+      auto memory{::CreateCompatibleDC(dc)};
+      auto previous{::SelectObject(memory, bitmap.get())};
 
-      self->position.x = windowPos->x;
-      self->position.y = windowPos->y;
-      self->position.width = windowPos->cx;
-      self->position.height = windowPos->cy;
+      ::RECT rect{0, 0, cell, cell};
+      ::FillRect(memory, &rect, fill.get());
+
+      // the box, as a frame line wide
+      ::RECT frameRect{inset, inset, inset + box, inset + box};
+      for (int i = 0; i < line; ++i)
+      {
+        ::FrameRect(memory, &frameRect, border.get());
+        ::InflateRect(&frameRect, -1, -1);
+      }
+
+      if (ticked)
+      {
+        const ::POINT points[]{{inset + box * 22 / 100, inset + box * 52 / 100},
+                               {inset + box * 42 / 100, inset + box * 72 / 100},
+                               {inset + box * 78 / 100, inset + box * 30 / 100}};
+        auto previousPen{::SelectObject(memory, tick.get())};
+        ::Polyline(memory, points, 3);
+        ::SelectObject(memory, previousPen);
+      }
+
+      ::SelectObject(memory, previous);
+      ::DeleteDC(memory);
+      ::ImageList_Add(images, bitmap.get(), nullptr);
     }
+
+    ::ReleaseDC(hwnd.get(), dc);
+
+    // the list owns the new images, and gives back the ones it made itself
+    if (auto old{ListView_SetImageList(hwnd.get(), images, LVSIL_STATE)}; old) ::ImageList_Destroy(old);
   }
 
-  return ::DefSubclassProc(hwnd, msg, wparam, lparam);
+  for (size_t i = 0; i < on.size(); ++i) setOn(i, on[i]);
+
+  ::SetWindowTheme(empty.hwnd.get(), dark ? L"DarkMode_Explorer" : nullptr, nullptr);
+}
+
+uint32_t PortList::rowHeight()
+{
+  // the list answers from its font, and only for a row it has
+  ::RECT rect{};
+  if (rows.empty() || !ListView_GetItemRect(hwnd.get(), 0, &rect, LVIR_BOUNDS)) return 0;
+  return static_cast<uint32_t>(rect.bottom - rect.top);
 }
 
 void SystemMenu::add(std::wstring &name, ::UINT id)
@@ -688,13 +794,6 @@ void SystemMenu::populate(::HWND hwnd)
   }
 }
 
-namespace
-{
-// the plugin window whose settings window the standalone features extension shows;
-// null before it is created and after it is destroyed
-Plugin *settingsWindowOwner{nullptr};
-}  // namespace
-
 bool showSettingsScreen()
 {
   if (!settingsWindowOwner) return false;
@@ -703,14 +802,156 @@ bool showSettingsScreen()
   return true;
 }
 
+namespace
+{
+// the settings window's measures, in device independent pixels; the macos window's, in
+// points, where windows has no convention of its own
+constexpr int windowMargin{20};
+constexpr int headingTop{16};
+constexpr int rowSpacing{8};
+constexpr int columnSpacing{8};
+constexpr int rulePadding{6};
+constexpr int controlWidth{320};
+constexpr int smallControlWidth{120};
+constexpr int buttonHeight{23};
+constexpr int buttonMinWidth{80};
+constexpr int buttonPadding{12};
+constexpr int buttonSpacing{8};
+constexpr int buttonsTop{24};
+constexpr int dropDownHeight{300};
+// port lists show this many rows and scroll the rest
+constexpr size_t visiblePortRows{5};
+
+// whether "auto" means dark: the apps setting in Personalization > Colors
+bool systemPrefersDark()
+{
+  ::DWORD value{1};
+  ::DWORD size{sizeof(value)};
+  if (::RegGetValueW(HKEY_CURRENT_USER,
+                     L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+                     L"AppsUseLightTheme", RRF_RT_REG_DWORD, nullptr, &value, &size) != ERROR_SUCCESS)
+  {
+    return false;
+  }
+  return value == 0;
+}
+
+bool isDark(uint32_t appearance)
+{
+  switch (appearance)
+  {
+    case CLAP_WRAPPER_STANDALONE_APPEARANCE_DARK:
+      return true;
+    case CLAP_WRAPPER_STANDALONE_APPEARANCE_LIGHT:
+      return false;
+    default:
+      return systemPrefersDark();
+  }
+}
+
+Plugin::Palette paletteFor(bool dark)
+{
+  if (dark)
+  {
+    return {true,
+            RGB(32, 32, 32),
+            RGB(255, 255, 255),
+            RGB(160, 160, 160),
+            RGB(255, 153, 164),
+            RGB(255, 159, 10),
+            RGB(70, 70, 70),
+            RGB(43, 43, 43)};
+  }
+
+  return {false,
+          ::GetSysColor(COLOR_BTNFACE),
+          ::GetSysColor(COLOR_BTNTEXT),
+          ::GetSysColor(COLOR_GRAYTEXT),
+          RGB(196, 43, 28),
+          RGB(202, 80, 16),
+          RGB(204, 204, 204),
+          ::GetSysColor(COLOR_WINDOW)};
+}
+
+std::wstring windowText(::HWND hwnd)
+{
+  std::wstring text(static_cast<size_t>(::GetWindowTextLengthW(hwnd)) + 1, L'\0');
+  text.resize(static_cast<size_t>(::GetWindowTextW(hwnd, text.data(), static_cast<int>(text.size()))));
+  return text;
+}
+
+// the size of one line of a control's text, in its font
+::SIZE textExtent(::HFONT font, ::HWND hwnd)
+{
+  const auto text{windowText(hwnd)};
+  ::SIZE size{};
+
+  auto dc{::GetDC(nullptr)};
+  auto previous{::SelectObject(dc, font)};
+  ::GetTextExtentPoint32W(dc, text.empty() ? L"M" : text.c_str(),
+                          text.empty() ? 1 : static_cast<int>(text.size()), &size);
+  if (text.empty()) size.cx = 0;
+  ::SelectObject(dc, previous);
+  ::ReleaseDC(nullptr, dc);
+
+  return size;
+}
+
+// the height a control's text takes, wrapped at that width
+int wrappedHeight(::HFONT font, ::HWND hwnd, int width)
+{
+  auto text{windowText(hwnd)};
+  ::RECT rect{0, 0, width, 0};
+
+  auto dc{::GetDC(nullptr)};
+  auto previous{::SelectObject(dc, font)};
+  ::DrawTextW(dc, text.c_str(), static_cast<int>(text.size()), &rect,
+              DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX);
+  ::SelectObject(dc, previous);
+  ::ReleaseDC(nullptr, dc);
+
+  return rect.bottom - rect.top;
+}
+
+std::string pluginDisplayName(const clap_plugin_t *plugin)
+{
+  if (plugin && plugin->desc && plugin->desc->name && *plugin->desc->name) return plugin->desc->name;
+  return OUTPUT_NAME;
+}
+}  // namespace
+
 void Plugin::showSettings()
 {
-  if (!settings.hwnd) return;
+  if (!settings.hwnd || !sah) return;
 
-  // a new showing: nothing applied in it yet
+  // a new showing: built from what runs now, as macOS builds a new window
   if (!settings.isVisible())
   {
     settingsApplied = false;
+    populateSettings();
+    layoutSettings();
+
+    // centred on the screen the plugin window is on. moving there may change the dpi,
+    // and with it the size, so it is centred again once it has arrived
+    auto centre = [this]()
+    {
+      ::MONITORINFO mi{sizeof(::MONITORINFO)};
+      ::GetMonitorInfoW(::MonitorFromWindow(hwnd.get(), MONITOR_DEFAULTTONEAREST), &mi);
+
+      ::RECT rect{};
+      ::GetWindowRect(settings.hwnd.get(), &rect);
+
+      const auto width{rect.right - rect.left};
+      const auto height{rect.bottom - rect.top};
+      const auto x{mi.rcWork.left + std::max(0L, (mi.rcWork.right - mi.rcWork.left - width) / 2)};
+      const auto y{mi.rcWork.top + std::max(0L, (mi.rcWork.bottom - mi.rcWork.top - height) / 2)};
+
+      ::SetWindowPos(settings.hwnd.get(), nullptr, x, y, 0, 0,
+                     SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOSIZE);
+    };
+    centre();
+    centre();
+
     settings.show();
   }
 
@@ -736,7 +977,6 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
              [this](Message msg)
              {
                menu.add(menu.audioMidiSettings, Menu::Identifier::AudioMidiSettings);
-               menu.addToggle(menu.muteInput, Menu::Identifier::MuteInput);
                menu.addSeparator();
                menu.add(menu.saveState, Menu::Identifier::SaveState);
                menu.add(menu.loadState, Menu::Identifier::LoadState);
@@ -748,24 +988,14 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                return 0;
              });
 
-  settings.message.on(
-      WM_CREATE,
-      [this](Message msg)
-      {
-        settings.setStyle(WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX);
+  settings.message.on(WM_CREATE,
+                      [this](Message msg)
+                      {
+                        settings.setStyle(WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX);
+                        createSettingsControls();
 
-        settings.api.create("API", Settings::Identifier::AudioApi, settings.hwnd.get());
-        settings.output.create("Output", Settings::Identifier::AudioOutput, settings.hwnd.get());
-        settings.input.create("Input", Settings::Identifier::AudioInput, settings.hwnd.get());
-        settings.sampleRate.create("Sample Rate", Settings::Identifier::AudioSamplerate,
-                                   settings.hwnd.get());
-        settings.bufferSize.create("Buffer Size", Settings::Identifier::AudioBuffersize,
-                                   settings.hwnd.get());
-        settings.midiIn.create("MIDI Inputs", Settings::Identifier::MidiInputs, settings.hwnd.get());
-        settings.midiOut.create("MIDI Outputs", Settings::Identifier::MidiOutputs, settings.hwnd.get());
-
-        return 0;
-      });
+                        return 0;
+                      });
 
   message.on(WM_WINDOWPOSCHANGED,
              [this](Message msg)
@@ -822,19 +1052,6 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                return 0;
              });
 
-  settings.message.on(WM_WINDOWPOSCHANGED,
-                      [this](Message msg)
-                      {
-                        auto windowPos{reinterpret_cast<::LPWINDOWPOS>(msg.lparam)};
-
-                        if (windowPos->flags & SWP_SHOWWINDOW)
-                        {
-                          settings.toggleCentered(true);
-                        }
-
-                        return 0;
-                      });
-
   message.on(WM_DPICHANGED,
              [this](Message msg)
              {
@@ -849,7 +1066,19 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
   settings.message.on(WM_DPICHANGED,
                       [this](Message msg)
                       {
-                        refreshLayout();
+                        // the size follows from the layout, so only the suggested position
+                        // is taken, and only from a window the user can see moving
+                        refreshSettingsFonts();
+                        // the list checkboxes are drawn at a size for the dpi
+                        applySettingsAppearance();
+                        layoutSettings();
+
+                        if (settings.isVisible())
+                        {
+                          ::SetWindowPos(settings.hwnd.get(), nullptr, settings.suggested.x,
+                                         settings.suggested.y, 0, 0,
+                                         SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOSIZE);
+                        }
 
                         return 0;
                       });
@@ -863,31 +1092,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                {
                  case Menu::Identifier::AudioMidiSettings:
                  {
-                   settings.isVisible() ? hideSettings() : showSettings();
-
-                   return 0;
-                 }
-
-                 case Menu::Identifier::MuteInput:
-                 {
-                   // The one place the user states input intent, so persist it here.
-                   if (menu.item[1].fState == MFS_UNCHECKED)
-                   {
-                     sah->audioInputUsed = false;
-                     sah->settings.audioInputUsed = false;
-                     menu.item[1].fState = MFS_CHECKED;
-                   }
-                   else
-                   {
-                     sah->audioInputUsed = true;
-                     sah->settings.audioInputUsed = true;
-                     menu.item[1].fState = MFS_UNCHECKED;
-                   }
-
-                   SetMenuItemInfoW(getSystemMenu(hwnd.get()), 1, FALSE, &menu.item[1]);
-
-                   saveSettings();
-                   startAudio();
+                   settings.isVisible() ? cancelSettings() : showSettings();
 
                    return 0;
                  }
@@ -986,181 +1191,193 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                return 0;
              });
 
-  settings.message.on(WM_COMMAND,
+  // nothing here applies anything: the window only shows what OK would open
+  settings.message.on(
+      WM_COMMAND,
+      [this](Message msg)
+      {
+        if (!sah) return 0;
+
+        const auto id{LOWORD(msg.wparam)};
+        const auto code{HIWORD(msg.wparam)};
+
+        switch (id)
+        {
+          // also what Enter and Esc send, through IsDialogMessage
+          case IDOK:
+            okSettings();
+            break;
+
+          case IDCANCEL:
+            cancelSettings();
+            break;
+
+          case Settings::Identifier::ResetToDefault:
+            if (code == BN_CLICKED) resetSettingsToDefault();
+            break;
+
+          case Settings::Identifier::AudioApi:
+            if (code == CBN_SELCHANGE) selectApiInSettings();
+            break;
+
+          case Settings::Identifier::AudioOutput:
+          case Settings::Identifier::AudioInput:
+            if (code == CBN_SELCHANGE)
+            {
+              refreshSampleRates(shownSampleRate());
+              refreshBufferSizes(shownBufferSize());
+              refreshInputNote();
+              refreshDriverPanelButton();
+              layoutSettings();
+            }
+            break;
+
+          case Settings::Identifier::DriverControlPanel:
+            if (code == BN_CLICKED) showDriverControlPanel();
+            break;
+
+          case Settings::Identifier::AudioSamplerate:
+            if (code == CBN_SELCHANGE) refreshBufferSizeTitles();
+            break;
+
+          // a checkbox's own text cannot take the window's colours, so its
+          // label is a separate control that ticks it
+          case Settings::Identifier::VirtualInputLabel:
+          case Settings::Identifier::VirtualOutputLabel:
+            if (code == STN_CLICKED)
+            {
+              auto &check{id == Settings::Identifier::VirtualInputLabel ? settings.virtualIn
+                                                                        : settings.virtualOut};
+              const auto checked{check.message.send(check.hwnd.get(), BM_GETCHECK, 0, 0)};
+              check.message.send(check.hwnd.get(), BM_SETCHECK,
+                                 checked == BST_CHECKED ? BST_UNCHECKED : BST_CHECKED, 0);
+            }
+            break;
+
+          // tried at once, through onScreenAppearanceChanged; kept by OK
+          case Settings::Identifier::Appearance:
+            if (code == CBN_SELCHANGE)
+            {
+              if (auto index{settings.appearance.selection(settings.appearancesShown.size())}; index)
+              {
+                sah->setScreenAppearance(settings.appearancesShown[*index], false);
+              }
+            }
+            break;
+        }
+
+        return 0;
+      });
+
+  // a click on a port's name ticks it, as on its box
+  settings.message.on(
+      WM_NOTIFY,
+      [this](Message msg)
+      {
+        auto header{reinterpret_cast<::LPNMHDR>(msg.lparam)};
+
+        if (header->code == NM_CLICK && (header->idFrom == Settings::Identifier::MidiInputs ||
+                                         header->idFrom == Settings::Identifier::MidiOutputs))
+        {
+          auto &list{header->idFrom == Settings::Identifier::MidiInputs ? settings.midiIn
+                                                                        : settings.midiOut};
+
+          ::LVHITTESTINFO hit{};
+          hit.pt = reinterpret_cast<::LPNMITEMACTIVATE>(msg.lparam)->ptAction;
+
+          if (ListView_HitTest(header->hwndFrom, &hit) >= 0 && (hit.flags & LVHT_ONITEMLABEL) &&
+              static_cast<size_t>(hit.iItem) < list.rows.size())
+          {
+            const auto row{static_cast<size_t>(hit.iItem)};
+            list.setOn(row, !list.isOn(row));
+          }
+        }
+
+        return 0;
+      });
+
+  settings.message.on(DM_GETDEFID,
+                      [](Message) { return static_cast<::LRESULT>(MAKELRESULT(IDOK, DC_HASDEFID)); });
+
+  settings.message.on(
+      WM_CTLCOLORSTATIC,
+      [this](Message msg)
+      {
+        auto dc{reinterpret_cast<::HDC>(msg.wparam)};
+        auto control{reinterpret_cast<::HWND>(msg.lparam)};
+        const auto &palette{settings.palette};
+
+        if (control == settings.midiIn.empty.hwnd.get() || control == settings.midiOut.empty.hwnd.get())
+        {
+          ::SetTextColor(dc, palette.secondary);
+          ::SetBkColor(dc, palette.field);
+          return reinterpret_cast<::LRESULT>(settings.fieldBrush.get());
+        }
+
+        auto color{palette.text};
+        if (control == settings.noRateNote.hwnd.get()) color = palette.critical;
+        if (control == settings.inputNote.hwnd.get())
+          color = settings.inputNoteCaution ? palette.caution : palette.secondary;
+
+        ::SetTextColor(dc, color);
+        ::SetBkColor(dc, palette.background);
+        return reinterpret_cast<::LRESULT>(settings.backgroundBrush.get());
+      });
+
+  settings.message.on(WM_CTLCOLORBTN,
                       [this](Message msg)
                       {
-                        if (!sah) return 0;
+                        ::SetBkColor(reinterpret_cast<::HDC>(msg.wparam), settings.palette.background);
+                        return reinterpret_cast<::LRESULT>(settings.backgroundBrush.get());
+                      });
 
-                        if (HIWORD(msg.wparam) == CBN_SELCHANGE)
-                        {
-                          // Every one of these reads a combo selection and uses it as a vector
-                          // index. CB_GETCURSEL returns -1 when nothing is selected, so each was
-                          // an out-of-bounds read waiting for an empty or freshly-rebuilt combo.
-                          // selection() yields nothing unless the index is real and in range.
-                          if (LOWORD(msg.wparam) == Settings::Identifier::AudioApi)
-                          {
-                            auto apis{sah->getCompiledApi()};
+  // the drop-down lists of the combo boxes
+  settings.message.on(WM_CTLCOLORLISTBOX,
+                      [this](Message msg)
+                      {
+                        auto dc{reinterpret_cast<::HDC>(msg.wparam)};
+                        ::SetTextColor(dc, settings.palette.text);
+                        ::SetBkColor(dc, settings.palette.field);
+                        return reinterpret_cast<::LRESULT>(settings.fieldBrush.get());
+                      });
 
-                            if (auto index{settings.api.selection(apis.size())}; index)
-                            {
-                              selectAudioApi(apis[*index]);
+  settings.message.on(WM_ERASEBKGND,
+                      [this](Message msg)
+                      {
+                        ::RECT rect{};
+                        ::GetClientRect(msg.hwnd, &rect);
+                        ::FillRect(reinterpret_cast<::HDC>(msg.wparam), &rect,
+                                   settings.backgroundBrush.get());
+                        return 1;
+                      });
 
-                              refreshOutputs();
-                              refreshInputs();
+  settings.message.on(WM_PAINT,
+                      [this](Message msg)
+                      {
+                        ::PAINTSTRUCT ps;
+                        ::HDC hdc{::BeginPaint(msg.hwnd, &ps)};
 
-                              settings.output.set(sah->deviceName(sah->audioOutputDeviceID));
-                              settings.input.set(sah->deviceName(sah->audioInputDeviceID));
+                        wil::unique_hbrush rule{::CreateSolidBrush(settings.palette.rule)};
+                        for (const auto &rect : settings.rules) ::FillRect(hdc, &rect, rule.get());
 
-                              refreshSampleRates();
-                              refreshBufferSizes();
-
-                              settings.sampleRate.set(std::to_string(sah->currentSampleRate));
-                              settings.bufferSize.set(std::to_string(sah->currentBufferSize));
-
-                              settingsApplied = true;
-                              saveSettings();
-                              startAudio();
-                            }
-                          }
-
-                          if (LOWORD(msg.wparam) == Settings::Identifier::AudioOutput)
-                          {
-                            auto devices{sah->getOutputAudioDevices()};
-
-                            if (auto index{settings.output.selection(devices.size())}; index)
-                            {
-                              sah->audioOutputDeviceID = devices[*index].ID;
-                              sah->deviceOutputChannels = devices[*index].outputChannels;
-                              sah->audioOutputUsed = true;
-
-                              // Persist the choice here; the device actually
-                              // opened may be a fallback.
-                              sah->settings.outputDeviceName = devices[*index].name;
-                              sah->settings.audioOutputUsed = true;
-
-                              refreshSampleRates();
-                              refreshBufferSizes();
-
-                              settingsApplied = true;
-                              saveSettings();
-                              startAudio();
-                            }
-                          }
-
-                          if (LOWORD(msg.wparam) == Settings::Identifier::AudioInput)
-                          {
-                            auto devices{sah->getInputAudioDevices()};
-
-                            if (auto index{settings.input.selection(devices.size())}; index)
-                            {
-                              sah->audioInputDeviceID = devices[*index].ID;
-                              sah->deviceInputChannels = devices[*index].inputChannels;
-                              sah->audioInputUsed = true;
-
-                              // Picking an input device unmutes it.
-                              sah->settings.inputDeviceName = devices[*index].name;
-                              sah->settings.audioInputUsed = true;
-
-                              refreshSampleRates();
-                              refreshBufferSizes();
-
-                              settingsApplied = true;
-                              saveSettings();
-                              startAudio();
-                            }
-                          }
-
-                          if (LOWORD(msg.wparam) == Settings::Identifier::AudioSamplerate)
-                          {
-                            // This used to take the rate list from the *input* device vector,
-                            // indexed by the input combo - so picking a sample rate read out of
-                            // bounds whenever the current API had no input devices at all, which
-                            // is routine for output-only ASIO drivers. The rates offered are the
-                            // ones the stream can actually run at.
-                            auto sampleRates{sah->getSampleRates()};
-
-                            if (auto index{settings.sampleRate.selection(sampleRates.size())}; index)
-                            {
-                              sah->currentSampleRate = sampleRates[*index];
-                              sah->settings.sampleRate = sampleRates[*index];
-
-                              settingsApplied = true;
-                              saveSettings();
-                              startAudio();
-                            }
-                          }
-
-                          if (LOWORD(msg.wparam) == Settings::Identifier::AudioBuffersize)
-                          {
-                            auto bufferSizes{sah->getBufferSizes()};
-
-                            if (auto index{settings.bufferSize.selection(bufferSizes.size())}; index)
-                            {
-                              sah->currentBufferSize = bufferSizes[*index];
-
-                              settingsApplied = true;
-                              saveSettings();
-                              startAudio();
-                            }
-                          }
-                        }
-
-                        if (HIWORD(msg.wparam) == LBN_SELCHANGE)
-                        {
-                          if (LOWORD(msg.wparam) == Settings::Identifier::MidiInputs)
-                          {
-                            std::vector<int> selected;
-                            settings.midiIn.getItems(selected);
-
-                            auto available{sah->getMidiPortNames()};
-
-                            std::vector<std::string> chosen;
-                            for (auto index : selected)
-                            {
-                              if (index >= 0 && static_cast<size_t>(index) < available.size())
-                              {
-                                chosen.push_back(available[index]);
-                              }
-                            }
-
-                            sah->openMidiPorts(chosen, false);
-
-                            // Record names, not indices: the index of a port changes as devices
-                            // come and go. Once the user has touched the list we stop binding
-                            // everything, so deselecting every port really does mean no MIDI in.
-                            sah->settings.midiBindAllPorts = false;
-                            sah->settings.midiPortNames = chosen;
-
-                            settingsApplied = true;
-                            saveSettings();
-                          }
-
-                          if (LOWORD(msg.wparam) == Settings::Identifier::MidiOutputs)
-                          {
-                            std::vector<int> selected;
-                            settings.midiOut.getItems(selected);
-
-                            auto available{sah->getMidiOutputPortNames()};
-
-                            std::vector<std::string> chosen;
-                            for (auto index : selected)
-                            {
-                              if (index >= 0 && static_cast<size_t>(index) < available.size())
-                              {
-                                chosen.push_back(available[index]);
-                              }
-                            }
-
-                            sah->openMidiOutputPorts(chosen);
-                            sah->settings.midiOutputPortNames = chosen;
-
-                            settingsApplied = true;
-                            saveSettings();
-                          }
-                        }
+                        ::EndPaint(msg.hwnd, &ps);
 
                         return 0;
                       });
+
+  // "auto" follows the system as it changes
+  settings.message.on(
+      WM_SETTINGCHANGE,
+      [this](Message msg)
+      {
+        if (sah && sah->screenAppearance == CLAP_WRAPPER_STANDALONE_APPEARANCE_AUTO && msg.lparam &&
+            ::lstrcmpW(reinterpret_cast<::LPCWSTR>(msg.lparam), L"ImmersiveColorSet") == 0)
+        {
+          applySettingsAppearance();
+        }
+
+        return 0;
+      });
 
   message.on(WM_TIMER,
              [this](Message msg)
@@ -1182,6 +1399,19 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                    // only then lets processing resume - and leaves it stopped if
                    // the plugin refuses to reactivate.
                    sah->activatePlugin(sah->currentSampleRate, 1, sah->currentBufferSize * 2);
+                 }
+
+                 // an asio driver asked for a reset, and rtaudio has closed the stream for
+                 // it: the same setup again, which reads back what the driver now grants.
+                 // not from inside the driver's own control panel call
+                 if (!settings.inDriverPanel && sah->takeDriverReset())
+                 {
+                   startAudio();
+                   if (settings.isVisible())
+                   {
+                     refreshBufferSizes(sah->currentBufferSize);
+                     layoutSettings();
+                   }
                  }
 
                  if (sah->processRequested.exchange(false))
@@ -1210,6 +1440,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                sah->onRequestResize = nullptr;
                sah->displayAudioError = nullptr;
                sah->onShowSettingsScreen = nullptr;
+               sah->onScreenAppearanceChanged = nullptr;
                settingsWindowOwner = nullptr;
 
                if (plugin.gui)
@@ -1254,10 +1485,11 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                return 0;
              });
 
+  // the title bar's close button, which is Cancel
   settings.message.on(WM_CLOSE,
                       [this](Message msg)
                       {
-                        hideSettings();
+                        cancelSettings();
 
                         return 0;
                       });
@@ -1274,50 +1506,22 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                return 0;
              });
 
-  settings.message.on(
-      WM_PAINT,
-      [this](Message msg)
-      {
-        if (!sah) return 0;
-
-        ::PAINTSTRUCT ps;
-        ::HDC hdc{::BeginPaint(msg.hwnd, &ps)};
-
-        ::SetTextColor(hdc, RGB(255, 255, 255));
-        ::SetBkMode(hdc, TRANSPARENT);
-
-        auto font{getScaledFontFromSystem(settings.scale)};
-        ::SelectObject(hdc, font);
-
-        ::TextOutW(hdc, 10, 10, L"API: ", 5);
-        ::TextOutW(hdc, 10, settings.api.position.y + settings.api.position.height + 10, L"Output: ", 8);
-        ::TextOutW(hdc, 10, settings.output.position.y + settings.output.position.height + 10,
-                   L"Input: ", 7);
-        ::TextOutW(hdc, 10, settings.input.position.y + settings.input.position.height + 10,
-                   L"Sample Rate: ", 13);
-        ::TextOutW(hdc, 10, settings.sampleRate.position.y + settings.sampleRate.position.height + 10,
-                   L"Buffer Size: ", 13);
-
-        if (sah->numMidiPorts != 0)
-        {
-          ::TextOutW(hdc, 10, settings.bufferSize.position.y + settings.bufferSize.position.height + 10,
-                     L"MIDI Inputs: ", 13);
-        }
-
-        if (sah->numMidiOutputPorts != 0)
-        {
-          ::TextOutW(hdc, 10, settings.midiOut.position.y, L"MIDI Outputs: ", 14);
-        }
-
-        ::EndPaint(msg.hwnd, &ps);
-
-        return 0;
-      });
-
   create(OUTPUT_NAME);
 
   settings.create("Audio/MIDI Settings");
   settingsWindowOwner = this;
+
+  // a plugin may set the appearance at any time, on an open window too
+  sah->onScreenAppearanceChanged = [this]()
+  {
+    if (!settings.hwnd) return;
+    applySettingsAppearance();
+    if (settings.isVisible())
+    {
+      refreshAppearanceRow();
+      layoutSettings();
+    }
+  };
 
   isTimerRunning = startTimer(timerId, 8);
 
@@ -1340,11 +1544,6 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
     applyDefaultAudio();
     saveSettings();
   }
-
-  // Show what the user chose, not the runtime flag, which is also false when
-  // there is no capture device at all.
-  menu.item[1].fState = sah->settings.audioInputUsed ? MFS_UNCHECKED : MFS_CHECKED;
-  SetMenuItemInfoW(getSystemMenu(hwnd.get()), 1, FALSE, &menu.item[1]);
 
   if (plugin.gui)
   {
@@ -1402,14 +1601,12 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
   };
 
   startMIDI();
-  refreshMIDIInputs();
-  refreshMIDIOutputs();
 
   // Never put the message box up from here. RtAudio calls this from wherever the
-  // failure happened - including from inside the combo-box handler that asked for
-  // the device change, and from its own stream threads. A modal box runs a nested
-  // message loop, so showing one there re-enters the handler that is still on the
-  // stack. Queue the text and let the main loop show it once it is idle.
+  // failure happened - including from inside the handler that asked for the device
+  // change, and from its own stream threads. A modal box runs a nested message
+  // loop, so showing one there re-enters the handler that is still on the stack.
+  // Queue the text and let the main loop show it once it is idle.
   sah->displayAudioError = [this](auto &errorText)
   {
     {
@@ -1440,29 +1637,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                return 0;
              });
 
-  refreshApis();
-  refreshOutputs();
-  refreshInputs();
-  refreshSampleRates();
-  refreshBufferSizes();
-
-  settings.api.set(sah->audioApiDisplayName);
-  // deviceName() looks the id up through the device enumeration. Calling
-  // getDeviceInfo() with an id RtAudio doesn't recognise raises an error through
-  // the error callback, which by this point is wired to a modal message box -
-  // so a perfectly normal launch could greet the user with an error dialog.
-  settings.output.set(sah->deviceName(sah->audioOutputDeviceID));
-  settings.input.set(sah->deviceName(sah->audioInputDeviceID));
-  settings.sampleRate.set(std::to_string(sah->currentSampleRate));
-  settings.bufferSize.set(std::to_string(sah->currentBufferSize));
-
-  refreshLayout();
-
   startAudio();
-
-  // The rate asked for may have been 0 ("device preferred") or unsupported, so the
-  // combo can only show the truth once the stream is open.
-  refreshSampleRates();
 
   // Honor the show state requested by the launcher (shortcut "Run:" / STARTUPINFO),
   // falling back to a normal window. SW_HIDE would otherwise leave us invisible-but-running.
@@ -1482,172 +1657,824 @@ std::optional<clap_gui_resize_hints> Plugin::getResizeHints()
                                                                    : std::nullopt;
 }
 
-void Plugin::refreshLayout()
+void Plugin::createSettingsControls()
 {
-  if (!sah) return;
+  using Id = Settings::Identifier;
+  auto parent{settings.hwnd.get()};
 
-  settings.repaint();
+  // the label column is right-aligned, next to what it names
+  auto label = [parent](Control &control, const char *text)
+  { control.create(WC_STATICW, text, SS_RIGHT | SS_NOPREFIX, Id::Static, parent); };
+  auto note = [parent](Control &control, const char *text)
+  { control.create(WC_STATICW, text, SS_LEFT | SS_NOPREFIX, Id::Static, parent); };
 
-  settings.api.refreshFont(settings.scale);
-  settings.output.refreshFont(settings.scale);
-  settings.input.refreshFont(settings.scale);
-  settings.sampleRate.refreshFont(settings.scale);
-  settings.bufferSize.refreshFont(settings.scale);
-  settings.midiIn.refreshFont(settings.scale);
-  settings.midiOut.refreshFont(settings.scale);
+  // in tab order
+  settings.heading.create(WC_STATICW, "", SS_LEFT | SS_NOPREFIX | SS_ENDELLIPSIS, Id::Static, parent);
 
-  auto x{static_cast<uint32_t>(150 * settings.scale)};
-  auto width{static_cast<uint32_t>(500 * settings.scale)};
-  auto height{settings.api.position.height};
+  label(settings.apiLabel, "Audio API:");
+  settings.api.create("Audio API", Id::AudioApi, parent);
+  label(settings.outputLabel, "Output:");
+  settings.output.create("Output", Id::AudioOutput, parent);
+  label(settings.inputLabel, "Input:");
+  settings.input.create("Input", Id::AudioInput, parent);
+  note(settings.inputNote, "");
+  label(settings.sampleRateLabel, "Sample Rate:");
+  settings.sampleRate.create("Sample Rate", Id::AudioSamplerate, parent);
+  label(settings.bufferSizeLabel, "Buffer Size:");
+  settings.bufferSize.create("Buffer Size", Id::AudioBuffersize, parent);
+  settings.resetToDefault.create(WC_BUTTONW, "Reset to System Default", BS_PUSHBUTTON | WS_TABSTOP,
+                                 Id::ResetToDefault, parent);
+  settings.driverPanel.create(WC_BUTTONW, "ASIO Control Panel...", BS_PUSHBUTTON | WS_TABSTOP,
+                              Id::DriverControlPanel, parent);
+  note(settings.noRateNote, "These devices have no sample rate in common.");
 
-  settings.api.setPosition(x, 10, width - x - 10, height);
+  label(settings.midiInLabel, "MIDI Inputs:");
+  settings.midiIn.create(Id::MidiInputs, parent);
+  settings.virtualIn.create(WC_BUTTONW, "", BS_AUTOCHECKBOX | WS_TABSTOP, Id::VirtualInput, parent);
+  settings.virtualInLabel.create(WC_STATICW, "", SS_LEFT | SS_NOPREFIX | SS_NOTIFY | SS_ENDELLIPSIS,
+                                 Id::VirtualInputLabel, parent);
+  label(settings.midiOutLabel, "MIDI Outputs:");
+  settings.midiOut.create(Id::MidiOutputs, parent);
+  settings.virtualOut.create(WC_BUTTONW, "", BS_AUTOCHECKBOX | WS_TABSTOP, Id::VirtualOutput, parent);
+  settings.virtualOutLabel.create(WC_STATICW, "", SS_LEFT | SS_NOPREFIX | SS_NOTIFY | SS_ENDELLIPSIS,
+                                  Id::VirtualOutputLabel, parent);
 
-  settings.output.setPosition(x, settings.api.position.y + settings.api.position.height + 10,
-                              width - x - 10, height);
+  label(settings.appearanceLabel, "Appearance:");
+  settings.appearance.create("Appearance", Id::Appearance, parent);
 
-  settings.input.setPosition(x, settings.output.position.y + settings.output.position.height + 10,
-                             width - x - 10, height);
+  // OK first: the order windows puts them in
+  settings.ok.create(WC_BUTTONW, "OK", BS_DEFPUSHBUTTON | WS_TABSTOP, IDOK, parent);
+  settings.cancel.create(WC_BUTTONW, "Cancel", BS_PUSHBUTTON | WS_TABSTOP, IDCANCEL, parent);
 
-  settings.sampleRate.setPosition(x, settings.input.position.y + settings.input.position.height + 10,
-                                  width - x - 10, height);
+  refreshSettingsFonts();
+  applySettingsAppearance();
+}
 
-  settings.bufferSize.setPosition(
-      x, settings.sampleRate.position.y + settings.sampleRate.position.height + 10, width - x - 10,
-      height);
+void Plugin::refreshSettingsFonts()
+{
+  settings.font.reset(getMessageFont(settings.dpi));
+  settings.headingFont.reset(getMessageFont(settings.dpi, 115, FW_SEMIBOLD));
 
-  settings.midiIn.setPosition(
-      x, settings.bufferSize.position.y + settings.bufferSize.position.height + 10, width - x - 10,
-      (static_cast<uint32_t>(settings.midiIn.getItemHeight() * sah->numMidiPorts)));
+  for (auto *control : {&settings.apiLabel,
+                        &settings.outputLabel,
+                        &settings.inputLabel,
+                        &settings.sampleRateLabel,
+                        &settings.bufferSizeLabel,
+                        &settings.inputNote,
+                        &settings.noRateNote,
+                        &settings.midiInLabel,
+                        &settings.midiOutLabel,
+                        &settings.virtualInLabel,
+                        &settings.virtualOutLabel,
+                        &settings.appearanceLabel,
+                        &settings.midiIn.empty,
+                        &settings.midiOut.empty,
+                        &settings.resetToDefault,
+                        &settings.driverPanel,
+                        &settings.ok,
+                        &settings.cancel,
+                        &settings.virtualIn,
+                        &settings.virtualOut})
+  {
+    control->setFont(settings.font.get());
+  }
 
-  // an empty list takes no room, and no gap either
-  settings.midiOut.setPosition(
-      x,
-      settings.midiIn.position.y + settings.midiIn.position.height + (sah->numMidiPorts != 0 ? 10 : 0),
-      width - x - 10,
-      (static_cast<uint32_t>(settings.midiOut.getItemHeight() * sah->numMidiOutputPorts)));
+  for (auto *control : {&settings.api, &settings.output, &settings.input, &settings.sampleRate,
+                        &settings.bufferSize, &settings.appearance})
+  {
+    control->setFont(settings.font.get());
+  }
 
-  auto windowHeight{(settings.api.position.height * 5) + (10 * 6)};
-  if (sah->numMidiPorts != 0) windowHeight += settings.midiIn.position.height + 10;
-  if (sah->numMidiOutputPorts != 0) windowHeight += settings.midiOut.position.height + 10;
-  settings.adjustSize(width, windowHeight);
+  settings.midiIn.setFont(settings.font.get());
+  settings.midiOut.setFont(settings.font.get());
+
+  settings.heading.setFont(settings.headingFont.get());
+}
+
+void Plugin::populateSettings()
+{
+  auto &saved{sah->settings};
+
+  settings.apiWhenOpened = sah->audioApi;
+  settings.apiChanged = false;
+  settings.audioOpenedEarly = false;
+  settings.appearanceWhenOpened = sah->screenAppearance;
+
+  settings.heading.setText("Audio/MIDI Setup for " + pluginDisplayName(plugin.plugin));
+
+  refreshApis();
+  // the input is the default's even with no input open, and showing that device would have
+  // OK open it
+  refreshDevices(sah->audioOutputDeviceID, sah->audioInputDeviceID, sah->audioInputUsed);
+  refreshSampleRates(sah->currentSampleRate);
+  refreshBufferSizes(sah->currentBufferSize);
+  refreshInputNote();
+  refreshDriverPanelButton();
+
+  // midi: a direction the plugin has no note port for gets no section at all
+  settings.midiIn.fill(sah->getMidiPortNames(), saved.midiPortNames, saved.midiBindAllPorts);
+  settings.midiOut.fill(sah->getMidiOutputPortNames(), saved.midiOutputPortNames, false);
+  settings.midiIn.empty.setText(" No MIDI inputs found");
+  settings.midiOut.empty.setText(" No MIDI outputs found");
+
+  // offered where the midi api has virtual ports, which winmm does not
+  const bool virtualPorts{StandaloneHost::supportsVirtualMidiPorts()};
+  settings.virtualInWasOn = saved.midiVirtualInput;
+  settings.virtualOutWasOn = saved.midiVirtualOutput;
+  settings.virtualIn.message.send(settings.virtualIn.hwnd.get(), BM_SETCHECK,
+                                  settings.virtualInWasOn ? BST_CHECKED : BST_UNCHECKED, 0);
+  settings.virtualOut.message.send(settings.virtualOut.hwnd.get(), BM_SETCHECK,
+                                   settings.virtualOutWasOn ? BST_CHECKED : BST_UNCHECKED, 0);
+  settings.virtualInLabel.setText("Virtual input \xE2\x80\x9C" + sah->virtualMidiPortName(true) +
+                                  "\xE2\x80\x9D");
+  settings.virtualOutLabel.setText("Virtual output \xE2\x80\x9C" + sah->virtualMidiPortName(false) +
+                                   "\xE2\x80\x9D");
+
+  for (auto *control : {&settings.midiInLabel, &static_cast<Control &>(settings.midiIn)})
+    control->setVisible(takesMidi());
+  for (auto *control : {&settings.virtualIn, &settings.virtualInLabel})
+    control->setVisible(takesMidi() && virtualPorts);
+  for (auto *control : {&settings.midiOutLabel, &static_cast<Control &>(settings.midiOut)})
+    control->setVisible(sendsMidi());
+  for (auto *control : {&settings.virtualOut, &settings.virtualOutLabel})
+    control->setVisible(sendsMidi() && virtualPorts);
+
+  // appearance
+  settings.appearance.reset();
+  settings.appearancesShown.clear();
+  const auto appearances{supportedScreenAppearances()};
+  const std::pair<uint32_t, const char *> appearanceItems[] = {
+      {CLAP_WRAPPER_STANDALONE_APPEARANCE_AUTO, "Auto"},
+      {CLAP_WRAPPER_STANDALONE_APPEARANCE_LIGHT, "Light"},
+      {CLAP_WRAPPER_STANDALONE_APPEARANCE_DARK, "Dark"}};
+  for (const auto &[appearance, title] : appearanceItems)
+  {
+    if (!(appearances & (1u << appearance))) continue;
+    settings.appearance.add(title);
+    settings.appearancesShown.push_back(appearance);
+  }
+  refreshAppearanceRow();
+  applySettingsAppearance();
+}
+
+// the driver's control panel, which asio has: offered while the window shows an asio
+// driver, and usable once there is a driver to show it for
+void Plugin::refreshDriverPanelButton()
+{
+  settings.driverPanel.setVisible(StandaloneHost::hasDriverControlPanel(sah->audioApi));
+  ::EnableWindow(settings.driverPanel.hwnd.get(), shownOutput() ? TRUE : FALSE);
 }
 
 void Plugin::refreshApis()
 {
   settings.api.reset();
+  settings.apisShown = sah->getCompiledApi();
 
-  for (auto &api : sah->getCompiledApi())
+  for (size_t i = 0; i < settings.apisShown.size(); ++i)
   {
-    settings.api.add(RtAudio::getApiDisplayName(api));
+    settings.api.add(RtAudio::getApiDisplayName(settings.apisShown[i]));
+    if (settings.apisShown[i] == sah->audioApi) settings.api.set(static_cast<int>(i));
   }
+
+  // a choice of one is no choice
+  settings.apiLabel.setVisible(settings.apisShown.size() > 1);
+  settings.api.setVisible(settings.apisShown.size() > 1);
 }
 
-void Plugin::refreshOutputs()
+void Plugin::refreshDevices(unsigned int outputId, unsigned int inputId, bool useInput)
 {
+  settings.outDevices = sah->getOutputAudioDevices();
+  settings.inDevices = sah->getInputAudioDevices();
+
   settings.output.reset();
-
-  for (auto &device : sah->getOutputAudioDevices())
+  int selected{settings.outDevices.empty() ? -1 : 0};
+  for (size_t i = 0; i < settings.outDevices.size(); ++i)
   {
-    settings.output.add(device.name);
+    settings.output.add(settings.outDevices[i].name);
+    if (settings.outDevices[i].ID == outputId) selected = static_cast<int>(i);
   }
-}
+  settings.output.set(selected);
 
-void Plugin::refreshInputs()
-{
   settings.input.reset();
-
-  for (auto &device : sah->getInputAudioDevices())
+  settings.input.add("No Input");
+  selected = 0;
+  for (size_t i = 0; i < settings.inDevices.size(); ++i)
   {
-    settings.input.add(device.name);
+    settings.input.add(settings.inDevices[i].name);
+    if (useInput && settings.inDevices[i].ID == inputId) selected = static_cast<int>(i + 1);
   }
+  settings.input.set(selected);
 }
 
-void Plugin::refreshSampleRates()
+std::optional<size_t> Plugin::shownOutput()
+{
+  return settings.output.selection(settings.outDevices.size());
+}
+
+std::optional<size_t> Plugin::shownInput()
+{
+  // "No Input" is the first entry, so the devices are one further down
+  auto index{settings.input.selection(settings.inDevices.size() + 1)};
+  if (!index || *index == 0) return std::nullopt;
+  return *index - 1;
+}
+
+int32_t Plugin::shownSampleRate()
+{
+  auto index{settings.sampleRate.selection(settings.sampleRatesShown.size())};
+  return index ? settings.sampleRatesShown[*index] : 0;
+}
+
+uint32_t Plugin::shownBufferSize()
+{
+  auto index{settings.bufferSize.selection(settings.bufferSizesShown.size())};
+  return index ? settings.bufferSizesShown[*index] : 0;
+}
+
+// the rates the selected devices share: one stream runs both at one rate
+void Plugin::refreshSampleRates(int32_t preferred)
 {
   settings.sampleRate.reset();
+  settings.sampleRatesShown.clear();
 
-  auto sampleRates{sah->getSampleRates()};
-
-  for (auto sampleRate : sampleRates)
+  const auto out{shownOutput()};
+  if (!out)
   {
-    settings.sampleRate.add(std::to_string(sampleRate));
+    // no output device at all: nothing to run a stream on
+    ::EnableWindow(settings.ok.hwnd.get(), FALSE);
+    settings.noRateNote.setVisible(false);
+    return;
   }
 
-  if (!settings.sampleRate.set(std::to_string(sah->currentSampleRate)))
+  std::vector<unsigned int> rates{settings.outDevices[*out].sampleRates};
+  std::sort(rates.begin(), rates.end());
+
+  if (const auto in{shownInput()}; in)
   {
-    settings.sampleRate.set(0);
+    auto inRates{settings.inDevices[*in].sampleRates};
+    std::sort(inRates.begin(), inRates.end());
+
+    std::vector<unsigned int> both;
+    std::set_intersection(rates.begin(), rates.end(), inRates.begin(), inRates.end(),
+                          std::back_inserter(both));
+    rates = both;
   }
+  rates.erase(std::unique(rates.begin(), rates.end()), rates.end());
+
+  int selected{rates.empty() ? -1 : 0};
+  for (size_t i = 0; i < rates.size(); ++i)
+  {
+    settings.sampleRatesShown.push_back(static_cast<int32_t>(rates[i]));
+    settings.sampleRate.add(std::to_string(rates[i]));
+    if (static_cast<int32_t>(rates[i]) == preferred) selected = static_cast<int>(i);
+  }
+  settings.sampleRate.set(selected);
+
+  // no rate in common, nothing to open the two devices at
+  const bool canOpen{!rates.empty()};
+  ::EnableWindow(settings.ok.hwnd.get(), canOpen ? TRUE : FALSE);
+  settings.noRateNote.setVisible(!canOpen);
 }
 
-void Plugin::refreshBufferSizes()
+// the sizes both selected devices accept, from the standalone's list; selects the
+// preferred size, or the largest below it, or the smallest there is
+void Plugin::refreshBufferSizes(uint32_t preferred)
 {
+  const auto out{shownOutput()};
+  const auto in{shownInput()};
+  auto sizes{sah->getBufferSizesFor(out ? settings.outDevices[*out].name : std::string{},
+                                    in ? settings.inDevices[*in].name : std::string{})};
+
+  // the stream may run at a size the list does not have, which the device chose: a
+  // driver fixed at 1024 shows 1024, not the first entry
+  const auto running{sah->currentBufferSize};
+  if (running > 0 && std::find(sizes.begin(), sizes.end(), running) == sizes.end())
+  {
+    sizes.insert(std::upper_bound(sizes.begin(), sizes.end(), running), running);
+  }
+
+  if (preferred == 0) preferred = StandaloneSettings::defaultBufferSize;
+
+  settings.bufferSizesShown = sizes;
+
+  int selected{sizes.empty() ? -1 : 0};
+  for (size_t i = 0; i < sizes.size(); ++i)
+  {
+    if (sizes[i] <= preferred) selected = static_cast<int>(i);
+  }
+
+  refreshBufferSizeTitles();
+  settings.bufferSize.set(selected);
+}
+
+// each size with how long it lasts at the selected rate, "256 (5.8 ms)"
+void Plugin::refreshBufferSizeTitles()
+{
+  const auto selected{settings.bufferSize.get()};
+  const auto rate{shownSampleRate()};
+
   settings.bufferSize.reset();
-
-  auto bufferSizes{sah->getBufferSizes()};
-
-  for (auto bufferSize : bufferSizes)
+  for (auto frames : settings.bufferSizesShown)
   {
-    settings.bufferSize.add(std::to_string(bufferSize));
+    settings.bufferSize.add(
+        rate > 0 ? fmt::format("{} ({:.1f} ms)", frames,
+                               1000.0 * static_cast<double>(frames) / static_cast<double>(rate))
+                 : std::to_string(frames));
   }
-
-  if (!settings.bufferSize.set(std::to_string(sah->currentBufferSize)))
-  {
-    settings.bufferSize.set(0);
-  }
+  settings.bufferSize.set(static_cast<int>(selected));
 }
 
-void Plugin::refreshMIDIInputs()
+// under the input menu, while it matters: that a bluetooth microphone takes its whole
+// device down to telephone quality, or that the default input is a microphone and was not
+// opened
+void Plugin::refreshInputNote()
 {
-  settings.midiIn.reset();
+  std::string text;
+  settings.inputNoteCaution = false;
 
-  auto available{sah->getMidiPortNames()};
-
-  for (const auto &name : available)
+  const auto in{shownInput()};
+  if (in && isBluetoothAudioDevice(settings.inDevices[*in].name))
   {
-    settings.midiIn.add(name);
+    text =
+        "A Bluetooth microphone switches its device to telephone quality, for every application, "
+        "while it is open.";
+    settings.inputNoteCaution = true;
+  }
+  else if (!in && sah->numAudioInputs > 0)
+  {
+    auto [input, output, rate] = sah->getDefaultAudioInOutSampleRate();
+    if (isMicrophoneAudioDevice(sah->deviceName(input)))
+      text = "The default input is a microphone, which is opened only when chosen here.";
   }
 
-  // Show what is actually open. The list used to be populated with nothing
-  // selected while every port was in fact bound, so the UI told the user the
-  // opposite of what was happening.
-  settings.midiIn.clearSelection();
-
-  if (sah->settings.midiBindAllPorts)
-  {
-    for (int index{0}; index < static_cast<int>(available.size()); ++index)
-    {
-      settings.midiIn.set(index);
-    }
-  }
-  else
-  {
-    for (const auto &name : sah->settings.midiPortNames)
-    {
-      settings.midiIn.set(name);
-    }
-  }
+  settings.inputNote.setText(text);
+  settings.inputNote.setVisible(!text.empty());
 }
 
-void Plugin::refreshMIDIOutputs()
+// the window's own appearance menu, offered while the plugin has not set the appearance
+// itself (StandaloneHost::screenAppearanceFromPlugin)
+void Plugin::refreshAppearanceRow()
 {
-  settings.midiOut.reset();
-
-  auto available{sah->getMidiOutputPortNames()};
-
-  for (const auto &name : available)
+  for (size_t i = 0; i < settings.appearancesShown.size(); ++i)
   {
-    settings.midiOut.add(name);
+    if (settings.appearancesShown[i] == sah->screenAppearance)
+      settings.appearance.set(static_cast<int>(i));
   }
 
-  settings.midiOut.clearSelection();
+  const bool shown{settings.appearancesShown.size() > 1 && !sah->screenAppearanceFromPlugin};
+  settings.appearanceLabel.setVisible(shown);
+  settings.appearance.setVisible(shown);
+}
 
-  for (const auto &name : sah->settings.midiOutputPortNames)
+void Plugin::applySettingsAppearance()
+{
+  const bool dark{isDark(sah ? sah->screenAppearance : CLAP_WRAPPER_STANDALONE_APPEARANCE_AUTO)};
+
+  settings.palette = paletteFor(dark);
+  settings.backgroundBrush.reset(::CreateSolidBrush(settings.palette.background));
+  settings.fieldBrush.reset(::CreateSolidBrush(settings.palette.field));
+
+  // the title bar; 20 from Windows 10 20H1, 19 before it
+  ::BOOL useDark{dark ? TRUE : FALSE};
+  if (FAILED(::DwmSetWindowAttribute(settings.hwnd.get(), 20, &useDark, sizeof(useDark))))
   {
-    settings.midiOut.set(name);
+    ::DwmSetWindowAttribute(settings.hwnd.get(), 19, &useDark, sizeof(useDark));
   }
 
-  // listed, so the ports can be seen, but a plugin that sends no midi has nothing for them
-  ::EnableWindow(settings.midiOut.hwnd.get(), sah->createsMidiOutput ? TRUE : FALSE);
+  // a title bar already on screen keeps its colours until its frame is drawn again, which
+  // windows 10 does only on a change of activation
+  if (settings.isVisible())
+  {
+    ::SetWindowPos(settings.hwnd.get(), nullptr, 0, 0, 0, 0,
+                   SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    if (::GetActiveWindow() == settings.hwnd.get())
+    {
+      ::DefWindowProcW(settings.hwnd.get(), WM_NCACTIVATE, FALSE, 0);
+      ::DefWindowProcW(settings.hwnd.get(), WM_NCACTIVATE, TRUE, 0);
+    }
+  }
+
+  for (auto *combo : {&settings.api, &settings.output, &settings.input, &settings.sampleRate,
+                      &settings.bufferSize, &settings.appearance})
+  {
+    ::SetWindowTheme(combo->hwnd.get(), dark ? L"DarkMode_CFD" : nullptr, nullptr);
+  }
+
+  for (auto *button : {&settings.resetToDefault, &settings.driverPanel, &settings.ok, &settings.cancel,
+                       &settings.virtualIn, &settings.virtualOut})
+  {
+    ::SetWindowTheme(button->hwnd.get(), dark ? L"DarkMode_Explorer" : nullptr, nullptr);
+  }
+
+  settings.midiIn.setTheme(dark, settings.palette.field, settings.palette.text,
+                           settings.palette.secondary);
+  settings.midiOut.setTheme(dark, settings.palette.field, settings.palette.text,
+                            settings.palette.secondary);
+
+  ::RedrawWindow(settings.hwnd.get(), nullptr, nullptr,
+                 RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_FRAME);
+}
+
+void Plugin::layoutSettings()
+{
+  const auto dipScale{settings.scale};
+  auto px = [dipScale](double dip) { return static_cast<int>(std::lround(dip * dipScale)); };
+
+  const auto font{settings.font.get()};
+  const auto edge{::GetSystemMetricsForDpi(SM_CYEDGE, settings.dpi)};
+  const auto lineHeight{static_cast<int>(textExtent(font, settings.outputLabel.hwnd.get()).cy)};
+
+  // the label column is as wide as its widest visible label
+  int labelWidth{0};
+  for (auto *label : {&settings.apiLabel, &settings.outputLabel, &settings.inputLabel,
+                      &settings.sampleRateLabel, &settings.bufferSizeLabel, &settings.midiInLabel,
+                      &settings.midiOutLabel, &settings.appearanceLabel})
+  {
+    if (label->visible)
+      labelWidth = std::max(labelWidth, static_cast<int>(textExtent(font, label->hwnd.get()).cx));
+  }
+
+  const int left{px(windowMargin)};
+  const int controlX{left + labelWidth + px(columnSpacing)};
+  const int width{px(controlWidth)};
+  const int right{controlX + width};
+  int y{px(headingTop)};
+
+  settings.rules.clear();
+  auto rule = [&](int padding)
+  {
+    y += padding;
+    settings.rules.push_back({left, y, right, y + std::max(1, px(1))});
+    y += std::max(1, px(1)) + padding;
+  };
+
+  // a label is centred on the line it names
+  auto placeLabel = [&](Control &label, int centreY)
+  { label.setPosition(left, centreY - lineHeight / 2, labelWidth, lineHeight); };
+
+  // a combo box sizes its own closed height from its font; the height given is the drop-down's
+  auto comboRow = [&](Control &label, ComboBox &combo, int comboWidth)
+  {
+    if (!combo.visible) return;
+    ::SetWindowPos(combo.hwnd.get(), nullptr, controlX, y, comboWidth, px(dropDownHeight),
+                   SWP_NOZORDER | SWP_NOACTIVATE);
+    ::RECT rect{};
+    ::GetWindowRect(combo.hwnd.get(), &rect);
+    const int height{rect.bottom - rect.top};
+    placeLabel(label, y + height / 2);
+    y += height + px(rowSpacing);
+  };
+
+  auto noteRow = [&](Control &note)
+  {
+    if (!note.visible) return;
+    const int height{wrappedHeight(font, note.hwnd.get(), width)};
+    note.setPosition(controlX, y, width, height);
+    y += height + px(rowSpacing);
+  };
+
+  auto buttonWidth = [&](Control &button)
+  {
+    return std::max(px(buttonMinWidth),
+                    static_cast<int>(textExtent(font, button.hwnd.get()).cx) + 2 * px(buttonPadding));
+  };
+
+  // a list has no line of its own: its label is centred on its first row
+  auto listRow = [&](Control &label, PortList &list)
+  {
+    if (!list.visible)
+    {
+      list.empty.setVisible(false);
+      return;
+    }
+
+    const bool isEmpty{list.rows.empty()};
+    const int rowHeight{isEmpty ? lineHeight + px(4) : static_cast<int>(list.rowHeight())};
+
+    // a list that scrolls shows half a row more, so that it plainly does
+    const bool scrolls{list.rows.size() > visiblePortRows};
+    const double shownRows{
+        static_cast<double>(std::clamp(list.rows.size(), size_t{1}, visiblePortRows)) +
+        (scrolls ? 0.5 : 0.0)};
+    const int height{static_cast<int>(std::lround(shownRows * rowHeight)) + 4 * edge};
+
+    ::ShowWindow(list.hwnd.get(), isEmpty ? SW_HIDE : SW_SHOW);
+    list.empty.setVisible(isEmpty);
+
+    if (isEmpty)
+    {
+      list.empty.setPosition(controlX, y, width, rowHeight + 4 * edge);
+      placeLabel(label, y + 2 * edge + rowHeight / 2);
+      y += rowHeight + 4 * edge + px(rowSpacing);
+      return;
+    }
+
+    list.setPosition(controlX, y, width, height);
+    ::RECT client{};
+    ::GetClientRect(list.hwnd.get(), &client);
+    ListView_SetColumnWidth(list.hwnd.get(), 0, client.right - client.left);
+
+    placeLabel(label, y + 2 * edge + rowHeight / 2);
+    y += height + px(rowSpacing);
+  };
+
+  auto checkRow = [&](Control &check, Control &label)
+  {
+    if (!check.visible) return;
+    const int box{::GetSystemMetricsForDpi(SM_CXMENUCHECK, settings.dpi)};
+    const int height{std::max(box, lineHeight)};
+    check.setPosition(controlX, y + (height - box) / 2, box, box);
+    label.setPosition(controlX + box + px(4), y + (height - lineHeight) / 2, width - box - px(4),
+                      lineHeight);
+    y += height + px(rowSpacing);
+  };
+
+  // heading
+  const int headingHeight{
+      static_cast<int>(textExtent(settings.headingFont.get(), settings.heading.hwnd.get()).cy)};
+  settings.heading.setPosition(left, y, right - left, headingHeight);
+  y += headingHeight + px(8);
+  rule(0);
+  y += px(16) - std::max(1, px(1));
+
+  // audio
+  comboRow(settings.apiLabel, settings.api, width);
+  comboRow(settings.outputLabel, settings.output, width);
+  comboRow(settings.inputLabel, settings.input, width);
+  noteRow(settings.inputNote);
+  comboRow(settings.sampleRateLabel, settings.sampleRate, px(smallControlWidth));
+  comboRow(settings.bufferSizeLabel, settings.bufferSize, px(smallControlWidth));
+
+  settings.resetToDefault.setPosition(controlX, y, buttonWidth(settings.resetToDefault),
+                                      px(buttonHeight));
+  // the driver's control panel, beside it, while there is one
+  if (settings.driverPanel.visible)
+  {
+    settings.driverPanel.setPosition(controlX + buttonWidth(settings.resetToDefault) + px(buttonSpacing),
+                                     y, buttonWidth(settings.driverPanel), px(buttonHeight));
+  }
+  y += px(buttonHeight) + px(rowSpacing);
+  noteRow(settings.noRateNote);
+
+  // midi
+  if (takesMidi() || sendsMidi())
+  {
+    y -= px(rowSpacing);
+    rule(px(rulePadding) + px(rowSpacing));
+  }
+  listRow(settings.midiInLabel, settings.midiIn);
+  checkRow(settings.virtualIn, settings.virtualInLabel);
+  listRow(settings.midiOutLabel, settings.midiOut);
+  checkRow(settings.virtualOut, settings.virtualOutLabel);
+
+  // appearance
+  if (settings.appearance.visible)
+  {
+    y -= px(rowSpacing);
+    rule(px(rulePadding) + px(rowSpacing));
+  }
+  comboRow(settings.appearanceLabel, settings.appearance, px(smallControlWidth));
+
+  // buttons, OK and Cancel alike wide
+  y += px(buttonsTop) - px(rowSpacing);
+  const int buttons{std::max(buttonWidth(settings.ok), buttonWidth(settings.cancel))};
+  settings.cancel.setPosition(right - buttons, y, buttons, px(buttonHeight));
+  settings.ok.setPosition(right - 2 * buttons - px(buttonSpacing), y, buttons, px(buttonHeight));
+  y += px(buttonHeight) + px(windowMargin);
+
+  settings.adjustSize(right + px(windowMargin), y);
+  settings.repaint();
+}
+
+void Plugin::selectApiInSettings()
+{
+  auto index{settings.api.selection(settings.apisShown.size())};
+  if (!index || settings.apisShown[*index] == sah->audioApi) return;
+
+  // another api's devices can only be listed by switching to it, which stops the stream:
+  // the one thing the window does before OK. OK opens a stream on it, and Cancel goes
+  // back to the api, and the devices, it opened with
+  sah->setAudioApi(settings.apisShown[*index]);
+  settings.apiChanged = true;
+
+  // its default devices; the input stays off if it was, and if the default is a
+  // microphone, which no default opens (isMicrophoneAudioDevice)
+  auto [input, output, rate] = sah->getDefaultAudioInOutSampleRate();
+  refreshDevices(output, input,
+                 shownInput().has_value() && !isMicrophoneAudioDevice(sah->deviceName(input)));
+  refreshSampleRates(rate);
+  refreshBufferSizes(shownBufferSize());
+  refreshInputNote();
+  refreshDriverPanelButton();
+  layoutSettings();
+}
+
+void Plugin::resetSettingsToDefault()
+{
+  auto [input, output, rate] = sah->getDefaultAudioInOutSampleRate();
+
+  // a default never opens a microphone (isMicrophoneAudioDevice), so neither does this:
+  // "No Input", and the note says why
+  refreshDevices(output, input, !isMicrophoneAudioDevice(sah->deviceName(input)));
+  refreshSampleRates(rate);
+  refreshBufferSizes(StandaloneSettings::defaultBufferSize);
+  refreshInputNote();
+  refreshDriverPanelButton();
+  layoutSettings();
+}
+
+// a stream on what the window shows, unless one runs on it already. false, with the
+// previous stream back and the window left up for another choice, if it does not open
+bool Plugin::openShownAudio()
+{
+  const auto out{shownOutput()};
+  const auto in{shownInput()};
+  const bool useOut{out.has_value()};
+  const bool useIn{in.has_value()};
+  const unsigned int outId{useOut ? settings.outDevices[*out].ID : 0};
+  const unsigned int inId{useIn ? settings.inDevices[*in].ID : 0};
+  const uint32_t outChannels{useOut ? settings.outDevices[*out].outputChannels : 0};
+  const uint32_t inChannels{useIn ? settings.inDevices[*in].inputChannels : 0};
+  const auto rate{shownSampleRate()};
+  const auto frames{shownBufferSize()};
+
+  // the stream running now, to go back to if the new one cannot be opened
+  const bool wasRunning{sah->isAudioRunning()};
+  const auto previousIn{sah->audioInputDeviceID};
+  const auto previousOut{sah->audioOutputDeviceID};
+  const bool previousUseIn{sah->audioInputUsed};
+  const bool previousUseOut{sah->audioOutputUsed};
+  const auto previousInChannels{sah->deviceInputChannels};
+  const auto previousOutChannels{sah->deviceOutputChannels};
+  const auto previousRate{sah->currentSampleRate};
+  const auto previousFrames{sah->currentBufferSize};
+
+  // a stream already running on what the window shows is left alone: reopening it, for
+  // a window in which only the midi ports changed, would drop out the audio for nothing
+  const bool audioAsShown{wasRunning && !settings.apiChanged && rate == previousRate &&
+                          (frames == 0 || frames == previousFrames) &&
+                          useOut == (sah->currentOutputChannels > 0) &&
+                          (!useOut || outId == previousOut) &&
+                          useIn == (sah->currentInputChannels > 0) && (!useIn || inId == previousIn)};
+
+  if (!audioAsShown)
+  {
+    // the size to ask for; the stream reads back what the device granted
+    if (frames > 0) sah->currentBufferSize = frames;
+    if (useOut) sah->deviceOutputChannels = outChannels;
+    if (useIn) sah->deviceInputChannels = inChannels;
+
+    sah->startAudioThreadOn(inId, inChannels, useIn, outId, outChannels, useOut, rate);
+
+    if (!sah->isAudioRunning())
+    {
+      // neither kept nor saved, and the window stays up for another choice: the devices
+      // are put back as they were, and the error callback has already told the user why
+      // these did not open
+      sah->currentBufferSize = previousFrames;
+      sah->deviceInputChannels = previousInChannels;
+      sah->deviceOutputChannels = previousOutChannels;
+
+      if (settings.apiChanged)
+      {
+        // the api the window opened with, which the saved settings name, and the window
+        // shown again on it
+        const auto appearanceWhenOpened{settings.appearanceWhenOpened};
+        sah->applyAudioSettings();
+        refreshDeviceChannelCounts();
+        startAudio();
+        settings.audioOpenedEarly = false;
+        populateSettings();
+        settings.appearanceWhenOpened = appearanceWhenOpened;
+        layoutSettings();
+      }
+      else if (wasRunning)
+      {
+        sah->startAudioThreadOn(previousIn, previousInChannels, previousUseIn, previousOut,
+                                previousOutChannels, previousUseOut, previousRate);
+      }
+
+      return false;
+    }
+
+    // the api the window opened with is no longer what runs, whoever opened it
+    if (settings.apiChanged)
+    {
+      settings.apiChanged = false;
+      settings.audioOpenedEarly = true;
+    }
+  }
+
+  return true;
+}
+
+void Plugin::okSettings()
+{
+  if (!sah || !::IsWindowEnabled(settings.ok.hwnd.get())) return;
+  if (!openShownAudio()) return;
+
+  const auto out{shownOutput()};
+  const auto in{shownInput()};
+  const bool useOut{out.has_value()};
+  const bool useIn{in.has_value()};
+
+  // persist the choice: startAudioThread() opens what the file names on the next launch.
+  // only once it has opened, so a combination that cannot run is never what a launch
+  // starts with; and by name, what the user chose, not what was opened, which may be a
+  // fallback (standalone_settings.h)
+  auto &saved{sah->settings};
+  if (useOut) saved.outputDeviceName = settings.outDevices[*out].name;
+  saved.audioOutputUsed = useOut;
+  if (useIn) saved.inputDeviceName = settings.inDevices[*in].name;
+  saved.audioInputUsed = useIn;
+  saved.sampleRate = shownSampleRate();
+
+  // a port list is applied only when it was changed, so that an untouched input list
+  // keeps "every port" if that is what it had
+  if (settings.midiIn.changed())
+  {
+    saved.midiBindAllPorts = false;
+    saved.midiPortNames = settings.midiIn.ticked();
+    sah->openMidiPorts(saved.midiPortNames, false);
+  }
+  if (settings.midiOut.changed())
+  {
+    saved.midiOutputPortNames = settings.midiOut.ticked();
+    sah->openMidiOutputPorts(saved.midiOutputPortNames);
+  }
+
+  // likewise, so that an application connected to a virtual port keeps its connection
+  const bool virtualIn{
+      settings.virtualIn.message.send(settings.virtualIn.hwnd.get(), BM_GETCHECK, 0, 0) == BST_CHECKED};
+  if (virtualIn != settings.virtualInWasOn)
+  {
+    saved.midiVirtualInput = virtualIn;
+    sah->setVirtualMidiInput(virtualIn);
+  }
+  const bool virtualOut{settings.virtualOut.message.send(settings.virtualOut.hwnd.get(), BM_GETCHECK, 0,
+                                                         0) == BST_CHECKED};
+  if (virtualOut != settings.virtualOutWasOn)
+  {
+    saved.midiVirtualOutput = virtualOut;
+    sah->setVirtualMidiOutput(virtualOut);
+  }
+
+  // the window's own choice, never a plugin's (StandaloneHost::screenAppearanceFromPlugin)
+  if (!sah->screenAppearanceFromPlugin) saved.screenAppearance = sah->screenAppearance;
+
+  if (!saveSettings()) log("Unable to save the audio settings; the next launch will not have them");
+
+  settingsApplied = true;
+  hideSettings();
+}
+
+// the driver's own settings, for the driver the window shows. its panel exists only while
+// the driver is open, so a driver not open yet is opened first, on what the window shows;
+// Cancel still goes back to the saved setup
+void Plugin::showDriverControlPanel()
+{
+  if (!sah || !shownOutput()) return;
+  if (!openShownAudio()) return;
+
+  // a driver reset that its panel asks for is taken once the panel has returned: the
+  // driver must not be closed from under its own call
+  settings.inDriverPanel = true;
+  if (!sah->showDriverControlPanel()) log("The audio driver has no control panel to show");
+  settings.inDriverPanel = false;
+}
+
+void Plugin::cancelSettings()
+{
+  if (sah && !settingsApplied)
+  {
+    // an appearance tried in the window and not confirmed with OK goes back
+    if (sah->screenAppearance != settings.appearanceWhenOpened)
+      sah->setScreenAppearance(settings.appearanceWhenOpened, false);
+
+    // a switched api stopped the stream, and the driver's control panel opened one on
+    // what the window showed: back to the saved setup either way
+    if (settings.apiChanged || settings.audioOpenedEarly)
+    {
+      settings.apiChanged = false;
+      settings.audioOpenedEarly = false;
+      sah->applyAudioSettings();
+      refreshDeviceChannelCounts();
+      startAudio();
+    }
+  }
+
+  hideSettings();
+}
+
+// a direction the plugin has no note port for gets no section
+bool Plugin::takesMidi() const
+{
+  return sah && (sah->hasMIDIInput || sah->hasClapNoteInput);
+}
+
+bool Plugin::sendsMidi() const
+{
+  return sah && sah->createsMidiOutput;
 }
 
 bool Plugin::saveSettings()
@@ -1713,9 +2540,11 @@ void Plugin::selectDefaultDevices()
   // RtAudio hands back a default input device id even on a machine with no
   // capture device at all, so take the id only if it names something real.
   // The probe is a fact about the machine, not a choice: AND it with the user's
-  // wish, which survives an API switch, and never persist it.
+  // wish, which survives an API switch, and never persist it. Nor is a default ever
+  // a microphone (isMicrophoneAudioDevice): with nothing chosen, there is no input.
   sah->audioInputDeviceID = input;
-  sah->audioInputUsed = sah->settings.audioInputUsed && sah->isKnownDevice(input);
+  sah->audioInputUsed = sah->settings.audioInputUsed && sah->isKnownDevice(input) &&
+                        !isMicrophoneAudioDevice(sah->deviceName(input));
 
   sah->audioOutputDeviceID = output;
   sah->audioOutputUsed = sah->settings.audioOutputUsed && sah->isKnownDevice(output);
@@ -1737,12 +2566,6 @@ void Plugin::applyDefaultAudio()
   // WASAPI is the backend that is always present and always works on a stock
   // Windows, so it is what a first run gets.
   sah->setAudioApi(RtAudio::Api::WINDOWS_WASAPI);
-  selectDefaultDevices();
-}
-
-void Plugin::selectAudioApi(RtAudio::Api api)
-{
-  sah->setAudioApi(api);
   selectDefaultDevices();
 }
 

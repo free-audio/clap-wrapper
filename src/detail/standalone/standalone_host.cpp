@@ -12,6 +12,8 @@
 #if CLAP_WRAPPER_HAS_WIN32
 #include <Windows.h>
 #include <ShlObj.h>
+#include <mmdeviceapi.h>
+#include <propsys.h>
 #include <string>
 #endif
 #endif
@@ -48,6 +50,121 @@ std::optional<fs::path> getStandaloneSettingsPath()
 std::vector<std::string> preferredFirstRunInputs()
 {
   return {};
+}
+
+#if !(WIN && CLAP_WRAPPER_HAS_WIN32)
+bool isMicrophoneAudioDevice(const std::string &)
+{
+  return false;
+}
+#endif
+
+bool isBluetoothAudioDevice(const std::string &)
+{
+  return false;
+}
+
+std::pair<uint32_t, uint32_t> bufferFrameSizeRange(const std::string &)
+{
+  return {0, 0};
+}
+
+#endif
+
+#if WIN && CLAP_WRAPPER_HAS_WIN32
+namespace
+{
+// PKEY_Device_FriendlyName and PKEY_AudioEndpoint_FormFactor, spelled out: the headers
+// only declare them, and defining them there (INITGUID) would clash with rtaudio's
+const PROPERTYKEY friendlyNameKey{
+    {0xa45c254e, 0xdf1c, 0x4efd, {0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0}}, 14};
+const PROPERTYKEY formFactorKey{
+    {0x1da5d803, 0xd492, 0x4edd, {0x8c, 0x23, 0xe0, 0xc0, 0xff, 0xee, 0x7f, 0x0e}}, 0};
+
+std::wstring toWide(const std::string &text)
+{
+  if (text.empty()) return {};
+  const auto length{
+      ::MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0)};
+  std::wstring wide(static_cast<size_t>(length), L'\0');
+  ::MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), wide.data(), length);
+  return wide;
+}
+
+// the form factor of the active capture endpoint wasapi calls by this name, which is the
+// name rtaudio gives it; false if there is none, as for every asio driver
+bool captureFormFactor(const std::string &name, UINT &formFactor)
+{
+  const auto wanted{toWide(name)};
+  if (wanted.empty()) return false;
+
+  IMMDeviceEnumerator *enumerator{nullptr};
+  if (FAILED(::CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+                                __uuidof(IMMDeviceEnumerator), reinterpret_cast<void **>(&enumerator))))
+    return false;
+
+  bool found{false};
+  IMMDeviceCollection *endpoints{nullptr};
+  if (SUCCEEDED(enumerator->EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE, &endpoints)))
+  {
+    UINT count{0};
+    endpoints->GetCount(&count);
+    for (UINT i = 0; i < count && !found; ++i)
+    {
+      IMMDevice *endpoint{nullptr};
+      IPropertyStore *properties{nullptr};
+      if (SUCCEEDED(endpoints->Item(i, &endpoint)) &&
+          SUCCEEDED(endpoint->OpenPropertyStore(STGM_READ, &properties)))
+      {
+        PROPVARIANT value;
+        ::PropVariantInit(&value);
+        if (SUCCEEDED(properties->GetValue(friendlyNameKey, &value)) && value.vt == VT_LPWSTR &&
+            wanted == value.pwszVal)
+        {
+          PROPVARIANT factor;
+          ::PropVariantInit(&factor);
+          if (SUCCEEDED(properties->GetValue(formFactorKey, &factor)) && factor.vt == VT_UI4)
+          {
+            formFactor = factor.ulVal;
+            found = true;
+          }
+          ::PropVariantClear(&factor);
+        }
+        ::PropVariantClear(&value);
+      }
+      if (properties) properties->Release();
+      if (endpoint) endpoint->Release();
+    }
+    endpoints->Release();
+  }
+  enumerator->Release();
+
+  return found;
+}
+}  // namespace
+
+// a microphone by the form factor windows gives its endpoint, which is what names it
+// "Microphone (...)": a headset's and a phone's count too. that includes inputs of
+// simple usb interfaces that report themselves as one, which a default leaves closed all
+// the same
+bool isMicrophoneAudioDevice(const std::string &name)
+{
+  UINT formFactor{UnknownFormFactor};
+  return captureFormFactor(name, formFactor) &&
+         (formFactor == Microphone || formFactor == Headset || formFactor == Handset);
+}
+
+uint32_t supportedScreenAppearances()
+{
+  // the settings window's own colours, and the dark title bar windows 10 has from 1809
+  return (1u << CLAP_WRAPPER_STANDALONE_APPEARANCE_AUTO) |
+         (1u << CLAP_WRAPPER_STANDALONE_APPEARANCE_LIGHT) |
+         (1u << CLAP_WRAPPER_STANDALONE_APPEARANCE_DARK);
+}
+#elif !MAC
+uint32_t supportedScreenAppearances()
+{
+  return 0;
 }
 #endif
 
@@ -467,7 +584,21 @@ bool StandaloneHost::loadStandaloneSettings()
 
   settingsLoaded = settings.load(*path);
 
+  // a plugin that has already set the appearance, from init() say, keeps it
+  if (settingsLoaded) setScreenAppearance(settings.screenAppearance, false);
+
   return settingsLoaded;
+}
+
+bool StandaloneHost::setScreenAppearance(uint32_t appearance, bool fromPlugin)
+{
+  if (appearance >= 32 || !(supportedScreenAppearances() & (1u << appearance))) return false;
+  if (!fromPlugin && screenAppearanceFromPlugin) return false;
+
+  screenAppearanceFromPlugin = screenAppearanceFromPlugin || fromPlugin;
+  screenAppearance = appearance;
+  if (onScreenAppearanceChanged) onScreenAppearanceChanged();
+  return true;
 }
 
 bool StandaloneHost::saveStandaloneSettings()
@@ -527,6 +658,18 @@ void StandaloneHost::applyAudioSettings()
   // "did we get an id back" is not the question - "is it a real device" is.
   audioOutputUsed = settings.audioOutputUsed && isKnownDevice(audioOutputDeviceID);
   audioInputUsed = settings.audioInputUsed && isKnownDevice(audioInputDeviceID);
+
+  // an input saved by a name that is not here falls back to the system default above, as
+  // does an input saved with no name; neither is the user choosing a microphone
+  if (audioInputUsed)
+  {
+    const auto name{deviceName(audioInputDeviceID)};
+    if (name != settings.inputDeviceName && isMicrophoneAudioDevice(name))
+    {
+      LOGINFO("Not opening '{}': the default input is a microphone, and not the one chosen", name);
+      audioInputUsed = false;
+    }
+  }
 
   currentSampleRate = settings.sampleRate;
 

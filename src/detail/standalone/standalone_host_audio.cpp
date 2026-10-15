@@ -15,9 +15,15 @@
 
 #include <algorithm>
 #include <exception>
+#include <limits>
 
 #include "standalone_host.h"
 #include "entry.h"
+
+#ifdef CLAP_WRAPPER_STANDALONE_ASIO
+// from the asio sdk's asio.h, which rtaudio keeps private; asio.cpp is compiled into it
+long ASIOControlPanel(void);
+#endif
 
 namespace freeaudio::clap_wrapper::standalone
 {
@@ -65,6 +71,15 @@ void rtaErrorCallback(RtAudioErrorType errorType, const std::string &errorText)
 
   auto sh = getStandaloneHost();
 
+  // not an error to show: an asio driver asked for a reset, and the stream closed for it
+  // is opened again (takeDriverReset). a driver that is really gone fails that open, which
+  // is reported then
+  if (errorType == RTAUDIO_DEVICE_DISCONNECT && sh->audioApi == RtAudio::Api::WINDOWS_ASIO)
+  {
+    sh->driverResetRequested = true;
+    return;
+  }
+
   // Everything is logged; deciding what to *show* is a separate question. RtAudio
   // raises errors from device enumeration, not just from opening a stream, and we
   // enumerate constantly while populating a settings panel. On a machine with no
@@ -81,6 +96,38 @@ void rtaErrorCallback(RtAudioErrorType errorType, const std::string &errorText)
     LOGINFO("[ERROR] Surfacing to the user: '{}'", errorText);
     ae(errorText);
   }
+}
+
+bool StandaloneHost::hasDriverControlPanel(RtAudio::Api api)
+{
+#ifdef CLAP_WRAPPER_STANDALONE_ASIO
+  return api == RtAudio::Api::WINDOWS_ASIO;
+#else
+  (void)api;
+  return false;
+#endif
+}
+
+bool StandaloneHost::showDriverControlPanel()
+{
+#ifdef CLAP_WRAPPER_STANDALONE_ASIO
+  // the driver is loaded only while rtaudio has a stream open on it
+  if (!rtaDac || audioApi != RtAudio::Api::WINDOWS_ASIO || !rtaDac->isStreamOpen()) return false;
+  return ASIOControlPanel() == 0;  // ASE_OK
+#else
+  return false;
+#endif
+}
+
+bool StandaloneHost::takeDriverReset()
+{
+  if (!driverResetRequested) return false;
+
+  // rtaudio closes it from its own thread, which may not have got there yet
+  if (rtaDac && rtaDac->isStreamOpen()) return false;
+
+  driverResetRequested = false;
+  return true;
 }
 
 void StandaloneHost::guaranteeRtAudioDAC()
@@ -181,6 +228,14 @@ void StandaloneHost::startAudioThread()
     audioOutputDeviceID = out;
     audioInputUsed = isKnownDevice(in);
     audioOutputUsed = isKnownDevice(out);
+
+    // nor a microphone, which no default opens (isMicrophoneAudioDevice): with no
+    // interface to prefer, this launch runs without an input until one is chosen
+    if (audioInputUsed && isMicrophoneAudioDevice(deviceName(in)))
+    {
+      LOGINFO("Not opening '{}': the default input is a microphone", deviceName(in));
+      audioInputUsed = false;
+    }
     currentSampleRate = sr;
 
     startAudioThreadOn(audioInputDeviceID, deviceInputChannels, audioInputUsed && numAudioInputs > 0,
@@ -344,8 +399,31 @@ std::vector<uint32_t> StandaloneHost::getBufferSizes()
   // to open it, and openStream reports back what it actually granted. So this is
   // a menu of plausible sizes, not a claim about the device. 16 used to head the
   // list and was taken as the Windows first-run default, which is far too small
-  // to run reliably on any backend.
-  std::vector<uint32_t> res{32, 48, 64, 96, 128, 144, 160, 192, 224, 256, 480, 512, 1024, 2048, 4096};
+  // to run reliably on any backend. Powers of two from 32 to 512: what a player
+  // chooses between, from as little latency as the machine manages to a safe 512;
+  // a saved size beyond the last is clamped to it (applyAudioSettings)
+  std::vector<uint32_t> res{32, 64, 128, 256, 512};
+  return res;
+}
+
+std::vector<uint32_t> StandaloneHost::getBufferSizesFor(const std::string &outputName,
+                                                        const std::string &inputName)
+{
+  // rtaudio clamps a size outside a device's range without a word, so none is offered
+  uint32_t lowest{0}, highest{std::numeric_limits<uint32_t>::max()};
+  for (const auto &name : {outputName, inputName})
+  {
+    const auto [min, max] = bufferFrameSizeRange(name);
+    if (max == 0) continue;
+    lowest = std::max(lowest, min);
+    highest = std::min(highest, max);
+  }
+
+  std::vector<uint32_t> res;
+  for (auto size : getBufferSizes())
+  {
+    if (size >= lowest && size <= highest) res.push_back(size);
+  }
   return res;
 }
 

@@ -29,11 +29,13 @@
   devices and midi ports are called endpoints here, to avoid colliding with the
   plugin's own audio-ports and note-ports.
 
-  identity and persistence: audio api ids and endpoint ids are names, never enumeration
-  indices. rtaudio and rtmidi device ids are reshuffled on every boot and on every api
-  switch, so a saved index opens whatever lands in that slot next time; a saved name
-  either resolves to the same device or falls back to the system default. a plugin may
-  keep ids in its own settings and hand them back in a later session.
+  identity and persistence: audio api ids and endpoint ids are opaque strings, never
+  enumeration indices. take them from the listing and hand them back unchanged; do not
+  build or parse them. today they are the device or port names, and a platform may move
+  to a stable identifier of its own (coreaudio's device uid, say) without a new draft, so
+  the standalone keeps accepting the names an earlier session stored. a saved id either
+  resolves to the same device or falls back to the system default. a plugin may keep ids
+  in its own settings and hand them back in a later session.
 
   startup: the standalone creates and init()s the plugin before it opens any audio or
   midi. a request_ made before then (from init(), or from state load) is what the first
@@ -47,6 +49,16 @@
   get_extension under the same id hears when the user is done with that screen, so it
   can, say, unmute an input it muted before showing it. a standalone asks for it once,
   after init().
+
+  draft/4, from draft/3:
+  - the configuration screen's appearance: light, dark, or the system's, set by the plugin
+  - channel selection: which device channels feed and take the plugin's main ports
+    (audio_config/audio_status gain *_first_channel, get_endpoint_channel_name)
+  - audio_status reports the device latencies
+  - count_buffer_sizes takes the devices, like count_sample_rates, and lists only what
+    they accept where the platform can tell
+  - ids are opaque (above)
+  new functions are at the end of the struct. draft/3 is no longer answered.
 */
 
 #ifdef __cplusplus
@@ -55,7 +67,7 @@ extern "C"
 #endif
 
   static const CLAP_CONSTEXPR char CLAP_WRAPPER_STANDALONE_FEATURES[] =
-      "clap-wrapper.standalone-features.draft/3";
+      "clap-wrapper.standalone-features.draft/4";
 
   enum clap_wrapper_standalone_endpoint_kind
   {
@@ -117,6 +129,12 @@ extern "C"
 
     // frames; 0 means the standalone's default
     uint32_t buffer_size;
+
+    // the device channel, 0-based, the plugin's first main input channel is fed from and
+    // its first main output channel is sent to; the plugin's further channels take the
+    // device channels after it. ignored unless supports_channel_selection
+    uint32_t input_first_channel;
+    uint32_t output_first_channel;
   } clap_wrapper_standalone_audio_config_t;
 
   typedef struct clap_wrapper_standalone_audio_status
@@ -140,10 +158,27 @@ extern "C"
     uint32_t input_channels;
     uint32_t output_channels;
 
+    // as in clap_wrapper_standalone_audio_config; 0 when not running
+    uint32_t input_first_channel;
+    uint32_t output_first_channel;
+
+    // frames between the device's converters and the plugin, each way, as the device
+    // reports them, buffer not included. 0 when not running or not known
+    uint32_t input_latency;
+    uint32_t output_latency;
+
     // the error from the most recent open, "" if it succeeded. survives until the
     // next open attempt, so a plugin polling after a request sees why it failed
     char last_error[CLAP_PATH_SIZE];
   } clap_wrapper_standalone_audio_status_t;
+
+  enum clap_wrapper_standalone_appearance
+  {
+    // follow the system's light or dark setting, as it changes
+    CLAP_WRAPPER_STANDALONE_APPEARANCE_AUTO = 0,
+    CLAP_WRAPPER_STANDALONE_APPEARANCE_LIGHT = 1,
+    CLAP_WRAPPER_STANDALONE_APPEARANCE_DARK = 2,
+  };
 
   enum clap_wrapper_standalone_reset_flags
   {
@@ -166,7 +201,9 @@ extern "C"
     bool(CLAP_ABI *supports_audio_midi_configuration_screen)(const clap_host_t *host);
 
     // opens the standalone's audio/midi settings window, or brings it to the front.
-    // non-modal: returns once the window is up, not when the user closes it.
+    // non-modal: returns once the window is up, not when the user closes it. the
+    // window has a midi input section only for a plugin with a note input port, and
+    // a midi output section only for one with a note output port.
     // returns false if unsupported or the window could not be shown
     // [main-thread]
     bool(CLAP_ABI *show_audio_midi_configuration_screen)(const clap_host_t *host);
@@ -216,13 +253,15 @@ extern "C"
     // [main-thread]
     uint32_t(CLAP_ABI *get_sample_rate)(const clap_host_t *host, uint32_t index);
 
-    // the buffer sizes the standalone offers. rtaudio cannot ask a device what it
-    // will accept, so this is a fixed list rather than a device's answer; the
+    // snapshots the buffer sizes, in frames, a stream on these devices could ask for, ids
+    // as in count_sample_rates: the standalone's list, narrowed to the sizes both devices
+    // accept where the platform can tell. a device may still grant another size; the
     // standalone asks for the size and get_audio_status reports what it got
     // [main-thread]
-    uint32_t(CLAP_ABI *count_buffer_sizes)(const clap_host_t *host);
+    uint32_t(CLAP_ABI *count_buffer_sizes)(const clap_host_t *host, const char *output_id,
+                                           const char *input_id);
 
-    // 0 if index is out of range
+    // 0 if index is out of range of the last count_buffer_sizes snapshot
     // [main-thread]
     uint32_t(CLAP_ABI *get_buffer_size)(const clap_host_t *host, uint32_t index);
 
@@ -280,6 +319,38 @@ extern "C"
     // applied after this returns. returns false if no requested flag was supported
     // [main-thread]
     bool(CLAP_ABI *reset_standalone_state)(const clap_host_t *host, uint32_t flags);
+
+    /* -- channels (draft/4) -- */
+
+    // whether request_audio_config honours *_first_channel
+    // [main-thread]
+    bool(CLAP_ABI *supports_channel_selection)(const clap_host_t *host);
+
+    // the name of a channel of an audio endpoint in the last count_endpoints snapshot of
+    // kind, channel 0-based: "Input 3" where the device names none. returns false if
+    // either index is out of range, kind is not an audio kind, or it is unsupported
+    // [main-thread]
+    bool(CLAP_ABI *get_endpoint_channel_name)(const clap_host_t *host, uint32_t kind, uint32_t index,
+                                              uint32_t channel, char name[CLAP_NAME_SIZE]);
+
+    /* -- the configuration screen's appearance (draft/4) -- */
+
+    // bit (1 << appearance) for each clap_wrapper_standalone_appearance the configuration
+    // screen can take; 0 if it cannot be set
+    // [main-thread]
+    uint32_t(CLAP_ABI *supported_configuration_screen_appearances)(const clap_host_t *host);
+
+    // takes effect at once, on an open screen too, and on the standalone's own alerts
+    // where the system lets them be drawn so (macos; windows' message boxes cannot). a
+    // plugin that sets the appearance owns it: the screen offers no choice of its own for
+    // the rest of the session, and the value is not saved - set it again, say from
+    // init(), on every launch. returns false if unsupported
+    // [main-thread]
+    bool(CLAP_ABI *set_configuration_screen_appearance)(const clap_host_t *host, uint32_t appearance);
+
+    // the appearance in effect, whoever chose it
+    // [main-thread]
+    uint32_t(CLAP_ABI *get_configuration_screen_appearance)(const clap_host_t *host);
   } clap_wrapper_standalone_features_t;
 
   // how the user left the audio/midi configuration screen
@@ -289,11 +360,10 @@ extern "C"
     // any other way out of a screen in which nothing was chosen
     CLAP_WRAPPER_STANDALONE_CONFIGURATION_CANCELLED = 0,
 
-    // they applied a configuration: confirmed one, on a screen with an OK button
-    // (macos), or chose one, on a screen that applies each choice as it is made
-    // (windows). get_audio_status says what the stream runs at, or why it does not. on
-    // macos a configuration that does not open is neither kept nor reported - the
-    // screen stays up for another choice - so there this also means it is running
+    // they applied a configuration: confirmed one with the screen's OK button.
+    // get_audio_status says what the stream runs at. a configuration that does not
+    // open is neither kept nor reported - the screen stays up for another choice - so
+    // this also means it is running
     CLAP_WRAPPER_STANDALONE_CONFIGURATION_APPLIED = 1,
   };
 
