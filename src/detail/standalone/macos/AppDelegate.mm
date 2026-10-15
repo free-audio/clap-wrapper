@@ -124,6 +124,11 @@ void applyScreenAppearance(NSWindow *window)
 // (isReleasedWhenClosed), and clears this before that
 static AudioSettingsWindow *openAudioSettings{nil};
 
+// an audio error alert is up. the polling timer and the host go on inside its modal loop,
+// and a stream opened again on a device just plugged back in can stop once more: that is
+// the failure already on screen, and one alert at a time shows it
+static bool showingAudioError{false};
+
 @implementation ClapWrapperAppDelegate
 
 - (void)timerCallback:(NSTimer *)instance
@@ -352,6 +357,8 @@ static AudioSettingsWindow *openAudioSettings{nil};
     NSLog(@"Error Reported: %s", s.c_str());
     NSString *text = [[[NSString alloc] initWithUTF8String:s.c_str()] autorelease];
     dispatch_async(dispatch_get_main_queue(), ^{
+      if (showingAudioError) return;
+      showingAudioError = true;
       @autoreleasepool
       {
         NSAlert *alert = [[NSAlert alloc] init];
@@ -361,6 +368,7 @@ static AudioSettingsWindow *openAudioSettings{nil};
         applyScreenAppearance([alert window]);
         [alert runModal];
       }
+      showingAudioError = false;
     });
   };
 
