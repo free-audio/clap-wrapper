@@ -347,12 +347,20 @@ void StandaloneHost::startMIDIThread()
   // process with exit(EXIT_FAILURE) if constructing the first RtMidiIn threw.
   std::vector<std::string> present, absent;
   savedMidiSelection(true, present, absent);
-  for (const auto &name : absent) LOGINFO("[WARNING] MIDI input '{}' is not available", name);
+  for (const auto &name : absent)
+  {
+    (void)name;  // with logging compiled out
+    LOGINFO("[WARNING] MIDI input '{}' is not available", name);
+  }
   openMidiPorts(present, settings.midiBindAllPorts);
   setVirtualMidiInput(settings.midiVirtualInput);
 
   savedMidiSelection(false, present, absent);
-  for (const auto &name : absent) LOGINFO("[WARNING] MIDI output '{}' is not available", name);
+  for (const auto &name : absent)
+  {
+    (void)name;  // with logging compiled out
+    LOGINFO("[WARNING] MIDI output '{}' is not available", name);
+  }
   openMidiOutputPorts(present);
   setVirtualMidiOutput(settings.midiVirtualOutput);
 }
