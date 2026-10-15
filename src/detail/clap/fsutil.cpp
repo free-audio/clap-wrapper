@@ -109,14 +109,15 @@ std::vector<fs::path> getValidCLAPSearchPaths()
   }
   auto sep = ':';
 
-  if (cp.empty())
+  if (!cp.empty())
   {
     size_t pos;
     while ((pos = cp.find(sep)) != std::string::npos)
     {
       auto item = cp.substr(0, pos);
       cp = cp.substr(pos + 1);
-      res.emplace_back(item);
+      // an empty entry ("a::b", a trailing ':') names no directory, not the current one
+      if (!item.empty()) res.emplace_back(item);
     }
     if (!cp.empty()) res.emplace_back(cp);
   }
