@@ -29,6 +29,65 @@ struct MidiPortRow
   bool wasOn;       // when the window opened
 };
 
+// a stream's setup as the host holds it: what runs, or what a window shows
+struct AudioSetup
+{
+  bool running{false};
+  std::string inputId, outputId;
+  bool useInput{false}, useOutput{false};
+  int32_t rate{0};
+  uint32_t frames{0};
+  sa::AudioChannelChoice inputChannels, outputChannels;
+};
+
+AudioSetup runningSetup()
+{
+  const auto *host{sa::getStandaloneHost()};
+  AudioSetup setup;
+  setup.running = host->isAudioRunning();
+  setup.inputId = host->audioInputDevice;
+  setup.outputId = host->audioOutputDevice;
+  setup.useInput = host->audioInputUsed;
+  setup.useOutput = host->audioOutputUsed;
+  setup.rate = host->currentSampleRate;
+  setup.frames = host->currentBufferSize;
+  setup.inputChannels = {host->deviceInputFirstChannel, host->deviceInputChannels, {}};
+  setup.outputChannels = {host->deviceOutputFirstChannel, host->deviceOutputChannels, {}};
+  return setup;
+}
+
+// whether the stream running now is this one: then opening it again would only drop out
+// the audio
+bool runsAs(const AudioSetup &shown)
+{
+  const auto *host{sa::getStandaloneHost()};
+  const auto now{runningSetup()};
+  return now.running && shown.rate == now.rate && (shown.frames == 0 || shown.frames == now.frames) &&
+         shown.useOutput == (host->currentOutputChannels > 0) &&
+         (!shown.useOutput ||
+          (shown.outputId == now.outputId && shown.outputChannels.first == now.outputChannels.first &&
+           shown.outputChannels.count == now.outputChannels.count)) &&
+         shown.useInput == (host->currentInputChannels > 0) &&
+         (!shown.useInput ||
+          (shown.inputId == now.inputId && shown.inputChannels.first == now.inputChannels.first &&
+           shown.inputChannels.count == now.inputChannels.count));
+}
+
+// opens a stream on this setup; false, with the error already shown, if it does not open
+bool openSetup(const AudioSetup &setup)
+{
+  auto *host{sa::getStandaloneHost()};
+  // the size to ask for; the stream reads back what the device granted
+  if (setup.frames > 0) host->currentBufferSize = setup.frames;
+  host->deviceInputFirstChannel = setup.inputChannels.first;
+  host->deviceInputChannels = std::max<uint32_t>(setup.inputChannels.count, 1);
+  host->deviceOutputFirstChannel = setup.outputChannels.first;
+  host->deviceOutputChannels = std::max<uint32_t>(setup.outputChannels.count, 1);
+  host->startAudioThreadOn(setup.inputId, host->deviceInputChannels, setup.useInput, setup.outputId,
+                           host->deviceOutputChannels, setup.useOutput, setup.rate);
+  return host->isAudioRunning();
+}
+
 // what StandaloneHost::screenAppearance says, on the settings window or on one of the
 // standalone's alerts. nil appearance follows the system
 void applyScreenAppearance(NSWindow *window)
@@ -83,9 +142,14 @@ void applyScreenAppearance(NSWindow *window)
   NSButton *virtualInCheck, *virtualOutCheck;
   bool virtualInWasOn, virtualOutWasOn;
 
-  // OK reopened audio with what the window shows; Cancel and the close button did not
+  // OK saved what the window shows; Cancel and the close button did not
   bool applied;
   bool closeReported;
+
+  // what ran when the window opened, which Cancel and the close button go back to once an
+  // audio menu has opened another stream (audioOpenedHere)
+  AudioSetup audioWhenOpened;
+  bool audioOpenedHere;
 
   // OK is off, and the note says why, while the input and output have no sample rate in
   // common: one stream runs both at one rate, so the devices could not be opened together
@@ -121,6 +185,11 @@ void applyScreenAppearance(NSWindow *window)
 - (void)updateInputNote;
 - (void)updateLatencyNote;
 - (void)applyAppearance;
+- (AudioSetup)shownSetup;
+- (bool)openShownAudio;
+- (void)showRunningSetup;
+- (void)onAudioMenuChanged:(id)sender;
+- (void)onSampleRateChanged:(id)sender;
 
 @end
 
@@ -737,6 +806,8 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
   {
     auto standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
     NSString *pluginName = pluginDisplayName();
+    audioWhenOpened = runningSetup();
+    audioOpenedHere = false;
 
     [self setTitle:@"Audio/MIDI Settings"];
 
@@ -757,9 +828,9 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
     }
     [[sampleRateSelection widthAnchor] constraintEqualToConstant:120].active = YES;
     [[bufferSizeSelection widthAnchor] constraintEqualToConstant:120].active = YES;
-    [sampleRateSelection setAction:@selector(updateBufferSizeTitles)];
+    [sampleRateSelection setAction:@selector(onSampleRateChanged:)];
     [sampleRateSelection setTarget:self];
-    [bufferSizeSelection setAction:@selector(updateLatencyNote)];
+    [bufferSizeSelection setAction:@selector(onAudioMenuChanged:)];
     [bufferSizeSelection setTarget:self];
 
     latencyNote = makeLabel(@"");
@@ -786,7 +857,7 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
     {
       [[menu cell] setLineBreakMode:NSLineBreakByTruncatingTail];
       [[menu widthAnchor] constraintEqualToConstant:controlWidth].active = YES;
-      [menu setAction:@selector(updateLatencyNote)];
+      [menu setAction:@selector(onAudioMenuChanged:)];
       [menu setTarget:self];
     }
     // a mono main input takes one channel, anything else a pair
@@ -988,83 +1059,19 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
 {
   @autoreleasepool
   {
-    std::string outId, inId;
-    bool useOut{false}, useIn{false};
-
-    auto oidx = [outputSelection indexOfSelectedItem];
-    if (oidx >= 0 && (size_t)oidx < outDevices.size())
-    {
-      outId = outDevices[oidx].id;
-      useOut = true;
-    }
-
-    auto iidx = [inputSelection indexOfSelectedItem];
-    if (iidx > 0 && (size_t)iidx <= inDevices.size())
-    {
-      inId = inDevices[iidx - 1].id;
-      useIn = true;
-    }
-
-    const auto sr = [[[sampleRateSelection selectedItem] title] integerValue];
-    const auto frames = static_cast<uint32_t>([[bufferSizeSelection selectedItem] tag]);
-
     auto standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
 
-    // the stream running now, to go back to if the new one cannot be opened
-    const bool wasRunning = standaloneHost->isAudioRunning();
-    const auto previousIn = standaloneHost->audioInputDevice;
-    const auto previousOut = standaloneHost->audioOutputDevice;
-    const bool previousUseIn = standaloneHost->audioInputUsed;
-    const bool previousUseOut = standaloneHost->audioOutputUsed;
-    const auto previousRate = standaloneHost->currentSampleRate;
-    const auto previousFrames = standaloneHost->currentBufferSize;
-    const sa::AudioChannelChoice previousInChannels{
-        standaloneHost->deviceInputFirstChannel, standaloneHost->deviceInputChannels, {}};
-    const sa::AudioChannelChoice previousOutChannels{
-        standaloneHost->deviceOutputFirstChannel, standaloneHost->deviceOutputChannels, {}};
-    const auto inChannels = [self shownChoice:true];
-    const auto outChannels = [self shownChoice:false];
-
-    // a stream already running on what the window shows is left alone: reopening it, for
-    // a window in which only the midi ports changed, would drop out the audio for nothing
-    const bool audioAsShown =
-        wasRunning && (int32_t)sr == previousRate && (frames == 0 || frames == previousFrames) &&
-        useOut == (standaloneHost->currentOutputChannels > 0) &&
-        (!useOut || (outId == previousOut && outChannels.first == previousOutChannels.first &&
-                     outChannels.count == previousOutChannels.count)) &&
-        useIn == (standaloneHost->currentInputChannels > 0) &&
-        (!useIn || (inId == previousIn && inChannels.first == previousInChannels.first &&
-                    inChannels.count == previousInChannels.count));
-
-    if (!audioAsShown)
-    {
-      // the size to ask for; the stream reads back what the device granted
-      if (frames > 0) standaloneHost->currentBufferSize = frames;
-      auto useChannels =
-          [standaloneHost](const sa::AudioChannelChoice &in, const sa::AudioChannelChoice &out)
-      {
-        standaloneHost->deviceInputFirstChannel = in.first;
-        standaloneHost->deviceInputChannels = std::max<uint32_t>(in.count, 1);
-        standaloneHost->deviceOutputFirstChannel = out.first;
-        standaloneHost->deviceOutputChannels = std::max<uint32_t>(out.count, 1);
-      };
-      useChannels(inChannels, outChannels);
-      standaloneHost->startAudioThreadOn(inId, standaloneHost->deviceInputChannels, useIn, outId,
-                                         standaloneHost->deviceOutputChannels, useOut, (int32_t)sr);
-      if (!standaloneHost->isAudioRunning())
-      {
-        // neither kept nor saved, and the window stays up for another choice: the
-        // devices are put back as they were, and the error callback has already told
-        // the user why these did not open
-        standaloneHost->currentBufferSize = previousFrames;
-        useChannels(previousInChannels, previousOutChannels);
-        if (wasRunning)
-          standaloneHost->startAudioThreadOn(previousIn, previousInChannels.count, previousUseIn,
-                                             previousOut, previousOutChannels.count, previousUseOut,
-                                             previousRate);
-        return;
-      }
-    }
+    // every audio menu has opened what it shows already; not when the stream stopped since,
+    // or a choice did not open. one that does not open now keeps the window up
+    const auto shown = [self shownSetup];
+    if (![self openShownAudio]) return;
+    const auto &outId = shown.outputId;
+    const auto &inId = shown.inputId;
+    const bool useOut = shown.useOutput;
+    const bool useIn = shown.useInput;
+    const auto &outChannels = shown.outputChannels;
+    const auto &inChannels = shown.inputChannels;
+    const auto sr = shown.rate;
 
     // persist the choice, per plugin id - startAudioThread() opens what the file names
     // on the next launch, which otherwise falls back to the system default input, a
@@ -1135,6 +1142,7 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
                                                defaultBufferSize];
   [self updateInputNote];
   [self updateBufferSizeTitles];
+  [self openShownAudio];
 }
 
 - (void)close
@@ -1146,6 +1154,27 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
   auto standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
   if (!applied && !closeReported && standaloneHost->screenAppearance != appearanceWhenOpened)
     standaloneHost->setScreenAppearance(appearanceWhenOpened, false);
+
+  // likewise the audio the menus opened: what ran when the window opened runs again. when
+  // nothing ran, the saved settings are tried as a launch tries them, quietly
+  if (!applied && !closeReported && audioOpenedHere)
+  {
+    if (audioWhenOpened.running)
+    {
+      openSetup(audioWhenOpened);
+    }
+    else
+    {
+      standaloneHost->applyAudioSettings();
+      sa::StandaloneHost::SilenceAudioErrors silence(standaloneHost);
+      standaloneHost->startAudioThreadOn(
+          standaloneHost->audioInputDevice, standaloneHost->deviceInputChannels,
+          standaloneHost->audioInputUsed && standaloneHost->numAudioInputs > 0,
+          standaloneHost->audioOutputDevice, standaloneHost->deviceOutputChannels,
+          standaloneHost->audioOutputUsed && standaloneHost->numAudioOutputs > 0,
+          standaloneHost->currentSampleRate);
+    }
+  }
 
   if (!closeReported)
   {
@@ -1178,6 +1207,87 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
                                                title] integerValue])];
   [self resetBufferSizeSelectionPreferring:static_cast<uint32_t>(
                                                [[bufferSizeSelection selectedItem] tag])];
+  [self updateInputNote];
+  [self openShownAudio];
+}
+
+- (void)onSampleRateChanged:(id)sender
+{
+  [self updateBufferSizeTitles];
+  [self openShownAudio];
+}
+
+- (void)onAudioMenuChanged:(id)sender
+{
+  [self openShownAudio];
+}
+
+// the stream the audio menus describe
+- (AudioSetup)shownSetup
+{
+  AudioSetup setup;
+  setup.running = true;
+  const auto oidx = [outputSelection indexOfSelectedItem];
+  if (oidx >= 0 && (size_t)oidx < outDevices.size())
+  {
+    setup.outputId = outDevices[oidx].id;
+    setup.useOutput = true;
+  }
+  const auto iidx = [inputSelection indexOfSelectedItem];
+  if (iidx > 0 && (size_t)iidx <= inDevices.size())
+  {
+    setup.inputId = inDevices[iidx - 1].id;
+    setup.useInput = true;
+  }
+  setup.rate = static_cast<int32_t>([[[sampleRateSelection selectedItem] title] integerValue]);
+  setup.frames = static_cast<uint32_t>([[bufferSizeSelection selectedItem] tag]);
+  setup.outputChannels = [self shownChoice:false];
+  setup.inputChannels = [self shownChoice:true];
+  return setup;
+}
+
+// what the audio menus show, opened at once, so that a choice is heard and the latency
+// beside the buffer size is measured. a choice that does not open has its error shown (by
+// the host), the stream before it opened again, and the menus back on what runs. false
+// then
+- (bool)openShownAudio
+{
+  const auto shown = [self shownSetup];
+  if (runsAs(shown))
+  {
+    [self updateLatencyNote];
+    return true;
+  }
+
+  const auto before = runningSetup();
+  if (openSetup(shown))
+  {
+    audioOpenedHere = true;
+    // the size the device granted, where it is not the one asked for
+    auto standaloneHost = sa::getStandaloneHost();
+    if (shown.frames != standaloneHost->currentBufferSize)
+      [self resetBufferSizeSelectionPreferring:standaloneHost->currentBufferSize];
+    [self updateLatencyNote];
+    return true;
+  }
+
+  if (before.running) openSetup(before);
+  [self showRunningSetup];
+  return false;
+}
+
+// the audio menus on the stream that runs, or on the host's devices when none does
+- (void)showRunningSetup
+{
+  auto standaloneHost = sa::getStandaloneHost();
+  [self fillDeviceMenusSelectingOutput:standaloneHost->audioOutputDevice
+                                 input:standaloneHost->audioInputUsed ? standaloneHost->audioInputDevice
+                                                                      : std::string{}];
+  [self resetChannelSelectionsPreferringOutput:standaloneHost->deviceOutputFirstChannel
+                                         input:standaloneHost->deviceInputFirstChannel];
+  [self resetSampleRateSelectionPreferring:static_cast<uint32_t>(
+                                               std::max(standaloneHost->currentSampleRate, 0))];
+  [self resetBufferSizeSelectionPreferring:standaloneHost->currentBufferSize];
   [self updateInputNote];
 }
 
