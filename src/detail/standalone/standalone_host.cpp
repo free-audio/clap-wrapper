@@ -554,8 +554,7 @@ void StandaloneHost::applyAudioSettings()
   audioOutputDevice = resolveOutputDevice(settings.outputDeviceId, settings.outputDeviceName);
   audioInputDevice = resolveInputDevice(settings.inputDeviceId, settings.inputDeviceName);
 
-  // the channels as saved, where the device has them; a frontend that opens a device at
-  // its full width (windows) sets the counts again itself
+  // the channels as saved, where the device has them
   const auto inChoice{channelChoiceFor(audioInputDevice, true, settings.inputFirstChannel)};
   const auto outChoice{channelChoiceFor(audioOutputDevice, false, settings.outputFirstChannel)};
   deviceInputFirstChannel = inChoice.first;

@@ -1236,6 +1236,8 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
           case Settings::Identifier::AudioInput:
             if (code == CBN_SELCHANGE)
             {
+              // the same channels on the other device, where it has them
+              refreshChannelChoices(shownChannels(false).first, shownChannels(true).first);
               refreshSampleRates(shownSampleRate());
               refreshBufferSizes(shownBufferSize());
               refreshInputNote();
@@ -1694,8 +1696,12 @@ void Plugin::createSettingsControls()
   settings.api.create("Audio API", Id::AudioApi, parent);
   label(settings.outputLabel, "Output:");
   settings.output.create("Output", Id::AudioOutput, parent);
+  label(settings.outputChannelsLabel, "Output Channels:");
+  settings.outputChannels.create("Output Channels", Id::AudioOutputChannels, parent);
   label(settings.inputLabel, "Input:");
   settings.input.create("Input", Id::AudioInput, parent);
+  label(settings.inputChannelsLabel, "Input Channels:");
+  settings.inputChannels.create("Input Channels", Id::AudioInputChannels, parent);
   note(settings.inputNote, "");
   label(settings.sampleRateLabel, "Sample Rate:");
   settings.sampleRate.create("Sample Rate", Id::AudioSamplerate, parent);
@@ -1736,7 +1742,9 @@ void Plugin::refreshSettingsFonts()
 
   for (auto *control : {&settings.apiLabel,
                         &settings.outputLabel,
+                        &settings.outputChannelsLabel,
                         &settings.inputLabel,
+                        &settings.inputChannelsLabel,
                         &settings.sampleRateLabel,
                         &settings.bufferSizeLabel,
                         &settings.inputNote,
@@ -1758,8 +1766,9 @@ void Plugin::refreshSettingsFonts()
     control->setFont(settings.font.get());
   }
 
-  for (auto *control : {&settings.api, &settings.output, &settings.input, &settings.sampleRate,
-                        &settings.bufferSize, &settings.appearance})
+  for (auto *control :
+       {&settings.api, &settings.output, &settings.outputChannels, &settings.input,
+        &settings.inputChannels, &settings.sampleRate, &settings.bufferSize, &settings.appearance})
   {
     control->setFont(settings.font.get());
   }
@@ -1785,6 +1794,10 @@ void Plugin::populateSettings()
   // the input is the default's even with no input open, and showing that device would have
   // OK open it
   refreshDevices(sah->audioOutputDevice, sah->audioInputDevice, sah->audioInputUsed);
+  // a mono main input takes one channel, anything else a pair
+  settings.inputChannelsLabel.setText(sah->mainBusChannels(true) == 1 ? "Input Channel:"
+                                                                      : "Input Channels:");
+  refreshChannelChoices(sah->deviceOutputFirstChannel, sah->deviceInputFirstChannel);
   refreshSampleRates(sah->currentSampleRate);
   refreshBufferSizes(sah->currentBufferSize);
   refreshInputNote();
@@ -1909,9 +1922,12 @@ void Plugin::devicesChanged()
   const auto in{shownInput()};
   const auto rate{shownSampleRate()};
   const auto frames{shownBufferSize()};
+  const auto outFirst{shownChannels(false).first};
+  const auto inFirst{shownChannels(true).first};
 
   refreshDevices(out ? settings.outDevices[*out].id : std::string{},
                  in ? settings.inDevices[*in].id : std::string{}, in.has_value());
+  refreshChannelChoices(outFirst, inFirst);
   refreshSampleRates(rate);
   refreshBufferSizes(frames);
   refreshInputNote();
@@ -1948,6 +1964,46 @@ uint32_t Plugin::shownBufferSize()
 {
   auto index{settings.bufferSize.selection(settings.bufferSizesShown.size())};
   return index ? settings.bufferSizesShown[*index] : 0;
+}
+
+AudioChannelChoice Plugin::shownChannels(bool input)
+{
+  const auto &choices{input ? settings.inChoices : settings.outChoices};
+  auto index{(input ? settings.inputChannels : settings.outputChannels).selection(choices.size())};
+  return index ? choices[*index] : AudioChannelChoice{};
+}
+
+void Plugin::refreshChannelChoices(uint32_t outputFirst, uint32_t inputFirst)
+{
+  auto fill = [](ComboBox &menu, std::vector<AudioChannelChoice> &choices,
+                 std::vector<AudioChannelChoice> from, uint32_t first)
+  {
+    choices = std::move(from);
+    menu.reset();
+    int selected{choices.empty() ? -1 : 0};
+    for (size_t i = 0; i < choices.size(); ++i)
+    {
+      menu.add(choices[i].title);
+      if (choices[i].first == first) selected = static_cast<int>(i);
+    }
+    menu.set(selected);
+    // a choice of one is shown, and is no choice
+    ::EnableWindow(menu.hwnd.get(), choices.size() > 1 ? TRUE : FALSE);
+  };
+
+  const auto out{shownOutput()};
+  const auto in{shownInput()};
+  fill(settings.outputChannels, settings.outChoices,
+       out ? sah->getChannelChoices(settings.outDevices[*out].id, false)
+           : std::vector<AudioChannelChoice>{},
+       outputFirst);
+  fill(settings.inputChannels, settings.inChoices,
+       in ? sah->getChannelChoices(settings.inDevices[*in].id, true) : std::vector<AudioChannelChoice>{},
+       inputFirst);
+
+  const bool inputRow{in.has_value() && sah->numAudioInputs > 0};
+  settings.inputChannelsLabel.setVisible(inputRow);
+  settings.inputChannels.setVisible(inputRow);
 }
 
 // the rates the selected devices share: one stream runs both at one rate
@@ -2114,8 +2170,9 @@ void Plugin::applySettingsAppearance()
     }
   }
 
-  for (auto *combo : {&settings.api, &settings.output, &settings.input, &settings.sampleRate,
-                      &settings.bufferSize, &settings.appearance})
+  for (auto *combo :
+       {&settings.api, &settings.output, &settings.outputChannels, &settings.input,
+        &settings.inputChannels, &settings.sampleRate, &settings.bufferSize, &settings.appearance})
   {
     ::SetWindowTheme(combo->hwnd.get(), dark ? L"DarkMode_CFD" : nullptr, nullptr);
   }
@@ -2146,9 +2203,10 @@ void Plugin::layoutSettings()
 
   // the label column is as wide as its widest visible label
   int labelWidth{0};
-  for (auto *label : {&settings.apiLabel, &settings.outputLabel, &settings.inputLabel,
-                      &settings.sampleRateLabel, &settings.bufferSizeLabel, &settings.midiInLabel,
-                      &settings.midiOutLabel, &settings.appearanceLabel})
+  for (auto *label :
+       {&settings.apiLabel, &settings.outputLabel, &settings.outputChannelsLabel, &settings.inputLabel,
+        &settings.inputChannelsLabel, &settings.sampleRateLabel, &settings.bufferSizeLabel,
+        &settings.midiInLabel, &settings.midiOutLabel, &settings.appearanceLabel})
   {
     if (label->visible)
       labelWidth = std::max(labelWidth, static_cast<int>(textExtent(font, label->hwnd.get()).cx));
@@ -2260,7 +2318,9 @@ void Plugin::layoutSettings()
   // audio
   comboRow(settings.apiLabel, settings.api, width);
   comboRow(settings.outputLabel, settings.output, width);
+  comboRow(settings.outputChannelsLabel, settings.outputChannels, width);
   comboRow(settings.inputLabel, settings.input, width);
+  comboRow(settings.inputChannelsLabel, settings.inputChannels, width);
   noteRow(settings.inputNote);
   comboRow(settings.sampleRateLabel, settings.sampleRate, px(smallControlWidth));
   comboRow(settings.bufferSizeLabel, settings.bufferSize, px(smallControlWidth));
@@ -2322,6 +2382,7 @@ void Plugin::selectApiInSettings()
   auto [input, output, rate] = sah->getDefaultAudioInOutSampleRate();
   const auto openable{sah->defaultInputToOpen()};
   refreshDevices(output, openable, shownInput().has_value() && !openable.empty());
+  refreshChannelChoices(0, 0);
   refreshSampleRates(rate);
   refreshBufferSizes(shownBufferSize());
   refreshInputNote();
@@ -2337,6 +2398,7 @@ void Plugin::resetSettingsToDefault()
   // does this: "No Input", and the note says why
   const auto openable{sah->defaultInputToOpen()};
   refreshDevices(output, openable, !openable.empty());
+  refreshChannelChoices(0, 0);
   refreshSampleRates(rate);
   refreshBufferSizes(StandaloneSettings::defaultBufferSize);
   refreshInputNote();
@@ -2354,8 +2416,8 @@ bool Plugin::openShownAudio()
   const bool useIn{in.has_value()};
   const std::string outId{useOut ? settings.outDevices[*out].id : std::string{}};
   const std::string inId{useIn ? settings.inDevices[*in].id : std::string{}};
-  const uint32_t outChannels{useOut ? settings.outDevices[*out].outputChannels : 0};
-  const uint32_t inChannels{useIn ? settings.inDevices[*in].inputChannels : 0};
+  const auto outChoice{shownChannels(false)};
+  const auto inChoice{shownChannels(true)};
   const auto rate{shownSampleRate()};
   const auto frames{shownBufferSize()};
 
@@ -2365,27 +2427,39 @@ bool Plugin::openShownAudio()
   const auto previousOut{sah->audioOutputDevice};
   const bool previousUseIn{sah->audioInputUsed};
   const bool previousUseOut{sah->audioOutputUsed};
-  const auto previousInChannels{sah->deviceInputChannels};
-  const auto previousOutChannels{sah->deviceOutputChannels};
+  const AudioChannelChoice previousInChannels{
+      sah->deviceInputFirstChannel, sah->deviceInputChannels, {}};
+  const AudioChannelChoice previousOutChannels{
+      sah->deviceOutputFirstChannel, sah->deviceOutputChannels, {}};
   const auto previousRate{sah->currentSampleRate};
   const auto previousFrames{sah->currentBufferSize};
 
   // a stream already running on what the window shows is left alone: reopening it, for
   // a window in which only the midi ports changed, would drop out the audio for nothing
-  const bool audioAsShown{wasRunning && !settings.apiChanged && rate == previousRate &&
-                          (frames == 0 || frames == previousFrames) &&
-                          useOut == (sah->currentOutputChannels > 0) &&
-                          (!useOut || outId == previousOut) &&
-                          useIn == (sah->currentInputChannels > 0) && (!useIn || inId == previousIn)};
+  const bool audioAsShown{
+      wasRunning && !settings.apiChanged && rate == previousRate &&
+      (frames == 0 || frames == previousFrames) && useOut == (sah->currentOutputChannels > 0) &&
+      (!useOut || (outId == previousOut && outChoice.first == previousOutChannels.first &&
+                   outChoice.count == previousOutChannels.count)) &&
+      useIn == (sah->currentInputChannels > 0) &&
+      (!useIn || (inId == previousIn && inChoice.first == previousInChannels.first &&
+                  inChoice.count == previousInChannels.count))};
 
   if (!audioAsShown)
   {
     // the size to ask for; the stream reads back what the device granted
     if (frames > 0) sah->currentBufferSize = frames;
-    if (useOut) sah->deviceOutputChannels = outChannels;
-    if (useIn) sah->deviceInputChannels = inChannels;
+    auto useChannels = [this](const AudioChannelChoice &input, const AudioChannelChoice &output)
+    {
+      sah->deviceInputFirstChannel = input.first;
+      sah->deviceInputChannels = std::max<uint32_t>(input.count, 1);
+      sah->deviceOutputFirstChannel = output.first;
+      sah->deviceOutputChannels = std::max<uint32_t>(output.count, 1);
+    };
+    useChannels(inChoice, outChoice);
 
-    sah->startAudioThreadOn(inId, inChannels, useIn, outId, outChannels, useOut, rate);
+    sah->startAudioThreadOn(inId, sah->deviceInputChannels, useIn, outId, sah->deviceOutputChannels,
+                            useOut, rate);
 
     if (!sah->isAudioRunning())
     {
@@ -2393,8 +2467,7 @@ bool Plugin::openShownAudio()
       // are put back as they were, and the error callback has already told the user why
       // these did not open
       sah->currentBufferSize = previousFrames;
-      sah->deviceInputChannels = previousInChannels;
-      sah->deviceOutputChannels = previousOutChannels;
+      useChannels(previousInChannels, previousOutChannels);
 
       if (settings.apiChanged)
       {
@@ -2402,7 +2475,6 @@ bool Plugin::openShownAudio()
         // shown again on it
         const auto appearanceWhenOpened{settings.appearanceWhenOpened};
         sah->applyAudioSettings();
-        refreshDeviceChannelCounts();
         startAudio();
         settings.audioOpenedEarly = false;
         populateSettings();
@@ -2411,8 +2483,8 @@ bool Plugin::openShownAudio()
       }
       else if (wasRunning)
       {
-        sah->startAudioThreadOn(previousIn, previousInChannels, previousUseIn, previousOut,
-                                previousOutChannels, previousUseOut, previousRate);
+        sah->startAudioThreadOn(previousIn, sah->deviceInputChannels, previousUseIn, previousOut,
+                                sah->deviceOutputChannels, previousUseOut, previousRate);
       }
 
       return false;
@@ -2448,6 +2520,8 @@ void Plugin::okSettings()
                         useIn ? settings.inDevices[*in].id : std::string{});
   saved.audioOutputUsed = useOut;
   saved.audioInputUsed = useIn;
+  if (useOut) saved.outputFirstChannel = shownChannels(false).first + 1;
+  if (useIn) saved.inputFirstChannel = shownChannels(true).first + 1;
   saved.sampleRate = shownSampleRate();
 
   // a port list is applied only when it was changed, so that an untouched input list
@@ -2518,7 +2592,6 @@ void Plugin::cancelSettings()
       settings.apiChanged = false;
       settings.audioOpenedEarly = false;
       sah->applyAudioSettings();
-      refreshDeviceChannelCounts();
       startAudio();
     }
   }
@@ -2573,21 +2646,6 @@ void Plugin::startMIDI()
   sah->startMIDIThread();
 }
 
-void Plugin::refreshDeviceChannelCounts()
-{
-  // How many channels to open the device with. Kept separate from the plugin's
-  // bus totals, which is what totalInput/OutputChannels means in the host.
-  for (const auto &device : sah->getOutputAudioDevices())
-  {
-    if (device.id == sah->audioOutputDevice) sah->deviceOutputChannels = device.outputChannels;
-  }
-
-  for (const auto &device : sah->getInputAudioDevices())
-  {
-    if (device.id == sah->audioInputDevice) sah->deviceInputChannels = device.inputChannels;
-  }
-}
-
 void Plugin::selectDefaultDevices()
 {
   auto [input, output, sampleRate]{sah->getDefaultAudioInOutSampleRate()};
@@ -2613,13 +2671,19 @@ void Plugin::selectDefaultDevices()
   sah->currentSampleRate = sampleRate;
   sah->currentBufferSize = StandaloneSettings::defaultBufferSize;
 
-  refreshDeviceChannelCounts();
+  // each device's first choice of channels for the plugin's main ports
+  const auto inChoice{sah->channelChoiceFor(sah->audioInputDevice, true, 0)};
+  const auto outChoice{sah->channelChoiceFor(sah->audioOutputDevice, false, 0)};
+  sah->deviceInputFirstChannel = inChoice.first;
+  sah->deviceInputChannels = std::max<uint32_t>(inChoice.count, 1);
+  sah->deviceOutputFirstChannel = outChoice.first;
+  sah->deviceOutputChannels = std::max<uint32_t>(outChoice.count, 1);
 }
 
 void Plugin::applyLoadedAudio()
 {
+  // the devices and their channels as saved (StandaloneHost::applyAudioSettings)
   sah->applyAudioSettings();
-  refreshDeviceChannelCounts();
 }
 
 void Plugin::applyDefaultAudio()

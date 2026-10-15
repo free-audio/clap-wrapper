@@ -318,12 +318,17 @@ struct Plugin final : public Window
       VirtualOutput,
       VirtualOutputLabel,
       Appearance,
+      AudioOutputChannels,
+      AudioInputChannels,
       DriverControlPanel,
       Static
     };
 
     Control heading;
     Control apiLabel, outputLabel, inputLabel, sampleRateLabel, bufferSizeLabel;
+    // which of the device's channels the plugin's main ports take
+    Control outputChannelsLabel, inputChannelsLabel;
+    ComboBox outputChannels, inputChannels;
     ComboBox api;
     ComboBox output;
     ComboBox input;
@@ -358,6 +363,7 @@ struct Plugin final : public Window
     // what the window shows, in the order it shows it: what a selection there indexes
     std::vector<standalone::AudioApi> apisShown;
     std::vector<AudioDevice> outDevices, inDevices;  // the input list adds "No Input" first
+    std::vector<AudioChannelChoice> outChoices, inChoices;
     std::vector<int32_t> sampleRatesShown;
     std::vector<uint32_t> bufferSizesShown;
     std::vector<uint32_t> appearancesShown;
@@ -404,6 +410,9 @@ struct Plugin final : public Window
   void refreshSampleRates(int32_t preferred);
   void refreshBufferSizes(uint32_t preferred);
   void refreshBufferSizeTitles();
+  // the channel menus for the shown devices, selecting the choice that starts at these
+  // channels (0-based), or the first; the input's row only while there is an input
+  void refreshChannelChoices(uint32_t outputFirst, uint32_t inputFirst);
   void refreshInputNote();
   void refreshAppearanceRow();
   void applySettingsAppearance();
@@ -420,6 +429,8 @@ struct Plugin final : public Window
   std::optional<size_t> shownInput();
   int32_t shownSampleRate();
   uint32_t shownBufferSize();
+  // the channels a channel menu shows; {0, 0} with none
+  AudioChannelChoice shownChannels(bool input);
 
   // the plugin has a note port in that direction; the window has no section without one
   bool takesMidi() const;
@@ -438,7 +449,6 @@ struct Plugin final : public Window
 
   // Take the current API's default devices; clears the persisted device names.
   void selectDefaultDevices();
-  void refreshDeviceChannelCounts();
 
   void startAudio();
 
