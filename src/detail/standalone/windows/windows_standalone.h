@@ -430,6 +430,9 @@ struct Plugin final : public Window
   void refreshDriverPanelButton();
   void showDriverControlPanel();
   bool openShownAudio();
+  // a menu changed: what the window shows is opened at once, or the menus go back to
+  // what runs
+  void applyShownAudio();
   void okSettings();
   void cancelSettings();
 

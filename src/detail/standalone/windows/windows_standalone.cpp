@@ -1207,7 +1207,8 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                return 0;
              });
 
-  // nothing here applies anything: the window only shows what OK would open
+  // audio is applied as it is chosen (applyShownAudio), MIDI and the rest only by OK;
+  // Cancel goes back to the saved setup
   settings.message.on(
       WM_COMMAND,
       [this](Message msg)
@@ -1246,7 +1247,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
               refreshBufferSizes(shownBufferSize());
               refreshInputNote();
               refreshDriverPanelButton();
-              layoutSettings();
+              applyShownAudio();
             }
             break;
 
@@ -1258,14 +1259,14 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
             if (code == CBN_SELCHANGE)
             {
               refreshBufferSizeTitles();
-              refreshLatencyNote();
+              applyShownAudio();
             }
             break;
 
           case Settings::Identifier::AudioBuffersize:
           case Settings::Identifier::AudioOutputChannels:
           case Settings::Identifier::AudioInputChannels:
-            if (code == CBN_SELCHANGE) refreshLatencyNote();
+            if (code == CBN_SELCHANGE) applyShownAudio();
             break;
 
           // a checkbox's own text cannot take the window's colours, so its
@@ -1438,6 +1439,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                  // shown again. a moment is not enough: a device just plugged back in
                  // often stops the stream reopened on it once more
                  const auto now{std::chrono::steady_clock::now()};
+                 const bool wasRunning{audioRunningSince.has_value()};
                  if (!sah->isAudioRunning())
                  {
                    audioRunningSince.reset();
@@ -1451,6 +1453,11 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                    std::lock_guard<std::mutex> guard(pendingErrorLock);
                    lastShownError.clear();
                  }
+
+                 // a stream that stopped or opened again while the window is up: the
+                 // latency beside the buffer size is that stream's, or none
+                 if (settings.isVisible() && wasRunning != audioRunningSince.has_value())
+                   layoutSettings();
 
                  // an asio driver asked for a reset, and rtaudio has closed the stream for
                  // it: the same setup again, which reads back what the driver now grants.
@@ -2492,7 +2499,7 @@ void Plugin::selectApiInSettings()
   refreshBufferSizes(shownBufferSize());
   refreshInputNote();
   refreshDriverPanelButton();
-  layoutSettings();
+  applyShownAudio();
 }
 
 void Plugin::resetSettingsToDefault()
@@ -2508,7 +2515,7 @@ void Plugin::resetSettingsToDefault()
   refreshBufferSizes(StandaloneSettings::defaultBufferSize);
   refreshInputNote();
   refreshDriverPanelButton();
-  layoutSettings();
+  applyShownAudio();
 }
 
 // a stream on what the window shows, unless one runs on it already. false, with the
@@ -2595,15 +2602,37 @@ bool Plugin::openShownAudio()
       return false;
     }
 
-    // the api the window opened with is no longer what runs, whoever opened it
-    if (settings.apiChanged)
-    {
-      settings.apiChanged = false;
-      settings.audioOpenedEarly = true;
-    }
+    // what runs is no longer the saved setup, which Cancel goes back to; the api the
+    // window opened with no longer runs either, whoever opened it
+    settings.apiChanged = false;
+    settings.audioOpenedEarly = true;
   }
 
   return true;
+}
+
+void Plugin::applyShownAudio()
+{
+  // nothing to open: no output, or devices without a rate in common, which OK refuses too
+  if (shownOutput() && ::IsWindowEnabled(settings.ok.hwnd.get()))
+  {
+    if (openShownAudio())
+    {
+      // the size the device granted, which a driver may have chosen itself
+      refreshBufferSizes(sah->currentBufferSize);
+    }
+    else
+    {
+      // the error box has said why; the menus show what runs again
+      refreshDevices(sah->audioOutputDevice, sah->audioInputDevice, sah->audioInputUsed);
+      refreshChannelChoices(sah->deviceOutputFirstChannel, sah->deviceInputFirstChannel);
+      refreshSampleRates(sah->currentSampleRate);
+      refreshBufferSizes(sah->currentBufferSize);
+      refreshInputNote();
+      refreshDriverPanelButton();
+    }
+  }
+  layoutSettings();
 }
 
 void Plugin::okSettings()

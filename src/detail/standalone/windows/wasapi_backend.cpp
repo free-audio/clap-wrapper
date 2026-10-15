@@ -53,7 +53,9 @@ const GUID subtypeFloat{0x00000003, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x0
 
 constexpr REFERENCE_TIME hnsPerSecond{10'000'000};
 
-// the largest buffer offered: the engine's periods are 10 ms, a bigger buffer is ours
+// the buffer sizes offered: the engine's periods are 10 ms, a smaller block is cut from
+// one and a bigger one is buffered here
+constexpr uint32_t minBufferFrames{16};
 constexpr uint32_t maxBufferFrames{4096};
 
 template <typename T>
@@ -733,21 +735,11 @@ class WasapiBackend final : public AudioBackend
                              device.sampleRates.end());
     device.sampleRateSettable = true;
 
-    // the smallest buffer that makes the engine call sooner: IAudioClient3's smallest
-    // period where the driver has small ones, else the engine's period. anything larger
-    // is buffered here, up to maxBufferFrames
-    REFERENCE_TIME defaultPeriod{0}, minimumPeriod{0};
-    client->GetDevicePeriod(&defaultPeriod, &minimumPeriod);
-    device.minBufferFrames = framesOf(defaultPeriod, mix->nSamplesPerSec);
-    ComPtr<IAudioClient3> client3;
-    if (SUCCEEDED(endpoint->Activate(__uuidof(IAudioClient3), CLSCTX_ALL, nullptr, client3.putVoid())))
-    {
-      UINT32 standard{0}, fundamental{0}, minimum{0}, maximum{0};
-      if (SUCCEEDED(
-              client3->GetSharedModeEnginePeriod(mix, &standard, &fundamental, &minimum, &maximum)) &&
-          minimum > 0)
-        device.minBufferFrames = std::min(device.minBufferFrames, static_cast<uint32_t>(minimum));
-    }
+    // any size runs: one smaller than the engine's period is cut from it, one larger is
+    // buffered here, up to maxBufferFrames. a smaller block still shortens the way out a
+    // little (the buffer is kept filled to within one block), so the sizes below the
+    // period are offered too
+    device.minBufferFrames = minBufferFrames;
     device.maxBufferFrames = std::max(device.minBufferFrames, maxBufferFrames);
     ::CoTaskMemFree(mix);
     return true;
