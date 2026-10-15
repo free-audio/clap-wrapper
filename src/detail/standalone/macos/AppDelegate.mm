@@ -344,18 +344,24 @@ static AudioSettingsWindow *openAudioSettings{nil};
     ui->show(p);
   }
 
+  // shown from a turn of the run loop of its own: the host reports from inside its own
+  // calls, and from the timer that polls for a device coming back, which a modal alert run
+  // there would hold up until it is dismissed
   freeaudio::clap_wrapper::standalone::getStandaloneHost()->displayAudioError = [](auto &s)
   {
     NSLog(@"Error Reported: %s", s.c_str());
-    @autoreleasepool
-    {
-      NSAlert *alert = [[NSAlert alloc] init];
-      [alert setMessageText:@"Unable to configure audio"];
-      [alert setInformativeText:[[NSString alloc] initWithUTF8String:s.c_str()]];
-      [alert addButtonWithTitle:@"OK"];
-      applyScreenAppearance([alert window]);
-      [alert runModal];
-    }
+    NSString *text = [[[NSString alloc] initWithUTF8String:s.c_str()] autorelease];
+    dispatch_async(dispatch_get_main_queue(), ^{
+      @autoreleasepool
+      {
+        NSAlert *alert = [[NSAlert alloc] init];
+        [alert setMessageText:@"Unable to configure audio"];
+        [alert setInformativeText:text];
+        [alert addButtonWithTitle:@"OK"];
+        applyScreenAppearance([alert window]);
+        [alert runModal];
+      }
+    });
   };
 
   // the settings window, while it is open, follows devices and ports coming and going

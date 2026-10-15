@@ -605,9 +605,10 @@ class CoreAudioBackend final : public AudioBackend
     return opened;
   }
 
+  // not once the stream has stopped on its own: no process() call is coming then
   bool isRunning() const override
   {
-    return started;
+    return started && enabled;
   }
 
  private:
@@ -906,19 +907,23 @@ class CoreAudioBackend final : public AudioBackend
     {
       if (device == kAudioObjectUnknown) continue;
 
+      // named now: a device that has gone away has no name to ask for
+      const auto name{device == aggregate ? std::string{"The combined input and output device"}
+                                          : nameOf(device)};
+
       listen(streamListeners, device, address(kAudioDevicePropertyDeviceIsAlive),
              ^(UInt32, const AudioObjectPropertyAddress *) {
                UInt32 alive{1};
                getProperty(device, address(kAudioDevicePropertyDeviceIsAlive), alive);
-               if (!alive) streamStopped(nameOf(device) + " is no longer available");
+               if (!alive) streamStopped(name + " is no longer available");
              });
       listen(streamListeners, device, address(kAudioDevicePropertyNominalSampleRate),
              ^(UInt32, const AudioObjectPropertyAddress *) {
                Float64 rate{0};
                getProperty(device, address(kAudioDevicePropertyNominalSampleRate), rate);
                if (rate > 0 && std::abs(rate - streamRate) >= 1)
-                 streamStopped(nameOf(device) + " was switched to " +
-                               std::to_string(static_cast<int>(rate)) + " Hz by another application");
+                 streamStopped(name + " was switched to " + std::to_string(static_cast<int>(rate)) +
+                               " Hz by another application");
              });
     }
 
