@@ -13,6 +13,7 @@
 #include <Windows.h>
 #include <ShlObj.h>
 #include <mmdeviceapi.h>
+#include <propsys.h>
 #include <string>
 #endif
 #endif

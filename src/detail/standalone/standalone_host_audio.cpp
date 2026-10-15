@@ -20,7 +20,7 @@
 #include "standalone_host.h"
 #include "entry.h"
 
-#if CLAP_WRAPPER_STANDALONE_ASIO
+#ifdef CLAP_WRAPPER_STANDALONE_ASIO
 // from the asio sdk's asio.h, which rtaudio keeps private; asio.cpp is compiled into it
 long ASIOControlPanel(void);
 #endif
@@ -100,7 +100,7 @@ void rtaErrorCallback(RtAudioErrorType errorType, const std::string &errorText)
 
 bool StandaloneHost::hasDriverControlPanel(RtAudio::Api api)
 {
-#if CLAP_WRAPPER_STANDALONE_ASIO
+#ifdef CLAP_WRAPPER_STANDALONE_ASIO
   return api == RtAudio::Api::WINDOWS_ASIO;
 #else
   (void)api;
@@ -110,7 +110,7 @@ bool StandaloneHost::hasDriverControlPanel(RtAudio::Api api)
 
 bool StandaloneHost::showDriverControlPanel()
 {
-#if CLAP_WRAPPER_STANDALONE_ASIO
+#ifdef CLAP_WRAPPER_STANDALONE_ASIO
   // the driver is loaded only while rtaudio has a stream open on it
   if (!rtaDac || audioApi != RtAudio::Api::WINDOWS_ASIO || !rtaDac->isStreamOpen()) return false;
   return ASIOControlPanel() == 0;  // ASE_OK
