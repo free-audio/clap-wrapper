@@ -356,7 +356,7 @@ struct Plugin final : public Window
     std::vector<::RECT> rules;
 
     // what the window shows, in the order it shows it: what a selection there indexes
-    std::vector<AudioApi> apisShown;
+    std::vector<standalone::AudioApi> apisShown;
     std::vector<AudioDevice> outDevices, inDevices;  // the input list adds "No Input" first
     std::vector<int32_t> sampleRatesShown;
     std::vector<uint32_t> bufferSizesShown;
