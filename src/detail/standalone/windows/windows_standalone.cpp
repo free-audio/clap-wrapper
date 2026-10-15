@@ -2001,8 +2001,8 @@ void Plugin::refreshBufferSizes(uint32_t preferred)
 {
   const auto out{shownOutput()};
   const auto in{shownInput()};
-  auto sizes{sah->getBufferSizesFor(out ? settings.outDevices[*out].name : std::string{},
-                                    in ? settings.inDevices[*in].name : std::string{})};
+  auto sizes{sah->getBufferSizesFor(out ? settings.outDevices[*out].id : std::string{},
+                                    in ? settings.inDevices[*in].id : std::string{})};
 
   // the stream may run at a size the list does not have, which the device chose: a
   // driver fixed at 1024 shows 1024, not the first entry

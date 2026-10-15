@@ -315,6 +315,9 @@ class RtAudioBackend final : public AudioBackend
     if (dac->isStreamRunning()) dac->stopStream();
     if (dac->isStreamOpen()) dac->closeStream();
     callback = nullptr;
+    const auto count{xruns.exchange(0)};
+    (void)count;  // with logging compiled out
+    if (count) LOGINFO("[WARNING] {} audio under- or overflows", count);
   }
 
   bool isOpen() const override
@@ -349,9 +352,10 @@ class RtAudioBackend final : public AudioBackend
 
  private:
   static int rtCallback(void *outputBuffer, void *inputBuffer, unsigned int frames, double,
-                        RtAudioStreamStatus, void *data)
+                        RtAudioStreamStatus status, void *data)
   {
     auto *self{static_cast<RtAudioBackend *>(data)};
+    if (status) self->xruns++;
     auto *callback{self->callback.load()};
     if (!callback) return 0;
 
@@ -372,29 +376,30 @@ class RtAudioBackend final : public AudioBackend
 
   void onError(RtAudioErrorType type, const std::string &text)
   {
-    if (type == RTAUDIO_OUTPUT_UNDERFLOW || type == RTAUDIO_INPUT_OVERFLOW)
-    {
-      if (!reportedXrun.exchange(true))
-        LOGINFO("[ERROR] RtAudio reports under/overflow '{}' [{}]", text, (int)type);
-      return;
-    }
-
     LOGINFO("[ERROR] RtAudio reports '{}' [{}]", text, (int)type);
 
-    // errors from listing and opening reach the host through those calls' results
-    if (listing || opening || type == RTAUDIO_WARNING || !onEvent) return;
+    // errors from listing and opening reach the host through those calls' results, and
+    // warnings are only that. (under- and overflows are not errors: they come with the
+    // callback's status, rtCallback. this compared the error type with those status flags
+    // once, which took every warning, value 1, for an overflow)
+    if (listing || opening || !onEvent) return;
 
-    // an asio driver asked for a reset, and rtaudio closes the stream for it
-    if (type == RTAUDIO_DEVICE_DISCONNECT && api == RtAudio::Api::WINDOWS_ASIO)
+    switch (type)
     {
-      onEvent(AudioBackendEvent::ResetRequested, text);
-      return;
-    }
-
-    if (type == RTAUDIO_DEVICE_DISCONNECT || type == RTAUDIO_SYSTEM_ERROR ||
-        type == RTAUDIO_THREAD_ERROR || type == RTAUDIO_DRIVER_ERROR)
-    {
-      onEvent(AudioBackendEvent::StreamStopped, text);
+      case RTAUDIO_DEVICE_DISCONNECT:
+        // an asio driver asked for a reset, and rtaudio closes the stream for it
+        if (api == RtAudio::Api::WINDOWS_ASIO)
+          onEvent(AudioBackendEvent::ResetRequested, text);
+        else
+          onEvent(AudioBackendEvent::StreamStopped, text);
+        break;
+      case RTAUDIO_DRIVER_ERROR:
+      case RTAUDIO_SYSTEM_ERROR:
+      case RTAUDIO_THREAD_ERROR:
+        onEvent(AudioBackendEvent::StreamStopped, text);
+        break;
+      default:
+        break;
     }
   }
 
@@ -433,7 +438,8 @@ class RtAudioBackend final : public AudioBackend
 
   // rtaudio reports these through the error callback too
   std::atomic<bool> listing{false}, opening{false};
-  std::atomic<bool> reportedXrun{false};
+  // under- and overflows the callback was told of
+  std::atomic<uint32_t> xruns{0};
 
   std::atomic<AudioStreamCallback *> callback{nullptr};
   uint32_t inputChannels{0}, outputChannels{0}, bufferFrames{0};

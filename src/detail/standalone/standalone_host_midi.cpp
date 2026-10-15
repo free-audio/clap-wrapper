@@ -361,6 +361,23 @@ void StandaloneHost::startMIDIThread()
   // while the settings UI showed nothing as selected, and it ended the whole
   // process with exit(EXIT_FAILURE) if constructing the first RtMidiIn threw.
   std::vector<std::string> present, absent;
+
+  // a selection saved by names alone - by a build before the ids - gains the ids of the
+  // ports it names now, for the next save: rtmidi's windows names have the port's index
+  // in them, and another device plugged in before it moves that
+  auto addIds = [this, &present, &absent](bool input)
+  {
+    const auto &names{input ? settings.midiPortNames : settings.midiOutputPortNames};
+    const auto &ids{input ? settings.midiPortIds : settings.midiOutputPortIds};
+    if (names.empty() || !ids.empty() || (input && settings.midiBindAllPorts)) return;
+    savedMidiSelection(input, present, absent);
+    auto references{present};
+    references.insert(references.end(), absent.begin(), absent.end());
+    setChosenMidiPorts(input, references);
+  };
+  addIds(true);
+  addIds(false);
+
   savedMidiSelection(true, present, absent);
   for (const auto &name : absent)
   {
