@@ -2077,12 +2077,15 @@ void Plugin::refreshSampleRates(int32_t preferred)
   }
   rates.erase(std::unique(rates.begin(), rates.end()), rates.end());
 
-  int selected{rates.empty() ? -1 : 0};
+  // the preferred rate where the devices have it, else 44100, else 48000: the first entry
+  // would be 4000 Hz on wasapi
+  const auto shown{preferredSampleRate(rates, preferred > 0 ? static_cast<uint32_t>(preferred) : 0)};
+  int selected{-1};
   for (size_t i = 0; i < rates.size(); ++i)
   {
     settings.sampleRatesShown.push_back(static_cast<int32_t>(rates[i]));
     settings.sampleRate.add(std::to_string(rates[i]));
-    if (static_cast<int32_t>(rates[i]) == preferred) selected = static_cast<int>(i);
+    if (rates[i] == shown) selected = static_cast<int>(i);
   }
   settings.sampleRate.set(selected);
 
