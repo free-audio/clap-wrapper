@@ -38,45 +38,76 @@ std::vector<MidiPort> StandaloneHost::getMidiOutputPorts()
 
 namespace
 {
-// the saved selection against these ports: ids are taken where their port has a saved
-// name, since an older build rewrites the names and keeps the ids it does not know as
-// they were; names are taken for what is left. a saved name found nowhere is absent
+// the port with this id exactly; null if none
+const MidiPort *portWithId(const std::vector<MidiPort> &ports, const std::string &id)
+{
+  for (const auto &port : ports)
+  {
+    if (!id.empty() && port.id == id) return &port;
+  }
+  return nullptr;
+}
+
+// the first port not taken yet that a reference names, as findMidiPort orders it: two
+// identical devices share a name
+const MidiPort *untakenPort(const std::vector<MidiPort> &ports, const std::string &reference,
+                            const std::vector<std::string> &taken)
+{
+  auto free = [&taken](const MidiPort &port)
+  { return std::find(taken.begin(), taken.end(), port.id) == taken.end(); };
+
+  for (auto field : {&MidiPort::id, &MidiPort::legacyName, &MidiPort::name})
+  {
+    for (const auto &port : ports)
+    {
+      if (!reference.empty() && port.*field == reference && free(port)) return &port;
+    }
+  }
+  return nullptr;
+}
+
+// whether the saved ids were saved with the names saved now, which an older build that
+// rewrote the names did not
+bool savedIdsCount(const std::vector<std::string> &names,
+                   const std::vector<StandaloneSettings::SavedPort> &saved)
+{
+  if (saved.size() != names.size()) return false;
+  for (size_t i = 0; i < names.size(); ++i)
+  {
+    if (saved[i].name != names[i]) return false;
+  }
+  return true;
+}
+
+// the saved selection against these ports. the ids count while they were saved with the
+// names saved now; then each port is found by its id, and by its name only where the id
+// is gone - rtmidi's windows names carry the port's index, which moves. otherwise an
+// older build has rewritten the names, and they alone count. a name found nowhere is
+// absent
 void resolveSaved(const std::vector<MidiPort> &ports, const std::vector<std::string> &names,
-                  const std::vector<std::string> &ids, std::vector<std::string> &presentIds,
-                  std::vector<std::string> &absentNames)
+                  const std::vector<StandaloneSettings::SavedPort> &saved,
+                  std::vector<std::string> &presentIds, std::vector<std::string> &absentNames)
 {
   presentIds.clear();
   absentNames.clear();
 
-  auto add = [&presentIds](const std::string &id)
-  {
-    if (std::find(presentIds.begin(), presentIds.end(), id) == presentIds.end())
-      presentIds.push_back(id);
-  };
+  const bool idsCount{savedIdsCount(names, saved)};
 
-  std::vector<std::string> namesLeft;
-  for (const auto &name : names)
+  for (size_t i = 0; i < names.size(); ++i)
   {
-    bool byId{false};
-    for (const auto &id : ids)
+    const MidiPort *port{nullptr};
+    if (idsCount)
     {
-      const auto *port{findMidiPort(ports, id)};
-      if (port && port->id == id && (port->legacyName == name || port->name == name))
-      {
-        add(port->id);
-        byId = true;
-        break;
-      }
+      port = portWithId(ports, saved[i].id);
+      if (port && std::find(presentIds.begin(), presentIds.end(), port->id) != presentIds.end())
+        port = nullptr;
     }
-    if (!byId) namesLeft.push_back(name);
-  }
+    if (!port) port = untakenPort(ports, names[i], presentIds);
 
-  for (const auto &name : namesLeft)
-  {
-    if (const auto *port{findMidiPort(ports, name)})
-      add(port->id);
+    if (port)
+      presentIds.push_back(port->id);
     else
-      absentNames.push_back(name);
+      absentNames.push_back(names[i]);
   }
 }
 }  // namespace
@@ -94,21 +125,28 @@ void StandaloneHost::setChosenMidiPorts(bool input, const std::vector<std::strin
   const auto ports{input ? getMidiInputPorts() : getMidiOutputPorts()};
   auto &names{input ? settings.midiPortNames : settings.midiOutputPortNames};
   auto &ids{input ? settings.midiPortIds : settings.midiOutputPortIds};
+  const auto before{ids};
 
   names.clear();
   ids.clear();
   for (const auto &reference : references)
   {
-    if (const auto *port{findMidiPort(ports, reference)})
+    if (const auto *port{portWithId(ports, reference)})
     {
       // the name an older build finds the port by: rtmidi's, where there is one
       names.push_back(port->legacyName.empty() ? port->name : port->legacyName);
-      ids.push_back(port->id);
+      ids.push_back({port->id, names.back()});
     }
     else
     {
-      // saved before and not plugged in now: kept as it was saved
+      // saved before and not plugged in now: kept as it was saved, its id with it
+      std::string id;
+      for (const auto &old : before)
+      {
+        if (old.name == reference) id = old.id;
+      }
       names.push_back(reference);
+      ids.push_back({id, reference});
     }
   }
   if (input) settings.midiBindAllPorts = false;
@@ -252,11 +290,7 @@ void StandaloneHost::startMidiOutputThreadIfNeeded()
 
   // whatever the audio thread queued before the last stop is stale. nothing is queued
   // while midiOutputOpen is clear, and nothing else pops, so this empties the queue
-  midiChunk stale;
-  while (midiFromAudioQueue.pop(stale))
-  {
-  }
-  sysexFromAudio.clear();
+  midiFromAudio.clear();
 
   midiOutputOpen = true;
   midiOutputThread = std::thread([this]() { midiOutputLoop(); });
@@ -274,26 +308,16 @@ void StandaloneHost::midiOutputLoop()
   auto sendToAll = [this](const unsigned char *message, size_t size)
   { midiBackend->send(message, size); };
 
-  // the plugin's sysex, whole; allocated here, off the audio thread
-  std::vector<uint8_t> sysex(decltype(sysexFromAudio)::maxMessage);
+  // room for the largest message, sysex included; allocated here, off the audio thread
+  std::vector<uint8_t> message(decltype(midiFromAudio)::maxMessage);
 
-  midiChunk ck;
   while (midiOutputOpen)
   {
-    while (const auto size{sysexFromAudio.nextSize()})
+    while (const auto size{midiFromAudio.nextSize()})
     {
-      sysexFromAudio.pop(sysex.data());
-      sendToAll(sysex.data(), size);
-    }
-
-    while (midiFromAudioQueue.pop(ck))
-    {
-      const auto *message = reinterpret_cast<const unsigned char *>(ck.dat);
-      const auto size = shortMidiMessageSize(message[0]);
-      if (size == 0) continue;
-
+      midiFromAudio.pop(message.data());
       if ((message[0] & 0xF0) == 0x90) sentNoteOn = true;
-      sendToAll(message, size);
+      sendToAll(message.data(), size);
     }
 
     // the audio thread cannot wake this one without a call that may block, so it polls
@@ -315,19 +339,23 @@ bool StandaloneHost::outputEventPush(const clap_event_header_t *evt)
   // anything else, or nowhere to send it, is taken and dropped, as it always was
   if (!evt || evt->space_id != CLAP_CORE_EVENT_SPACE_ID || !midiOutputOpen) return true;
 
-  midiChunk ck;
+  uint8_t message[3]{};
+  uint32_t size{0};
   switch (evt->type)
   {
     case CLAP_EVENT_MIDI:
     {
       const auto *midi = reinterpret_cast<const clap_event_midi_t *>(evt);
-      memcpy(ck.dat, midi->data, sizeof(ck.dat));
+      // what is not a whole short message cannot be sent as one
+      size = static_cast<uint32_t>(shortMidiMessageSize(midi->data[0]));
+      if (size == 0) return true;
+      memcpy(message, midi->data, size);
       break;
     }
     case CLAP_EVENT_MIDI_SYSEX:
     {
       const auto *sysex = reinterpret_cast<const clap_event_midi_sysex_t *>(evt);
-      return sysexFromAudio.tryPush(sysex->buffer, sysex->size);
+      return midiFromAudio.tryPush(sysex->buffer, sysex->size);
     }
     case CLAP_EVENT_NOTE_ON:
     case CLAP_EVENT_NOTE_OFF:
@@ -341,16 +369,17 @@ bool StandaloneHost::outputEventPush(const clap_event_header_t *evt)
       // a note on at velocity 0 is a note off in midi
       if (on && velocity == 0) velocity = 1;
 
-      ck.dat[0] = (char)((on ? 0x90 : 0x80) | note->channel);
-      ck.dat[1] = (char)note->key;
-      ck.dat[2] = (char)velocity;
+      message[0] = static_cast<uint8_t>((on ? 0x90 : 0x80) | note->channel);
+      message[1] = static_cast<uint8_t>(note->key);
+      message[2] = static_cast<uint8_t>(velocity);
+      size = 3;
       break;
     }
     default:
       return true;
   }
 
-  return midiFromAudioQueue.tryPush(ck);
+  return midiFromAudio.tryPush(message, size);
 }
 
 void StandaloneHost::startMIDIThread()
@@ -369,7 +398,7 @@ void StandaloneHost::startMIDIThread()
   {
     const auto &names{input ? settings.midiPortNames : settings.midiOutputPortNames};
     const auto &ids{input ? settings.midiPortIds : settings.midiOutputPortIds};
-    if (names.empty() || !ids.empty() || (input && settings.midiBindAllPorts)) return;
+    if (names.empty() || savedIdsCount(names, ids) || (input && settings.midiBindAllPorts)) return;
     savedMidiSelection(input, present, absent);
     auto references{present};
     references.insert(references.end(), absent.begin(), absent.end());
@@ -405,29 +434,19 @@ void StandaloneHost::processMIDIMessage(const uint8_t *data, size_t size)
   // dropped it, as it is sent three times a second
   if (data[0] == 0xFE) return;
 
-  if (data[0] == 0xF0)
-  {
-    // sysex goes to a plugin that takes the midi dialect only
-    if (!hasMIDIInput) return;
-
-    ClapWrapper::detail::shared::SpinLockGuard g(midiToAudioPushLock);
-    if (!sysexToAudio.tryPush(data, static_cast<uint32_t>(size)))
-    {
-      const auto dropped{++sysexDropped};
-      if (dropped == 1 || dropped % 100 == 0)
-        LOGINFO("[WARNING] {} sysex messages dropped: too large, or the plugin is not taking them",
-                dropped);
-    }
-    return;
-  }
-
-  if (size > sizeof(midiChunk::dat)) return;
-
-  midiChunk ck;
-  memcpy(ck.dat, data, size);
+  // sysex goes to a plugin that takes the midi dialect only, and a short message has a
+  // status byte and at most two data bytes
+  if (data[0] == 0xF0 ? !hasMIDIInput : size > 3) return;
 
   ClapWrapper::detail::shared::SpinLockGuard g(midiToAudioPushLock);
-  midiToAudioQueue.push(ck);
+  if (!midiToAudio.tryPush(data, static_cast<uint32_t>(size)))
+  {
+    const auto dropped{++midiDropped};
+    (void)dropped;  // with logging compiled out
+    if (dropped == 1 || dropped % 100 == 0)
+      LOGINFO("[WARNING] {} MIDI messages dropped: too large, or the plugin is not taking them",
+              dropped);
+  }
 }
 
 void StandaloneHost::stopMIDIThread()

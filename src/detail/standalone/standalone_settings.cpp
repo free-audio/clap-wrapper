@@ -39,6 +39,11 @@ std::string escape(const std::string &in)
       case '\r':
         out += "\\r";
         break;
+      case '\t':
+        // escaped, so that trimming the value cannot take it: it separates a port's id
+        // from its name, and an id can be empty
+        out += "\\t";
+        break;
       default:
         out += c;
         break;
@@ -69,6 +74,9 @@ std::string unescape(const std::string &in)
       case 'r':
         out += '\r';
         break;
+      case 't':
+        out += '\t';
+        break;
       case '\\':
         out += '\\';
         break;
@@ -81,6 +89,14 @@ std::string unescape(const std::string &in)
   }
 
   return out;
+}
+
+// "id<tab>name"
+StandaloneSettings::SavedPort savedPort(const std::string &value)
+{
+  const auto tab{value.find('\t')};
+  if (tab == std::string::npos) return {value, {}};
+  return {value.substr(0, tab), value.substr(tab + 1)};
 }
 
 bool asBool(const std::string &v)
@@ -159,11 +175,11 @@ bool StandaloneSettings::load(const fs::path &fromFile)
         sawMidiSelection = true;
       }
       else if (key == "midiPortId")
-        loaded.midiPortIds.push_back(value);
+        loaded.midiPortIds.push_back(savedPort(value));
       else if (key == "midiOutputPort")
         loaded.midiOutputPortNames.push_back(value);
       else if (key == "midiOutputPortId")
-        loaded.midiOutputPortIds.push_back(value);
+        loaded.midiOutputPortIds.push_back(savedPort(value));
       else if (key == "midiVirtualInput")
         loaded.midiVirtualInput = asBool(value);
       else if (key == "midiVirtualOutput")
@@ -254,7 +270,7 @@ bool StandaloneSettings::save(const fs::path &intoFile) const
     }
     for (const auto &port : midiPortIds)
     {
-      ofs << "midiPortId=" << escape(port) << "\n";
+      ofs << "midiPortId=" << escape(port.id + '\t' + port.name) << "\n";
     }
     for (const auto &port : midiOutputPortNames)
     {
@@ -262,7 +278,7 @@ bool StandaloneSettings::save(const fs::path &intoFile) const
     }
     for (const auto &port : midiOutputPortIds)
     {
-      ofs << "midiOutputPortId=" << escape(port) << "\n";
+      ofs << "midiOutputPortId=" << escape(port.id + '\t' + port.name) << "\n";
     }
     ofs << "midiVirtualInput=" << fromBool(midiVirtualInput) << "\n";
     ofs << "midiVirtualOutput=" << fromBool(midiVirtualOutput) << "\n";

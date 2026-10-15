@@ -106,6 +106,14 @@ void StandaloneHost::setAudioApi(const std::string &apiId)
         streamStoppedPending = true;
         break;
       }
+      case AudioBackendEvent::RateChanged:
+      {
+        LOGINFO("[WARNING] {}", message);
+        std::lock_guard<std::mutex> guard(streamStoppedLock);
+        streamStoppedMessage = message;
+        rateChangedPending = true;
+        break;
+      }
       case AudioBackendEvent::ResetRequested:
         // not an error to show: an asio driver asked for a reset, and the stream closed
         // for it is opened again (takeDriverReset). a driver that is really gone fails
@@ -128,9 +136,27 @@ std::vector<AudioApi> StandaloneHost::getAudioApis()
   return audioApis();
 }
 
+bool StandaloneHost::reopenStream(int32_t sampleRate)
+{
+  if ((audioOutputUsed && !isKnownDevice(audioOutputDevice)) ||
+      (audioInputUsed && !isKnownDevice(audioInputDevice)))
+    return false;
+
+  {
+    SilenceAudioErrors silence(this);
+    startAudioThreadOn(audioInputDevice, deviceInputChannels, audioInputUsed && numAudioInputs > 0,
+                       audioOutputDevice, deviceOutputChannels, audioOutputUsed && numAudioOutputs > 0,
+                       sampleRate);
+  }
+  return isAudioRunning();
+}
+
 void StandaloneHost::pollAudioEvents()
 {
-  if (streamStoppedPending.exchange(false))
+  using namespace std::chrono_literals;
+
+  const bool rateChanged{rateChangedPending.exchange(false)};
+  if (streamStoppedPending.exchange(false) || rateChanged)
   {
     std::string message;
     {
@@ -140,37 +166,54 @@ void StandaloneHost::pollAudioEvents()
 
     // the backend has stopped it; this closes it and takes the plugin down with it
     const bool wasActive{isActive};
+    const auto rateBefore{currentSampleRate};
     stopAudioThread();
     deactivatePlugin();
     currentInputChannels = 0;
     currentOutputChannels = 0;
     lastAudioError = message;
     reopenPending = wasActive;
+    reopenTries = 0;
+    nextReopen = std::chrono::steady_clock::now() + 1s;
 
-    if (displayAudioError && !message.empty()) displayAudioError(message);
+    if (rateChanged && wasActive)
+    {
+      // the rate the other application set, on whichever device it set it: taking the
+      // device back to ours would undo that for it, and two applications would take turns
+      refreshDeviceList();
+      int32_t rate{0};
+      for (const auto &id : {audioOutputDevice, audioInputDevice})
+      {
+        const auto *device{findDevice(id)};
+        if (device && device->currentSampleRate > 0 &&
+            static_cast<int32_t>(device->currentSampleRate) != rateBefore)
+          rate = static_cast<int32_t>(device->currentSampleRate);
+      }
+      LOGINFO("{}; opening the stream again at {} Hz", message, rate);
+      reopenPending = !reopenStream(rate);
+    }
+    if (reopenPending && displayAudioError && !message.empty()) displayAudioError(message);
   }
 
   // several in a row are one: the list is made again once, here
-  if (devicesChangedPending.exchange(false))
+  const bool devicesChanged{devicesChangedPending.exchange(false)};
+  if (devicesChanged) refreshDeviceList();
+
+  // a stream that stopped on its own opens again once its devices are back, or after a
+  // while, when they never went
+  if (reopenPending && !isAudioRunning() &&
+      (devicesChanged || (reopenTries < 5 && std::chrono::steady_clock::now() >= nextReopen)))
   {
-    refreshDeviceList();
-
-    // a stream that stopped on its own opens again once its devices are back
-    if (reopenPending && !isAudioRunning() && (!audioOutputUsed || isKnownDevice(audioOutputDevice)) &&
-        (!audioInputUsed || isKnownDevice(audioInputDevice)))
+    if (!devicesChanged) ++reopenTries;
+    nextReopen = std::chrono::steady_clock::now() + std::chrono::seconds(1 << std::min(reopenTries, 4));
+    if (reopenStream(currentSampleRate))
     {
-      LOGINFO("The audio devices are back; opening the stream again");
-      {
-        SilenceAudioErrors silence(this);
-        startAudioThreadOn(audioInputDevice, deviceInputChannels, audioInputUsed && numAudioInputs > 0,
-                           audioOutputDevice, deviceOutputChannels,
-                           audioOutputUsed && numAudioOutputs > 0, currentSampleRate);
-      }
-      reopenPending = !isAudioRunning();
+      LOGINFO("Audio is running again");
+      reopenPending = false;
     }
-
-    if (onAudioDevicesChanged) onAudioDevicesChanged();
   }
+
+  if (devicesChanged && onAudioDevicesChanged) onAudioDevicesChanged();
 }
 
 uint32_t StandaloneHost::mainBusChannels(bool input) const
@@ -465,6 +508,9 @@ void StandaloneHost::startAudioThreadOnImpl(const std::string &inputDevice, uint
   // to reset running/finishedRunning here.
   stopAudioThread();
   reopenPending = false;
+  // what the stream closed just now reported is no news for the one about to open
+  streamStoppedPending = false;
+  rateChangedPending = false;
 
   // The channel counts granted to the previous stream must not outlive it: process()
   // routes by them. They are set again below once the new stream is open.

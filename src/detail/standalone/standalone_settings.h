@@ -60,14 +60,22 @@ struct StandaloneSettings
 
   // An empty selection means "open every port", which is what the standalone did
   // before ports could be selected at all, and is the friendlier first run.
-  // Ids and names are written in pairs, but an older build rewrites the names and keeps
-  // the ids as unknown keys, so they are matched up by the name, not the position.
+  // The names are what a build from before the ids reads. Next to them, each port's id
+  // with the name it was saved under: an older build rewrites the names and keeps these
+  // as keys it does not know, so they count only while they name what the names do
+  // (StandaloneHost::savedMidiSelection).
+  struct SavedPort
+  {
+    std::string id, name;
+  };
   bool midiBindAllPorts{true};
-  std::vector<std::string> midiPortNames, midiPortIds;
+  std::vector<std::string> midiPortNames;
+  std::vector<SavedPort> midiPortIds;
 
   // The MIDI outputs. Empty opens none, and there is no "open every port": that would
   // play the plugin's output into everything plugged in.
-  std::vector<std::string> midiOutputPortNames, midiOutputPortIds;
+  std::vector<std::string> midiOutputPortNames;
+  std::vector<SavedPort> midiOutputPortIds;
 
   // Virtual ports other applications connect to, where the MIDI API has them (CoreMIDI,
   // ALSA, JACK - not Windows). Off unless asked for.

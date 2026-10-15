@@ -5,6 +5,7 @@
 #include <unordered_set>
 #include <thread>
 #include <mutex>
+#include <chrono>
 #include <optional>
 #include <tuple>
 
@@ -15,7 +16,7 @@
 
 #include "standalone_audio.h"
 #include "standalone_midi.h"
-#include "sysex_ring.h"
+#include "midi_ring.h"
 
 #include "clap_proxy.h"
 #include "detail/shared/fixedqueue.h"
@@ -319,21 +320,12 @@ struct StandaloneHost : Clap::IHost, AudioStreamCallback
   std::unique_ptr<MidiBackend> midiBackend;
   void guaranteeMidiBackend();
 
-  struct midiChunk
-  {
-    char dat[3]{};
-    midiChunk()
-    {
-      memset(dat, 0, sizeof(dat));
-    }
-  };
-  ClapWrapper::detail::shared::fixedqueue<midiChunk, 4096> midiToAudioQueue;
-  // sysex, beside the short messages, for a plugin that takes MIDI: whole messages into a
-  // ring, and on the audio thread copied into the arena one block's events point into.
-  // what does not fit is dropped and counted, never split
-  SysexRing<65536> sysexToAudio;
+  // what the inputs deliver, short messages and sysex in one ring so that their order
+  // holds; on the audio thread a sysex is copied into the arena one block's events point
+  // into. what does not fit is dropped and counted, never split
+  MidiRing<65536> midiToAudio;
   uint8_t sysexArena[65536]{};
-  std::atomic<uint32_t> sysexDropped{0};
+  std::atomic<uint32_t> midiDropped{0};
   // the queue takes one producer at a time, and a backend may call each open input back
   // on a thread of its own
   ClapWrapper::detail::shared::SpinLock midiToAudioPushLock;
@@ -373,8 +365,7 @@ struct StandaloneHost : Clap::IHost, AudioStreamCallback
   // MIDI output. what the plugin sends from its note output ports goes to every open
   // output port: the audio thread queues it in outputEventPush() and a thread of its own
   // sends it, since a midi send is no call to make from the audio thread
-  ClapWrapper::detail::shared::fixedqueue<midiChunk, 4096> midiFromAudioQueue;
-  SysexRing<65536> sysexFromAudio;
+  MidiRing<65536> midiFromAudio;
   // the ids of the outputs open now
   std::vector<std::string> currentMidiOutputIds;
   // set while midiOutputThread runs; the audio thread queues nothing while it is clear
@@ -445,9 +436,16 @@ struct StandaloneHost : Clap::IHost, AudioStreamCallback
   // [main-thread] set by a frontend whose settings screen lists devices or ports
   std::function<void()> onAudioDevicesChanged{nullptr};
   std::atomic<bool> devicesChangedPending{false};
-  std::atomic<bool> streamStoppedPending{false};
+  std::atomic<bool> streamStoppedPending{false}, rateChangedPending{false};
   std::mutex streamStoppedLock;
   std::string streamStoppedMessage;
+  // opens the stream as it was, quietly, if its devices are there; at another rate if
+  // one is given. true if it runs
+  bool reopenStream(int32_t sampleRate);
+  // a stream that stopped with its devices still there - a driver error, a watchdog - is
+  // tried again a few times, further apart each time, and then only when devices change
+  std::chrono::steady_clock::time_point nextReopen{};
+  int reopenTries{0};
   // a stream stopped on its own, to open again as it was
   bool reopenPending{false};
 

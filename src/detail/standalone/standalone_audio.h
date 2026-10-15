@@ -165,6 +165,11 @@ enum class AudioBackendEvent
   // changed its format. the message says what
   StreamStopped,
 
+  // another application changed the rate of a device the stream runs on. the stream has
+  // stopped, as with StreamStopped; the host opens it again at once at the device's new
+  // rate, rather than taking the device back
+  RateChanged,
+
   // the driver wants the stream closed and opened again as it was: an ASIO driver whose
   // own control panel changed the buffer size or the rate. the backend has closed it
   ResetRequested,

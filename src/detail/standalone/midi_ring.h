@@ -8,12 +8,12 @@
 namespace freeaudio::clap_wrapper::standalone
 {
 /*
- * Whole messages of bytes - sysex - between one producer and one consumer, without a lock
- * or an allocation. A message is stored as its length and its bytes; one that does not fit
- * is refused whole, never split.
+ * Whole MIDI messages, short ones and sysex alike, in the order they came, between one
+ * producer and one consumer, without a lock or an allocation. A message is stored as its
+ * length and its bytes; one that does not fit is refused whole, never split.
  */
 template <uint32_t Size>
-class SysexRing
+class MidiRing
 {
   static_assert((Size & (Size - 1)) == 0, "Size needs to be a power of two");
 
@@ -45,6 +45,15 @@ class SysexRing
     uint32_t size{0};
     copyOut(tail, &size, sizeof(size));
     return size;
+  }
+
+  // the first byte of the next message, its status; 0 if there is none
+  uint8_t nextStatus() const
+  {
+    if (nextSize() == 0) return 0;
+    uint8_t status{0};
+    copyOut(_tail.load(std::memory_order_relaxed) + sizeof(uint32_t), &status, 1);
+    return status;
   }
 
   // the next message into out, which holds at least nextSize() bytes; its size, 0 if none

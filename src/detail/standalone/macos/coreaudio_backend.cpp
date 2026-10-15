@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstddef>
 #include <cstring>
 #include <map>
 #include <mutex>
@@ -737,30 +738,49 @@ class CoreAudioBackend final : public AudioBackend
     return true;
   }
 
-  // switches off the io device's streams of one direction that no opened channel is in
-  void useStreams(bool input)
+  // switches off the io device's streams of one direction that no opened channel is in:
+  // an unused input stream of a bluetooth device would otherwise switch it to its
+  // hands-free profile. true if every stream is as it should be
+  bool useStreams(bool input)
   {
-    const auto scope{scopeOf(input)};
-    auto where{address(kAudioDevicePropertyIOProcStreamUsage, scope)};
-    auto bytes{getBytes(ioDevice, where)};
-    if (bytes.size() < sizeof(AudioHardwareIOProcStreamUsage)) return;
+    const auto streams{
+        getArray<AudioStreamID>(ioDevice, address(kAudioDevicePropertyStreams, scopeOf(input)))};
+    if (streams.empty()) return true;
 
-    // the property is read for one io proc, named in the struct
+    // the property is read and written for one io proc, named in the struct before the
+    // first read, with room for every stream
+    const auto size{static_cast<UInt32>(offsetof(AudioHardwareIOProcStreamUsage, mStreamIsOn) +
+                                        streams.size() * sizeof(UInt32))};
+    std::vector<uint8_t> bytes(size, 0);
     auto *usage{reinterpret_cast<AudioHardwareIOProcStreamUsage *>(bytes.data())};
     usage->mIOProc = reinterpret_cast<void *>(procId);
-    UInt32 size{static_cast<UInt32>(bytes.size())};
-    if (AudioObjectGetPropertyData(ioDevice, &where, 0, nullptr, &size, usage) != noErr) return;
+    usage->mNumberStreams = static_cast<UInt32>(streams.size());
+
+    const auto where{address(kAudioDevicePropertyIOProcStreamUsage, scopeOf(input))};
+    UInt32 read{size};
+    if (AudioObjectGetPropertyData(ioDevice, &where, 0, nullptr, &read, usage) != noErr)
+    {
+      LOGINFO("[WARNING] Unable to read which {} streams the audio device runs",
+              input ? "input" : "output");
+      return false;
+    }
 
     const auto &map{input ? inputMap : outputMap};
     const auto count{input ? inputChannels : outputChannels};
-    for (UInt32 s = 0; s < usage->mNumberStreams; ++s)
+    for (UInt32 s = 0; s < usage->mNumberStreams && s < streams.size(); ++s)
     {
       bool used{false};
       for (uint32_t ch = 0; ch < count; ++ch) used = used || map[ch].buffer == s;
       usage->mStreamIsOn[s] = used ? 1 : 0;
     }
     usage->mIOProc = reinterpret_cast<void *>(procId);
-    AudioObjectSetPropertyData(ioDevice, &where, 0, nullptr, size, usage);
+    if (AudioObjectSetPropertyData(ioDevice, &where, 0, nullptr, read, usage) != noErr)
+    {
+      LOGINFO("[WARNING] Unable to switch off the {} streams the audio device does not need",
+              input ? "input" : "output");
+      return false;
+    }
+    return true;
   }
 
   // sets a device's nominal rate and waits for it to take; true if it runs at that rate
@@ -809,6 +829,9 @@ class CoreAudioBackend final : public AudioBackend
     }
 
     AudioObjectRemovePropertyListenerBlock(device, &where, queue, block);
+    // a notification already queued still signals: let it run before the semaphore goes
+    dispatch_sync(queue, ^{
+                  });
     Block_release(block);
     dispatch_release(changed);
 
@@ -923,7 +946,8 @@ class CoreAudioBackend final : public AudioBackend
                getProperty(device, address(kAudioDevicePropertyNominalSampleRate), rate);
                if (rate > 0 && std::abs(rate - streamRate) >= 1)
                  streamStopped(name + " was switched to " + std::to_string(static_cast<int>(rate)) +
-                               " Hz by another application");
+                                   " Hz by another application",
+                               AudioBackendEvent::RateChanged);
              });
     }
 
@@ -935,10 +959,11 @@ class CoreAudioBackend final : public AudioBackend
   }
 
   // [listener-queue]
-  void streamStopped(const std::string &message)
+  void streamStopped(const std::string &message,
+                     AudioBackendEvent event = AudioBackendEvent::StreamStopped)
   {
     if (!enabled.exchange(false)) return;
-    if (onEvent) onEvent(AudioBackendEvent::StreamStopped, message);
+    if (onEvent) onEvent(event, message);
   }
 
   // [listener-queue] a device came or went, or changed what it offers. only a list that

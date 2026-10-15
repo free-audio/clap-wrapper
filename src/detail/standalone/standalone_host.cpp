@@ -266,26 +266,29 @@ void StandaloneHost::process(const float *const *inputs, uint32_t inputChannels,
     }
   }
 
+  // the midi that came in, in its order, as long as the block has room for events and the
+  // arena for sysex: what does not fit waits for the next block, with all that came after
   clearInputEvents();
-  clap_event_midi midi;
-  midiChunk ck;
-  while (midiToAudioQueue.pop(ck))
+  for (uint32_t arenaUsed = 0; inputEventSize() < maxEventsPerCycle;)
   {
-    midi.port_index = 0;
-    midi.header.size = sizeof(clap_event_midi);
-    midi.header.time = 0;
-    midi.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-    midi.header.type = CLAP_EVENT_MIDI;
-    midi.header.flags = 0;
-    memcpy(midi.data, ck.dat, sizeof(ck.dat));
-    pushInputEvent(&(midi.header));
-  }
+    const auto size{midiToAudio.nextSize()};
+    if (size == 0) break;
 
-  // as many whole sysex messages as the arena takes; the rest waits for the next block
-  for (uint32_t used = 0;;)
-  {
-    const auto size{sysexToAudio.nextSize()};
-    if (size == 0 || used + size > sizeof(sysexArena)) break;
+    if (midiToAudio.nextStatus() != 0xF0)
+    {
+      clap_event_midi midi{};
+      midi.header.size = sizeof(clap_event_midi);
+      midi.header.time = 0;
+      midi.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+      midi.header.type = CLAP_EVENT_MIDI;
+      midi.header.flags = 0;
+      midi.port_index = 0;
+      midiToAudio.pop(midi.data);
+      pushInputEvent(&(midi.header));
+      continue;
+    }
+
+    if (arenaUsed + size > sizeof(sysexArena)) break;
 
     clap_event_midi_sysex sysex{};
     sysex.header.size = sizeof(clap_event_midi_sysex);
@@ -294,10 +297,10 @@ void StandaloneHost::process(const float *const *inputs, uint32_t inputChannels,
     sysex.header.type = CLAP_EVENT_MIDI_SYSEX;
     sysex.header.flags = 0;
     sysex.port_index = 0;
-    sysex.buffer = sysexArena + used;
-    sysex.size = sysexToAudio.pop(sysexArena + used);
-    used += size;
-    if (!pushInputEvent(&(sysex.header))) sysexDropped++;
+    sysex.buffer = sysexArena + arenaUsed;
+    sysex.size = midiToAudio.pop(sysexArena + arenaUsed);
+    arenaUsed += size;
+    pushInputEvent(&(sysex.header));
   }
 
   clapPlugin->_plugin->process(clapPlugin->_plugin, &process);

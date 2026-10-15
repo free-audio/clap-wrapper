@@ -1933,10 +1933,13 @@ void Plugin::devicesChanged()
   refreshInputNote();
   refreshDriverPanelButton();
 
-  // a port plugged in while the window is open is ticked as "every port" would open it
-  const std::vector<std::string> none;
-  settings.midiIn.fill(sah->getMidiInputPorts(), none, none, settings.midiInAllOn);
-  settings.midiOut.fill(sah->getMidiOutputPorts(), none, none, false);
+  // rows already there keep what they show; a port plugged in now is ticked as the
+  // settings would open it, and a saved one not plugged in stays listed
+  std::vector<std::string> onIds, absentNames;
+  sah->savedMidiSelection(true, onIds, absentNames);
+  settings.midiIn.fill(sah->getMidiInputPorts(), onIds, absentNames, settings.midiInAllOn);
+  sah->savedMidiSelection(false, onIds, absentNames);
+  settings.midiOut.fill(sah->getMidiOutputPorts(), onIds, absentNames, false);
 
   layoutSettings();
 }

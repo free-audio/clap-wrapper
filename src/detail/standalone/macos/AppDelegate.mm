@@ -1363,11 +1363,14 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
   [self resetBufferSizeSelectionPreferring:frames];
   [self updateInputNote];
 
-  // a port plugged in while the window is open is ticked as "every port" would open it
-  std::vector<std::string> none;
-  makePortRows(midiInRows, standaloneHost->getMidiInputPorts(), none, none, midiInAllOn);
+  // rows already there keep what they show; a port plugged in now is ticked as the
+  // settings would open it, and a saved one not plugged in stays listed
+  std::vector<std::string> onIds, absentNames;
+  standaloneHost->savedMidiSelection(true, onIds, absentNames);
+  makePortRows(midiInRows, standaloneHost->getMidiInputPorts(), onIds, absentNames, midiInAllOn);
   layoutPortList(midiInList, midiInRows, @"No MIDI inputs found");
-  makePortRows(midiOutRows, standaloneHost->getMidiOutputPorts(), none, none, false);
+  standaloneHost->savedMidiSelection(false, onIds, absentNames);
+  makePortRows(midiOutRows, standaloneHost->getMidiOutputPorts(), onIds, absentNames, false);
   layoutPortList(midiOutList, midiOutRows, @"No MIDI outputs found");
 
   NSView *content = [self contentView];
