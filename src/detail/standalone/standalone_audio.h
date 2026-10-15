@@ -180,18 +180,28 @@ class AudioBackend
   virtual std::string defaultInputDevice() = 0;
   virtual std::string defaultOutputDevice() = 0;
 
-  // [main-thread] stops any stream running, then opens and starts this one. on failure
-  // nothing is left open and error says why, in words for the user
-  virtual bool start(const AudioStreamRequest &request, AudioStreamCallback &callback,
-                     AudioStreamInfo &granted, std::string &error) = 0;
+  // [main-thread] stops and closes any stream, then opens this one without starting it,
+  // and says what it was granted, so that the plugin can be activated for that before
+  // the first process() call. on failure nothing is left open and error says why, in
+  // words for the user
+  virtual bool open(const AudioStreamRequest &request, AudioStreamInfo &granted, std::string &error) = 0;
 
-  // [main-thread] stops and closes the stream. no process() call runs once it returns
+  // [main-thread] starts the open stream: process() calls begin. on failure the stream
+  // is closed and error says why
+  virtual bool start(AudioStreamCallback &callback, std::string &error) = 0;
+
+  // [main-thread] stops and closes the stream, open or running, or one that stopped on
+  // its own. no process() call runs once it returns
   virtual void stop() = 0;
 
+  // [main-thread] open() succeeded and stop() has not been called since; also true for a
+  // stream that stopped on its own until stop()
+  virtual bool isOpen() const = 0;
+  // [main-thread] process() calls are being made, or are about to be
   virtual bool isRunning() const = 0;
 
-  // the driver's own settings window, which ASIO drivers have; only while a stream is
-  // open on the driver
+  // the driver's own settings window, which ASIO drivers have; shown only while a stream
+  // is open on the driver
   virtual bool hasControlPanel() const
   {
     return false;
