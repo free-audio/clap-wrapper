@@ -340,7 +340,8 @@ extern "C"
     // [main-thread]
     uint32_t(CLAP_ABI *supported_configuration_screen_appearances)(const clap_host_t *host);
 
-    // takes effect at once, on an open screen too, and on the standalone's own alerts. a
+    // takes effect at once, on an open screen too, and on the standalone's own alerts
+    // where the system lets them be drawn so (macos; windows' message boxes cannot). a
     // plugin that sets the appearance owns it: the screen offers no choice of its own for
     // the rest of the session, and the value is not saved - set it again, say from
     // init(), on every launch. returns false if unsupported
@@ -359,11 +360,10 @@ extern "C"
     // any other way out of a screen in which nothing was chosen
     CLAP_WRAPPER_STANDALONE_CONFIGURATION_CANCELLED = 0,
 
-    // they applied a configuration: confirmed one, on a screen with an OK button
-    // (macos), or chose one, on a screen that applies each choice as it is made
-    // (windows). get_audio_status says what the stream runs at, or why it does not. on
-    // macos a configuration that does not open is neither kept nor reported - the
-    // screen stays up for another choice - so there this also means it is running
+    // they applied a configuration: confirmed one with the screen's OK button.
+    // get_audio_status says what the stream runs at. a configuration that does not
+    // open is neither kept nor reported - the screen stays up for another choice - so
+    // this also means it is running
     CLAP_WRAPPER_STANDALONE_CONFIGURATION_APPLIED = 1,
   };
 

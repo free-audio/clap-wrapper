@@ -65,6 +65,17 @@ std::pair<uint32_t, uint32_t> bufferFrameSizeRange(const std::string &)
   return {0, 0};
 }
 
+#endif
+
+#if WIN && CLAP_WRAPPER_HAS_WIN32
+uint32_t supportedScreenAppearances()
+{
+  // the settings window's own colours, and the dark title bar windows 10 has from 1809
+  return (1u << CLAP_WRAPPER_STANDALONE_APPEARANCE_AUTO) |
+         (1u << CLAP_WRAPPER_STANDALONE_APPEARANCE_LIGHT) |
+         (1u << CLAP_WRAPPER_STANDALONE_APPEARANCE_DARK);
+}
+#elif !MAC
 uint32_t supportedScreenAppearances()
 {
   return 0;

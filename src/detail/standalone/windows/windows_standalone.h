@@ -26,7 +26,9 @@ namespace freeaudio::clap_wrapper::standalone::windows_standalone
 std::vector<std::string> getArgs();
 ::HMODULE getInstance();
 ::HFONT getFontFromSystem(int name = DEFAULT_GUI_FONT);
-::HFONT getScaledFontFromSystem(double scale);
+// the font Windows uses in its own dialogs (Segoe UI), for a window at that dpi; percent
+// scales its height and weight is a FW_ value, 0 the font's own
+::HFONT getMessageFont(uint32_t dpi, int percent = 100, int weight = 0);
 ::HBRUSH getBrushFromSystem(int name = BLACK_BRUSH);
 ::HCURSOR getCursorFromSystem(::LPCWSTR name = IDC_ARROW);
 ::HICON getIconFromSystem(::LPCWSTR name = IDI_APPLICATION);
@@ -170,12 +172,17 @@ struct Window
 
 struct Control
 {
+  void create(::LPCWSTR className, const std::string &text, ::DWORD style, uintptr_t id,
+              ::HWND parentHwnd, ::DWORD exStyle = 0);
+
   void setPosition(uint32_t x, uint32_t y, uint32_t width, uint32_t height);
-  void refreshFont(double scale);
+  void setFont(::HFONT font);
+  void setText(const std::string &text);
+  // hidden controls take no room in the settings window's layout
+  void setVisible(bool visible);
+  bool visible{true};
 
   Position position;
-
-  wil::unique_hfont font;
 
   MessageHandler message;
   wil::unique_hwnd hwnd;
@@ -202,22 +209,37 @@ struct ComboBox final : public Control
                                       ::UINT_PTR id, ::DWORD_PTR data);
 };
 
-struct ListBox final : public Control
+// a list of midi ports, one checkbox each. ports saved but not plugged in now are listed
+// too, marked, so that unticking one is a way to forget it
+struct PortList final : public Control
 {
-  void create(const std::string &name, uintptr_t id, ::HWND parentHwnd);
-  void reset();
-  void add(const std::string &string);
+  struct Row
+  {
+    std::string name;
+    bool wasOn;  // when the settings window opened
+  };
 
-  bool set(int index);
-  bool set(const std::string &searchString);
-  void clearSelection();
-  ::LRESULT get();
-  ::LRESULT getItems(std::vector<int> &buffer);
-  ::LRESULT getItemsCount();
-  ::LRESULT getItemHeight();
+  void create(uintptr_t id, ::HWND parentHwnd);
+  void fill(const std::vector<std::string> &available, const std::vector<std::string> &on, bool allOn);
 
-  static ::LRESULT CALLBACK procedure(::HWND hwnd, ::UINT msg, ::WPARAM wparam, ::LPARAM lparam,
-                                      ::UINT_PTR id, ::DWORD_PTR data);
+  bool isOn(size_t row);
+  void setOn(size_t row, bool on);
+  // a list nobody touched leaves its settings as they were, which for the inputs may be
+  // "every port", including any plugged in later
+  bool changed();
+  std::vector<std::string> ticked();
+
+  // the checkbox images come from the theme the list has when they are made, or are
+  // drawn, for the dark, with the frame colour for their box
+  void setTheme(bool dark, ::COLORREF background, ::COLORREF text, ::COLORREF frame);
+
+  // the height of one row, from the font the list has now
+  uint32_t rowHeight();
+
+  std::vector<Row> rows;
+
+  // shown in the list's place while it has no rows
+  Control empty;
 };
 
 struct SystemMenu
@@ -235,7 +257,7 @@ struct SystemMenu
 constexpr ::UINT WM_SHOW_AUDIO_ERROR{WM_APP + 1};
 
 // Posted to the plugin window once the settings window has been hidden, so the plugin
-// hears about it from the main loop. wparam is 1 if a choice was applied while it was up.
+// hears about it from the main loop. wparam is 1 if OK applied its choice.
 constexpr ::UINT WM_SETTINGS_CLOSED{WM_APP + 2};
 
 // What the standalone features extension calls to show the settings window, installed
@@ -249,39 +271,99 @@ struct Plugin final : public Window
     enum Identifier
     {
       AudioMidiSettings,
-      MuteInput,
       SaveState,
       LoadState,
       ResetState
     };
 
     std::wstring audioMidiSettings{L"Audio/MIDI Settings"};
-    std::wstring muteInput{L"Mute input"};
     std::wstring saveState{L"Save state..."};
     std::wstring loadState{L"Load state..."};
     std::wstring resetState{L"Reset state"};
   };
 
+  // the colours the settings window is drawn in, for its appearance
+  struct Palette
+  {
+    bool dark{false};
+    ::COLORREF background;
+    ::COLORREF text;
+    ::COLORREF secondary;
+    ::COLORREF critical;
+    ::COLORREF caution;
+    ::COLORREF rule;
+    ::COLORREF field;  // lists and drop-down lists
+  };
+
   struct Settings final : public Window
   {
+    // OK and Cancel are IDOK and IDCANCEL, which is what Enter and Esc send
     enum Identifier
     {
-      AudioApi,
+      AudioApi = 100,
       AudioOutput,
       AudioInput,
       AudioSamplerate,
       AudioBuffersize,
+      ResetToDefault,
       MidiInputs,
-      MidiOutputs
+      MidiOutputs,
+      VirtualInput,
+      VirtualInputLabel,
+      VirtualOutput,
+      VirtualOutputLabel,
+      Appearance,
+      Static
     };
 
+    Control heading;
+    Control apiLabel, outputLabel, inputLabel, sampleRateLabel, bufferSizeLabel;
     ComboBox api;
     ComboBox output;
     ComboBox input;
+    Control inputNote;
     ComboBox sampleRate;
     ComboBox bufferSize;
-    ListBox midiIn;
-    ListBox midiOut;
+    Control resetToDefault;
+    Control noRateNote;
+
+    Control midiInLabel, midiOutLabel;
+    PortList midiIn;
+    PortList midiOut;
+    Control virtualIn, virtualInLabel;
+    Control virtualOut, virtualOutLabel;
+
+    Control appearanceLabel;
+    ComboBox appearance;
+
+    Control ok;
+    Control cancel;
+
+    wil::unique_hfont font;
+    wil::unique_hfont headingFont;
+    Palette palette;
+    wil::unique_hbrush backgroundBrush;
+    wil::unique_hbrush fieldBrush;
+
+    // where layoutSettings() put the horizontal rules, which WM_PAINT draws
+    std::vector<::RECT> rules;
+
+    // what the window shows, in the order it shows it: what a selection there indexes
+    std::vector<RtAudio::Api> apisShown;
+    std::vector<RtAudio::DeviceInfo> outDevices, inDevices;  // the input list adds "No Input" first
+    std::vector<int32_t> sampleRatesShown;
+    std::vector<uint32_t> bufferSizesShown;
+    std::vector<uint32_t> appearancesShown;
+
+    // as they were when the window was shown, to go back to
+    RtAudio::Api apiWhenOpened{RtAudio::Api::UNSPECIFIED};
+    bool apiChanged{false};
+    uint32_t appearanceWhenOpened{0};
+    bool virtualInWasOn{false};
+    bool virtualOutWasOn{false};
+
+    // the input note is a warning, not only a remark
+    bool inputNoteCaution{false};
   };
 
   struct ClapPlugin
@@ -295,18 +377,35 @@ struct Plugin final : public Window
   explicit Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow = SW_SHOWDEFAULT);
 
   std::optional<clap_gui_resize_hints> getResizeHints();
-  void refreshLayout();
-  void refreshApis();
-  void refreshOutputs();
-  void refreshInputs();
-  void refreshSampleRates();
-  void refreshBufferSizes();
-  void refreshMIDIInputs();
-  void refreshMIDIOutputs();
 
-  // the rows the settings window gives each midi list; 0 is no list and no label
-  uint32_t midiInputRows() const;
-  uint32_t midiOutputRows() const;
+  // the settings window: built afresh from the host each time it is shown, laid out to
+  // fit what it shows, and applied only by OK
+  void createSettingsControls();
+  void populateSettings();
+  void layoutSettings();
+  void refreshSettingsFonts();
+  void refreshApis();
+  void refreshDevices(unsigned int outputId, unsigned int inputId, bool useInput);
+  void refreshSampleRates(int32_t preferred);
+  void refreshBufferSizes(uint32_t preferred);
+  void refreshBufferSizeTitles();
+  void refreshInputNote();
+  void refreshAppearanceRow();
+  void applySettingsAppearance();
+  void selectApiInSettings();
+  void resetSettingsToDefault();
+  void okSettings();
+  void cancelSettings();
+
+  // the selections the window shows; an input of nullopt is "No Input"
+  std::optional<size_t> shownOutput();
+  std::optional<size_t> shownInput();
+  int32_t shownSampleRate();
+  uint32_t shownBufferSize();
+
+  // the plugin has a note port in that direction; the window has no section without one
+  bool takesMidi() const;
+  bool sendsMidi() const;
 
   bool saveSettings();
   bool loadSettings();
@@ -319,11 +418,6 @@ struct Plugin final : public Window
   void applyLoadedAudio();
   void applyDefaultAudio();
 
-  // The user picked a different API in the settings panel: rebuild the RtAudio
-  // instance and take that API's default devices, since device ids from the
-  // previous API mean nothing under the new one.
-  void selectAudioApi(RtAudio::Api api);
-
   // Take the current API's default devices; clears the persisted device names.
   void selectDefaultDevices();
   void refreshDeviceChannelCounts();
@@ -332,8 +426,8 @@ struct Plugin final : public Window
 
   // The settings window, as the system menu toggles it and the standalone features
   // extension shows it. showSettings() brings it forward when it is already up;
-  // hideSettings() reports the close to the plugin, applied if settingsApplied.
-  // Choices apply as they are made, so a showing is applied once any choice was.
+  // hideSettings() reports the close to the plugin, applied if settingsApplied, which
+  // OK sets. Cancel, Esc and the close button go through cancelSettings() first.
   void showSettings();
   void hideSettings();
   bool settingsApplied{false};
@@ -355,9 +449,5 @@ struct Plugin final : public Window
   Position position;
   Menu menu;
   Settings settings;
-
-  // the buffer sizes the settings window lists, in its order: what a selection there
-  // indexes (refreshBufferSizes)
-  std::vector<uint32_t> bufferSizesShown;
 };
 }  // namespace freeaudio::clap_wrapper::standalone::windows_standalone
