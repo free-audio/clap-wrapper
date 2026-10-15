@@ -1,11 +1,11 @@
-
 # The standalone's audio and MIDI run on the platform's own apis on macOS (CoreAudio,
 # CoreMIDI) and Windows (WASAPI, WinMM). This switch takes RtAudio and RtMidi for both in
-# their place, as every standalone did before; Linux has no native backend and always
-# does. Windows built with RtAudio's ASIO (RTAUDIO_API_ASIO) takes ASIO from RtAudio next
-# to the native WASAPI either way.
+# their place, as every standalone did before. Linux has PipeWire and JACK for audio, each
+# loaded at run time and built where its headers are found, and RtMidi for MIDI; without
+# either header it takes RtAudio, as this switch does. Windows built with RtAudio's ASIO
+# (RTAUDIO_API_ASIO) takes ASIO from RtAudio next to the native WASAPI either way.
 option(CLAP_WRAPPER_STANDALONE_RTAUDIO
-       "Standalone: RtAudio and RtMidi in place of CoreAudio/CoreMIDI and WASAPI/WinMM (Linux always uses them)"
+       "Standalone: RtAudio and RtMidi in place of CoreAudio/CoreMIDI, WASAPI/WinMM and PipeWire/JACK"
        OFF)
 
 function(target_add_standalone_wrapper)
@@ -73,8 +73,39 @@ function(target_add_standalone_wrapper)
 
     # RtAudio and RtMidi for everything, or RtAudio for ASIO only
     set(sa_rtaudio ${CLAP_WRAPPER_STANDALONE_RTAUDIO})
+
+    # linux: pipewire and jack, each where its headers are. the libraries are dlopen()ed,
+    # so that one binary runs with either, both or neither installed
+    set(sa_pipewire OFF)
+    set(sa_jack OFF)
+    if (NOT APPLE AND NOT WIN32 AND NOT sa_rtaudio)
+        find_package(PkgConfig QUIET)
+        if (PkgConfig_FOUND)
+            pkg_check_modules(CLAP_WRAPPER_PIPEWIRE QUIET libpipewire-0.3)
+        endif()
+        if (CLAP_WRAPPER_PIPEWIRE_FOUND)
+            set(sa_pipewire ON)
+        else()
+            message(STATUS "clap-wrapper: no PipeWire headers (libpipewire-0.3-dev); the standalone is built without PipeWire")
+        endif()
+
+        find_path(CLAP_WRAPPER_JACK_INCLUDE_DIR jack/jack.h)
+        if (CLAP_WRAPPER_JACK_INCLUDE_DIR)
+            set(sa_jack ON)
+        else()
+            message(STATUS "clap-wrapper: no JACK headers (libjack-jackd2-dev); the standalone is built without JACK")
+        endif()
+
+        if (NOT sa_pipewire AND NOT sa_jack)
+            message(STATUS "clap-wrapper: neither PipeWire nor JACK headers; the standalone takes RtAudio for audio")
+            set(sa_rtaudio ON)
+        endif()
+    endif()
+
+    # RtMidi with RtAudio, and on linux in any case
+    set(sa_rtmidi ${sa_rtaudio})
     if (NOT APPLE AND NOT WIN32)
-        set(sa_rtaudio ON)
+        set(sa_rtmidi ON)
     endif()
     set(sa_asio OFF)
     if (WIN32 AND RTAUDIO_API_ASIO)
@@ -105,17 +136,37 @@ function(target_add_standalone_wrapper)
         target_link_libraries(${salib} PUBLIC base-sdk-rtaudio)
     endif()
     if (sa_rtaudio)
+        target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_RTAUDIO=1)
+    endif()
+    if (sa_rtmidi)
+        if ((sa_pipewire OR sa_jack) AND NOT TARGET base-sdk-rtmidi)
+            # rtmidi's jack would link libjack, which the standalone loads at run time
+            set(RTMIDI_API_JACK FALSE CACHE BOOL "RtMidi without JACK: the standalone loads libjack at run time" FORCE)
+        endif()
         guarantee_rtmidi()
         target_sources(${salib} PRIVATE ${sasrc}/rtmidi_backend.cpp)
         target_link_libraries(${salib} PUBLIC base-sdk-rtmidi)
-        target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_RTAUDIO=1)
+        target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_RTMIDI=1)
+    endif()
+    if (sa_pipewire)
+        target_sources(${salib} PRIVATE ${sasrc}/linux/pipewire_backend.cpp)
+        target_include_directories(${salib} SYSTEM PRIVATE ${CLAP_WRAPPER_PIPEWIRE_INCLUDE_DIRS})
+        target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_PIPEWIRE=1)
+    endif()
+    if (sa_jack)
+        target_sources(${salib} PRIVATE ${sasrc}/linux/jack_backend.cpp)
+        target_include_directories(${salib} SYSTEM PRIVATE ${CLAP_WRAPPER_JACK_INCLUDE_DIR})
+        target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_JACK=1)
+    endif()
+    if (sa_pipewire OR sa_jack)
+        target_link_libraries(${salib} PRIVATE ${CMAKE_DL_LIBS})
     endif()
 
     if (APPLE)
         # the device listing is coreaudio's in both cases: rtaudio takes from it what it
         # cannot tell itself
         target_sources(${salib} PRIVATE ${sasrc}/macos/coreaudio_backend.cpp)
-        if (NOT sa_rtaudio)
+        if (NOT sa_rtmidi)
             target_sources(${salib} PRIVATE ${sasrc}/macos/coremidi_backend.cpp)
         endif()
         target_link_libraries(${salib}

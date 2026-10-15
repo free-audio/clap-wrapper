@@ -27,6 +27,10 @@ void X11Gui::initialize(freeaudio::clap_wrapper::standalone::StandaloneHost *sah
     exit(1);
   }
   sah->x11Gui = this;
+  host = sah;
+  // no settings window to show it in
+  sah->displayAudioError = [](const std::string &message)
+  { fprintf(stderr, "Audio: %s\n", message.c_str()); };
   sah->onRequestResize = [this](int w, int h) { return resetSizeTo(w, h); };
   epoll_fd = epoll_create1(EPOLL_CLOEXEC);
   if (epoll_fd < 0)
@@ -42,7 +46,8 @@ void X11Gui::runloop()
     // no gui. Only way to kill us is with a signal.
     while (true)
     {
-      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+      pollAudioEvents();
     }
     return;
   }
@@ -83,6 +88,7 @@ void X11Gui::runloop()
     // Poll for both X11 events and timer events
     int num{0};
     if (running) num = epoll_wait(epoll_fd, events, maxEpollEvents, 50);
+    pollAudioEvents();
 
     if (num > 0)
     {
@@ -109,6 +115,16 @@ void X11Gui::runloop()
       }
     }
   }
+}
+
+// the audio backend's events - a stream that stopped, devices that changed - acted on
+// here, on the main thread, every 50 ms
+void X11Gui::pollAudioEvents()
+{
+  const auto now{std::chrono::steady_clock::now()};
+  if (!host || now < nextAudioPoll) return;
+  nextAudioPoll = now + std::chrono::milliseconds(50);
+  host->pollAudioEvents();
 }
 
 void X11Gui::setPlugin(std::shared_ptr<Clap::Plugin> p)

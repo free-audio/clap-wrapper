@@ -7,20 +7,55 @@ namespace freeaudio::clap_wrapper::standalone
 {
 namespace
 {
-// the native api, which comes first and is the default
+// the native apis, which come first; the first usable one is the default
+struct NativeApi
+{
+  AudioApi api;
+  std::unique_ptr<AudioBackend> (*create)();
+  // null for an api that is always there; else whether a server answers now
+  bool (*usable)();
+};
+
+const std::vector<NativeApi> &nativeApis()
+{
+  static const std::vector<NativeApi> apis{
 #if !CLAP_WRAPPER_STANDALONE_RTAUDIO && MAC
-const AudioApi nativeApi{"core", "CoreAudio"};
+      {{"core", "CoreAudio"}, &createCoreAudioBackend, nullptr},
 #elif !CLAP_WRAPPER_STANDALONE_RTAUDIO && WIN
-const AudioApi nativeApi{"wasapi", "WASAPI"};
+      {{"wasapi", "WASAPI"}, &createWasapiBackend, nullptr},
 #endif
+#if CLAP_WRAPPER_STANDALONE_PIPEWIRE
+      {{"pipewire", "PipeWire"}, &createPipeWireBackend, &pipeWireUsable},
+#endif
+#if CLAP_WRAPPER_STANDALONE_JACK
+      {{"jack", "JACK"}, &createJackBackend, &jackUsable},
+#endif
+  };
+  return apis;
+}
+
+const NativeApi *nativeApi(const std::string &id)
+{
+  for (const auto &native : nativeApis())
+  {
+    if (native.api.id == id) return &native;
+  }
+  return nullptr;
+}
+
+bool usable(const NativeApi &native)
+{
+  return !native.usable || native.usable();
+}
 }  // namespace
 
 std::vector<AudioApi> audioApis()
 {
-  std::vector<AudioApi> res;
-#if !CLAP_WRAPPER_STANDALONE_RTAUDIO && (MAC || WIN)
-  res.push_back(nativeApi);
-#endif
+  // linux has PipeWire and JACK, either of which may have no server running: the ones
+  // that answer come first, in their order, so that a JACK-only machine starts on JACK
+  std::vector<AudioApi> res, unanswered;
+  for (const auto &native : nativeApis()) (usable(native) ? res : unanswered).push_back(native.api);
+  res.insert(res.end(), unanswered.begin(), unanswered.end());
 #if CLAP_WRAPPER_STANDALONE_RTAUDIO || CLAP_WRAPPER_STANDALONE_ASIO
   for (const auto &api : rtAudioApis()) res.push_back(api);
 #endif
@@ -45,11 +80,17 @@ std::unique_ptr<AudioBackend> createAudioBackend(const std::string &apiId)
 #endif
   }
 
-#if !CLAP_WRAPPER_STANDALONE_RTAUDIO && MAC
-  if (known->id == nativeApi.id) return createCoreAudioBackend();
-#elif !CLAP_WRAPPER_STANDALONE_RTAUDIO && WIN
-  if (known->id == nativeApi.id) return createWasapiBackend();
-#endif
+  // a saved api without a server, where another has one: the default, which does
+  const auto *native{nativeApi(known->id)};
+  if (native && known != apis.begin() && native->usable && !native->usable())
+  {
+    if (const auto *first{nativeApi(apis.front().id)}; first && usable(*first))
+    {
+      LOGINFO("[WARNING] Audio API '{}' has no server running; using '{}'", known->id, apis.front().id);
+      native = first;
+    }
+  }
+  if (native) return native->create();
 #if CLAP_WRAPPER_STANDALONE_RTAUDIO || CLAP_WRAPPER_STANDALONE_ASIO
   return createRtAudioBackend(known->id);
 #else
@@ -59,7 +100,7 @@ std::unique_ptr<AudioBackend> createAudioBackend(const std::string &apiId)
 
 std::unique_ptr<MidiBackend> createMidiBackend()
 {
-#if CLAP_WRAPPER_STANDALONE_RTAUDIO
+#if CLAP_WRAPPER_STANDALONE_RTMIDI
   return createRtMidiBackend();
 #elif MAC
   return createCoreMidiBackend();

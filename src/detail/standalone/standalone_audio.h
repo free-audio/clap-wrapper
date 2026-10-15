@@ -3,8 +3,8 @@
 /*
  * The standalone's audio, with no platform api in it: the devices a backend lists, and the
  * backend that lists them and runs a stream on them. One backend per audio api. A build
- * has the platform's own - CoreAudio on macOS, WASAPI on Windows - or, built with
- * CLAP_WRAPPER_STANDALONE_RTAUDIO (always on Linux), RtAudio's apis in their place.
+ * has the platform's own - CoreAudio on macOS, WASAPI on Windows, PipeWire and JACK on
+ * Linux - or, built with CLAP_WRAPPER_STANDALONE_RTAUDIO, RtAudio's apis in their place.
  * Windows built with ASIO adds RtAudio's ASIO next to the native WASAPI.
  *
  * Nothing in here throws.
@@ -22,15 +22,17 @@ struct AudioDevice
 {
   // what the settings and the standalone features extension keep. stable across launches
   // and replugs where the platform has such an id: CoreAudio's device UID, the WASAPI
-  // endpoint id. RtAudio's backends use RtAudio's name
+  // endpoint id, PipeWire's node name, JACK's client name. RtAudio's backends use
+  // RtAudio's name
   std::string id;
 
   // for a menu: the device's own name, with no manufacturer in front of it
   std::string name;
 
   // what RtAudio called this device, so that settings saved by an RtAudio build still find
-  // it: "Manufacturer: Name" on macOS, the endpoint's friendly name with WASAPI. empty where
-  // RtAudio would not have listed it
+  // it: "Manufacturer: Name" on macOS, the endpoint's friendly name with WASAPI, the
+  // node's description (RtAudio's pulse) with PipeWire, the client's name with JACK. empty
+  // where RtAudio would not have listed it
   std::string legacyName;
 
   uint32_t inputChannels{0}, outputChannels{0};
@@ -191,7 +193,7 @@ class AudioBackend
   virtual ~AudioBackend() = default;
 
   // RtAudio's api names, which settings files and plugins already hold: "core", "wasapi",
-  // "asio", "alsa", "pulse", "jack"
+  // "asio", "alsa", "pulse", "jack"; and "pipewire", which RtAudio does not have
   virtual std::string apiId() const = 0;
   virtual std::string apiDisplayName() const = 0;
 

@@ -6,6 +6,7 @@
 #include <poll.h>
 #include <map>
 #include <set>
+#include <chrono>
 
 #include <X11/Xlib.h>
 namespace freeaudio::clap_wrapper::standalone::linux_standalone
@@ -31,6 +32,11 @@ struct X11Gui
   static constexpr size_t maxEpollEvents{256};
 
   std::shared_ptr<Clap::Plugin> plugin{nullptr};
+
+  // the host whose audio events the loop takes, as the macOS and Windows timers do
+  freeaudio::clap_wrapper::standalone::StandaloneHost *host{nullptr};
+  std::chrono::steady_clock::time_point nextAudioPoll{};
+  void pollAudioEvents();
 
   bool resetSizeTo(int w, int h);
 

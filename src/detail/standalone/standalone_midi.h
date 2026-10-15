@@ -2,8 +2,8 @@
 
 /*
  * The standalone's MIDI, with no platform api in it. One backend per build: CoreMIDI on
- * macOS, WinMM on Windows, or RtMidi's api with CLAP_WRAPPER_STANDALONE_RTAUDIO (always
- * on Linux).
+ * macOS, WinMM on Windows, or RtMidi's api with CLAP_WRAPPER_STANDALONE_RTAUDIO and
+ * always on Linux.
  *
  * Nothing in here throws.
  */
