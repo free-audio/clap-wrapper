@@ -2,8 +2,8 @@
 
 /*
  * The standalone's MIDI, with no platform api in it. One backend per build: CoreMIDI on
- * macOS, WinMM on Windows, or RtMidi's api with CLAP_WRAPPER_STANDALONE_RTAUDIO and
- * always on Linux.
+ * macOS, WinMM on Windows, the ALSA sequencer on Linux, or RtMidi's api with
+ * CLAP_WRAPPER_STANDALONE_RTAUDIO.
  *
  * Nothing in here throws.
  */
@@ -21,7 +21,9 @@ struct MidiPort
 {
   // what the settings and the standalone features extension keep. stable across launches
   // where the platform has such an id: CoreMIDI's unique id. WinMM has none, so there it
-  // is the device's name and its place among ports of that name. RtMidi uses its name
+  // is the device's name and its place among ports of that name; the ALSA sequencer's
+  // numbers move, so there it is "client name:port name" and its place. RtMidi uses its
+  // name
   std::string id;
 
   // for a list; unique within its direction
@@ -45,7 +47,8 @@ class MidiBackend
  public:
   virtual ~MidiBackend() = default;
 
-  // "coremidi", "winmm", or RtMidi's api name ("core", "winmm", "alsa", "jack")
+  // "coremidi", "winmm", "alsa" (the ALSA sequencer), or RtMidi's api name ("core",
+  // "winmm", "alsa", "jack")
   virtual std::string apiId() const = 0;
 
   // [main-thread] the ports there are now. our own virtual ports are not among them, so

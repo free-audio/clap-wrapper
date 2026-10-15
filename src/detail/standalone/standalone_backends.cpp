@@ -106,6 +106,8 @@ std::unique_ptr<MidiBackend> createMidiBackend()
   return createCoreMidiBackend();
 #elif WIN
   return createWinMmMidiBackend();
+#elif CLAP_WRAPPER_STANDALONE_ALSASEQ
+  return createAlsaSeqMidiBackend();
 #else
   return nullptr;
 #endif

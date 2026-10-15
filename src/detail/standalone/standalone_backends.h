@@ -6,7 +6,8 @@
 // CLAP_WRAPPER_STANDALONE_RTMIDI, RtMidi for MIDI; without it, macOS and Windows use their
 // own apis, and Windows built with ASIO (CLAP_WRAPPER_STANDALONE_ASIO) adds RtAudio's ASIO
 // next to WASAPI. Linux has PipeWire (CLAP_WRAPPER_STANDALONE_PIPEWIRE) and JACK
-// (CLAP_WRAPPER_STANDALONE_JACK) for audio, and always RtMidi for MIDI
+// (CLAP_WRAPPER_STANDALONE_JACK) for audio, and the ALSA sequencer
+// (CLAP_WRAPPER_STANDALONE_ALSASEQ) for MIDI
 
 #include "standalone_audio.h"
 #include "standalone_midi.h"
@@ -50,5 +51,9 @@ bool pipeWireUsable();
 // linux/jack_backend.cpp. usable: the library loads and a server answers
 std::unique_ptr<AudioBackend> createJackBackend();
 bool jackUsable();
+#endif
+#if CLAP_WRAPPER_STANDALONE_ALSASEQ
+// linux/alsaseq_midi_backend.cpp
+std::unique_ptr<MidiBackend> createAlsaSeqMidiBackend();
 #endif
 }  // namespace freeaudio::clap_wrapper::standalone

@@ -15,9 +15,9 @@
 #endif
 
 /*
- * RtMidi behind the MidiBackend interface, with CLAP_WRAPPER_STANDALONE_RTMIDI: what
- * CLAP_WRAPPER_STANDALONE_RTAUDIO builds, and Linux always. A port's id is RtMidi's name
- * for it, which is also what settings files from before the native backends hold.
+ * RtMidi behind the MidiBackend interface, with CLAP_WRAPPER_STANDALONE_RTMIDI, which
+ * CLAP_WRAPPER_STANDALONE_RTAUDIO builds. A port's id is RtMidi's name for it, which is
+ * also what settings files from before the native backends hold.
  */
 
 namespace freeaudio::clap_wrapper::standalone

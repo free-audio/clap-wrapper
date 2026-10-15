@@ -1,11 +1,12 @@
 # The standalone's audio and MIDI run on the platform's own apis on macOS (CoreAudio,
 # CoreMIDI) and Windows (WASAPI, WinMM). This switch takes RtAudio and RtMidi for both in
-# their place, as every standalone did before. Linux has PipeWire and JACK for audio, each
-# loaded at run time and built where its headers are found, and RtMidi for MIDI; without
-# either header it takes RtAudio, as this switch does. Windows built with RtAudio's ASIO
+# their place, as every standalone did before. Linux has PipeWire and JACK for audio and
+# the ALSA sequencer for MIDI, each loaded at run time and built where its headers are
+# found; without the PipeWire and JACK headers it takes RtAudio and RtMidi, as this
+# switch does. Windows built with RtAudio's ASIO
 # (RTAUDIO_API_ASIO) takes ASIO from RtAudio next to the native WASAPI either way.
 option(CLAP_WRAPPER_STANDALONE_RTAUDIO
-       "Standalone: RtAudio and RtMidi in place of CoreAudio/CoreMIDI, WASAPI/WinMM and PipeWire/JACK"
+       "Standalone: RtAudio and RtMidi in place of CoreAudio/CoreMIDI, WASAPI/WinMM and PipeWire/JACK/ALSA"
        OFF)
 
 function(target_add_standalone_wrapper)
@@ -102,10 +103,18 @@ function(target_add_standalone_wrapper)
         endif()
     endif()
 
-    # RtMidi with RtAudio, and on linux in any case
-    set(sa_rtmidi ${sa_rtaudio})
-    if (NOT APPLE AND NOT WIN32)
-        set(sa_rtmidi ON)
+    # RtMidi with the RtAudio switch; else linux's MIDI is the ALSA sequencer, where its
+    # headers are, and no MIDI at all where they are not. a linux build that takes RtAudio
+    # for want of the PipeWire and JACK headers keeps the ALSA sequencer
+    set(sa_rtmidi ${CLAP_WRAPPER_STANDALONE_RTAUDIO})
+    set(sa_alsaseq OFF)
+    if (NOT APPLE AND NOT WIN32 AND NOT sa_rtmidi)
+        find_path(CLAP_WRAPPER_ALSA_INCLUDE_DIR alsa/asoundlib.h)
+        if (CLAP_WRAPPER_ALSA_INCLUDE_DIR)
+            set(sa_alsaseq ON)
+        else()
+            message(STATUS "clap-wrapper: no ALSA headers (libasound2-dev); the standalone is built without MIDI")
+        endif()
     endif()
     set(sa_asio OFF)
     if (WIN32 AND RTAUDIO_API_ASIO)
@@ -139,10 +148,6 @@ function(target_add_standalone_wrapper)
         target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_RTAUDIO=1)
     endif()
     if (sa_rtmidi)
-        if ((sa_pipewire OR sa_jack) AND NOT TARGET base-sdk-rtmidi)
-            # rtmidi's jack would link libjack, which the standalone loads at run time
-            set(RTMIDI_API_JACK FALSE CACHE BOOL "RtMidi without JACK: the standalone loads libjack at run time" FORCE)
-        endif()
         guarantee_rtmidi()
         target_sources(${salib} PRIVATE ${sasrc}/rtmidi_backend.cpp)
         target_link_libraries(${salib} PUBLIC base-sdk-rtmidi)
@@ -158,7 +163,12 @@ function(target_add_standalone_wrapper)
         target_include_directories(${salib} SYSTEM PRIVATE ${CLAP_WRAPPER_JACK_INCLUDE_DIR})
         target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_JACK=1)
     endif()
-    if (sa_pipewire OR sa_jack)
+    if (sa_alsaseq)
+        target_sources(${salib} PRIVATE ${sasrc}/linux/alsaseq_midi_backend.cpp)
+        target_include_directories(${salib} SYSTEM PRIVATE ${CLAP_WRAPPER_ALSA_INCLUDE_DIR})
+        target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_ALSASEQ=1)
+    endif()
+    if (sa_pipewire OR sa_jack OR sa_alsaseq)
         target_link_libraries(${salib} PRIVATE ${CMAKE_DL_LIBS})
     endif()
 
