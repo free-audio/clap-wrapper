@@ -8,6 +8,12 @@
 #include "detail/standalone/linux/x11_gui.h"
 #endif
 
+#if LIN
+#include <pwd.h>
+#include <unistd.h>
+#include <cstdlib>
+#endif
+
 #if WIN
 #if CLAP_WRAPPER_HAS_WIN32
 #include <Windows.h>
@@ -35,6 +41,34 @@ std::optional<fs::path> getStandaloneSettingsPath()
   }
 
   return std::nullopt;
+}
+#elif LIN
+// the XDG config directory: $XDG_CONFIG_HOME where it is set and absolute (the spec has a
+// relative one ignored), else ~/.config, with the home from $HOME or the password database
+std::optional<fs::path> getStandaloneSettingsPath()
+{
+  fs::path config;
+  const char *xdg{std::getenv("XDG_CONFIG_HOME")};
+  if (xdg && *xdg && fs::path(xdg).is_absolute())
+  {
+    config = xdg;
+  }
+  else
+  {
+    const char *home{std::getenv("HOME")};
+    if (!home || !*home)
+    {
+      const auto *user{::getpwuid(::getuid())};
+      home = user ? user->pw_dir : nullptr;
+    }
+    if (!home || !*home) return std::nullopt;
+    config = fs::path(home) / ".config";
+  }
+
+  const auto data{config / "clap-wrapper-standalone"};
+  std::error_code error;
+  fs::create_directories(data, error);
+  return data;
 }
 #elif !MAC
 std::optional<fs::path> getStandaloneSettingsPath()
