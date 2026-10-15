@@ -142,12 +142,14 @@ void CLAP_WRAPPER_TIMER_CALLBACK(CFRunLoopTimerRef timer, void *info)
 
   if (gui->can_resize(ui._plugin->_plugin))
   {
-    clap_gui_resize_hints_t resize_hints;
-    gui->get_resize_hints(ui._plugin->_plugin, &resize_hints);
+    clap_gui_resize_hints_t resize_hints{};
     NSAutoresizingMaskOptions mask = 0;
 
-    if (resize_hints.can_resize_horizontally) mask |= NSViewWidthSizable;
-    if (resize_hints.can_resize_vertically) mask |= NSViewHeightSizable;
+    if (gui->get_resize_hints(ui._plugin->_plugin, &resize_hints))
+    {
+      if (resize_hints.can_resize_horizontally) mask |= NSViewWidthSizable;
+      if (resize_hints.can_resize_vertically) mask |= NSViewHeightSizable;
+    }
 
     [self setAutoresizingMask:mask];
     gui->set_size(ui._plugin->_plugin, size.width, size.height);
