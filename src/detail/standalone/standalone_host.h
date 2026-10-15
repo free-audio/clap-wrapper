@@ -519,6 +519,14 @@ struct StandaloneHost : Clap::IHost, AudioStreamCallback
   // (AudioDevice::min/maxBufferFrames); an empty id narrows nothing
   std::vector<uint32_t> getBufferSizesFor(const std::string &outputId, const std::string &inputId);
 
+  // the channels of the plugin's main bus in one direction; 0 without one
+  uint32_t mainBusChannels(bool input) const;
+  // channelChoices() for a device of the list, for the plugin's main bus
+  std::vector<AudioChannelChoice> getChannelChoices(const std::string &deviceId, bool input);
+  // the choice a saved first channel (1-based, 0 for the default) names on a device: the
+  // one that starts there, or the first. {0, 0} for a device not there
+  AudioChannelChoice channelChoiceFor(const std::string &deviceId, bool input, uint32_t savedFirst);
+
   // the input a launch with nothing chosen opens: the system default, or an interface in
   // its place when that is a microphone (preferredFirstRunInput). empty if there is none
   // that may be opened, a microphone being opened only when chosen

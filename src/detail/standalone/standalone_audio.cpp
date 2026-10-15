@@ -79,6 +79,39 @@ std::vector<uint32_t> commonSampleRates(const AudioDevice *output, const AudioDe
   return res;
 }
 
+namespace
+{
+// "Profiler 1" and "Profiler 2" as "Profiler 1 + 2"; names with nothing in common in full
+std::string pairTitle(const std::string &a, const std::string &b)
+{
+  const auto aSpace{a.rfind(' ')}, bSpace{b.rfind(' ')};
+  const auto aBase{aSpace == std::string::npos ? std::string{} : a.substr(0, aSpace + 1)};
+  const auto bBase{bSpace == std::string::npos ? std::string{} : b.substr(0, bSpace + 1)};
+  if (aBase == bBase) return a + " + " + b.substr(bBase.size());
+  return a + " + " + b;
+}
+}  // namespace
+
+std::vector<AudioChannelChoice> channelChoices(const AudioDevice &device, bool input,
+                                               uint32_t busChannels)
+{
+  const auto channels{input ? device.inputChannels : device.outputChannels};
+  std::vector<AudioChannelChoice> res;
+
+  // an input bus of one channel takes one; anything else takes pairs, a mono output
+  // included, which the host sends to both channels of the pair
+  const bool singles{input && busChannels == 1};
+  for (uint32_t ch = 0; ch < channels; ch += singles ? 1 : 2)
+  {
+    if (singles || ch + 1 >= channels)
+      res.push_back({ch, 1, channelName(device, input, ch)});
+    else
+      res.push_back(
+          {ch, 2, pairTitle(channelName(device, input, ch), channelName(device, input, ch + 1))});
+  }
+  return res;
+}
+
 std::vector<std::string> deviceMenuTitles(const std::vector<const AudioDevice *> &devices)
 {
   std::vector<std::string> res;

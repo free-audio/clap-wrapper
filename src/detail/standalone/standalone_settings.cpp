@@ -140,6 +140,10 @@ bool StandaloneSettings::load(const fs::path &fromFile)
         loaded.audioInputUsed = asBool(value);
       else if (key == "audioOutputUsed")
         loaded.audioOutputUsed = asBool(value);
+      else if (key == "inputFirstChannel")
+        loaded.inputFirstChannel = static_cast<uint32_t>(std::atol(value.c_str()));
+      else if (key == "outputFirstChannel")
+        loaded.outputFirstChannel = static_cast<uint32_t>(std::atol(value.c_str()));
       else if (key == "sampleRate")
         loaded.sampleRate = static_cast<int32_t>(std::atol(value.c_str()));
       else if (key == "bufferSize")
@@ -239,6 +243,8 @@ bool StandaloneSettings::save(const fs::path &intoFile) const
     ofs << "audioOutputUsed=" << fromBool(audioOutputUsed) << "\n";
     ofs << "audioInputUsed=" << fromBool(audioInputUsed) << "\n";
     ofs << "sampleRate=" << sampleRate << "\n";
+    if (outputFirstChannel > 0) ofs << "outputFirstChannel=" << outputFirstChannel << "\n";
+    if (inputFirstChannel > 0) ofs << "inputFirstChannel=" << inputFirstChannel << "\n";
     ofs << "bufferSize=" << bufferSize << "\n";
 
     ofs << "midiBindAllPorts=" << fromBool(midiBindAllPorts) << "\n";

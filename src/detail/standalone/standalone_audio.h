@@ -92,6 +92,20 @@ const AudioDevice *findDevice(const std::vector<AudioDevice> &devices, const std
 // may be null
 std::vector<uint32_t> commonSampleRates(const AudioDevice *output, const AudioDevice *input);
 
+// a choice of device channels for the plugin's main input or output: count adjacent
+// channels from first, 0-based
+struct AudioChannelChoice
+{
+  uint32_t first{0}, count{0};
+  std::string title;  // "Profiler 2", "Profiler 3 + 4"
+};
+
+// what a device offers the plugin's main bus of this width in one direction: each channel
+// for a mono input, adjacent pairs otherwise (1 + 2, 3 + 4, a last odd channel alone); one
+// entry for a device with one channel. empty for a device without channels that way
+std::vector<AudioChannelChoice> channelChoices(const AudioDevice &device, bool input,
+                                               uint32_t busChannels);
+
 // menu titles for these devices, in their order: the name, with " (2)", " (3)" after
 // each repeat of a name
 std::vector<std::string> deviceMenuTitles(const std::vector<const AudioDevice *> &devices);

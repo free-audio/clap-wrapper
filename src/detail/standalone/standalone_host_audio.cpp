@@ -173,6 +173,36 @@ void StandaloneHost::pollAudioEvents()
   }
 }
 
+uint32_t StandaloneHost::mainBusChannels(bool input) const
+{
+  const auto &byBus{input ? inputChannelByBus : outputChannelByBus};
+  const auto main{input ? mainInput : mainOutput};
+  return main < byBus.size() ? byBus[main] : 0;
+}
+
+std::vector<AudioChannelChoice> StandaloneHost::getChannelChoices(const std::string &deviceId,
+                                                                  bool input)
+{
+  const auto *device{findDevice(deviceId)};
+  if (!device) return {};
+  return channelChoices(*device, input, mainBusChannels(input));
+}
+
+AudioChannelChoice StandaloneHost::channelChoiceFor(const std::string &deviceId, bool input,
+                                                    uint32_t savedFirst)
+{
+  const auto choices{getChannelChoices(deviceId, input)};
+  if (choices.empty()) return {};
+
+  // one the device no longer has - another device took the name, or the bus got wider
+  // - is the default, as a missing device is
+  for (const auto &choice : choices)
+  {
+    if (savedFirst > 0 && choice.first == savedFirst - 1) return choice;
+  }
+  return choices.front();
+}
+
 std::string StandaloneHost::defaultInputToOpen()
 {
   guaranteeAudioBackend();
@@ -231,8 +261,12 @@ void StandaloneHost::startAudioThread()
     audioOutputDevice = out;
     audioInputUsed = isKnownDevice(in);
     audioOutputUsed = isKnownDevice(out);
-    deviceInputFirstChannel = 0;
-    deviceOutputFirstChannel = 0;
+    const auto inChoice{channelChoiceFor(in, true, 0)};
+    const auto outChoice{channelChoiceFor(out, false, 0)};
+    deviceInputFirstChannel = inChoice.first;
+    deviceInputChannels = std::max<uint32_t>(inChoice.count, 1);
+    deviceOutputFirstChannel = outChoice.first;
+    deviceOutputChannels = std::max<uint32_t>(outChoice.count, 1);
     currentSampleRate = sr;
 
     startAudioThreadOn(audioInputDevice, deviceInputChannels, audioInputUsed && numAudioInputs > 0,

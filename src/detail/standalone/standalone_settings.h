@@ -51,6 +51,10 @@ struct StandaloneSettings
   bool audioOutputUsed{true};  // no UI turns this off yet; the .conf can
   int32_t sampleRate{0};       // 0 means the device's preferred rate
 
+  // the device channel, 1-based, the plugin's main input is fed from and its main output
+  // sent to; 0 means the device's first (StandaloneHost::channelChoiceFor)
+  uint32_t inputFirstChannel{0}, outputFirstChannel{0};
+
   // Clamped on apply; see StandaloneHost::applyAudioSettings().
   uint32_t bufferSize{defaultBufferSize};
 

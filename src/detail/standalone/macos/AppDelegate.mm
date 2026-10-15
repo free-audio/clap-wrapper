@@ -68,6 +68,11 @@ void applyScreenAppearance(NSWindow *window)
   NSPopUpButton *outputSelection, *inputSelection, *sampleRateSelection, *bufferSizeSelection;
   std::vector<sa::AudioDevice> outDevices, inDevices;
 
+  // which of the selected device's channels the plugin's main ports take
+  NSPopUpButton *outputChannelSelection, *inputChannelSelection;
+  std::vector<sa::AudioChannelChoice> outChoices, inChoices;
+  NSGridRow *inputChannelRow;
+
   // a list nobody touched leaves its settings as they were, which for the inputs may be
   // "every port", including any plugged in later
   std::vector<MidiPortRow> midiInRows, midiOutRows;
@@ -105,6 +110,8 @@ void applyScreenAppearance(NSWindow *window)
 - (void)setupContents;
 - (void)fillDeviceMenusSelectingOutput:(const std::string &)output input:(const std::string &)input;
 - (void)devicesChanged;
+- (void)resetChannelSelectionsPreferringOutput:(uint32_t)outputFirst input:(uint32_t)inputFirst;
+- (sa::AudioChannelChoice)shownChoice:(bool)input;
 - (void)resetSampleRateSelection;
 - (void)resetBufferSizeSelectionPreferring:(uint32_t)frames;
 - (void)updateBufferSizeTitles;
@@ -744,6 +751,17 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
     [inputSelection setAction:@selector(onSourceMenuChanged:)];
     [inputSelection setTarget:self];
 
+    outputChannelSelection = [[[NSPopUpButton alloc] init] autorelease];
+    inputChannelSelection = [[[NSPopUpButton alloc] init] autorelease];
+    for (NSPopUpButton *menu : {outputChannelSelection, inputChannelSelection})
+    {
+      [[menu cell] setLineBreakMode:NSLineBreakByTruncatingTail];
+      [[menu widthAnchor] constraintEqualToConstant:controlWidth].active = YES;
+    }
+    // a mono main input takes one channel, anything else a pair
+    NSString *inputChannelLabel =
+        standaloneHost->mainBusChannels(true) == 1 ? @"Input Channel:" : @"Input Channels:";
+
     NSButton *defaultButton = [NSButton buttonWithTitle:@"Reset to System Default"
                                                  target:self
                                                  action:@selector(defaultButtonPressed:)];
@@ -813,7 +831,9 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
 
     NSGridView *grid = [NSGridView gridViewWithViews:@[
       @[ makeLabel(@"Output:"), outputSelection ],
+      @[ makeLabel(@"Output Channels:"), outputChannelSelection ],
       @[ makeLabel(@"Input:"), inputSelection ],
+      @[ makeLabel(inputChannelLabel), inputChannelSelection ],
       @[ none, inputNote ],
       @[ makeLabel(@"Sample Rate:"), sampleRateSelection ],
       @[ makeLabel(@"Buffer Size:"), bufferSizeSelection ],
@@ -834,6 +854,7 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
 
     auto rowOf = [grid](NSView *v) { return [[grid cellForView:v] row]; };
 
+    inputChannelRow = rowOf(inputChannelSelection);
     noRateRow = rowOf(noRateNote);
     [noRateRow setHidden:YES];
     inputNoteRow = rowOf(inputNote);
@@ -921,6 +942,8 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
 
     [self resetSampleRateSelection];
     [self resetBufferSizeSelectionPreferring:standaloneHost->currentBufferSize];
+    [self resetChannelSelectionsPreferringOutput:standaloneHost->deviceOutputFirstChannel
+                                           input:standaloneHost->deviceInputFirstChannel];
     [self updateInputNote];
     [self applyAppearance];
 
@@ -963,28 +986,50 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
     const bool previousUseOut = standaloneHost->audioOutputUsed;
     const auto previousRate = standaloneHost->currentSampleRate;
     const auto previousFrames = standaloneHost->currentBufferSize;
+    const sa::AudioChannelChoice previousInChannels{
+        standaloneHost->deviceInputFirstChannel, standaloneHost->deviceInputChannels, {}};
+    const sa::AudioChannelChoice previousOutChannels{
+        standaloneHost->deviceOutputFirstChannel, standaloneHost->deviceOutputChannels, {}};
+    const auto inChannels = [self shownChoice:true];
+    const auto outChannels = [self shownChoice:false];
 
     // a stream already running on what the window shows is left alone: reopening it, for
     // a window in which only the midi ports changed, would drop out the audio for nothing
     const bool audioAsShown =
         wasRunning && (int32_t)sr == previousRate && (frames == 0 || frames == previousFrames) &&
-        useOut == (standaloneHost->currentOutputChannels > 0) && (!useOut || outId == previousOut) &&
-        useIn == (standaloneHost->currentInputChannels > 0) && (!useIn || inId == previousIn);
+        useOut == (standaloneHost->currentOutputChannels > 0) &&
+        (!useOut || (outId == previousOut && outChannels.first == previousOutChannels.first &&
+                     outChannels.count == previousOutChannels.count)) &&
+        useIn == (standaloneHost->currentInputChannels > 0) &&
+        (!useIn || (inId == previousIn && inChannels.first == previousInChannels.first &&
+                    inChannels.count == previousInChannels.count));
 
     if (!audioAsShown)
     {
       // the size to ask for; the stream reads back what the device granted
       if (frames > 0) standaloneHost->currentBufferSize = frames;
-      standaloneHost->startAudioThreadOn(inId, 2, useIn, outId, 2, useOut, (int32_t)sr);
+      auto useChannels =
+          [standaloneHost](const sa::AudioChannelChoice &in, const sa::AudioChannelChoice &out)
+      {
+        standaloneHost->deviceInputFirstChannel = in.first;
+        standaloneHost->deviceInputChannels = std::max<uint32_t>(in.count, 1);
+        standaloneHost->deviceOutputFirstChannel = out.first;
+        standaloneHost->deviceOutputChannels = std::max<uint32_t>(out.count, 1);
+      };
+      useChannels(inChannels, outChannels);
+      standaloneHost->startAudioThreadOn(inId, standaloneHost->deviceInputChannels, useIn, outId,
+                                         standaloneHost->deviceOutputChannels, useOut, (int32_t)sr);
       if (!standaloneHost->isAudioRunning())
       {
         // neither kept nor saved, and the window stays up for another choice: the
         // devices are put back as they were, and the error callback has already told
         // the user why these did not open
         standaloneHost->currentBufferSize = previousFrames;
+        useChannels(previousInChannels, previousOutChannels);
         if (wasRunning)
-          standaloneHost->startAudioThreadOn(previousIn, 2, previousUseIn, previousOut, 2,
-                                             previousUseOut, previousRate);
+          standaloneHost->startAudioThreadOn(previousIn, previousInChannels.count, previousUseIn,
+                                             previousOut, previousOutChannels.count, previousUseOut,
+                                             previousRate);
         return;
       }
     }
@@ -998,6 +1043,8 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
     standaloneHost->setChosenDevices(useOut ? outId : std::string{}, useIn ? inId : std::string{});
     settings.audioOutputUsed = useOut;
     settings.audioInputUsed = useIn;
+    if (useOut) settings.outputFirstChannel = outChannels.first + 1;
+    if (useIn) settings.inputFirstChannel = inChannels.first + 1;
     settings.sampleRate = (int32_t)sr;
 
     // a port list is applied only when it was changed, so that an untouched input list
@@ -1049,6 +1096,7 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
   // what a first run opens: never a microphone, an interface in its place where there is
   // one, otherwise "No Input", and the note says why
   [self fillDeviceMenusSelectingOutput:out input:standaloneHost->defaultInputToOpen()];
+  [self resetChannelSelectionsPreferringOutput:0 input:0];
 
   [self resetSampleRateSelection];
   [self resetBufferSizeSelectionPreferring:freeaudio::clap_wrapper::standalone::StandaloneSettings::
@@ -1100,6 +1148,9 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
 
 - (void)onSourceMenuChanged:(id)sender
 {
+  // the same channels on the other device, where it has them
+  [self resetChannelSelectionsPreferringOutput:[self shownChoice:false].first
+                                         input:[self shownChoice:true].first];
   [self resetSampleRateSelection];
   [self resetBufferSizeSelectionPreferring:static_cast<uint32_t>(
                                                [[bufferSizeSelection selectedItem] tag])];
@@ -1237,6 +1288,50 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
   }
 }
 
+// the channel menus for the selected devices, with the choice that starts at these
+// channels selected, or the first; the input's row only while there is an input
+- (void)resetChannelSelectionsPreferringOutput:(uint32_t)outputFirst input:(uint32_t)inputFirst
+{
+  auto standaloneHost = sa::getStandaloneHost();
+
+  auto fill = [](NSPopUpButton *menu, std::vector<sa::AudioChannelChoice> &choices,
+                 const std::vector<sa::AudioChannelChoice> &from, uint32_t first)
+  {
+    choices = from;
+    [menu removeAllItems];
+    for (size_t i = 0; i < choices.size(); ++i)
+    {
+      [menu addItemWithTitle:[NSString stringWithUTF8String:choices[i].title.c_str()]];
+      if (choices[i].first == first) [menu selectItemAtIndex:(NSInteger)i];
+    }
+    [menu setEnabled:choices.size() > 1];
+  };
+
+  const auto oidx = [outputSelection indexOfSelectedItem];
+  const auto iidx = [inputSelection indexOfSelectedItem];
+  const bool hasOutput = oidx >= 0 && (size_t)oidx < outDevices.size();
+  const bool hasInput = iidx > 0 && (size_t)iidx <= inDevices.size();
+
+  fill(outputChannelSelection, outChoices,
+       hasOutput ? standaloneHost->getChannelChoices(outDevices[oidx].id, false)
+                 : std::vector<sa::AudioChannelChoice>{},
+       outputFirst);
+  fill(inputChannelSelection, inChoices,
+       hasInput ? standaloneHost->getChannelChoices(inDevices[iidx - 1].id, true)
+                : std::vector<sa::AudioChannelChoice>{},
+       inputFirst);
+  [inputChannelRow setHidden:!hasInput || standaloneHost->numAudioInputs == 0];
+}
+
+// the channels a menu shows; {0, 0} with none
+- (sa::AudioChannelChoice)shownChoice:(bool)input
+{
+  const auto &choices = input ? inChoices : outChoices;
+  const auto idx = [input ? inputChannelSelection : outputChannelSelection indexOfSelectedItem];
+  if (idx < 0 || (size_t)idx >= choices.size()) return {};
+  return choices[(size_t)idx];
+}
+
 // a device or a port came or went while the window is open: the menus and lists follow,
 // and keep what is selected in them where it is still there
 - (void)devicesChanged
@@ -1251,8 +1346,11 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
       iidx > 0 && (size_t)iidx <= inDevices.size() ? inDevices[iidx - 1].id : std::string{};
   const auto rate = [[[sampleRateSelection selectedItem] title] integerValue];
   const auto frames = static_cast<uint32_t>([[bufferSizeSelection selectedItem] tag]);
+  const auto outFirst = [self shownChoice:false].first;
+  const auto inFirst = [self shownChoice:true].first;
 
   [self fillDeviceMenusSelectingOutput:output input:input];
+  [self resetChannelSelectionsPreferringOutput:outFirst input:inFirst];
   [self resetSampleRateSelection];
   for (NSMenuItem *item in [sampleRateSelection itemArray])
     if ([[item title] integerValue] == rate) [sampleRateSelection selectItem:item];

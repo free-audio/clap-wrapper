@@ -534,8 +534,15 @@ void StandaloneHost::applyAudioSettings()
 
   audioOutputDevice = resolveOutputDevice(settings.outputDeviceId, settings.outputDeviceName);
   audioInputDevice = resolveInputDevice(settings.inputDeviceId, settings.inputDeviceName);
-  deviceInputFirstChannel = 0;
-  deviceOutputFirstChannel = 0;
+
+  // the channels as saved, where the device has them; a frontend that opens a device at
+  // its full width (windows) sets the counts again itself
+  const auto inChoice{channelChoiceFor(audioInputDevice, true, settings.inputFirstChannel)};
+  const auto outChoice{channelChoiceFor(audioOutputDevice, false, settings.outputFirstChannel)};
+  deviceInputFirstChannel = inChoice.first;
+  deviceInputChannels = std::max<uint32_t>(inChoice.count, 1);
+  deviceOutputFirstChannel = outChoice.first;
+  deviceOutputChannels = std::max<uint32_t>(outChoice.count, 1);
 
   // "did we get a device back" is not the question - "is it a real device" is.
   audioOutputUsed = settings.audioOutputUsed && isKnownDevice(audioOutputDevice);
