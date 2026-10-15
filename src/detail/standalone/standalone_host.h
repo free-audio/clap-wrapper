@@ -52,7 +52,8 @@ std::vector<std::string> preferredFirstRunInputs();
 // chose it by name, never as a default or a fallback: a built-in microphone picks up the
 // speakers beside it, and opening a bluetooth device's switches the whole device to its
 // hands-free profile - telephone quality and one sample rate, for every application on
-// the machine. false where there is no way to tell, which is everywhere but macos for now
+// the machine. on windows, an endpoint whose form factor is a microphone, headset or
+// handset. false where there is no way to tell, which is linux for now
 bool isMicrophoneAudioDevice(const std::string &rtAudioName);
 
 // whether the device of this rtaudio name is a bluetooth device; false where there is no

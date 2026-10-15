@@ -2257,9 +2257,11 @@ void Plugin::selectApiInSettings()
   sah->setAudioApi(settings.apisShown[*index]);
   settings.apiChanged = true;
 
-  // its default devices; the input stays off if it was
+  // its default devices; the input stays off if it was, and if the default is a
+  // microphone, which no default opens (isMicrophoneAudioDevice)
   auto [input, output, rate] = sah->getDefaultAudioInOutSampleRate();
-  refreshDevices(output, input, shownInput().has_value());
+  refreshDevices(output, input,
+                 shownInput().has_value() && !isMicrophoneAudioDevice(sah->deviceName(input)));
   refreshSampleRates(rate);
   refreshBufferSizes(shownBufferSize());
   refreshInputNote();
@@ -2538,9 +2540,11 @@ void Plugin::selectDefaultDevices()
   // RtAudio hands back a default input device id even on a machine with no
   // capture device at all, so take the id only if it names something real.
   // The probe is a fact about the machine, not a choice: AND it with the user's
-  // wish, which survives an API switch, and never persist it.
+  // wish, which survives an API switch, and never persist it. Nor is a default ever
+  // a microphone (isMicrophoneAudioDevice): with nothing chosen, there is no input.
   sah->audioInputDeviceID = input;
-  sah->audioInputUsed = sah->settings.audioInputUsed && sah->isKnownDevice(input);
+  sah->audioInputUsed = sah->settings.audioInputUsed && sah->isKnownDevice(input) &&
+                        !isMicrophoneAudioDevice(sah->deviceName(input));
 
   sah->audioOutputDeviceID = output;
   sah->audioOutputUsed = sah->settings.audioOutputUsed && sah->isKnownDevice(output);
