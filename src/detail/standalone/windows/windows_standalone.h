@@ -313,6 +313,7 @@ struct Plugin final : public Window
       VirtualOutput,
       VirtualOutputLabel,
       Appearance,
+      DriverControlPanel,
       Static
     };
 
@@ -325,6 +326,7 @@ struct Plugin final : public Window
     ComboBox sampleRate;
     ComboBox bufferSize;
     Control resetToDefault;
+    Control driverPanel;  // the asio driver's control panel
     Control noRateNote;
 
     Control midiInLabel, midiOutLabel;
@@ -358,6 +360,10 @@ struct Plugin final : public Window
     // as they were when the window was shown, to go back to
     RtAudio::Api apiWhenOpened{RtAudio::Api::UNSPECIFIED};
     bool apiChanged{false};
+    // a stream was opened before OK, for the driver's control panel
+    bool audioOpenedEarly{false};
+    // inside the driver's control panel call, which a driver reset must wait for
+    bool inDriverPanel{false};
     uint32_t appearanceWhenOpened{0};
     bool virtualInWasOn{false};
     bool virtualOutWasOn{false};
@@ -394,6 +400,9 @@ struct Plugin final : public Window
   void applySettingsAppearance();
   void selectApiInSettings();
   void resetSettingsToDefault();
+  void refreshDriverPanelButton();
+  void showDriverControlPanel();
+  bool openShownAudio();
   void okSettings();
   void cancelSettings();
 

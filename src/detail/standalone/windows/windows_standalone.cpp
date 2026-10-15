@@ -1227,8 +1227,13 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
               refreshSampleRates(shownSampleRate());
               refreshBufferSizes(shownBufferSize());
               refreshInputNote();
+              refreshDriverPanelButton();
               layoutSettings();
             }
+            break;
+
+          case Settings::Identifier::DriverControlPanel:
+            if (code == BN_CLICKED) showDriverControlPanel();
             break;
 
           case Settings::Identifier::AudioSamplerate:
@@ -1394,6 +1399,19 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                    // only then lets processing resume - and leaves it stopped if
                    // the plugin refuses to reactivate.
                    sah->activatePlugin(sah->currentSampleRate, 1, sah->currentBufferSize * 2);
+                 }
+
+                 // an asio driver asked for a reset, and rtaudio has closed the stream for
+                 // it: the same setup again, which reads back what the driver now grants.
+                 // not from inside the driver's own control panel call
+                 if (!settings.inDriverPanel && sah->takeDriverReset())
+                 {
+                   startAudio();
+                   if (settings.isVisible())
+                   {
+                     refreshBufferSizes(sah->currentBufferSize);
+                     layoutSettings();
+                   }
                  }
 
                  if (sah->processRequested.exchange(false))
@@ -1666,6 +1684,8 @@ void Plugin::createSettingsControls()
   settings.bufferSize.create("Buffer Size", Id::AudioBuffersize, parent);
   settings.resetToDefault.create(WC_BUTTONW, "Reset to System Default", BS_PUSHBUTTON | WS_TABSTOP,
                                  Id::ResetToDefault, parent);
+  settings.driverPanel.create(WC_BUTTONW, "ASIO Control Panel...", BS_PUSHBUTTON | WS_TABSTOP,
+                              Id::DriverControlPanel, parent);
   note(settings.noRateNote, "These devices have no sample rate in common.");
 
   label(settings.midiInLabel, "MIDI Inputs:");
@@ -1695,12 +1715,26 @@ void Plugin::refreshSettingsFonts()
   settings.font.reset(getMessageFont(settings.dpi));
   settings.headingFont.reset(getMessageFont(settings.dpi, 115, FW_SEMIBOLD));
 
-  for (auto *control : {&settings.apiLabel, &settings.outputLabel, &settings.inputLabel,
-                        &settings.sampleRateLabel, &settings.bufferSizeLabel, &settings.inputNote,
-                        &settings.noRateNote, &settings.midiInLabel, &settings.midiOutLabel,
-                        &settings.virtualInLabel, &settings.virtualOutLabel, &settings.appearanceLabel,
-                        &settings.midiIn.empty, &settings.midiOut.empty, &settings.resetToDefault,
-                        &settings.ok, &settings.cancel, &settings.virtualIn, &settings.virtualOut})
+  for (auto *control : {&settings.apiLabel,
+                        &settings.outputLabel,
+                        &settings.inputLabel,
+                        &settings.sampleRateLabel,
+                        &settings.bufferSizeLabel,
+                        &settings.inputNote,
+                        &settings.noRateNote,
+                        &settings.midiInLabel,
+                        &settings.midiOutLabel,
+                        &settings.virtualInLabel,
+                        &settings.virtualOutLabel,
+                        &settings.appearanceLabel,
+                        &settings.midiIn.empty,
+                        &settings.midiOut.empty,
+                        &settings.resetToDefault,
+                        &settings.driverPanel,
+                        &settings.ok,
+                        &settings.cancel,
+                        &settings.virtualIn,
+                        &settings.virtualOut})
   {
     control->setFont(settings.font.get());
   }
@@ -1723,6 +1757,7 @@ void Plugin::populateSettings()
 
   settings.apiWhenOpened = sah->audioApi;
   settings.apiChanged = false;
+  settings.audioOpenedEarly = false;
   settings.appearanceWhenOpened = sah->screenAppearance;
 
   settings.heading.setText("Audio/MIDI Setup for " + pluginDisplayName(plugin.plugin));
@@ -1734,6 +1769,7 @@ void Plugin::populateSettings()
   refreshSampleRates(sah->currentSampleRate);
   refreshBufferSizes(sah->currentBufferSize);
   refreshInputNote();
+  refreshDriverPanelButton();
 
   // midi: a direction the plugin has no note port for gets no section at all
   settings.midiIn.fill(sah->getMidiPortNames(), saved.midiPortNames, saved.midiBindAllPorts);
@@ -1779,6 +1815,14 @@ void Plugin::populateSettings()
   }
   refreshAppearanceRow();
   applySettingsAppearance();
+}
+
+// the driver's control panel, which asio has: offered while the window shows an asio
+// driver, and usable once there is a driver to show it for
+void Plugin::refreshDriverPanelButton()
+{
+  settings.driverPanel.setVisible(StandaloneHost::hasDriverControlPanel(sah->audioApi));
+  ::EnableWindow(settings.driverPanel.hwnd.get(), shownOutput() ? TRUE : FALSE);
 }
 
 void Plugin::refreshApis()
@@ -2016,8 +2060,8 @@ void Plugin::applySettingsAppearance()
     ::SetWindowTheme(combo->hwnd.get(), dark ? L"DarkMode_CFD" : nullptr, nullptr);
   }
 
-  for (auto *button : {&settings.resetToDefault, &settings.ok, &settings.cancel, &settings.virtualIn,
-                       &settings.virtualOut})
+  for (auto *button : {&settings.resetToDefault, &settings.driverPanel, &settings.ok, &settings.cancel,
+                       &settings.virtualIn, &settings.virtualOut})
   {
     ::SetWindowTheme(button->hwnd.get(), dark ? L"DarkMode_Explorer" : nullptr, nullptr);
   }
@@ -2163,6 +2207,12 @@ void Plugin::layoutSettings()
 
   settings.resetToDefault.setPosition(controlX, y, buttonWidth(settings.resetToDefault),
                                       px(buttonHeight));
+  // the driver's control panel, beside it, while there is one
+  if (settings.driverPanel.visible)
+  {
+    settings.driverPanel.setPosition(controlX + buttonWidth(settings.resetToDefault) + px(buttonSpacing),
+                                     y, buttonWidth(settings.driverPanel), px(buttonHeight));
+  }
   y += px(buttonHeight) + px(rowSpacing);
   noteRow(settings.noRateNote);
 
@@ -2213,6 +2263,7 @@ void Plugin::selectApiInSettings()
   refreshSampleRates(rate);
   refreshBufferSizes(shownBufferSize());
   refreshInputNote();
+  refreshDriverPanelButton();
   layoutSettings();
 }
 
@@ -2226,13 +2277,14 @@ void Plugin::resetSettingsToDefault()
   refreshSampleRates(rate);
   refreshBufferSizes(StandaloneSettings::defaultBufferSize);
   refreshInputNote();
+  refreshDriverPanelButton();
   layoutSettings();
 }
 
-void Plugin::okSettings()
+// a stream on what the window shows, unless one runs on it already. false, with the
+// previous stream back and the window left up for another choice, if it does not open
+bool Plugin::openShownAudio()
 {
-  if (!sah || !::IsWindowEnabled(settings.ok.hwnd.get())) return;
-
   const auto out{shownOutput()};
   const auto in{shownInput()};
   const bool useOut{out.has_value()};
@@ -2289,6 +2341,7 @@ void Plugin::okSettings()
         sah->applyAudioSettings();
         refreshDeviceChannelCounts();
         startAudio();
+        settings.audioOpenedEarly = false;
         populateSettings();
         settings.appearanceWhenOpened = appearanceWhenOpened;
         layoutSettings();
@@ -2299,9 +2352,29 @@ void Plugin::okSettings()
                                 previousOutChannels, previousUseOut, previousRate);
       }
 
-      return;
+      return false;
+    }
+
+    // the api the window opened with is no longer what runs, whoever opened it
+    if (settings.apiChanged)
+    {
+      settings.apiChanged = false;
+      settings.audioOpenedEarly = true;
     }
   }
+
+  return true;
+}
+
+void Plugin::okSettings()
+{
+  if (!sah || !::IsWindowEnabled(settings.ok.hwnd.get())) return;
+  if (!openShownAudio()) return;
+
+  const auto out{shownOutput()};
+  const auto in{shownInput()};
+  const bool useOut{out.has_value()};
+  const bool useIn{in.has_value()};
 
   // persist the choice: startAudioThread() opens what the file names on the next launch.
   // only once it has opened, so a combination that cannot run is never what a launch
@@ -2312,7 +2385,7 @@ void Plugin::okSettings()
   saved.audioOutputUsed = useOut;
   if (useIn) saved.inputDeviceName = settings.inDevices[*in].name;
   saved.audioInputUsed = useIn;
-  saved.sampleRate = rate;
+  saved.sampleRate = shownSampleRate();
 
   // a port list is applied only when it was changed, so that an untouched input list
   // keeps "every port" if that is what it had
@@ -2353,6 +2426,21 @@ void Plugin::okSettings()
   hideSettings();
 }
 
+// the driver's own settings, for the driver the window shows. its panel exists only while
+// the driver is open, so a driver not open yet is opened first, on what the window shows;
+// Cancel still goes back to the saved setup
+void Plugin::showDriverControlPanel()
+{
+  if (!sah || !shownOutput()) return;
+  if (!openShownAudio()) return;
+
+  // a driver reset that its panel asks for is taken once the panel has returned: the
+  // driver must not be closed from under its own call
+  settings.inDriverPanel = true;
+  if (!sah->showDriverControlPanel()) log("The audio driver has no control panel to show");
+  settings.inDriverPanel = false;
+}
+
 void Plugin::cancelSettings()
 {
   if (sah && !settingsApplied)
@@ -2361,10 +2449,12 @@ void Plugin::cancelSettings()
     if (sah->screenAppearance != settings.appearanceWhenOpened)
       sah->setScreenAppearance(settings.appearanceWhenOpened, false);
 
-    // a switched api stopped the stream: back to the one the window opened with
-    if (settings.apiChanged)
+    // a switched api stopped the stream, and the driver's control panel opened one on
+    // what the window showed: back to the saved setup either way
+    if (settings.apiChanged || settings.audioOpenedEarly)
     {
       settings.apiChanged = false;
+      settings.audioOpenedEarly = false;
       sah->applyAudioSettings();
       refreshDeviceChannelCounts();
       startAudio();

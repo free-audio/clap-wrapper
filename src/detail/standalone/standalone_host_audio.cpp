@@ -20,6 +20,11 @@
 #include "standalone_host.h"
 #include "entry.h"
 
+#if CLAP_WRAPPER_STANDALONE_ASIO
+// from the asio sdk's asio.h, which rtaudio keeps private; asio.cpp is compiled into it
+long ASIOControlPanel(void);
+#endif
+
 namespace freeaudio::clap_wrapper::standalone
 {
 namespace
@@ -66,6 +71,15 @@ void rtaErrorCallback(RtAudioErrorType errorType, const std::string &errorText)
 
   auto sh = getStandaloneHost();
 
+  // not an error to show: an asio driver asked for a reset, and the stream closed for it
+  // is opened again (takeDriverReset). a driver that is really gone fails that open, which
+  // is reported then
+  if (errorType == RTAUDIO_DEVICE_DISCONNECT && sh->audioApi == RtAudio::Api::WINDOWS_ASIO)
+  {
+    sh->driverResetRequested = true;
+    return;
+  }
+
   // Everything is logged; deciding what to *show* is a separate question. RtAudio
   // raises errors from device enumeration, not just from opening a stream, and we
   // enumerate constantly while populating a settings panel. On a machine with no
@@ -82,6 +96,38 @@ void rtaErrorCallback(RtAudioErrorType errorType, const std::string &errorText)
     LOGINFO("[ERROR] Surfacing to the user: '{}'", errorText);
     ae(errorText);
   }
+}
+
+bool StandaloneHost::hasDriverControlPanel(RtAudio::Api api)
+{
+#if CLAP_WRAPPER_STANDALONE_ASIO
+  return api == RtAudio::Api::WINDOWS_ASIO;
+#else
+  (void)api;
+  return false;
+#endif
+}
+
+bool StandaloneHost::showDriverControlPanel()
+{
+#if CLAP_WRAPPER_STANDALONE_ASIO
+  // the driver is loaded only while rtaudio has a stream open on it
+  if (!rtaDac || audioApi != RtAudio::Api::WINDOWS_ASIO || !rtaDac->isStreamOpen()) return false;
+  return ASIOControlPanel() == 0;  // ASE_OK
+#else
+  return false;
+#endif
+}
+
+bool StandaloneHost::takeDriverReset()
+{
+  if (!driverResetRequested) return false;
+
+  // rtaudio closes it from its own thread, which may not have got there yet
+  if (rtaDac && rtaDac->isStreamOpen()) return false;
+
+  driverResetRequested = false;
+  return true;
 }
 
 void StandaloneHost::guaranteeRtAudioDAC()

@@ -447,6 +447,18 @@ struct StandaloneHost : Clap::IHost
   // session only: a launch never starts muted on a previous session's say-so
   std::atomic<bool> inputMuted{false};
 
+  // the audio driver's own settings window, which only asio has: whether this standalone
+  // can show one for that api, which needs rtaudio built with asio
+  static bool hasDriverControlPanel(RtAudio::Api api);
+  // shows it for the stream open now; false if no asio stream is open
+  bool showDriverControlPanel();
+
+  // an asio driver asks for a reset when its own panel changed the buffer size or the
+  // rate, and rtaudio closes the stream for it, from a thread of its own. true, once, when
+  // that stream is closed: the frontend then opens it again, on the main thread
+  bool takeDriverReset();
+  std::atomic<bool> driverResetRequested{false};
+
   // RtAudio reports enumeration failures through the same error callback it uses
   // for stream failures, and we enumerate every time a settings panel refreshes.
   // Those are not events to put in front of the user, so the enumeration helpers
