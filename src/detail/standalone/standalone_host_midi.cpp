@@ -256,6 +256,7 @@ void StandaloneHost::startMidiOutputThreadIfNeeded()
   while (midiFromAudioQueue.pop(stale))
   {
   }
+  sysexFromAudio.clear();
 
   midiOutputOpen = true;
   midiOutputThread = std::thread([this]() { midiOutputLoop(); });
@@ -273,9 +274,18 @@ void StandaloneHost::midiOutputLoop()
   auto sendToAll = [this](const unsigned char *message, size_t size)
   { midiBackend->send(message, size); };
 
+  // the plugin's sysex, whole; allocated here, off the audio thread
+  std::vector<uint8_t> sysex(decltype(sysexFromAudio)::maxMessage);
+
   midiChunk ck;
   while (midiOutputOpen)
   {
+    while (const auto size{sysexFromAudio.nextSize()})
+    {
+      sysexFromAudio.pop(sysex.data());
+      sendToAll(sysex.data(), size);
+    }
+
     while (midiFromAudioQueue.pop(ck))
     {
       const auto *message = reinterpret_cast<const unsigned char *>(ck.dat);
@@ -313,6 +323,11 @@ bool StandaloneHost::outputEventPush(const clap_event_header_t *evt)
       const auto *midi = reinterpret_cast<const clap_event_midi_t *>(evt);
       memcpy(ck.dat, midi->data, sizeof(ck.dat));
       break;
+    }
+    case CLAP_EVENT_MIDI_SYSEX:
+    {
+      const auto *sysex = reinterpret_cast<const clap_event_midi_sysex_t *>(evt);
+      return sysexFromAudio.tryPush(sysex->buffer, sysex->size);
     }
     case CLAP_EVENT_NOTE_ON:
     case CLAP_EVENT_NOTE_OFF:
@@ -367,8 +382,29 @@ void StandaloneHost::startMIDIThread()
 
 void StandaloneHost::processMIDIMessage(const uint8_t *data, size_t size)
 {
-  // sysex does not fit the queue, and is not passed on yet
-  if (size == 0 || size > sizeof(midiChunk::dat)) return;
+  if (!data || size == 0) return;
+
+  // active sensing keeps a cable's link alive and means nothing to a plugin; rtmidi
+  // dropped it, as it is sent three times a second
+  if (data[0] == 0xFE) return;
+
+  if (data[0] == 0xF0)
+  {
+    // sysex goes to a plugin that takes the midi dialect only
+    if (!hasMIDIInput) return;
+
+    ClapWrapper::detail::shared::SpinLockGuard g(midiToAudioPushLock);
+    if (!sysexToAudio.tryPush(data, static_cast<uint32_t>(size)))
+    {
+      const auto dropped{++sysexDropped};
+      if (dropped == 1 || dropped % 100 == 0)
+        LOGINFO("[WARNING] {} sysex messages dropped: too large, or the plugin is not taking them",
+                dropped);
+    }
+    return;
+  }
+
+  if (size > sizeof(midiChunk::dat)) return;
 
   midiChunk ck;
   memcpy(ck.dat, data, size);

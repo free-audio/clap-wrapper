@@ -281,6 +281,25 @@ void StandaloneHost::process(const float *const *inputs, uint32_t inputChannels,
     pushInputEvent(&(midi.header));
   }
 
+  // as many whole sysex messages as the arena takes; the rest waits for the next block
+  for (uint32_t used = 0;;)
+  {
+    const auto size{sysexToAudio.nextSize()};
+    if (size == 0 || used + size > sizeof(sysexArena)) break;
+
+    clap_event_midi_sysex sysex{};
+    sysex.header.size = sizeof(clap_event_midi_sysex);
+    sysex.header.time = 0;
+    sysex.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+    sysex.header.type = CLAP_EVENT_MIDI_SYSEX;
+    sysex.header.flags = 0;
+    sysex.port_index = 0;
+    sysex.buffer = sysexArena + used;
+    sysex.size = sysexToAudio.pop(sysexArena + used);
+    used += size;
+    if (!pushInputEvent(&(sysex.header))) sysexDropped++;
+  }
+
   clapPlugin->_plugin->process(clapPlugin->_plugin, &process);
   steadyTime += frameCount;
 

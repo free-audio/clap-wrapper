@@ -103,6 +103,8 @@ class RtMidiBackend final : public MidiBackend
         if (port < 0) continue;
         LOGDETAIL("MIDI: opening '{}'", id);
         midiIn->openPort(port);
+        // sysex too, as the other backends deliver it; timing and active sensing not
+        midiIn->ignoreTypes(false, true, true);
         midiIn->setCallback(callback, this);
         midiIns.push_back(std::move(midiIn));
         opened.push_back(id);
@@ -160,6 +162,7 @@ class RtMidiBackend final : public MidiBackend
     {
       auto midiIn{std::make_unique<RtMidiIn>(RtMidi::UNSPECIFIED, name)};
       midiIn->openVirtualPort(name);
+      midiIn->ignoreTypes(false, true, true);
       midiIn->setCallback(callback, this);
       virtualIn = std::move(midiIn);
       virtualInputName = name;

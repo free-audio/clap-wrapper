@@ -15,6 +15,7 @@
 
 #include "standalone_audio.h"
 #include "standalone_midi.h"
+#include "sysex_ring.h"
 
 #include "clap_proxy.h"
 #include "detail/shared/fixedqueue.h"
@@ -327,6 +328,12 @@ struct StandaloneHost : Clap::IHost, AudioStreamCallback
     }
   };
   ClapWrapper::detail::shared::fixedqueue<midiChunk, 4096> midiToAudioQueue;
+  // sysex, beside the short messages, for a plugin that takes MIDI: whole messages into a
+  // ring, and on the audio thread copied into the arena one block's events point into.
+  // what does not fit is dropped and counted, never split
+  SysexRing<65536> sysexToAudio;
+  uint8_t sysexArena[65536]{};
+  std::atomic<uint32_t> sysexDropped{0};
   // the queue takes one producer at a time, and a backend may call each open input back
   // on a thread of its own
   ClapWrapper::detail::shared::SpinLock midiToAudioPushLock;
@@ -367,6 +374,7 @@ struct StandaloneHost : Clap::IHost, AudioStreamCallback
   // output port: the audio thread queues it in outputEventPush() and a thread of its own
   // sends it, since a midi send is no call to make from the audio thread
   ClapWrapper::detail::shared::fixedqueue<midiChunk, 4096> midiFromAudioQueue;
+  SysexRing<65536> sysexFromAudio;
   // the ids of the outputs open now
   std::vector<std::string> currentMidiOutputIds;
   // set while midiOutputThread runs; the audio thread queues nothing while it is clear
