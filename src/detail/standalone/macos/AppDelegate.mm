@@ -3,7 +3,6 @@
 #include <AVFoundation/AVFoundation.h>
 
 #include <algorithm>
-#include <map>
 #include <string>
 #include <vector>
 
@@ -112,7 +111,7 @@ void applyScreenAppearance(NSWindow *window)
 - (void)devicesChanged;
 - (void)resetChannelSelectionsPreferringOutput:(uint32_t)outputFirst input:(uint32_t)inputFirst;
 - (sa::AudioChannelChoice)shownChoice:(bool)input;
-- (void)resetSampleRateSelection;
+- (void)resetSampleRateSelectionPreferring:(uint32_t)rate;
 - (void)resetBufferSizeSelectionPreferring:(uint32_t)frames;
 - (void)updateBufferSizeTitles;
 - (void)updateInputNote;
@@ -954,7 +953,8 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
       [[cancelButton widthAnchor] constraintEqualToAnchor:[okButton widthAnchor]],
     ]];
 
-    [self resetSampleRateSelection];
+    [self resetSampleRateSelectionPreferring:static_cast<uint32_t>(
+                                                 std::max(standaloneHost->currentSampleRate, 0))];
     [self resetBufferSizeSelectionPreferring:standaloneHost->currentBufferSize];
     [self resetChannelSelectionsPreferringOutput:standaloneHost->deviceOutputFirstChannel
                                            input:standaloneHost->deviceInputFirstChannel];
@@ -1112,19 +1112,10 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
   [self fillDeviceMenusSelectingOutput:out input:standaloneHost->defaultInputToOpen()];
   [self resetChannelSelectionsPreferringOutput:0 input:0];
 
-  [self resetSampleRateSelection];
+  [self resetSampleRateSelectionPreferring:static_cast<uint32_t>(std::max(sr, 0))];
   [self resetBufferSizeSelectionPreferring:freeaudio::clap_wrapper::standalone::StandaloneSettings::
                                                defaultBufferSize];
   [self updateInputNote];
-
-  for (NSMenuItem *item in [sampleRateSelection itemArray])
-  {
-    const auto sri = [[item title] integerValue];
-    if ((int)sr == (int)sri)
-    {
-      [sampleRateSelection selectItem:item];
-    }
-  }
   [self updateBufferSizeTitles];
 }
 
@@ -1165,7 +1156,8 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
   // the same channels on the other device, where it has them
   [self resetChannelSelectionsPreferringOutput:[self shownChoice:false].first
                                          input:[self shownChoice:true].first];
-  [self resetSampleRateSelection];
+  [self resetSampleRateSelectionPreferring:static_cast<uint32_t>([[[sampleRateSelection selectedItem]
+                                               title] integerValue])];
   [self resetBufferSizeSelectionPreferring:static_cast<uint32_t>(
                                                [[bufferSizeSelection selectedItem] tag])];
   [self updateInputNote];
@@ -1365,9 +1357,7 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
 
   [self fillDeviceMenusSelectingOutput:output input:input];
   [self resetChannelSelectionsPreferringOutput:outFirst input:inFirst];
-  [self resetSampleRateSelection];
-  for (NSMenuItem *item in [sampleRateSelection itemArray])
-    if ([[item title] integerValue] == rate) [sampleRateSelection selectItem:item];
+  [self resetSampleRateSelectionPreferring:static_cast<uint32_t>(std::max<NSInteger>(rate, 0))];
   [self resetBufferSizeSelectionPreferring:frames];
   [self updateInputNote];
 
@@ -1386,7 +1376,9 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
   [self setContentSize:[content fittingSize]];
 }
 
-- (void)resetSampleRateSelection
+// the rates both selected devices run at, with this one selected where it is among them;
+// otherwise 44100, else 48000, else the first (preferredSampleRate)
+- (void)resetSampleRateSelectionPreferring:(uint32_t)rate
 {
   [sampleRateSelection removeAllItems];
 
@@ -1399,45 +1391,18 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
   }
   const auto &oDev = outDevices[idx];
 
-  auto csr = freeaudio::clap_wrapper::standalone::getStandaloneHost()->currentSampleRate;
-
-  std::map<int, int> srAvail;
-  for (auto sr : oDev.sampleRates)
-  {
-    srAvail[sr]++;
-  }
-
   idx = [inputSelection indexOfSelectedItem];
-  if (idx > 0)
-  {
-    const auto &iDev = inDevices[idx - 1];
+  const auto *iDev = idx > 0 && (size_t)idx <= inDevices.size() ? &inDevices[idx - 1] : nullptr;
 
-    for (auto sr : iDev.sampleRates)
-    {
-      srAvail[sr]++;
-    }
-  }
-  else
+  const auto rates = sa::commonSampleRates(&oDev, iDev);
+  for (auto sr : rates)
   {
-    // Just take the output rates
-    for (auto sr : oDev.sampleRates)
-    {
-      srAvail[sr]++;
-    }
+    [sampleRateSelection addItemWithTitle:[NSString stringWithFormat:@"%u", sr]];
   }
-
-  int selIdx{-1}, sIdx{0};
-  for (auto [sr, ct] : srAvail)
+  if (const auto selected = sa::preferredSampleRate(rates, rate))
   {
-    if (ct == 2)
-    {
-      [sampleRateSelection addItemWithTitle:[NSString stringWithFormat:@"%d", sr]];
-      if ((int)sr == (int)csr) selIdx = sIdx;
-
-      sIdx++;
-    }
+    [sampleRateSelection selectItemWithTitle:[NSString stringWithFormat:@"%u", selected]];
   }
-  if (selIdx >= 0) [sampleRateSelection selectItemAtIndex:selIdx];
 
   // no rate in common, nothing to open the two devices at
   const bool canOpen = [sampleRateSelection numberOfItems] > 0;

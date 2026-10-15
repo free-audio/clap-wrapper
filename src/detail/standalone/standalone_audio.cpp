@@ -79,6 +79,15 @@ std::vector<uint32_t> commonSampleRates(const AudioDevice *output, const AudioDe
   return res;
 }
 
+uint32_t preferredSampleRate(const std::vector<uint32_t> &rates, uint32_t preferred)
+{
+  for (auto rate : {preferred, 44100u, 48000u})
+  {
+    if (rate > 0 && std::find(rates.begin(), rates.end(), rate) != rates.end()) return rate;
+  }
+  return rates.empty() ? 0 : rates.front();
+}
+
 namespace
 {
 // "Profiler 1" and "Profiler 2" as "Profiler 1 + 2"; names with nothing in common in full

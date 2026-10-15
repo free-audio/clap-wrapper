@@ -92,6 +92,11 @@ const AudioDevice *findDevice(const std::vector<AudioDevice> &devices, const std
 // may be null
 std::vector<uint32_t> commonSampleRates(const AudioDevice *output, const AudioDevice *input);
 
+// the rate a list of rates starts on: preferred (the stream's, or the one shown) when it is
+// offered, else 44100, else 48000, else the first, rather than whatever comes first (4000
+// on WASAPI). 0 for an empty list
+uint32_t preferredSampleRate(const std::vector<uint32_t> &rates, uint32_t preferred);
+
 // a choice of device channels for the plugin's main input or output: count adjacent
 // channels from first, 0-based
 struct AudioChannelChoice
