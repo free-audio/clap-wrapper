@@ -3,6 +3,7 @@
 #include <Windows.h>
 #include <ShlObj.h>
 
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -84,6 +85,10 @@ struct MessageHandler
     return ::SendMessageW(hwnd, msg, (::WPARAM)wparam, (::LPARAM)lparam);
   }
 
+  // the window a box is shown over and holds while it is up; none until the window is
+  // made, and a box without one can open behind it
+  ::HWND owner{nullptr};
+
   void box(const std::string &message);
   void box(const std::wstring &message);
 
@@ -93,28 +98,28 @@ struct MessageHandler
   template <typename... Args>
   void box(const fmt::format_string<Args...> fmt, Args &&...args)
   {
-    ::MessageBoxW(nullptr, toUTF16(fmt::vformat(fmt.get(), fmt::make_format_args(args...))).c_str(),
+    ::MessageBoxW(owner, toUTF16(fmt::vformat(fmt.get(), fmt::make_format_args(args...))).c_str(),
                   nullptr, MB_OK | MB_ICONASTERISK);
   }
 
   template <typename... Args>
   void box(const fmt::wformat_string<Args...> fmt, Args &&...args)
   {
-    ::MessageBoxW(nullptr, fmt::vformat(fmt.get(), fmt::make_wformat_args(args...)).c_str(), nullptr,
+    ::MessageBoxW(owner, fmt::vformat(fmt.get(), fmt::make_wformat_args(args...)).c_str(), nullptr,
                   MB_OK | MB_ICONASTERISK);
   }
 
   template <typename... Args>
   void error(const fmt::format_string<Args...> fmt, Args &&...args)
   {
-    ::MessageBoxW(nullptr, toUTF16(fmt::vformat(fmt.get(), fmt::make_format_args(args...))).c_str(),
+    ::MessageBoxW(owner, toUTF16(fmt::vformat(fmt.get(), fmt::make_format_args(args...))).c_str(),
                   nullptr, MB_OK | MB_ICONHAND);
   }
 
   template <typename... Args>
   void error(const fmt::wformat_string<Args...> fmt, Args &&...args)
   {
-    ::MessageBoxW(nullptr, fmt::vformat(fmt.get(), fmt::make_wformat_args(args...)).c_str(), nullptr,
+    ::MessageBoxW(owner, fmt::vformat(fmt.get(), fmt::make_wformat_args(args...)).c_str(), nullptr,
                   MB_OK | MB_ICONHAND);
   }
 
@@ -473,6 +478,11 @@ struct Plugin final : public Window
   std::mutex pendingErrorLock;
   std::string pendingError;
   std::string lastShownError;
+  // an error box is up: its modal loop runs the timer, which must not open another
+  bool showingAudioError{false};
+  // since when the stream has run without stopping; a device that was just plugged in
+  // can stop a stream again within moments, which is still the failure already shown
+  std::optional<std::chrono::steady_clock::time_point> audioRunningSince;
 
   ClapPlugin plugin;
   Position position;

@@ -282,22 +282,22 @@ bool MessageHandler::contains(::UINT msg)
 
 void MessageHandler::box(const std::string &message)
 {
-  ::MessageBoxW(nullptr, toUTF16(message).c_str(), nullptr, MB_OK | MB_ICONASTERISK);
+  ::MessageBoxW(owner, toUTF16(message).c_str(), nullptr, MB_OK | MB_ICONASTERISK);
 }
 
 void MessageHandler::box(const std::wstring &message)
 {
-  ::MessageBoxW(nullptr, message.c_str(), nullptr, MB_OK | MB_ICONASTERISK);
+  ::MessageBoxW(owner, message.c_str(), nullptr, MB_OK | MB_ICONASTERISK);
 }
 
 void MessageHandler::error(const std::string &message)
 {
-  ::MessageBoxW(nullptr, toUTF16(message).c_str(), nullptr, MB_OK | MB_ICONHAND);
+  ::MessageBoxW(owner, toUTF16(message).c_str(), nullptr, MB_OK | MB_ICONHAND);
 }
 
 void MessageHandler::error(const std::wstring &message)
 {
-  ::MessageBoxW(nullptr, message.c_str(), nullptr, MB_OK | MB_ICONHAND);
+  ::MessageBoxW(owner, message.c_str(), nullptr, MB_OK | MB_ICONHAND);
 }
 
 void Window::create(const std::string &title)
@@ -997,12 +997,16 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
 
                menu.populate(hwnd.get());
 
+               // an error box over this window, never behind it
+               message.owner = msg.hwnd;
+
                return 0;
              });
 
   settings.message.on(WM_CREATE,
                       [this](Message msg)
                       {
+                        settings.message.owner = msg.hwnd;
                         settings.setStyle(WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX);
                         createSettingsControls();
 
@@ -1418,6 +1422,25 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                  // a stream that stopped on its own, devices that came or went
                  sah->pollAudioEvents();
 
+                 // an error is shown once while it stands; a stream that has run again
+                 // for a while ends it, so that the next failure, with the same words, is
+                 // shown again. a moment is not enough: a device just plugged back in
+                 // often stops the stream reopened on it once more
+                 const auto now{std::chrono::steady_clock::now()};
+                 if (!sah->isAudioRunning())
+                 {
+                   audioRunningSince.reset();
+                 }
+                 else if (!audioRunningSince)
+                 {
+                   audioRunningSince = now;
+                 }
+                 else if (now - *audioRunningSince > std::chrono::seconds(3))
+                 {
+                   std::lock_guard<std::mutex> guard(pendingErrorLock);
+                   lastShownError.clear();
+                 }
+
                  // an asio driver asked for a reset, and rtaudio has closed the stream for
                  // it: the same setup again, which reads back what the driver now grants.
                  // not from inside the driver's own control panel call
@@ -1645,6 +1668,16 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
   message.on(WM_SHOW_AUDIO_ERROR,
              [this](Message msg)
              {
+               // one box at a time: what arrives while it is up is the same failure
+               if (showingAudioError)
+               {
+                 // dropped, not kept: a pending text left behind would match, and so hide,
+                 // every later error in the same words
+                 std::lock_guard<std::mutex> guard(pendingErrorLock);
+                 pendingError.clear();
+                 return 0;
+               }
+
                std::string text;
                {
                  std::lock_guard<std::mutex> guard(pendingErrorLock);
@@ -1653,7 +1686,12 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                  lastShownError = text;
                }
 
-               if (!text.empty()) message.error("Unable to configure audio: {}", text);
+               if (!text.empty())
+               {
+                 showingAudioError = true;
+                 message.error("Unable to configure audio: {}", text);
+                 showingAudioError = false;
+               }
 
                return 0;
              });
