@@ -86,6 +86,15 @@ uint32_t supportedScreenAppearances()
          (1u << CLAP_WRAPPER_STANDALONE_APPEARANCE_LIGHT) |
          (1u << CLAP_WRAPPER_STANDALONE_APPEARANCE_DARK);
 }
+#elif LIN && CLAP_WRAPPER_STANDALONE_X11
+uint32_t supportedScreenAppearances()
+{
+  // the strip and the settings window are drawn in a light and a dark theme; auto has no
+  // system setting to follow on X11, and is the light one
+  return (1u << CLAP_WRAPPER_STANDALONE_APPEARANCE_AUTO) |
+         (1u << CLAP_WRAPPER_STANDALONE_APPEARANCE_LIGHT) |
+         (1u << CLAP_WRAPPER_STANDALONE_APPEARANCE_DARK);
+}
 #elif !MAC
 uint32_t supportedScreenAppearances()
 {

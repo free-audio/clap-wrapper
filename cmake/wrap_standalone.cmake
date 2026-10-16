@@ -285,7 +285,10 @@ function(target_add_standalone_wrapper)
         message(STATUS "clap-wrapper: Using Standalone X11 gui for CLAP Wrapper")
         target_link_libraries(${salib} PUBLIC X11)
         target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_X11)
-        target_sources(${salib} PRIVATE ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/linux/x11_gui.cpp)
+        target_sources(${salib} PRIVATE
+                ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/linux/x11_gui.cpp
+                ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/linux/x11_ui.cpp
+                ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/linux/x11_settings.cpp)
 
         set_target_properties(${SA_TARGET} PROPERTIES OUTPUT_NAME ${SA_OUTPUT_NAME})
 
