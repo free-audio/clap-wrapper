@@ -11,6 +11,8 @@
 // an [NSApplicationMain ] and so on depending on platform
 int main(int argc, char **argv)
 {
+  if (freeaudio::clap_wrapper::standalone::mainListAudioDevices(argc, argv)) return 0;
+
   const clap_plugin_entry *entry{nullptr};
 #ifdef STATICALLY_LINKED_CLAP_ENTRY
   extern const clap_plugin_entry clap_entry;
@@ -57,8 +59,12 @@ int main(int argc, char **argv)
   freeaudio::clap_wrapper::standalone::mainStartAudio();
 
 #if LIN && CLAP_WRAPPER_STANDALONE_X11
+  // a first run writes the settings it started with, so that there is a file to edit
+  if (!freeaudio::clap_wrapper::standalone::getStandaloneHost()->settingsLoaded) x11Gui.saveSettings();
+
   x11Gui.setPlugin(plugin);
   x11Gui.runloop();
+  x11Gui.saveSettings();
   x11Gui.shutdown();
 #else
   freeaudio::clap_wrapper::standalone::mainWait();

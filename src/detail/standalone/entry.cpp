@@ -1,3 +1,5 @@
+#include <cstdio>
+#include <cstring>
 #include <memory>
 
 #include "standalone_details.h"
@@ -97,6 +99,75 @@ void mainStartAudio()
 std::shared_ptr<Clap::Plugin> getMainPlugin()
 {
   return plugin;
+}
+
+bool mainListAudioDevices(int argc, const char *const *argv)
+{
+  bool asked{false};
+  for (int i = 1; i < argc && argv && argv[i]; ++i)
+    asked = asked || !strcmp(argv[i], "--list-audio-devices");
+  if (!asked) return false;
+
+  auto join = [](const std::vector<std::string> &items)
+  {
+    std::string res;
+    for (const auto &item : items) res += (res.empty() ? "" : ", ") + item;
+    return res;
+  };
+
+  const auto apis{audioApis()};
+  for (size_t a = 0; a < apis.size(); ++a)
+  {
+    printf("audio api %s (%s)%s\n", apis[a].id.c_str(), apis[a].name.c_str(),
+           a == 0 ? ", the default" : "");
+
+    auto backend{createAudioBackend(apis[a].id)};
+    if (!backend) continue;
+
+    const auto defaultIn{backend->defaultInputDevice()};
+    const auto defaultOut{backend->defaultOutputDevice()};
+    for (const auto &d : backend->devices())
+    {
+      std::vector<std::string> rates, flags, inNames, outNames;
+      for (auto r : d.sampleRates) rates.push_back(std::to_string(r));
+      for (uint32_t ch = 0; ch < d.inputChannels; ++ch) inNames.push_back(channelName(d, true, ch));
+      for (uint32_t ch = 0; ch < d.outputChannels; ++ch) outNames.push_back(channelName(d, false, ch));
+      if (d.id == defaultIn) flags.emplace_back("default input");
+      if (d.id == defaultOut) flags.emplace_back("default output");
+      if (d.isMicrophone) flags.emplace_back("microphone");
+      if (d.isBluetooth) flags.emplace_back("bluetooth");
+      if (d.isInterface) flags.emplace_back("interface");
+      if (!d.sampleRateSettable) flags.emplace_back("rate not settable");
+
+      printf("  \"%s\"\n", d.name.c_str());
+      printf("    id: %s\n", d.id.c_str());
+      printf("    legacy name: %s\n", d.legacyName.c_str());
+      printf("    inputs: %u%s%s\n", d.inputChannels, d.inputChannels ? " - " : "",
+             join(inNames).c_str());
+      printf("    outputs: %u%s%s\n", d.outputChannels, d.outputChannels ? " - " : "",
+             join(outNames).c_str());
+      printf("    rates: %s (now %u)\n", join(rates).c_str(), d.currentSampleRate);
+      printf("    buffer: %u to %u frames\n", d.minBufferFrames, d.maxBufferFrames);
+      printf("    clock domain: %u\n", d.clockDomain);
+      if (!flags.empty()) printf("    %s\n", join(flags).c_str());
+    }
+  }
+
+  if (auto midi{createMidiBackend()})
+  {
+    printf("midi api %s\n", midi->apiId().c_str());
+    for (bool input : {true, false})
+    {
+      for (const auto &port : input ? midi->inputs() : midi->outputs())
+      {
+        printf("  %s \"%s\"\n    id: %s\n    legacy name: %s\n", input ? "input" : "output",
+               port.name.c_str(), port.id.c_str(), port.legacyName.c_str());
+      }
+    }
+  }
+
+  fflush(stdout);
+  return true;
 }
 
 StandaloneHost *getStandaloneHost()
