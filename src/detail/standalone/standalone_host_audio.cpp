@@ -214,6 +214,83 @@ void StandaloneHost::pollAudioEvents()
   }
 
   if (devicesChanged && onAudioDevicesChanged) onAudioDevicesChanged();
+
+  // the plugin's request, now that its call has returned. last, so that a stream which
+  // stopped on its own is dealt with first and the request is what is left running
+  if (pendingAudioConfig)
+  {
+    const auto request{*pendingAudioConfig};
+    pendingAudioConfig.reset();
+    applyAudioConfigRequest(request);
+  }
+}
+
+void StandaloneHost::applyAudioConfigRequest(const AudioConfigRequest &request)
+{
+  // the stream as it is, to open again if the request's does not
+  const bool wasRunning{isAudioRunning()};
+  const auto apiBefore{audioApiName};
+  const auto inputBefore{audioInputDevice}, outputBefore{audioOutputDevice};
+  const bool inputUsedBefore{audioInputUsed}, outputUsedBefore{audioOutputUsed};
+  const auto inFirstBefore{deviceInputFirstChannel}, outFirstBefore{deviceOutputFirstChannel};
+  const auto inChannelsBefore{deviceInputChannels}, outChannelsBefore{deviceOutputChannels};
+  const auto rateBefore{currentSampleRate};
+  const auto framesBefore{currentBufferSize};
+
+  // the api first: the devices are that api's
+  if (!request.keepApi) setAudioApi(request.api);
+
+  // resolved as the saved ones are: an id that is not here is the system default. a
+  // plugin without audio inputs never opens one, whatever it asks
+  const auto output{request.useOutput ? resolveOutputDevice(request.outputId) : std::string{}};
+  const bool wantInput{request.useInput && numAudioInputs > 0};
+  const auto input{wantInput ? resolveInputDevice(request.inputId) : std::string{}};
+  const bool useOutput{request.useOutput && isKnownDevice(output)};
+  const bool useInput{wantInput && isKnownDevice(input)};
+
+  // the channels asked for where the device has them, else its first. channelChoiceFor
+  // takes the first as the settings file holds it, 1-based
+  const auto outChoice{channelChoiceFor(output, false, request.outputFirstChannel + 1)};
+  const auto inChoice{channelChoiceFor(input, true, request.inputFirstChannel + 1)};
+
+  if (request.bufferSize > 0) currentBufferSize = request.bufferSize;
+  deviceOutputFirstChannel = outChoice.first;
+  deviceOutputChannels = std::max<uint32_t>(outChoice.count, 1);
+  deviceInputFirstChannel = inChoice.first;
+  deviceInputChannels = std::max<uint32_t>(inChoice.count, 1);
+  startAudioThreadOn(input, deviceInputChannels, useInput, output, deviceOutputChannels,
+                     useOutput && numAudioOutputs > 0, request.sampleRate);
+
+  if (isAudioRunning())
+  {
+    // kept as the settings screen keeps a choice it opened: what was asked for, which the
+    // next launch opens (standalone_settings.h)
+    setChosenDevices(useOutput ? output : std::string{}, useInput ? input : std::string{});
+    settings.audioOutputUsed = useOutput;
+    settings.audioInputUsed = useInput;
+    if (useOutput) settings.outputFirstChannel = outChoice.first + 1;
+    if (useInput) settings.inputFirstChannel = inChoice.first + 1;
+    settings.sampleRate = request.sampleRate;
+    captureAudioSettings();
+    if (!saveStandaloneSettings())
+      LOGINFO("[WARNING] Unable to save the audio settings; the next launch will not have them");
+    return;
+  }
+
+  // as the settings screen does with a choice that does not open: the stream before it,
+  // opened again. startAudioThreadOn has put the error in front of the user already
+  if (!request.keepApi && audioApiName != apiBefore) setAudioApi(apiBefore);
+  if (wasRunning)
+  {
+    currentBufferSize = framesBefore;
+    deviceInputFirstChannel = inFirstBefore;
+    deviceInputChannels = inChannelsBefore;
+    deviceOutputFirstChannel = outFirstBefore;
+    deviceOutputChannels = outChannelsBefore;
+    startAudioThreadOn(inputBefore, inChannelsBefore, inputUsedBefore && numAudioInputs > 0,
+                       outputBefore, outChannelsBefore, outputUsedBefore && numAudioOutputs > 0,
+                       rateBefore);
+  }
 }
 
 uint32_t StandaloneHost::mainBusChannels(bool input) const

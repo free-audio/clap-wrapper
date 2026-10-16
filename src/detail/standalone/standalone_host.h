@@ -157,6 +157,23 @@ struct StandaloneHost : Clap::IHost, AudioStreamCallback
   // older build finds them by. an empty id leaves that side's saved device alone
   void setChosenDevices(const std::string &outputId, const std::string &inputId);
 
+  // a plugin's request_audio_config (standalone_features.h). applied by pollAudioEvents()
+  // from the main loop, never inside the plugin's own call; request_pending until then
+  struct AudioConfigRequest
+  {
+    bool keepApi{true};  // api_id was nullptr
+    std::string api;     // "" is the build's default
+    bool useInput{false}, useOutput{false};  // that side's id was not nullptr
+    std::string inputId, outputId;           // "" is the system default
+    int32_t sampleRate{0};                   // 0 is the device's preferred rate
+    uint32_t bufferSize{0};                  // 0 keeps the current size
+    uint32_t inputFirstChannel{0}, outputFirstChannel{0};  // 0-based
+  };
+  std::optional<AudioConfigRequest> pendingAudioConfig;
+  // opens the stream the request describes and keeps it as the settings screen keeps a
+  // choice; the stream before it again if it does not open
+  void applyAudioConfigRequest(const AudioConfigRequest &request);
+
   // The device id for a saved or requested one, falling back to the system default
   // when it is empty or not present. savedName, from a settings file, checks the id: one
   // whose device has another name now was saved by a newer build and rewritten by an

@@ -113,7 +113,7 @@ bool getAudioStatus(const clap_host_t *, clap_wrapper_standalone_audio_status_t 
 
   auto *sah = getStandaloneHost();
   *status = {};
-  status->request_pending = false;
+  status->request_pending = sah->pendingAudioConfig.has_value();
   status->running = sah->isAudioRunning();
   copyString(status->api_id, sizeof(status->api_id), sah->audioApiName);
   if (status->running)
@@ -143,19 +143,81 @@ bool setInputMuted(const clap_host_t *, bool muted)
   return true;
 }
 
-bool supportsBinding(const clap_host_t *, uint32_t)
+// audio through request_audio_config, midi through request_midi_bindings
+bool supportsBinding(const clap_host_t *, uint32_t kind)
 {
-  return false;
+  return kind < numEndpointKinds;
 }
 
-bool requestAudioConfig(const clap_host_t *, const clap_wrapper_standalone_audio_config_t *)
+// held for the main loop: StandaloneHost::pollAudioEvents applies it once this call, and
+// whatever the plugin was doing when it made it, have returned
+bool requestAudioConfig(const clap_host_t *, const clap_wrapper_standalone_audio_config_t *config)
 {
-  return false;
+  if (!config) return false;
+
+  StandaloneHost::AudioConfigRequest request;
+  request.keepApi = config->api_id == nullptr;
+  if (config->api_id) request.api = config->api_id;
+  request.useInput = config->input_id != nullptr;
+  if (config->input_id) request.inputId = config->input_id;
+  request.useOutput = config->output_id != nullptr;
+  if (config->output_id) request.outputId = config->output_id;
+  request.sampleRate = static_cast<int32_t>(config->sample_rate);
+  request.bufferSize = config->buffer_size;
+  request.inputFirstChannel = config->input_first_channel;
+  request.outputFirstChannel = config->output_first_channel;
+
+  getStandaloneHost()->pendingAudioConfig = request;
+  return true;
 }
 
-bool requestMidiBindings(const clap_host_t *, uint32_t, const char *const *, uint32_t, bool)
+// opened at once: unlike an audio change, nothing here stops the stream or touches the
+// plugin. kept as the settings screen keeps a choice of ports
+bool requestMidiBindings(const clap_host_t *, uint32_t kind, const char *const *ids, uint32_t count,
+                         bool bindAll)
 {
-  return false;
+  if (kind != CLAP_WRAPPER_STANDALONE_MIDI_INPUT && kind != CLAP_WRAPPER_STANDALONE_MIDI_OUTPUT)
+    return false;
+
+  auto *sah = getStandaloneHost();
+  std::vector<std::string> references;
+  if (!bindAll)
+  {
+    for (uint32_t i = 0; ids && i < count; ++i)
+    {
+      if (ids[i]) references.emplace_back(ids[i]);
+    }
+  }
+
+  if (kind == CLAP_WRAPPER_STANDALONE_MIDI_INPUT)
+  {
+    if (bindAll)
+    {
+      // a fresh standalone's setting: every port, and those plugged in later
+      sah->settings.midiBindAllPorts = true;
+      sah->settings.midiPortNames.clear();
+      sah->settings.midiPortIds.clear();
+    }
+    else
+    {
+      sah->setChosenMidiPorts(true, references);
+    }
+    sah->openMidiPorts(references, bindAll);
+  }
+  else
+  {
+    // outputs keep no "every port" (standalone_settings.h): the ones there now, by id
+    if (bindAll)
+    {
+      for (const auto &port : sah->getMidiOutputPorts()) references.push_back(port.id);
+    }
+    sah->setChosenMidiPorts(false, references);
+    sah->openMidiOutputPorts(references);
+  }
+
+  if (!sah->saveStandaloneSettings())
+    LOGINFO("[WARNING] Unable to save the MIDI settings; the next launch will not have them");
+  return true;
 }
 
 uint32_t supportedResetFlags(const clap_host_t *)
@@ -168,10 +230,10 @@ bool resetStandaloneState(const clap_host_t *, uint32_t)
   return false;
 }
 
-// waits for request_audio_config, which is unsupported as a whole
+// request_audio_config honours *_first_channel
 bool supportsChannelSelection(const clap_host_t *)
 {
-  return false;
+  return true;
 }
 
 bool getEndpointChannelName(const clap_host_t *, uint32_t kind, uint32_t index, uint32_t channel,
