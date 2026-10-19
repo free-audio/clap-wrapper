@@ -9,7 +9,8 @@
  *
  * An input delivers short messages whole (MIM_DATA) and sysex through buffers we hand it,
  * in pieces of a buffer's size (MIM_LONGDATA), which are put back together here. WinMM has
- * no virtual ports and says nothing when a device comes or goes.
+ * no virtual ports and says nothing when a device comes or goes, so a thread of ours lists
+ * the ports once a second and reports when the list is not what it was.
  *
  * Nothing in here throws.
  */
@@ -22,8 +23,11 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <map>
 #include <mutex>
+#include <thread>
 
 namespace freeaudio::clap_wrapper::standalone
 {
@@ -146,6 +150,13 @@ class WinMmMidiBackend final : public MidiBackend
  public:
   ~WinMmMidiBackend() override
   {
+    {
+      std::lock_guard<std::mutex> guard(watchMutex);
+      watchEnded = true;
+    }
+    watchWake.notify_all();
+    if (watcher.joinable()) watcher.join();
+
     openInputs({});
     openOutputs({});
   }
@@ -166,6 +177,8 @@ class WinMmMidiBackend final : public MidiBackend
 
   std::vector<std::string> openInputs(const std::vector<std::string> &ids) override
   {
+    watch();
+
     // what is not wanted any more is closed first, so that a port that moved in the list
     // can be opened again by its id
     for (auto it = inputPorts.begin(); it != inputPorts.end();)
@@ -208,6 +221,8 @@ class WinMmMidiBackend final : public MidiBackend
 
   std::vector<std::string> openOutputs(const std::vector<std::string> &ids) override
   {
+    watch();
+
     std::lock_guard<std::mutex> lock(outputMutex);
     for (auto it = outputPorts.begin(); it != outputPorts.end();)
     {
@@ -307,6 +322,51 @@ class WinMmMidiBackend final : public MidiBackend
   }
 
  private:
+  // [main-thread] the thread that tells the host of a device coming or going, which WinMM
+  // does not: it lists the ports once a second. started by the first open, when the host
+  // has its handler in place
+  void watch()
+  {
+    {
+      std::lock_guard<std::mutex> guard(watchMutex);
+      if (watchEnded || watcher.joinable()) return;
+    }
+    try
+    {
+      watcher = std::thread([this]() { watchLoop(); });
+    }
+    catch (const std::exception &)
+    {
+      // no thread, no reports: the lists are still made again whenever they are asked for
+    }
+  }
+
+  // [watcher-thread]
+  void watchLoop()
+  {
+    auto list = []()
+    {
+      std::vector<std::string> ids;
+      for (const auto &l : listPorts(true)) ids.push_back("in " + l.port.id);
+      for (const auto &l : listPorts(false)) ids.push_back("out " + l.port.id);
+      return ids;
+    };
+
+    auto before{list()};
+    std::unique_lock<std::mutex> lock(watchMutex);
+    while (!watchWake.wait_for(lock, std::chrono::seconds(1), [this]() { return watchEnded; }))
+    {
+      lock.unlock();
+      auto now{list()};
+      if (now != before)
+      {
+        before = std::move(now);
+        if (onPortsChanged) onPortsChanged();
+      }
+      lock.lock();
+    }
+  }
+
   static void CALLBACK inputCallback(HMIDIIN, UINT message, DWORD_PTR instance, DWORD_PTR param1,
                                      DWORD_PTR)
   {
@@ -426,6 +486,12 @@ class WinMmMidiBackend final : public MidiBackend
   }
 
   std::vector<std::unique_ptr<InputPort>> inputPorts;
+
+  // the watcher, and what ends it
+  std::thread watcher;
+  std::mutex watchMutex;
+  std::condition_variable watchWake;
+  bool watchEnded{false};
 
   // send() runs on the sender thread, openOutputs() on the main thread
   std::mutex outputMutex;

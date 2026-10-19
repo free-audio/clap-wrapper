@@ -213,6 +213,10 @@ void StandaloneHost::pollAudioEvents()
     }
   }
 
+  // a midi port plugged in is opened where the settings want it, before a settings
+  // screen shows it as open
+  if (devicesChanged) followMidiPorts();
+
   if (devicesChanged && onAudioDevicesChanged) onAudioDevicesChanged();
 
   // the plugin's request, now that its call has returned. last, so that a stream which

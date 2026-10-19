@@ -404,6 +404,11 @@ struct StandaloneHost : Clap::IHost, AudioStreamCallback
   void openMidiPorts(const std::vector<std::string> &references, bool bindAll);
   void closeMidiPorts();
 
+  // [main-thread] a port came or went: what is open follows the settings again - every
+  // input where they bind all, one plugged in since included, and a chosen port that is
+  // back. a port still open stays open
+  void followMidiPorts();
+
   // Virtual ports: a destination other applications send to, which feeds the plugin like
   // an input, and a source they receive the plugin's output from. Each lives on its own,
   // so reopening the port lists never makes another application lose its connection.
@@ -484,8 +489,8 @@ struct StandaloneHost : Clap::IHost, AudioStreamCallback
 
   // [main-thread] what the backends reported from their threads since the last call: a
   // stream that stopped on its own is reported, and opened again once its devices are
-  // back; a change in the devices goes to onAudioDevicesChanged. frontends call it from a
-  // timer
+  // back; a change in the devices or ports opens the midi ports the settings name
+  // (followMidiPorts) and goes to onAudioDevicesChanged. frontends call it from a timer
   void pollAudioEvents();
   // [main-thread] set by a frontend whose settings screen lists devices or ports
   std::function<void()> onAudioDevicesChanged{nullptr};

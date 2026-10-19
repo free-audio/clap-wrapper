@@ -20,7 +20,7 @@ void StandaloneHost::guaranteeMidiBackend()
   }
 
   midiBackend->onMessage = [this](const uint8_t *data, size_t size) { processMIDIMessage(data, size); };
-  // the port lists follow on the next poll, with the audio devices'
+  // the open ports and the port lists follow on the next poll, with the audio devices'
   midiBackend->onPortsChanged = [this]() { devicesChangedPending = true; };
 }
 
@@ -191,6 +191,67 @@ void StandaloneHost::closeMidiPorts()
 {
   if (midiBackend && !currentMidiInputIds.empty()) midiBackend->openInputs({});
   currentMidiInputIds.clear();
+}
+
+namespace
+{
+// the same ids, in any order
+bool sameIds(std::vector<std::string> a, std::vector<std::string> b)
+{
+  std::sort(a.begin(), a.end());
+  std::sort(b.begin(), b.end());
+  return a == b;
+}
+}  // namespace
+
+void StandaloneHost::followMidiPorts()
+{
+  if (!midiBackend) return;
+
+  // the ports were opened from the settings, which every screen and request_midi_bindings
+  // write before they open anything, so the settings say what should be open now. quietly:
+  // a chosen port that is not plugged in was reported when it was opened
+  std::vector<std::string> wanted, absent;
+  if (hasMIDIInput || hasClapNoteInput)
+  {
+    if (settings.midiBindAllPorts)
+    {
+      for (const auto &port : midiBackend->inputs()) wanted.push_back(port.id);
+    }
+    else
+    {
+      savedMidiSelection(true, wanted, absent);
+    }
+
+    if (!sameIds(wanted, currentMidiInputIds))
+    {
+      currentMidiInputIds = midiBackend->openInputs(wanted);
+      for (const auto &id : wanted)
+      {
+        if (std::find(currentMidiInputIds.begin(), currentMidiInputIds.end(), id) ==
+            currentMidiInputIds.end())
+          LOGINFO("[ERROR] Unable to open MIDI input '{}'", id);
+      }
+    }
+  }
+
+  if (createsMidiOutput)
+  {
+    savedMidiSelection(false, wanted, absent);
+    if (!sameIds(wanted, currentMidiOutputIds))
+    {
+      // as openMidiOutputPorts does: the sender is not running while the outputs change
+      stopMidiOutputThread();
+      currentMidiOutputIds = midiBackend->openOutputs(wanted);
+      for (const auto &id : wanted)
+      {
+        if (std::find(currentMidiOutputIds.begin(), currentMidiOutputIds.end(), id) ==
+            currentMidiOutputIds.end())
+          LOGINFO("[ERROR] Unable to open MIDI output '{}'", id);
+      }
+      startMidiOutputThreadIfNeeded();
+    }
+  }
 }
 
 bool StandaloneHost::supportsVirtualMidiPorts()
