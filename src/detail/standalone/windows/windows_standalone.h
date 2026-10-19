@@ -3,6 +3,7 @@
 #include <Windows.h>
 #include <ShlObj.h>
 
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -84,6 +85,10 @@ struct MessageHandler
     return ::SendMessageW(hwnd, msg, (::WPARAM)wparam, (::LPARAM)lparam);
   }
 
+  // the window a box is shown over and holds while it is up; none until the window is
+  // made, and a box without one can open behind it
+  ::HWND owner{nullptr};
+
   void box(const std::string &message);
   void box(const std::wstring &message);
 
@@ -93,28 +98,28 @@ struct MessageHandler
   template <typename... Args>
   void box(const fmt::format_string<Args...> fmt, Args &&...args)
   {
-    ::MessageBoxW(nullptr, toUTF16(fmt::vformat(fmt.get(), fmt::make_format_args(args...))).c_str(),
+    ::MessageBoxW(owner, toUTF16(fmt::vformat(fmt.get(), fmt::make_format_args(args...))).c_str(),
                   nullptr, MB_OK | MB_ICONASTERISK);
   }
 
   template <typename... Args>
   void box(const fmt::wformat_string<Args...> fmt, Args &&...args)
   {
-    ::MessageBoxW(nullptr, fmt::vformat(fmt.get(), fmt::make_wformat_args(args...)).c_str(), nullptr,
+    ::MessageBoxW(owner, fmt::vformat(fmt.get(), fmt::make_wformat_args(args...)).c_str(), nullptr,
                   MB_OK | MB_ICONASTERISK);
   }
 
   template <typename... Args>
   void error(const fmt::format_string<Args...> fmt, Args &&...args)
   {
-    ::MessageBoxW(nullptr, toUTF16(fmt::vformat(fmt.get(), fmt::make_format_args(args...))).c_str(),
+    ::MessageBoxW(owner, toUTF16(fmt::vformat(fmt.get(), fmt::make_format_args(args...))).c_str(),
                   nullptr, MB_OK | MB_ICONHAND);
   }
 
   template <typename... Args>
   void error(const fmt::wformat_string<Args...> fmt, Args &&...args)
   {
-    ::MessageBoxW(nullptr, fmt::vformat(fmt.get(), fmt::make_wformat_args(args...)).c_str(), nullptr,
+    ::MessageBoxW(owner, fmt::vformat(fmt.get(), fmt::make_wformat_args(args...)).c_str(), nullptr,
                   MB_OK | MB_ICONHAND);
   }
 
@@ -215,12 +220,17 @@ struct PortList final : public Control
 {
   struct Row
   {
-    std::string name;
+    // the port's id, or for a port saved but not plugged in, its saved name
+    std::string reference;
     bool wasOn;  // when the settings window opened
   };
 
   void create(uintptr_t id, ::HWND parentHwnd);
-  void fill(const std::vector<std::string> &available, const std::vector<std::string> &on, bool allOn);
+  // one row per port, ticked if its id is in onIds, or every port with allOn, and one
+  // marked "(not connected)" per name in absentNames. a row already there keeps its
+  // state, so that a port coming or going while the window is open changes nothing else
+  void fill(const std::vector<MidiPort> &ports, const std::vector<std::string> &onIds,
+            const std::vector<std::string> &absentNames, bool allOn);
 
   bool isOn(size_t row);
   void setOn(size_t row, bool on);
@@ -313,12 +323,17 @@ struct Plugin final : public Window
       VirtualOutput,
       VirtualOutputLabel,
       Appearance,
+      AudioOutputChannels,
+      AudioInputChannels,
       DriverControlPanel,
       Static
     };
 
     Control heading;
     Control apiLabel, outputLabel, inputLabel, sampleRateLabel, bufferSizeLabel;
+    // which of the device's channels the plugin's main ports take
+    Control outputChannelsLabel, inputChannelsLabel;
+    ComboBox outputChannels, inputChannels;
     ComboBox api;
     ComboBox output;
     ComboBox input;
@@ -328,6 +343,9 @@ struct Plugin final : public Window
     Control resetToDefault;
     Control driverPanel;  // the asio driver's control panel
     Control noRateNote;
+    // beside the buffer size: what the running stream's device adds, while the window
+    // shows what runs
+    Control latencyNote;
 
     Control midiInLabel, midiOutLabel;
     PortList midiIn;
@@ -351,14 +369,17 @@ struct Plugin final : public Window
     std::vector<::RECT> rules;
 
     // what the window shows, in the order it shows it: what a selection there indexes
-    std::vector<RtAudio::Api> apisShown;
-    std::vector<RtAudio::DeviceInfo> outDevices, inDevices;  // the input list adds "No Input" first
+    std::vector<standalone::AudioApi> apisShown;
+    std::vector<AudioDevice> outDevices, inDevices;  // the input list adds "No Input" first
+    std::vector<AudioChannelChoice> outChoices, inChoices;
     std::vector<int32_t> sampleRatesShown;
     std::vector<uint32_t> bufferSizesShown;
     std::vector<uint32_t> appearancesShown;
 
     // as they were when the window was shown, to go back to
-    RtAudio::Api apiWhenOpened{RtAudio::Api::UNSPECIFIED};
+    std::string apiWhenOpened;
+    // the input list's "every port" from the settings, for ports plugged in while it is open
+    bool midiInAllOn{false};
     bool apiChanged{false};
     // a stream was opened before OK, for the driver's control panel
     bool audioOpenedEarly{false};
@@ -391,11 +412,17 @@ struct Plugin final : public Window
   void layoutSettings();
   void refreshSettingsFonts();
   void refreshApis();
-  void refreshDevices(unsigned int outputId, unsigned int inputId, bool useInput);
+  void refreshDevices(const std::string &outputId, const std::string &inputId, bool useInput);
+  // a device or port came or went: the window, if it is up, follows and keeps what it shows
+  void devicesChanged();
   void refreshSampleRates(int32_t preferred);
   void refreshBufferSizes(uint32_t preferred);
   void refreshBufferSizeTitles();
+  // the channel menus for the shown devices, selecting the choice that starts at these
+  // channels (0-based), or the first; the input's row only while there is an input
+  void refreshChannelChoices(uint32_t outputFirst, uint32_t inputFirst);
   void refreshInputNote();
+  void refreshLatencyNote();
   void refreshAppearanceRow();
   void applySettingsAppearance();
   void selectApiInSettings();
@@ -403,6 +430,9 @@ struct Plugin final : public Window
   void refreshDriverPanelButton();
   void showDriverControlPanel();
   bool openShownAudio();
+  // a menu changed: what the window shows is opened at once, or the menus go back to
+  // what runs
+  void applyShownAudio();
   void okSettings();
   void cancelSettings();
 
@@ -411,6 +441,8 @@ struct Plugin final : public Window
   std::optional<size_t> shownInput();
   int32_t shownSampleRate();
   uint32_t shownBufferSize();
+  // the channels a channel menu shows; {0, 0} with none
+  AudioChannelChoice shownChannels(bool input);
 
   // the plugin has a note port in that direction; the window has no section without one
   bool takesMidi() const;
@@ -429,7 +461,6 @@ struct Plugin final : public Window
 
   // Take the current API's default devices; clears the persisted device names.
   void selectDefaultDevices();
-  void refreshDeviceChannelCounts();
 
   void startAudio();
 
@@ -449,10 +480,16 @@ struct Plugin final : public Window
   bool isTimerRunning{false};
   const ::UINT_PTR timerId{0};
 
-  // Written from RtAudio's error callback, which can be any thread.
+  // Written by StandaloneHost::displayAudioError, which may be inside a handler that is
+  // still on the stack.
   std::mutex pendingErrorLock;
   std::string pendingError;
   std::string lastShownError;
+  // an error box is up: its modal loop runs the timer, which must not open another
+  bool showingAudioError{false};
+  // since when the stream has run without stopping; a device that was just plugged in
+  // can stop a stream again within moments, which is still the failure already shown
+  std::optional<std::chrono::steady_clock::time_point> audioRunningSince;
 
   ClapPlugin plugin;
   Position position;

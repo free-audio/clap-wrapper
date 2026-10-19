@@ -1,3 +1,13 @@
+# The standalone's audio and MIDI run on the platform's own apis on macOS (CoreAudio,
+# CoreMIDI) and Windows (WASAPI, WinMM). This switch takes RtAudio and RtMidi for both in
+# their place, as every standalone did before. Linux has PipeWire and JACK for audio and
+# the ALSA sequencer for MIDI, each loaded at run time and built where its headers are
+# found; without the PipeWire and JACK headers it takes RtAudio and RtMidi, as this
+# switch does. Windows built with RtAudio's ASIO
+# (RTAUDIO_API_ASIO) takes ASIO from RtAudio next to the native WASAPI either way.
+option(CLAP_WRAPPER_STANDALONE_RTAUDIO
+       "Standalone: RtAudio and RtMidi in place of CoreAudio/CoreMIDI, WASAPI/WinMM and PipeWire/JACK/ALSA"
+       OFF)
 
 function(target_add_standalone_wrapper)
     set(oneValueArgs
@@ -62,32 +72,121 @@ function(target_add_standalone_wrapper)
         set(SA_BUNDLE_VERSION "${PROJECT_VERSION}")
     endif()
 
-    guarantee_rtaudio()
-    guarantee_rtmidi()
+    # RtAudio and RtMidi for everything, or RtAudio for ASIO only
+    set(sa_rtaudio ${CLAP_WRAPPER_STANDALONE_RTAUDIO})
 
+    # linux: pipewire and jack, each where its headers are. the libraries are dlopen()ed,
+    # so that one binary runs with either, both or neither installed
+    set(sa_pipewire OFF)
+    set(sa_jack OFF)
+    if (NOT APPLE AND NOT WIN32 AND NOT sa_rtaudio)
+        find_package(PkgConfig QUIET)
+        if (PkgConfig_FOUND)
+            pkg_check_modules(CLAP_WRAPPER_PIPEWIRE QUIET libpipewire-0.3)
+        endif()
+        if (CLAP_WRAPPER_PIPEWIRE_FOUND)
+            set(sa_pipewire ON)
+        else()
+            message(STATUS "clap-wrapper: no PipeWire headers (libpipewire-0.3-dev); the standalone is built without PipeWire")
+        endif()
+
+        find_path(CLAP_WRAPPER_JACK_INCLUDE_DIR jack/jack.h)
+        if (CLAP_WRAPPER_JACK_INCLUDE_DIR)
+            set(sa_jack ON)
+        else()
+            message(STATUS "clap-wrapper: no JACK headers (libjack-jackd2-dev); the standalone is built without JACK")
+        endif()
+
+        if (NOT sa_pipewire AND NOT sa_jack)
+            message(STATUS "clap-wrapper: neither PipeWire nor JACK headers; the standalone takes RtAudio for audio")
+            set(sa_rtaudio ON)
+        endif()
+    endif()
+
+    # RtMidi with the RtAudio switch; else linux's MIDI is the ALSA sequencer, where its
+    # headers are, and no MIDI at all where they are not. a linux build that takes RtAudio
+    # for want of the PipeWire and JACK headers keeps the ALSA sequencer
+    set(sa_rtmidi ${CLAP_WRAPPER_STANDALONE_RTAUDIO})
+    set(sa_alsaseq OFF)
+    if (NOT APPLE AND NOT WIN32 AND NOT sa_rtmidi)
+        find_path(CLAP_WRAPPER_ALSA_INCLUDE_DIR alsa/asoundlib.h)
+        if (CLAP_WRAPPER_ALSA_INCLUDE_DIR)
+            set(sa_alsaseq ON)
+        else()
+            message(STATUS "clap-wrapper: no ALSA headers (libasound2-dev); the standalone is built without MIDI")
+        endif()
+    endif()
+    set(sa_asio OFF)
+    if (WIN32 AND RTAUDIO_API_ASIO)
+        set(sa_asio ON)
+    endif()
+
+    set(sasrc ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone)
     set(salib ${SA_TARGET}-clap-wrapper-standalone-lib)
     add_library(${salib} STATIC
-            ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/entry.cpp
-            ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/standalone_host.cpp
-            ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/standalone_host_audio.cpp
-            ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/standalone_host_midi.cpp
-            ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/standalone_host_features.cpp
-            ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/standalone_settings.cpp
+            ${sasrc}/entry.cpp
+            ${sasrc}/standalone_host.cpp
+            ${sasrc}/standalone_host_audio.cpp
+            ${sasrc}/standalone_host_midi.cpp
+            ${sasrc}/standalone_host_features.cpp
+            ${sasrc}/standalone_settings.cpp
+            ${sasrc}/standalone_audio.cpp
+            ${sasrc}/standalone_backends.cpp
             )
     target_link_libraries(${salib}
             PUBLIC
             clap-wrapper-shared-detail
-            base-sdk-rtmidi
-            base-sdk-rtaudio
             )
     target_link_libraries(${salib} PRIVATE clap-wrapper-compile-options)
 
+    if (sa_rtaudio OR sa_asio)
+        guarantee_rtaudio()
+        target_sources(${salib} PRIVATE ${sasrc}/rtaudio_backend.cpp)
+        target_link_libraries(${salib} PUBLIC base-sdk-rtaudio)
+    endif()
+    if (sa_rtaudio)
+        target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_RTAUDIO=1)
+    endif()
+    if (sa_rtmidi)
+        guarantee_rtmidi()
+        target_sources(${salib} PRIVATE ${sasrc}/rtmidi_backend.cpp)
+        target_link_libraries(${salib} PUBLIC base-sdk-rtmidi)
+        target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_RTMIDI=1)
+    endif()
+    if (sa_pipewire)
+        target_sources(${salib} PRIVATE ${sasrc}/linux/pipewire_backend.cpp)
+        target_include_directories(${salib} SYSTEM PRIVATE ${CLAP_WRAPPER_PIPEWIRE_INCLUDE_DIRS})
+        target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_PIPEWIRE=1)
+    endif()
+    if (sa_jack)
+        target_sources(${salib} PRIVATE ${sasrc}/linux/jack_backend.cpp)
+        target_include_directories(${salib} SYSTEM PRIVATE ${CLAP_WRAPPER_JACK_INCLUDE_DIR})
+        target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_JACK=1)
+    endif()
+    if (sa_alsaseq)
+        target_sources(${salib} PRIVATE ${sasrc}/linux/alsaseq_midi_backend.cpp)
+        target_include_directories(${salib} SYSTEM PRIVATE ${CLAP_WRAPPER_ALSA_INCLUDE_DIR})
+        target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_ALSASEQ=1)
+    endif()
+    if (sa_pipewire OR sa_jack OR sa_alsaseq)
+        target_link_libraries(${salib} PRIVATE ${CMAKE_DL_LIBS})
+    endif()
+
     if (APPLE)
-        target_sources(${salib} PRIVATE)
+        # the device listing is coreaudio's in both cases: rtaudio takes from it what it
+        # cannot tell itself
+        target_sources(${salib} PRIVATE ${sasrc}/macos/coreaudio_backend.cpp)
+        if (NOT sa_rtmidi)
+            target_sources(${salib} PRIVATE ${sasrc}/macos/coremidi_backend.cpp)
+        endif()
         target_link_libraries(${salib}
                 PUBLIC "-framework AVFoundation" "-framework Foundation" "-framework CoreFoundation" "-framework AppKit"
-                "-framework CoreAudio")
-
+                "-framework CoreAudio" "-framework CoreMIDI")
+    elseif (WIN32 AND NOT sa_rtaudio)
+        target_sources(${salib} PRIVATE
+                ${sasrc}/windows/wasapi_backend.cpp
+                ${sasrc}/windows/winmm_midi_backend.cpp)
+        target_link_libraries(${salib} PUBLIC winmm avrt ole32)
     endif()
 
     if (APPLE)
@@ -172,7 +271,7 @@ function(target_add_standalone_wrapper)
         # RuntimeObject was only ever needed for the C++/WinRT JSON parser the
         # settings code used to use; the shared settings store replaced it.
         # rtaudio built with asio: the settings window offers the driver's control panel
-        if(RTAUDIO_API_ASIO)
+        if(sa_asio)
             target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_ASIO=1)
         endif()
 
@@ -186,7 +285,10 @@ function(target_add_standalone_wrapper)
         message(STATUS "clap-wrapper: Using Standalone X11 gui for CLAP Wrapper")
         target_link_libraries(${salib} PUBLIC X11)
         target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_X11)
-        target_sources(${salib} PRIVATE ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/linux/x11_gui.cpp)
+        target_sources(${salib} PRIVATE
+                ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/linux/x11_gui.cpp
+                ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/linux/x11_ui.cpp
+                ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/linux/x11_settings.cpp)
 
         set_target_properties(${SA_TARGET} PROPERTIES OUTPUT_NAME ${SA_OUTPUT_NAME})
 
