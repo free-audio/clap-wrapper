@@ -161,12 +161,12 @@ struct StandaloneHost : Clap::IHost, AudioStreamCallback
   // from the main loop, never inside the plugin's own call; request_pending until then
   struct AudioConfigRequest
   {
-    bool keepApi{true};  // api_id was nullptr
-    std::string api;     // "" is the build's default
-    bool useInput{false}, useOutput{false};  // that side's id was not nullptr
-    std::string inputId, outputId;           // "" is the system default
-    int32_t sampleRate{0};                   // 0 is the device's preferred rate
-    uint32_t bufferSize{0};                  // 0 keeps the current size
+    bool keepApi{true};                                    // api_id was nullptr
+    std::string api;                                       // "" is the build's default
+    bool useInput{false}, useOutput{false};                // that side's id was not nullptr
+    std::string inputId, outputId;                         // "" is the system default
+    int32_t sampleRate{0};                                 // 0 is the device's preferred rate
+    uint32_t bufferSize{0};                                // 0 keeps the current size
     uint32_t inputFirstChannel{0}, outputFirstChannel{0};  // 0-based
   };
   std::optional<AudioConfigRequest> pendingAudioConfig;
