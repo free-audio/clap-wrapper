@@ -520,14 +520,105 @@ bool StandaloneHost::tryLoadStandaloneAndPluginSettings(const fs::path &fromDir,
   return true;
 }
 
+namespace
+{
+// a path the plugin hands over in utf-8; std::filesystem would read a narrow string in
+// the windows code page
+fs::path pathFromUtf8(const std::string &text)
+{
+#if WIN && CLAP_WRAPPER_HAS_WIN32
+  if (text.empty()) return {};
+  const auto length{
+      ::MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0)};
+  std::wstring wide(static_cast<size_t>(length), L'\0');
+  ::MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), wide.data(), length);
+  return fs::path(wide);
+#else
+  return fs::path(text);
+#endif
+}
+
+// the plugin's entry's factory for the standalone, or null
+const clap_wrapper_plugin_factory_standalone_settings_t *standaloneSettingsFactory(
+    const clap_plugin_entry *entry, const void *pluginFactory)
+{
+  if (!entry || !entry->get_factory) return nullptr;
+
+  auto *factory = static_cast<const clap_wrapper_plugin_factory_standalone_settings_t *>(
+      entry->get_factory(CLAP_WRAPPER_PLUGIN_FACTORY_STANDALONE_SETTINGS));
+  // some entries answer every id with their plugin factory
+  if (factory == pluginFactory) return nullptr;
+  return factory;
+}
+
+// the base folder the entry names, or nullopt for the standalone's own
+std::optional<fs::path> pluginSettingsBase(
+    const clap_wrapper_plugin_factory_standalone_settings_t *factory)
+{
+  if (!factory || !factory->get_settings_base_folder) return std::nullopt;
+
+  char path[CLAP_PATH_SIZE]{};
+  if (!factory->get_settings_base_folder(factory, path, sizeof(path))) return std::nullopt;
+  path[sizeof(path) - 1] = 0;
+  if (!path[0]) return std::nullopt;
+
+  auto base{pathFromUtf8(path)};
+  if (!base.is_absolute())
+  {
+    LOGINFO("[WARNING] The plugin's settings folder '{}' is not absolute; using the standalone's own",
+            path);
+    return std::nullopt;
+  }
+
+  std::error_code error;
+  fs::create_directories(base, error);
+  if (error || !fs::is_directory(base, error))
+  {
+    LOGINFO("[WARNING] Unable to create the plugin's settings folder '{}'; using the standalone's own",
+            path);
+    return std::nullopt;
+  }
+  return base;
+}
+}  // namespace
+
+void StandaloneHost::resolveStandaloneSettings(const clap_plugin_entry *entry, const void *pluginFactory,
+                                               const std::string &pluginId)
+{
+  auto *factory{standaloneSettingsFactory(entry, pluginFactory)};
+
+  // the default state persistence, which holds until a choice is made
+  uint32_t persistence{CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION};
+  defaultStatePersistence = CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION;
+  if (factory && factory->get_default_state_persistence &&
+      factory->get_default_state_persistence(factory, &persistence) &&
+      (persistence == CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION ||
+       persistence == CLAP_WRAPPER_STANDALONE_STATE_PERSIST_NONE))
+    defaultStatePersistence = persistence;
+
+  settingsFolder.reset();
+  if (pluginId.empty()) return;
+
+  auto base{pluginSettingsBase(factory)};
+  if (!base.has_value())
+  {
+    try
+    {
+      base = getStandaloneSettingsPath();
+    }
+    catch (const fs::filesystem_error &e)
+    {
+      LOGINFO("[ERROR] Unable to create the settings folder: '{}'", e.what());
+    }
+  }
+  if (base.has_value()) settingsFolder = *base / pluginId;
+}
+
 std::optional<fs::path> StandaloneHost::standaloneSettingsFile()
 {
-  if (!clapPlugin || !clapPlugin->_plugin || !clapPlugin->_plugin->desc) return std::nullopt;
+  if (!settingsFolder.has_value()) return std::nullopt;
 
-  auto base = getStandaloneSettingsPath();
-  if (!base.has_value()) return std::nullopt;
-
-  return *base / clapPlugin->_plugin->desc->id / "standalone-settings.conf";
+  return *settingsFolder / "standalone-settings.conf";
 }
 
 bool StandaloneHost::loadStandaloneSettings()
@@ -541,6 +632,18 @@ bool StandaloneHost::loadStandaloneSettings()
   if (settingsLoaded) setScreenAppearance(settings.screenAppearance, false);
 
   return settingsLoaded;
+}
+
+bool StandaloneHost::setPluginStatePersistence(uint32_t persistence)
+{
+  if (!settingsFolder.has_value() || (persistence != CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION &&
+                                      persistence != CLAP_WRAPPER_STANDALONE_STATE_PERSIST_NONE))
+    return false;
+
+  settings.pluginStatePersistence = persistence;
+  if (!saveStandaloneSettings())
+    LOGINFO("[WARNING] Unable to save the state persistence; the next launch will not have it");
+  return true;
 }
 
 bool StandaloneHost::setScreenAppearance(uint32_t appearance, bool fromPlugin)

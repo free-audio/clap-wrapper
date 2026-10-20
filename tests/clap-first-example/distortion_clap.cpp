@@ -15,6 +15,7 @@
 #include <assert.h>
 #include "clapwrapper/vst3.h"
 #include "clapwrapper/wrapper_host.h"
+#include "clapwrapper/standalone_features.h"
 #include "distortion_clap_entry.h"
 
 static const char *features[] = {CLAP_PLUGIN_FEATURE_AUDIO_EFFECT, CLAP_PLUGIN_FEATURE_STEREO,
@@ -400,6 +401,21 @@ static bool clap1stDist_init(const struct clap_plugin *plugin)
     }
   }
 
+  // in a clap-wrapper standalone: whether this launch gets the last session's state back.
+  // the standalone keeps the choice with its settings; a plugin that offers it to the user
+  // calls set_plugin_state_persistence when they make it. this one only reports it
+  if (plug->hostLog && plug->host)
+  {
+    auto *sf = (const clap_wrapper_standalone_features_t *)plug->host->get_extension(
+        plug->host, CLAP_WRAPPER_STANDALONE_FEATURES);
+    if (sf && sf->supported_plugin_state_persistence(plug->host) != 0)
+      plug->hostLog->log(
+          plug->host, CLAP_LOG_INFO,
+          sf->get_plugin_state_persistence(plug->host) == CLAP_WRAPPER_STANDALONE_STATE_PERSIST_NONE
+              ? "The standalone starts every launch afresh"
+              : "The standalone restores the last session");
+  }
+
   return true;
 }
 
@@ -636,6 +652,32 @@ static const clap_plugin_factory_as_vst3_t s_plugin_factory_as_vst3 = {
     plugin_factory_get_vst3_compatibility,
 };
 
+// in a clap-wrapper standalone: the base folder it keeps its settings under, one folder
+// per plugin id. this keeps the standalone's own; to name one, write an absolute utf-8
+// path to path and return true
+static bool standalone_settings_base_folder(const clap_wrapper_plugin_factory_standalone_settings_t *,
+                                            char *path, uint32_t path_capacity)
+{
+  (void)path;
+  (void)path_capacity;
+  return false;
+}
+
+// and the state persistence it starts with, until the user chooses. this keeps the
+// standalone's own, which restores the last session; to start every launch afresh, write
+// CLAP_WRAPPER_STANDALONE_STATE_PERSIST_NONE to persistence and return true
+static bool standalone_default_state_persistence(
+    const clap_wrapper_plugin_factory_standalone_settings_t *, uint32_t *persistence)
+{
+  (void)persistence;
+  return false;
+}
+
+static const clap_wrapper_plugin_factory_standalone_settings_t s_standalone_settings = {
+    standalone_settings_base_folder,
+    standalone_default_state_persistence,
+};
+
 bool dist_entry_init(const char *plugin_path)
 {
   // called only once, and very first
@@ -654,5 +696,7 @@ const void *dist_entry_get_factory(const char *factory_id)
   // wrapper only reads get_vst3_compatibility when it asked for the /1 version
   if (!strcmp(factory_id, CLAP_PLUGIN_FACTORY_INFO_VST3)) return &s_plugin_factory_as_vst3;
   if (!strcmp(factory_id, CLAP_PLUGIN_FACTORY_INFO_VST3_V1)) return &s_plugin_factory_as_vst3;
+  if (!strcmp(factory_id, CLAP_WRAPPER_PLUGIN_FACTORY_STANDALONE_SETTINGS))
+    return &s_standalone_settings;
   return nullptr;
 }

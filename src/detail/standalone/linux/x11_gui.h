@@ -66,6 +66,11 @@ struct X11Gui
   GC gc{nullptr};
   Rect settingsButton;
   bool settingsButtonHot{false}, settingsButtonPressed{false};
+  // Restore last session, a checkbox left of the settings button behind a rule, as the
+  // other platforms have it in their menus; empty where there is no settings folder or no
+  // strip
+  Rect restoreBox;
+  bool restoreShownOn{false}, restorePressed{false};
   std::string status;
   bool statusIsError{false};
   int pluginWidth{0}, pluginHeight{0};

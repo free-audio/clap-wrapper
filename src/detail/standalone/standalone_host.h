@@ -138,8 +138,17 @@ struct StandaloneHost : Clap::IHost, AudioStreamCallback
   StandaloneSettings settings;
   bool settingsLoaded{false};
 
-  // <settings path>/<plugin id>/standalone-settings.conf, or nullopt when the
-  // platform has no settings path or no plugin is loaded yet.
+  // where the standalone keeps its files for the plugin it hosts: <base>/<plugin id>,
+  // the base being the one the plugin's entry names (its
+  // clap_wrapper_plugin_factory_standalone_settings) or getStandaloneSettingsPath().
+  // resolved by mainCreatePlugin before it creates the plugin, so it is there during
+  // init(); nullopt where there is none. the entry's default state persistence is taken
+  // from the same factory at the same time
+  std::optional<fs::path> settingsFolder;
+  void resolveStandaloneSettings(const clap_plugin_entry *entry, const void *pluginFactory,
+                                 const std::string &pluginId);
+
+  // <settings folder>/standalone-settings.conf, or nullopt when there is no settings folder
   std::optional<fs::path> standaloneSettingsFile();
   bool loadStandaloneSettings();
   bool saveStandaloneSettings();
@@ -285,6 +294,22 @@ struct StandaloneHost : Clap::IHost, AudioStreamCallback
   bool setScreenAppearance(uint32_t appearance, bool fromPlugin);
   // set by the platform frontend, which applies screenAppearance to what it shows
   std::function<void()> onScreenAppearanceChanged{nullptr};
+
+  // whether the plugin's state is loaded back at launch and saved on quit, a
+  // clap_wrapper_standalone_state_persistence: the choice settings keep, made by the plugin
+  // or from the standalone's own menu, and until there is one the entry's default
+  // (clap_wrapper_plugin_factory_standalone_settings). setting it is a choice; false if
+  // there is no settings folder to keep it in
+  uint32_t defaultStatePersistence{CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION};
+  uint32_t statePersistence() const
+  {
+    return settings.pluginStatePersistence.value_or(defaultStatePersistence);
+  }
+  bool setPluginStatePersistence(uint32_t persistence);
+  bool restoresLastSession() const
+  {
+    return statePersistence() == CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION;
+  }
 
   std::vector<clap_wrapper_standalone_endpoint_t> endpointSnapshot[4];
   uint32_t snapshotEndpoints(uint32_t kind);
