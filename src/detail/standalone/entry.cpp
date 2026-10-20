@@ -72,9 +72,11 @@ std::shared_ptr<Clap::Plugin> mainCreatePlugin(const clap_plugin_entry *ee, cons
       // Oh well - whatcha gonna do?
     }
 
+    // the last session's state, unless the plugin asked from init() for a fresh start
     try
     {
-      if (fs::exists(loadPath / "settings.clapwrapper"))
+      if (standaloneHost->pluginStatePersistence == CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION &&
+          fs::exists(loadPath / "settings.clapwrapper"))
       {
         standaloneHost->tryLoadStandaloneAndPluginSettings(loadPath, "settings.clapwrapper");
       }
@@ -199,7 +201,11 @@ int mainFinish()
     standaloneHost->stopMIDIThread();
 
     auto pt = getStandaloneSettingsPath();
-    if (pt.has_value())
+    if (standaloneHost->pluginStatePersistence != CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION)
+    {
+      LOGINFO("The plugin keeps no session; not streaming");
+    }
+    else if (pt.has_value())
     {
       auto savePath = *pt / plugin->_plugin->desc->id;
       LOGINFO("Saving settings to '{}'", savePath.u8string());

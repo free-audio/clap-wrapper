@@ -15,6 +15,7 @@
 #include <assert.h>
 #include "clapwrapper/vst3.h"
 #include "clapwrapper/wrapper_host.h"
+#include "clapwrapper/standalone_features.h"
 #include "distortion_clap_entry.h"
 
 static const char *features[] = {CLAP_PLUGIN_FEATURE_AUDIO_EFFECT, CLAP_PLUGIN_FEATURE_STEREO,
@@ -398,6 +399,18 @@ static bool clap1stDist_init(const struct clap_plugin *plugin)
       snprintf(msg, sizeof(msg), "Underlying host is '%s'", underlying ? underlying : "unknown");
       plug->hostLog->log(plug->host, CLAP_LOG_INFO, msg);
     }
+  }
+
+  // in a clap-wrapper standalone, from init(): whether this launch gets the last session's
+  // state back. this asks for the standalone's own default; PERSIST_NONE would start every
+  // launch from the state the plugin has now
+  if (plug->host)
+  {
+    auto *sf = (const clap_wrapper_standalone_features_t *)plug->host->get_extension(
+        plug->host, CLAP_WRAPPER_STANDALONE_FEATURES);
+    if (sf && (sf->supported_plugin_state_persistence(plug->host) &
+               (1u << CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION)))
+      sf->set_plugin_state_persistence(plug->host, CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION);
   }
 
   return true;

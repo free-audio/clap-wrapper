@@ -270,13 +270,41 @@ uint32_t getAppearance(const clap_host_t *)
   return getStandaloneHost()->screenAppearance;
 }
 
+// both, wherever there is a settings folder to keep a session in
+uint32_t supportedPersistence(const clap_host_t *)
+{
+  try
+  {
+    if (!getStandaloneSettingsPath().has_value()) return 0;
+  }
+  catch (const fs::filesystem_error &)
+  {
+    return 0;
+  }
+  return (1u << CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION) |
+         (1u << CLAP_WRAPPER_STANDALONE_STATE_PERSIST_NONE);
+}
+
+bool setPersistence(const clap_host_t *host, uint32_t persistence)
+{
+  if (persistence >= 32 || !(supportedPersistence(host) & (1u << persistence))) return false;
+  getStandaloneHost()->pluginStatePersistence = persistence;
+  return true;
+}
+
+uint32_t getPersistence(const clap_host_t *)
+{
+  return getStandaloneHost()->pluginStatePersistence;
+}
+
 const clap_wrapper_standalone_features_t features = {
     supportsScreen,         showScreen,           countAudioApis,       getAudioApi,
     supportsListing,        countEndpoints,       getEndpoint,          countSampleRates,
     getSampleRate,          countBufferSizes,     getBufferSize,        getAudioStatus,
     supportsInputMute,      setInputMuted,        supportsBinding,      requestAudioConfig,
     requestMidiBindings,    supportedResetFlags,  resetStandaloneState, supportsChannelSelection,
-    getEndpointChannelName, supportedAppearances, setAppearance,        getAppearance};
+    getEndpointChannelName, supportedAppearances, setAppearance,        getAppearance,
+    supportedPersistence,   setPersistence,       getPersistence};
 }  // namespace
 
 const clap_wrapper_standalone_features_t *StandaloneHost::standalone_features()
