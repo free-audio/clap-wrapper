@@ -138,8 +138,16 @@ struct StandaloneHost : Clap::IHost, AudioStreamCallback
   StandaloneSettings settings;
   bool settingsLoaded{false};
 
-  // <settings path>/<plugin id>/standalone-settings.conf, or nullopt when the
-  // platform has no settings path or no plugin is loaded yet.
+  // where the standalone keeps its files for the plugin it hosts: <base>/<plugin id>,
+  // the base being the one the plugin's entry names (its
+  // clap_wrapper_plugin_factory_standalone_settings) or getStandaloneSettingsPath().
+  // resolved by mainCreatePlugin before it creates the plugin, so it is there during
+  // init(); nullopt where there is none
+  std::optional<fs::path> settingsFolder;
+  void resolveSettingsFolder(const clap_plugin_entry *entry, const void *pluginFactory,
+                             const std::string &pluginId);
+
+  // <settings folder>/standalone-settings.conf, or nullopt when there is no settings folder
   std::optional<fs::path> standaloneSettingsFile();
   bool loadStandaloneSettings();
   bool saveStandaloneSettings();

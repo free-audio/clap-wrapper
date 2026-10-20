@@ -273,14 +273,7 @@ uint32_t getAppearance(const clap_host_t *)
 // both, wherever there is a settings folder to keep a session in
 uint32_t supportedPersistence(const clap_host_t *)
 {
-  try
-  {
-    if (!getStandaloneSettingsPath().has_value()) return 0;
-  }
-  catch (const fs::filesystem_error &)
-  {
-    return 0;
-  }
+  if (!getStandaloneHost()->settingsFolder.has_value()) return 0;
   return (1u << CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION) |
          (1u << CLAP_WRAPPER_STANDALONE_STATE_PERSIST_NONE);
 }

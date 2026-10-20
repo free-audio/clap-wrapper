@@ -55,9 +55,16 @@
   can, say, unmute an input it muted before showing it. a standalone asks for it once,
   after init().
 
+  the settings folder: the standalone keeps its files for a plugin - the audio and midi
+  setup, the saved state - in a folder named after the plugin id, under a base folder of
+  its own (clap-wrapper-standalone in the platform's settings directory). a plugin can
+  name that base folder from its entry, before any instance exists: see
+  clap_wrapper_plugin_factory_standalone_settings at the end of this file.
+
   draft/5, from draft/4:
   - the plugin's state across launches: whether the standalone restores the last
     session's, set by the plugin (*_plugin_state_persistence)
+  - the settings folder, named by the plugin's entry (a factory of its own, at the end)
   new functions are at the end of the struct. draft/4 is no longer answered.
 
   draft/4, from draft/3:
@@ -422,6 +429,35 @@ extern "C"
     void(CLAP_ABI *audio_midi_configuration_screen_closed)(const struct clap_plugin *plugin,
                                                            uint32_t result);
   } clap_wrapper_plugin_standalone_features_t;
+
+  /*
+    clap_wrapper_plugin_factory_standalone_settings  (DRAFT)
+
+    a factory a plugin's entry returns from get_factory under this id, to name the base
+    folder the standalone keeps its settings under. the standalone asks for it once, after
+    the entry's init() and before it creates the plugin, so the folder is the entry's to
+    choose, not an instance's.
+
+    under the base folder the standalone keeps one folder per plugin id, as it does under
+    its own, and puts its files for that plugin there: the audio and midi setup, the state
+    saved on quit, and the launch state it keeps for resetting. a plugin need not create
+    anything; the standalone creates what is missing.
+  */
+
+  static const CLAP_CONSTEXPR char CLAP_WRAPPER_PLUGIN_FACTORY_STANDALONE_SETTINGS[] =
+      "clap-wrapper.plugin-factory-standalone-settings.draft/1";
+
+  typedef struct clap_wrapper_plugin_factory_standalone_settings
+  {
+    // writes the base folder, an absolute path in utf-8, to path, null-terminated within
+    // path_capacity bytes. returns false, or leaves path empty, for the standalone's own
+    // base folder. a folder which is not absolute or cannot be created is logged, and the
+    // standalone's own is used
+    // [main-thread]
+    bool(CLAP_ABI *get_settings_base_folder)(
+        const struct clap_wrapper_plugin_factory_standalone_settings *factory, char *path,
+        uint32_t path_capacity);
+  } clap_wrapper_plugin_factory_standalone_settings_t;
 
 #ifdef __cplusplus
 }

@@ -642,10 +642,9 @@ static bool showingAudioError{false};
 {
   auto standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
   auto plugin = freeaudio::clap_wrapper::standalone::getMainPlugin();
-  auto pt = freeaudio::clap_wrapper::standalone::getStandaloneSettingsPath();
-  if (!standaloneHost || !plugin || !pt.has_value()) return;
+  if (!standaloneHost || !plugin || !standaloneHost->settingsFolder.has_value()) return;
 
-  auto loadPath = *pt / plugin->_plugin->desc->id;
+  auto loadPath = *standaloneHost->settingsFolder;
 
   try
   {

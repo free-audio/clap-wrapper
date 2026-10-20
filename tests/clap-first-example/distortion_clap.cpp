@@ -649,6 +649,21 @@ static const clap_plugin_factory_as_vst3_t s_plugin_factory_as_vst3 = {
     plugin_factory_get_vst3_compatibility,
 };
 
+// in a clap-wrapper standalone: the base folder it keeps its settings under, one folder
+// per plugin id. this keeps the standalone's own; to name one, write an absolute utf-8
+// path to path and return true
+static bool standalone_settings_base_folder(const clap_wrapper_plugin_factory_standalone_settings_t *,
+                                            char *path, uint32_t path_capacity)
+{
+  (void)path;
+  (void)path_capacity;
+  return false;
+}
+
+static const clap_wrapper_plugin_factory_standalone_settings_t s_standalone_settings = {
+    standalone_settings_base_folder,
+};
+
 bool dist_entry_init(const char *plugin_path)
 {
   // called only once, and very first
@@ -667,5 +682,7 @@ const void *dist_entry_get_factory(const char *factory_id)
   // wrapper only reads get_vst3_compatibility when it asked for the /1 version
   if (!strcmp(factory_id, CLAP_PLUGIN_FACTORY_INFO_VST3)) return &s_plugin_factory_as_vst3;
   if (!strcmp(factory_id, CLAP_PLUGIN_FACTORY_INFO_VST3_V1)) return &s_plugin_factory_as_vst3;
+  if (!strcmp(factory_id, CLAP_WRAPPER_PLUGIN_FACTORY_STANDALONE_SETTINGS))
+    return &s_standalone_settings;
   return nullptr;
 }

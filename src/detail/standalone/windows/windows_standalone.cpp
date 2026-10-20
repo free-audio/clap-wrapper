@@ -1179,11 +1179,9 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
 
                  case Menu::Identifier::ResetState:
                  {
-                   auto pt{freeaudio::clap_wrapper::standalone::getStandaloneSettingsPath()};
-
-                   if (pt.has_value())
+                   if (sah->settingsFolder.has_value())
                    {
-                     auto loadPath{*pt / plugin.plugin->desc->id};
+                     auto loadPath{*sah->settingsFolder};
 
                      try
                      {
