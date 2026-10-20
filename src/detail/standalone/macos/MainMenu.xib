@@ -77,6 +77,12 @@
                                     <action selector="streamWrapperFileAs:" target="-1" id="mDf-zr-I0C"/>
                                 </connections>
                             </menuItem>
+                            <menuItem title="Reset State" id="Qe4-Rs-7hN">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="resetState:" target="-1" id="Zr9-kD-c2V"/>
+                                </connections>
+                            </menuItem>
                         </items>
                     </menu>
                 </menuItem>

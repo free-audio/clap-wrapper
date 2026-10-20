@@ -637,6 +637,34 @@ static bool showingAudioError{false};
   }
 }
 
+// back to the plugin's state as it was at launch, before the saved one was loaded over it
+- (IBAction)resetState:(id)sender
+{
+  auto standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
+  auto plugin = freeaudio::clap_wrapper::standalone::getMainPlugin();
+  auto pt = freeaudio::clap_wrapper::standalone::getStandaloneSettingsPath();
+  if (!standaloneHost || !plugin || !pt.has_value()) return;
+
+  auto loadPath = *pt / plugin->_plugin->desc->id;
+
+  try
+  {
+    if (fs::exists(loadPath / "defaults.clapwrapper"))
+    {
+      standaloneHost->tryLoadStandaloneAndPluginSettings(loadPath, "defaults.clapwrapper");
+    }
+  }
+  catch (const fs::filesystem_error &e)
+  {
+    NSAlert *alert = [[NSAlert alloc] init];
+    [alert setMessageText:@"Unable to reset state"];
+    [alert setInformativeText:[[NSString alloc] initWithUTF8String:e.what()]];
+    [alert addButtonWithTitle:@"OK"];
+    applyScreenAppearance([alert window]);
+    [alert runModal];
+  }
+}
+
 @end
 
 namespace
