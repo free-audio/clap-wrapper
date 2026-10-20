@@ -538,15 +538,24 @@ fs::path pathFromUtf8(const std::string &text)
 #endif
 }
 
-// the base folder the plugin's entry names, or nullopt for the standalone's own
-std::optional<fs::path> pluginSettingsBase(const clap_plugin_entry *entry, const void *pluginFactory)
+// the plugin's entry's factory for the standalone, or null
+const clap_wrapper_plugin_factory_standalone_settings_t *standaloneSettingsFactory(
+    const clap_plugin_entry *entry, const void *pluginFactory)
 {
-  if (!entry || !entry->get_factory) return std::nullopt;
+  if (!entry || !entry->get_factory) return nullptr;
 
   auto *factory = static_cast<const clap_wrapper_plugin_factory_standalone_settings_t *>(
       entry->get_factory(CLAP_WRAPPER_PLUGIN_FACTORY_STANDALONE_SETTINGS));
   // some entries answer every id with their plugin factory
-  if (!factory || factory == pluginFactory || !factory->get_settings_base_folder) return std::nullopt;
+  if (factory == pluginFactory) return nullptr;
+  return factory;
+}
+
+// the base folder the entry names, or nullopt for the standalone's own
+std::optional<fs::path> pluginSettingsBase(
+    const clap_wrapper_plugin_factory_standalone_settings_t *factory)
+{
+  if (!factory || !factory->get_settings_base_folder) return std::nullopt;
 
   char path[CLAP_PATH_SIZE]{};
   if (!factory->get_settings_base_folder(factory, path, sizeof(path))) return std::nullopt;
@@ -573,13 +582,24 @@ std::optional<fs::path> pluginSettingsBase(const clap_plugin_entry *entry, const
 }
 }  // namespace
 
-void StandaloneHost::resolveSettingsFolder(const clap_plugin_entry *entry, const void *pluginFactory,
-                                           const std::string &pluginId)
+void StandaloneHost::resolveStandaloneSettings(const clap_plugin_entry *entry, const void *pluginFactory,
+                                               const std::string &pluginId)
 {
+  auto *factory{standaloneSettingsFactory(entry, pluginFactory)};
+
+  // the default state persistence, which holds until a choice is made
+  uint32_t persistence{CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION};
+  defaultStatePersistence = CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION;
+  if (factory && factory->get_default_state_persistence &&
+      factory->get_default_state_persistence(factory, &persistence) &&
+      (persistence == CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION ||
+       persistence == CLAP_WRAPPER_STANDALONE_STATE_PERSIST_NONE))
+    defaultStatePersistence = persistence;
+
   settingsFolder.reset();
   if (pluginId.empty()) return;
 
-  auto base{pluginSettingsBase(entry, pluginFactory)};
+  auto base{pluginSettingsBase(factory)};
   if (!base.has_value())
   {
     try
@@ -610,8 +630,6 @@ bool StandaloneHost::loadStandaloneSettings()
 
   // a plugin that has already set the appearance, from init() say, keeps it
   if (settingsLoaded) setScreenAppearance(settings.screenAppearance, false);
-  // the plugin's choice, which the settings keep as soon as it makes one
-  if (settingsLoaded) pluginStatePersistence = settings.pluginStatePersistence;
 
   return settingsLoaded;
 }
@@ -622,7 +640,6 @@ bool StandaloneHost::setPluginStatePersistence(uint32_t persistence)
                                       persistence != CLAP_WRAPPER_STANDALONE_STATE_PERSIST_NONE))
     return false;
 
-  pluginStatePersistence = persistence;
   settings.pluginStatePersistence = persistence;
   if (!saveStandaloneSettings())
     LOGINFO("[WARNING] Unable to save the state persistence; the next launch will not have it");

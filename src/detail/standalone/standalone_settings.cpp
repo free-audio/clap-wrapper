@@ -289,7 +289,9 @@ bool StandaloneSettings::save(const fs::path &intoFile) const
             : screenAppearance == 2 ? "dark"
                                     : "auto")
         << "\n";
-    ofs << "pluginStatePersistence=" << (pluginStatePersistence == 1 ? "none" : "session") << "\n";
+    // only a choice: the entry's default is not one, and must not become one by a save
+    if (pluginStatePersistence)
+      ofs << "pluginStatePersistence=" << (*pluginStatePersistence == 1 ? "none" : "session") << "\n";
 
     if (hasWindowPosition)
     {

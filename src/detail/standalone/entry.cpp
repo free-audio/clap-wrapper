@@ -43,7 +43,7 @@ std::shared_ptr<Clap::Plugin> mainCreatePlugin(const clap_plugin_entry *ee, cons
     auto desc = fac->get_plugin_descriptor(fac, clapIndex);
     if (desc && desc->id) pluginId = desc->id;
   }
-  standaloneHost->resolveSettingsFolder(entry, fac, pluginId);
+  standaloneHost->resolveStandaloneSettings(entry, fac, pluginId);
   // and the settings in it, so that what init() changes through the standalone features is
   // saved over the setup the user saved, not over an empty one
   standaloneHost->loadStandaloneSettings();
@@ -86,7 +86,7 @@ std::shared_ptr<Clap::Plugin> mainCreatePlugin(const clap_plugin_entry *ee, cons
     // the last session's state, unless the plugin asked from init() for a fresh start
     try
     {
-      if (standaloneHost->pluginStatePersistence == CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION &&
+      if (standaloneHost->statePersistence() == CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION &&
           fs::exists(loadPath / "settings.clapwrapper"))
       {
         standaloneHost->tryLoadStandaloneAndPluginSettings(loadPath, "settings.clapwrapper");
@@ -211,7 +211,7 @@ int mainFinish()
     standaloneHost->stopAudioThread();
     standaloneHost->stopMIDIThread();
 
-    if (standaloneHost->pluginStatePersistence != CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION)
+    if (standaloneHost->statePersistence() != CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION)
     {
       LOGINFO("The plugin keeps no session; not streaming");
     }

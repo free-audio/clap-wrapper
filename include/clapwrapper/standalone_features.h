@@ -51,7 +51,8 @@
   set_plugin_state_persistence. the standalone keeps that choice with its audio and midi
   setup, so a plugin can also leave it to the user and set it when they make it. the user
   can make it in the standalone too: File > Restore Last Session on macOS, the window
-  menu's Restore last session on Windows, the checkbox in the strip on Linux.
+  menu's Restore last session on Windows, the checkbox in the strip on Linux. until
+  anybody has, the plugin's entry can name the default (see the factory at the end).
 
   the plugin side: a plugin which returns clap_wrapper_plugin_standalone_features from
   get_extension under the same id hears when the user is done with that screen, so it
@@ -66,7 +67,8 @@
 
   draft/5, from draft/4:
   - the plugin's state across launches: whether the standalone restores the last
-    session's, set by the plugin (*_plugin_state_persistence)
+    session's, set by the plugin (*_plugin_state_persistence), with a default the
+    plugin's entry names
   - the settings folder, named by the plugin's entry (a factory of its own, at the end)
   new functions are at the end of the struct. draft/4 is no longer answered.
 
@@ -203,7 +205,7 @@ extern "C"
   enum clap_wrapper_standalone_state_persistence
   {
     // the plugin's state is saved when the standalone quits and loaded back at the next
-    // launch, over the state the plugin has after init(). the default
+    // launch, over the state the plugin has after init(). the standalone's own default
     CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION = 0,
 
     // every launch starts from the state the plugin has after init(), and nothing is
@@ -390,9 +392,11 @@ extern "C"
     // [main-thread]
     uint32_t(CLAP_ABI *supported_plugin_state_persistence)(const clap_host_t *host);
 
-    // saved with the standalone's audio and midi setup, so it holds for the launches after
-    // this one: a plugin that offers the choice sets it when the user makes it, one that
-    // always wants the same can set it from init(). called from init(), it also decides
+    // a choice, saved with the standalone's audio and midi setup, so it holds for the
+    // launches after this one and wins over the default the entry names: a plugin that
+    // offers the choice sets it when the user makes it, one that only wants another
+    // default names it in its entry instead (clap_wrapper_plugin_factory_standalone_settings),
+    // so as not to undo the user's choice on every launch. called from init(), it also decides
     // whether this launch loads the last session's state; called later, whether this
     // session's is saved on quit. the launch state the standalone keeps for resetting, and
     // a state the user saves to or opens from a file, are not affected. returns false if
@@ -400,8 +404,9 @@ extern "C"
     // [main-thread]
     bool(CLAP_ABI *set_plugin_state_persistence)(const clap_host_t *host, uint32_t persistence);
 
-    // the clap_wrapper_standalone_state_persistence in effect, whoever chose it: the user
-    // can change it in the standalone's own menu, so read it again before showing it
+    // the clap_wrapper_standalone_state_persistence in effect: the choice, whoever made it,
+    // or the entry's default until there is one. the user can change it in the
+    // standalone's own menu, so read it again before showing it
     // [main-thread]
     uint32_t(CLAP_ABI *get_plugin_state_persistence)(const clap_host_t *host);
   } clap_wrapper_standalone_features_t;
@@ -440,9 +445,10 @@ extern "C"
     clap_wrapper_plugin_factory_standalone_settings  (DRAFT)
 
     a factory a plugin's entry returns from get_factory under this id, to name the base
-    folder the standalone keeps its settings under. the standalone asks for it once, after
-    the entry's init() and before it creates the plugin, so the folder is the entry's to
-    choose, not an instance's.
+    folder the standalone keeps its settings under and the state persistence it starts
+    with. the standalone asks for it once, after the entry's init() and before it creates
+    the plugin, so both are the entry's to choose, not an instance's. either function may
+    be null, for the standalone's own.
 
     under the base folder the standalone keeps one folder per plugin id, as it does under
     its own, and puts its files for that plugin there: the audio and midi setup, the state
@@ -463,6 +469,13 @@ extern "C"
     bool(CLAP_ABI *get_settings_base_folder)(
         const struct clap_wrapper_plugin_factory_standalone_settings *factory, char *path,
         uint32_t path_capacity);
+
+    // writes the clap_wrapper_standalone_state_persistence a launch follows until the user,
+    // in the standalone's menu, or the plugin, through set_plugin_state_persistence, has
+    // made a choice. returns false for the standalone's own default, PERSIST_SESSION
+    // [main-thread]
+    bool(CLAP_ABI *get_default_state_persistence)(
+        const struct clap_wrapper_plugin_factory_standalone_settings *factory, uint32_t *persistence);
   } clap_wrapper_plugin_factory_standalone_settings_t;
 
 #ifdef __cplusplus

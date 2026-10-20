@@ -285,7 +285,7 @@ bool setPersistence(const clap_host_t *, uint32_t persistence)
 
 uint32_t getPersistence(const clap_host_t *)
 {
-  return getStandaloneHost()->pluginStatePersistence;
+  return getStandaloneHost()->statePersistence();
 }
 
 const clap_wrapper_standalone_features_t features = {

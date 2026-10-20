@@ -663,8 +663,19 @@ static bool standalone_settings_base_folder(const clap_wrapper_plugin_factory_st
   return false;
 }
 
+// and the state persistence it starts with, until the user chooses. this keeps the
+// standalone's own, which restores the last session; to start every launch afresh, write
+// CLAP_WRAPPER_STANDALONE_STATE_PERSIST_NONE to persistence and return true
+static bool standalone_default_state_persistence(
+    const clap_wrapper_plugin_factory_standalone_settings_t *, uint32_t *persistence)
+{
+  (void)persistence;
+  return false;
+}
+
 static const clap_wrapper_plugin_factory_standalone_settings_t s_standalone_settings = {
     standalone_settings_base_folder,
+    standalone_default_state_persistence,
 };
 
 bool dist_entry_init(const char *plugin_path)

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -88,9 +89,10 @@ struct StandaloneSettings
   uint32_t screenAppearance{0};
 
   // whether the plugin's state is kept from one launch to the next, a
-  // clap_wrapper_standalone_state_persistence: 0 the session, 1 none. the plugin's to
-  // choose, through the standalone features, and kept here with the rest of the setup
-  uint32_t pluginStatePersistence{0};
+  // clap_wrapper_standalone_state_persistence: 0 the session, 1 none. a choice, the user's
+  // in the standalone's menu or the plugin's through the standalone features; until one
+  // is made it is absent, and the entry's default applies (StandaloneHost::statePersistence)
+  std::optional<uint32_t> pluginStatePersistence;
 
   bool hasWindowPosition{false};
   int32_t windowX{0}, windowY{0};
