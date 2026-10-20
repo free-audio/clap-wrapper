@@ -9,6 +9,16 @@ option(CLAP_WRAPPER_STANDALONE_RTAUDIO
        "Standalone: RtAudio and RtMidi in place of CoreAudio/CoreMIDI, WASAPI/WinMM and PipeWire/JACK/ALSA"
        OFF)
 
+# On Linux the standalone can put a strip above the plugin's window: the button that opens
+# its Audio/MIDI settings, and what the audio runs at or the error that stopped it. It is
+# left out unless this switch is turned off, so the window is the plugin's own size and the
+# plugin opens the settings from its own ui (show_audio_midi_configuration_screen, standalone
+# features). A plugin without a gui always gets the strip, the window's only content.
+# Nothing changes on macOS and Windows, whose standalones have their menus instead.
+option(CLAP_WRAPPER_STANDALONE_X11_HIDE_STRIP
+       "Standalone on Linux: no strip above the plugin (the Audio/MIDI settings button and the audio's status)"
+       ON)
+
 function(target_add_standalone_wrapper)
     set(oneValueArgs
             TARGET
@@ -285,6 +295,9 @@ function(target_add_standalone_wrapper)
         message(STATUS "clap-wrapper: Using Standalone X11 gui for CLAP Wrapper")
         target_link_libraries(${salib} PUBLIC X11)
         target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_X11)
+        if(CLAP_WRAPPER_STANDALONE_X11_HIDE_STRIP)
+            target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_X11_HIDE_STRIP=1)
+        endif()
         target_sources(${salib} PRIVATE
                 ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/linux/x11_gui.cpp
                 ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/linux/x11_ui.cpp

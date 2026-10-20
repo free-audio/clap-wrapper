@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <clap_proxy.h>
 #include <unordered_set>
 #include "detail/standalone/standalone_host.h"
@@ -35,7 +36,8 @@ struct X11Gui
 
   Display *display{nullptr};
   // the standalone's window: a strip with the settings button and the audio's state, and
-  // below it the plugin's own window, where the plugin has a gui
+  // below it the plugin's own window, where the plugin has a gui. the strip is left out
+  // where there is a gui unless the build turns CLAP_WRAPPER_STANDALONE_X11_HIDE_STRIP off
   Window window{0};
   Window pluginWindow{0};
   Atom wmDeleteMessage{0};
@@ -43,6 +45,22 @@ struct X11Gui
   // the strip, drawn with the settings window's font and theme
   static constexpr int stripHeight{30};
   static constexpr int minimumWidth{420};
+#if CLAP_WRAPPER_STANDALONE_X11_HIDE_STRIP
+  static constexpr bool hideStrip{true};
+#else
+  static constexpr bool hideStrip{false};
+#endif
+  // whether the window has the strip: unless the build hides it, and always for a plugin
+  // without a gui, whose window would otherwise be empty, with no way to the settings
+  bool showStrip{true};
+  int stripShown() const
+  {
+    return showStrip ? stripHeight : 0;
+  }
+  int widthFor(int width) const
+  {
+    return showStrip ? std::max(width, minimumWidth) : std::max(width, 1);
+  }
   UiFont font;
   Theme theme;
   GC gc{nullptr};
