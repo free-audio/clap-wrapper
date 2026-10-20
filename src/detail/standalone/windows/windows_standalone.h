@@ -283,13 +283,15 @@ struct Plugin final : public Window
       AudioMidiSettings,
       SaveState,
       LoadState,
-      ResetState
+      ResetState,
+      RestoreLastSession
     };
 
     std::wstring audioMidiSettings{L"Audio/MIDI Settings"};
     std::wstring saveState{L"Save state..."};
     std::wstring loadState{L"Load state..."};
     std::wstring resetState{L"Reset state"};
+    std::wstring restoreLastSession{L"Restore last session"};
   };
 
   // the colours the settings window is drawn in, for its appearance
@@ -463,6 +465,10 @@ struct Plugin final : public Window
   void selectDefaultDevices();
 
   void startAudio();
+
+  // the system menu's Restore last session: flips the choice, and shows it in the menu
+  void toggleRestoreLastSession();
+  void showRestoreLastSession(::HMENU systemMenu);
 
   // The settings window, as the system menu toggles it and the standalone features
   // extension shows it. showSettings() brings it forward when it is already up;

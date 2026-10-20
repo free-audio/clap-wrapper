@@ -637,15 +637,38 @@ static bool showingAudioError{false};
   }
 }
 
+// whether the next launch gets this session's state back; saved with the audio and midi setup
+- (IBAction)toggleRestoreLastSession:(id)sender
+{
+  auto standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
+  if (!standaloneHost) return;
+
+  standaloneHost->setPluginStatePersistence(standaloneHost->restoresLastSession()
+                                                ? CLAP_WRAPPER_STANDALONE_STATE_PERSIST_NONE
+                                                : CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION);
+}
+
+// Restore Last Session shows the choice in effect, which the plugin may have changed since
+- (BOOL)validateMenuItem:(NSMenuItem *)menuItem
+{
+  if ([menuItem action] == @selector(toggleRestoreLastSession:))
+  {
+    auto standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
+    const bool restores{standaloneHost && standaloneHost->restoresLastSession()};
+    [menuItem setState:restores ? NSControlStateValueOn : NSControlStateValueOff];
+    return standaloneHost && standaloneHost->settingsFolder.has_value();
+  }
+  return YES;
+}
+
 // back to the plugin's state as it was at launch, before the saved one was loaded over it
 - (IBAction)resetState:(id)sender
 {
   auto standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
   auto plugin = freeaudio::clap_wrapper::standalone::getMainPlugin();
-  auto pt = freeaudio::clap_wrapper::standalone::getStandaloneSettingsPath();
-  if (!standaloneHost || !plugin || !pt.has_value()) return;
+  if (!standaloneHost || !plugin || !standaloneHost->settingsFolder.has_value()) return;
 
-  auto loadPath = *pt / plugin->_plugin->desc->id;
+  auto loadPath = *standaloneHost->settingsFolder;
 
   try
   {

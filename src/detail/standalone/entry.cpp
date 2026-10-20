@@ -36,6 +36,18 @@ std::shared_ptr<Clap::Plugin> mainCreatePlugin(const clap_plugin_entry *ee, cons
     standaloneHost = std::make_unique<StandaloneHost>();
   }
 
+  // before the plugin exists, so its init() can already save the audio and midi setup
+  std::string pluginId{clapId};
+  if (pluginId.empty() && clapIndex < fac->get_plugin_count(fac))
+  {
+    auto desc = fac->get_plugin_descriptor(fac, clapIndex);
+    if (desc && desc->id) pluginId = desc->id;
+  }
+  standaloneHost->resolveStandaloneSettings(entry, fac, pluginId);
+  // and the settings in it, so that what init() changes through the standalone features is
+  // saved over the setup the user saved, not over an empty one
+  standaloneHost->loadStandaloneSettings();
+
   if (clapId.empty())
   {
     LOGINFO("Loading CLAP by index {}", clapIndex);
@@ -57,10 +69,9 @@ std::shared_ptr<Clap::Plugin> mainCreatePlugin(const clap_plugin_entry *ee, cons
 
   plugin->initialize();
 
-  auto pt = getStandaloneSettingsPath();
-  if (pt.has_value())
+  if (standaloneHost->settingsFolder.has_value())
   {
-    auto loadPath = *pt / plugin->_plugin->desc->id;
+    auto loadPath = *standaloneHost->settingsFolder;
 
     try
     {
@@ -72,9 +83,11 @@ std::shared_ptr<Clap::Plugin> mainCreatePlugin(const clap_plugin_entry *ee, cons
       // Oh well - whatcha gonna do?
     }
 
+    // the last session's state, unless the plugin asked from init() for a fresh start
     try
     {
-      if (fs::exists(loadPath / "settings.clapwrapper"))
+      if (standaloneHost->statePersistence() == CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION &&
+          fs::exists(loadPath / "settings.clapwrapper"))
       {
         standaloneHost->tryLoadStandaloneAndPluginSettings(loadPath, "settings.clapwrapper");
       }
@@ -90,7 +103,7 @@ std::shared_ptr<Clap::Plugin> mainCreatePlugin(const clap_plugin_entry *ee, cons
 
 void mainStartAudio()
 {
-  // audio first: startAudioThread() is what loads the saved settings, and the midi ports
+  // audio first: startAudioThread() is what applies the saved settings, and the midi ports
   // opened before it were the defaults' - every input and no output - on every launch
   standaloneHost->startAudioThread();
   standaloneHost->startMIDIThread();
@@ -198,10 +211,13 @@ int mainFinish()
     standaloneHost->stopAudioThread();
     standaloneHost->stopMIDIThread();
 
-    auto pt = getStandaloneSettingsPath();
-    if (pt.has_value())
+    if (standaloneHost->statePersistence() != CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION)
     {
-      auto savePath = *pt / plugin->_plugin->desc->id;
+      LOGINFO("The plugin keeps no session; not streaming");
+    }
+    else if (standaloneHost->settingsFolder.has_value())
+    {
+      auto savePath = *standaloneHost->settingsFolder;
       LOGINFO("Saving settings to '{}'", savePath.u8string());
       try
       {

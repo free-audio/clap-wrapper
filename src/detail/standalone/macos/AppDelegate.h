@@ -15,5 +15,6 @@
 - (IBAction)streamWrapperFileAs:(id)sender;
 - (IBAction)openWrapperFile:(id)sender;
 - (IBAction)resetState:(id)sender;
+- (IBAction)toggleRestoreLastSession:(id)sender;
 
 @end
