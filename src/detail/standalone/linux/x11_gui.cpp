@@ -237,11 +237,11 @@ void X11Gui::setPlugin(std::shared_ptr<Clap::Plugin> p)
 
   // the window is there with or without a gui: the strip has the settings, and closing
   // the window quits as it does with one
+  showStrip = !hideStrip || !hasGui;
   int s = DefaultScreen(display);
-  window = XCreateSimpleWindow(display, RootWindow(display, s), 10, 10,
-                               static_cast<unsigned>(std::max(pluginWidth, minimumWidth)),
-                               static_cast<unsigned>(pluginHeight + stripHeight), 0, theme.strip,
-                               theme.strip);
+  window = XCreateSimpleWindow(
+      display, RootWindow(display, s), 10, 10, static_cast<unsigned>(widthFor(pluginWidth)),
+      static_cast<unsigned>(pluginHeight + stripShown()), 0, theme.strip, theme.strip);
   XStoreName(display, window, plugin->_plugin->desc->name);
   XSelectInput(display, window,
                StructureNotifyMask | ExposureMask | ButtonPressMask | ButtonReleaseMask |
@@ -250,7 +250,7 @@ void X11Gui::setPlugin(std::shared_ptr<Clap::Plugin> p)
   if (hasGui)
   {
     pluginWindow = XCreateSimpleWindow(
-        display, window, 0, stripHeight, static_cast<unsigned>(pluginWidth),
+        display, window, 0, stripShown(), static_cast<unsigned>(pluginWidth),
         static_cast<unsigned>(pluginHeight), 0, BlackPixel(display, s), BlackPixel(display, s));
     XMapWindow(display, pluginWindow);
   }
@@ -276,18 +276,18 @@ void X11Gui::setPlugin(std::shared_ptr<Clap::Plugin> p)
   }
 }
 
-// the window's size from the plugin's: the strip above it, at least wide enough for the
-// strip's text and button
 namespace
 {
 const std::string restoreLabel{"Restore last session"};
 constexpr int restoreCheckSize{13};
 }  // namespace
 
+// the window's size from the plugin's: the strip above it, at least wide enough for the
+// strip's text and button, or the plugin's own where there is no strip
 void X11Gui::layoutWindow()
 {
   if (!display || window == 0) return;
-  const int w{std::max(pluginWidth, minimumWidth)}, h{pluginHeight + stripHeight};
+  const int w{widthFor(pluginWidth)}, h{pluginHeight + stripShown()};
   XResizeWindow(display, window, static_cast<unsigned>(w), static_cast<unsigned>(h));
   if (pluginWindow)
     XResizeWindow(display, pluginWindow, static_cast<unsigned>(std::max(pluginWidth, 1)),
@@ -305,7 +305,7 @@ void X11Gui::layoutWindow()
   settingsButton = {w - bw - 6, 4, bw, stripHeight - 8};
 
   restoreBox = {};
-  if (host && host->settingsFolder.has_value())
+  if (showStrip && host && host->settingsFolder.has_value())
   {
     const int rw{restoreCheckSize + 6 + font.width(restoreLabel)};
     restoreBox = {settingsButton.x - 12 - rw, 0, rw, stripHeight};
@@ -351,7 +351,7 @@ void X11Gui::updateStatus()
 
 void X11Gui::drawStrip()
 {
-  if (!display || window == 0 || !gc) return;
+  if (!display || window == 0 || !gc || !showStrip) return;
   const int w{std::max(pluginWidth, minimumWidth)};
   auto pixmap{XCreatePixmap(display, window, static_cast<unsigned>(w), stripHeight,
                             static_cast<unsigned>(DefaultDepth(display, DefaultScreen(display))))};
@@ -387,6 +387,7 @@ void X11Gui::drawStrip()
 
 void X11Gui::handleStrip(const XEvent &e)
 {
+  if (!showStrip) return;
   switch (e.type)
   {
     case Expose:

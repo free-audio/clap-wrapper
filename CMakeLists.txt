@@ -75,6 +75,10 @@
 # CLAP_WRAPPER_STANDALONE_RTAUDIO  The standalone on RtAudio and RtMidi in place of
 #                                 CoreAudio/CoreMIDI (macOS) and WASAPI/WinMM (Windows).
 #                                 Defaults to OFF; Linux always uses them
+# CLAP_WRAPPER_STANDALONE_X11_HIDE_STRIP  The Linux standalone without the strip above
+#                                 the plugin (Audio/MIDI settings button, audio status); the
+#                                 plugin opens the settings itself. Defaults to ON; OFF shows
+#                                 the strip. A plugin without a gui always has it
 
 
 cmake_minimum_required(VERSION 3.21)
