@@ -100,8 +100,14 @@ AAXWrapper_inInstanceInitProc(const SAAX_Wrapper_AlgorithmicContext *inInstanceC
   {
     case AAX_eComponentInstanceInitAction_AddingNewInstance:
       LOGDETAIL("adding new instance");
-      self->activatePlugin();
-      self->startProcessing();
+      // A plugin that refuses to activate must not be asked to start processing.
+      // The instance is still reported as created: Pro Tools has no documented
+      // handling for a failed instance init, and the render path answers with
+      // silence for as long as the plugin stays down.
+      if (self->activatePlugin())
+      {
+        self->startProcessing();
+      }
       break;
     case AAX_eComponentInstanceInitAction_RemovingInstance:
       LOGDETAIL("removing instance");
@@ -549,6 +555,9 @@ AAX_Result ClapAsAAX::EffectInit()
   }
 
   LOGINFO(fmt::format("AAX Effect Init for '{}'", m.StdString().c_str()));
+
+  AAX_CString hostname;
+  if (AAX_SUCCESS == _aax_ctrl->GetHostName(&hostname)) _underlying_hostname = hostname.StdString();
 
   _library = CLAPAAX::guarantee_clap();
   _plugin = Clap::Plugin::createInstance(_library->_pluginFactory, m.StdString(), this);
@@ -1108,6 +1117,12 @@ void ClapAsAAX::restartPlugin()
 {
 }
 
+void ClapAsAAX::request_process()
+{
+  // AAX has no host-facing way to ask for processing to start, the same as
+  // restartPlugin() above.
+}
+
 bool ClapAsAAX::register_timer(uint32_t period_ms, clap_id *timer_id)
 {
   // AAX TimerWakeup fires at roughly 30ms; clamp period to that minimum.
@@ -1157,13 +1172,7 @@ bool ClapAsAAX::track_info_get(clap_track_info_t *info)
 
 const char *ClapAsAAX::host_get_name()
 {
-  AAX_IController *ctrl = Controller();
-  AAX_CString hostname;
-  if (AAX_SUCCESS == ctrl->GetHostName(&hostname))
-  {
-    _wrapper_hostname = hostname.StdString();
-    _wrapper_hostname.append(" (CLAP-as-AAX)");
-  }
+  if (!_underlying_hostname.empty()) _wrapper_hostname = _underlying_hostname + " (CLAP-as-AAX)";
   return _wrapper_hostname.c_str();
 }
 
@@ -1216,7 +1225,7 @@ void ClapAsAAX::onIdle()
   }
 }
 
-void ClapAsAAX::activatePlugin()
+bool ClapAsAAX::activatePlugin()
 {
   if (!_activated)
   {
@@ -1245,8 +1254,18 @@ void ClapAsAAX::activatePlugin()
                                      _paramsToProcess, _midi_first_portid, _midi_prefer_mididialect,
                                      placeholderInChannels, placeholderOutChannels);
 
-    _activated = true;
-    _plugin->activate();
+    // Latch on the plugin's answer, not ahead of it: CLAP forbids deactivate()
+    // on a plugin that never activated, and _activated is what deactivatePlugin()
+    // and the destructor decide that from. The adapter stays: Pro Tools renders
+    // the instance whatever this returns, and process() needs the adapter to know
+    // the channel layout it has to silence. onIdle() may still flush through it,
+    // which is legal on a deactivated plugin and runs on the main thread.
+    _activated = _plugin->activate();
+    if (!_activated)
+    {
+      LOGINFO("[ERROR] Plugin activate() failed; plugin remains deactivated");
+      return false;
+    }
 
     // pass latency when activated
     auto scope = _plugin->AlwaysMainThread();
@@ -1257,6 +1276,7 @@ void ClapAsAAX::activatePlugin()
       _aax_ctrl->SetSignalLatency(_latency);
     }
   }
+  return _activated;
 }
 
 void ClapAsAAX::deactivatePlugin()
@@ -1271,10 +1291,19 @@ void ClapAsAAX::deactivatePlugin()
 
 void ClapAsAAX::startProcessing()
 {
+  // CLAP only allows start_processing() on an active plugin, and activatePlugin()
+  // can now legitimately have left it deactivated.
+  if (!_activated) return;
+
   if (!_processing)
   {
-    _processing = true;
-    _plugin->start_processing();
+    // Latch the flag on the plugin's answer, not ahead of it. CLAP is explicit
+    // that a false return means processing did not start: process() must not be
+    // called, and the stop_processing() that stopProcessing() would pair with it
+    // must not happen either. Leaving the flag clear also lets a later
+    // startProcessing() ask again instead of short-circuiting on a state the
+    // plugin never reached.
+    _processing = _plugin->start_processing();
   }
 }
 

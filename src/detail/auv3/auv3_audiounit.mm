@@ -10,10 +10,13 @@
 #include "detail/clap/fsutil.h"
 #include "detail/os/osutil.h"
 #include "detail/shared/fixedqueue.h"
+#include "detail/shared/spinlock.h"
 #include "detail/clap/automation.h"
 
 #include <os/log.h>
 #include <unistd.h>
+#include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <memory>
 #include <atomic>
@@ -136,16 +139,55 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
   int _idx = 0;
   os::State _os_attached;
   std::string _hostname = "CLAP-as-AUv3";
+  std::string _underlying_hostname;
   std::atomic<bool> _initialized{false};
   std::atomic_bool _requestUICallback{false};
+  // set by mark_dirty(), serviced by the idle timer
+  std::atomic_bool _requestMarkDirty{false};
   dispatch_source_t _idleTimer = nullptr;
+
+  // "there are parameter events to move": set by param_request_flush() for
+  // the plugin's direction and by the parameter observer / bypass setter for
+  // the host's, serviced by the idle timer. See serviceFlushRequest().
+  std::atomic_bool _requestedFlush{false};
+  // set by the render block, cleared by the idle timer: tells the tick whether
+  // a render has carried the parameter traffic since it last looked.
+  std::atomic_bool _renderedSinceIdle{false};
+  // consecutive idle ticks that saw no render, saturating at the point where
+  // the idle tick takes over the flushing. Only the idle timer touches it.
+  uint32_t _idleTicksSinceRender = 0;
+  // how many of those ticks make a paused host, sized from the block period
+  // in allocateRenderResourcesAndReturnError:. See serviceFlushRequest().
+  static constexpr double kIdleTickMs = 10.0;
+  static constexpr uint32_t kMinIdleTicksBeforeFlush = 5;
+  std::atomic<uint32_t> _idleTicksBeforeFlush{kMinIdleTicksBeforeFlush};
+
+  // The one lock that keeps clap_plugin_params.flush() and clap_plugin.process()
+  // apart, which CLAP requires (clap/ext/params.h: flush "must not be called
+  // concurrently to clap_plugin->process()"). Held by the render block around
+  // process(), by every flush this wrapper issues, and by allocate/deallocate
+  // around the activate/start_processing and stop_processing/deactivate
+  // pairs so that, under it, _initialized is exactly "the plugin is active" —
+  // which is what decides whether a flush must claim the audio thread or the
+  // main thread. A spin lock because the render thread must never block on
+  // a kernel primitive; the idle flush only runs once the host has stopped
+  // rendering, so the render side effectively never finds it taken.
+  ClapWrapper::detail::shared::SpinLock _processLock;
 
   // Back-reference to the ObjC audio unit (weak to avoid retain cycle)
   __weak ClapAUv3AudioUnit *_audioUnit = nil;
 
   // The native view (NSView on macOS, UIView on iOS) that the CLAP GUI
-  // is parented to. Set by createGUIInView:.
+  // is parented to. Set by parentGUIInView:.
   __weak CLAPWRAP_ViewClass *_guiParentView = nil;
+
+  // CLAP GUI state. The GUI is created (gui->create) as soon as anything needs
+  // the plugin's size — AUv3 asks for it before the view has a window — and
+  // parented (gui->set_parent) only once the view actually enters one.
+  bool _guiCreated = false;
+  bool _guiShown = false;
+  uint32_t _guiWidth = 0;
+  uint32_t _guiHeight = 0;
 
   // The view controller that owns the GUI — needed for gui_request_resize
   // to set preferredContentSize (the only legal AUv3 host communication path).
@@ -184,10 +226,27 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
   void mark_dirty() override
   {
     AUV3LOG("IHost::mark_dirty() called");
+    // AUAudioUnit has no dirty flag. The nearest equivalent is a KVO
+    // notification on fullState, which AUAudioUnit.h documents as bridged to
+    // the v2 property kAudioUnitProperty_ClassInfo. Deferred to the idle timer
+    // so that a host reacting to it by reading the state cannot re-enter the
+    // plugin from inside the call that reported dirty, and so bursts collapse
+    // into one notification per tick.
+    _requestMarkDirty = true;
   }
   void restartPlugin() override
   {
     AUV3LOG("IHost::restartPlugin() called");
+  }
+
+  void request_process() override
+  {
+    // The AUv3 host owns the render resources: start_processing() happens in
+    // allocateRenderResourcesAndReturnError:, which only the host calls. There
+    // is nothing to wake from this side — but whatever parameter traffic the
+    // request was really about can still be moved by a flush, so ask for one.
+    AUV3LOG("IHost::request_process() called");
+    _requestedFlush = true;
   }
 
   void request_callback() override
@@ -210,6 +269,11 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
     auto *processing = &_initialized;  // true between start_processing/stop_processing
     auto *self = this;
     dispatch_source_set_event_handler(_idleTimer, ^{
+      // Move parameter events in both directions when the host has stopped
+      // rendering. Runs first so that what the flush pulls out of the plugin
+      // reaches the host in this tick's drain rather than the next.
+      self->serviceFlushRequest();
+
       // Drain the parameter automation queue (Touch/Value/Release → host).
       // This is safe even while processing — it only touches AUParameter
       // objects on the main queue, no CLAP plugin calls.
@@ -218,6 +282,25 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
       // Fire CLAP timers — safe while processing since timer callbacks
       // run on the main thread, not the audio thread.
       self->fireTimers();
+
+      // Tell the host that the state it last read is stale. Serviced even
+      // while processing: no CLAP plugin call is made here.
+      if (self->_requestMarkDirty.exchange(false))
+      {
+        ClapAUv3AudioUnit *au = self->_audioUnit;
+        if (au)
+        {
+          // Both keys cross the appex XPC boundary: a v3 host sees the KVO,
+          // and a v2-API host receives the bridged kAudioUnitProperty_ClassInfo
+          // / kAudioUnitProperty_ClassInfoFromDocument notification. Note that
+          // AudioToolbox also emits allParameterValues alongside these keys, so
+          // a host may re-read parameter values as a side effect.
+          [au willChangeValueForKey:@"fullState"];
+          [au didChangeValueForKey:@"fullState"];
+          [au willChangeValueForKey:@"fullStateForDocument"];
+          [au didChangeValueForKey:@"fullStateForDocument"];
+        }
+      }
 
       // Do NOT call on_main_thread() while the plugin is processing.
       // JUCE's on_main_thread() acquires locks that process() also needs —
@@ -441,7 +524,13 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
 
   void param_request_flush() override
   {
-    AUV3LOG("IHost::param_request_flush() called");
+    // May arrive at any moment and in any state, active or not: it says the
+    // plugin has parameter events (its editor moved a knob), not that it has
+    // stopped processing. clap_host_params.request_flush() obliges the host
+    // to schedule process() or flush(); the render does the former while
+    // the host is rendering, and the idle timer does the latter once it has
+    // seen that no render is coming (see serviceFlushRequest()).
+    _requestedFlush = true;
   }
 
   void latency_changed() override
@@ -554,6 +643,15 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
         _plugin->_ext._timer->on_timer(_plugin->_plugin, to.timer_id);
       }
     }
+  }
+
+  const char *wrapper_flavor() const override
+  {
+    return CLAP_WRAPPER_HOST_FLAVOR_AUV3;
+  }
+  const char *underlying_host_name() const override
+  {
+    return _underlying_hostname.empty() ? nullptr : _underlying_hostname.c_str();
   }
 
   const char *host_get_name() override
@@ -704,10 +802,143 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
     }
   }
 
-  // Deliver a single parameter value to the plugin via params->flush().
-  // Only legal while the plugin is NOT processing. The single construction
-  // point for the one-shot event list used by the observer, the bypass
-  // setter, and the post-deallocate queue drain.
+  // Output sink for the flushes this wrapper issues outside the process
+  // adapter. The plugin may answer a flush with parameter events of its own
+  // (a value its editor changed, the gesture around it, a dependent
+  // parameter it moved in response) — they go down the same path a render's
+  // would, so the host sees them either way.
+  static bool flushOutputTryPush(const clap_output_events_t *list, const clap_event_header_t *ev)
+  {
+    auto *self = static_cast<AUv3ImplDetail *>(list->ctx);
+    if (ev->space_id != CLAP_CORE_EVENT_SPACE_ID) return true;
+    switch (ev->type)
+    {
+      case CLAP_EVENT_PARAM_VALUE:
+        if (ev->size >= sizeof(clap_event_param_value_t))
+          self->onPerformEdit(reinterpret_cast<const clap_event_param_value_t *>(ev));
+        break;
+      case CLAP_EVENT_PARAM_GESTURE_BEGIN:
+        if (ev->size >= sizeof(clap_event_param_gesture_t))
+          self->onBeginEdit(reinterpret_cast<const clap_event_param_gesture_t *>(ev)->param_id);
+        break;
+      case CLAP_EVENT_PARAM_GESTURE_END:
+        if (ev->size >= sizeof(clap_event_param_gesture_t))
+          self->onEndEdit(reinterpret_cast<const clap_event_param_gesture_t *>(ev)->param_id);
+        break;
+      default:
+        break;
+    }
+    return true;
+  }
+
+  // Calls clap_plugin_params.flush() with the given input list, excluded from
+  // process() by _processLock and on the thread identity CLAP demands for the
+  // plugin's current state: [active ? audio-thread : main-thread]. Under the
+  // lock _initialized is exactly "active" — allocate publishes it after
+  // start_processing and deallocate clears it after deactivate, both while
+  // holding the lock — so the decision cannot be stale.
+  void flushEvents(const clap_input_events_t *in_events)
+  {
+    ClapWrapper::detail::shared::SpinLockGuard processGuard(_processLock);
+    flushEventsLocked(in_events);
+  }
+
+  // The body of flushEvents(); the caller holds _processLock.
+  void flushEventsLocked(const clap_input_events_t *in_events)
+  {
+    if (!_plugin || !_plugin->_ext._params) return;
+
+    clap_output_events_t out_events = {};
+    out_events.ctx = this;
+    out_events.try_push = flushOutputTryPush;
+
+    if (_initialized)
+    {
+      auto audioGuard = _plugin->AlwaysAudioThread();
+      _plugin->_ext._params->flush(_plugin->_plugin, in_events, &out_events);
+    }
+    else
+    {
+      auto mainGuard = _plugin->AlwaysMainThread();
+      _plugin->_ext._params->flush(_plugin->_plugin, in_events, &out_events);
+    }
+  }
+
+  // The parameter flush, run from the idle timer on the main queue.
+  //
+  // In CLAP a plugin can only push an output event — a value its own editor
+  // changed, the gesture around it — from inside process() or flush(), and
+  // the host's own parameter sets only reach the plugin the same way (the
+  // observer queues them on the process adapter while render resources are
+  // allocated). Both directions therefore stop dead whenever the host stops
+  // rendering, and AUv3 hosts do stop without deallocating: Audio Hijack
+  // keeps the resources of a switched-off block, REAPER leaves an idle track's
+  // unit initialized, and Apple documents renderResourcesAllocated as
+  // resource state only, never as a promise that render calls will follow.
+  // So the flag cannot decide whether a render will deliver; only the absence
+  // of renders can, and this is the one place that observes it.
+  //
+  // One empty tick is not proof the host has paused, and guessing wrong costs
+  // something: the host schedules its automation through the render event
+  // list, and a flush that beat the next render would deliver the queued
+  // values out of order with it. How long to wait cannot be a constant — at
+  // 4096 frames and 44.1kHz a block is 93ms, so a host rendering perfectly
+  // normally leaves gaps longer than any small number of 10ms ticks.
+  // allocateRenderResources sizes the wait at three blocks, which no
+  // rendering host produces; once one really has paused, the counter stays
+  // saturated and a request is served on the very next tick. With the plugin
+  // deactivated there is no render to wait for, and none is waited for.
+  void serviceFlushRequest()
+  {
+    if (!_plugin) return;
+
+    if (_renderedSinceIdle.exchange(false))
+    {
+      _idleTicksSinceRender = 0;
+    }
+    else if (_idleTicksSinceRender < _idleTicksBeforeFlush)
+    {
+      ++_idleTicksSinceRender;
+    }
+
+    if (!_requestedFlush) return;
+    if (_initialized && _idleTicksSinceRender < _idleTicksBeforeFlush) return;
+
+    // Cleared before the work, not after: a request that arrives while the
+    // plugin is inside flush() is about events this flush cannot have seen,
+    // and has to survive into the next tick.
+    _requestedFlush = false;
+
+    ClapWrapper::detail::shared::SpinLockGuard processGuard(_processLock);
+    if (_initialized && _processAdapter)
+    {
+      // Active: the queued host changes live in the adapter, and flush() is
+      // [audio-thread]; the lock is what lets the main queue stand in for it.
+      auto audioGuard = _plugin->AlwaysAudioThread();
+      _processAdapter->flush();
+    }
+    else
+    {
+      // Deactivated: host changes were already flushed one by one as they
+      // arrived (flushParamValueWithCookie), so only the plugin's direction
+      // is owed — an empty input list gives it somewhere to push. flush() is
+      // [main-thread] here, which this queue is.
+      clap_input_events_t in_events = {};
+      in_events.ctx = nullptr;
+      in_events.size = [](const clap_input_events_t *) -> uint32_t { return 0; };
+      in_events.get = [](const clap_input_events_t *, uint32_t) -> const clap_event_header_t *
+      { return nullptr; };
+      flushEventsLocked(&in_events);
+    }
+  }
+
+  // Deliver a single parameter value to the plugin via params->flush(). The
+  // path the observer and the bypass setter take while render resources are
+  // not allocated: no render can carry the change, and a host that sets a
+  // value and reads fullState straight after must find it in the plugin, so
+  // it is not deferred to the idle tick. Excluded from process() by
+  // flushEvents(), which also covers the narrow window in which allocation
+  // completes between the observer's routing decision and this call.
   void flushParamValueWithCookie(clap_id id, double value, void *cookie)
   {
     if (!_plugin || !_plugin->_ext._params) return;
@@ -733,24 +964,7 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
     in_events.get = [](const clap_input_events_t *list, uint32_t) -> const clap_event_header_t *
     { return *static_cast<const clap_event_header_t *const *>(list->ctx); };
 
-    clap_output_events_t out_events = {};
-    out_events.ctx = nullptr;
-    out_events.try_push = [](const clap_output_events_t *, const clap_event_header_t *) -> bool
-    { return true; };
-
-    auto mainGuard = _plugin->AlwaysMainThread();
-    _plugin->_ext._params->flush(_plugin->_plugin, &in_events, &out_events);
-  }
-
-  void flushParamValue(clap_id id, double value)
-  {
-    void *cookie = nullptr;
-    {
-      std::lock_guard<std::mutex> lock(_paramCacheMutex);
-      auto it = _paramCookieCache.find(id);
-      if (it != _paramCookieCache.end()) cookie = it->second;
-    }
-    flushParamValueWithCookie(id, value, cookie);
+    flushEvents(&in_events);
   }
 
   // --- IPlugObject ---
@@ -774,7 +988,23 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
 // Static CLAP library holder
 // -----------------------------------------------------------------------
 
-static Clap::Library _library;
+// Intentionally never destroyed - see the note in wrapasvst3_entry.cpp: at
+// process exit the hosted .clap is finalized before this binary, so calling
+// clap_entry.deinit() from a static destructor aborts the host.
+static Clap::Library &_library = *new Clap::Library();
+
+// The CLAP window api this platform embeds into. NSView is _COCOA, UIView is
+// _UIKIT — a hosted plugin must support the UIKit api to show a UI on iOS.
+#if TARGET_OS_IPHONE
+static const char *const _windowApi = CLAP_WINDOW_API_UIKIT;
+#else
+static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
+#endif
+
+// Private view controller method called from the audio unit below.
+@interface ClapAUv3ViewController (SizePublishing)
+- (void)_publishSizeWidth:(uint32_t)width height:(uint32_t)height;
+@end
 
 // -----------------------------------------------------------------------
 // ClapAUv3AudioUnit implementation
@@ -921,6 +1151,7 @@ static Clap::Library _library;
 
     // Create the plugin instance
     AUV3LOG("init: creating plugin instance via factory");
+    _impl->_underlying_hostname = os::getHostAppName();
     _impl->_plugin =
         Clap::Plugin::createInstance(_library._pluginFactory, _impl->_desc->id, _impl.get());
     if (!_impl->_plugin)
@@ -1106,14 +1337,19 @@ static Clap::Library _library;
     if (s_suppressParamObserverEcho) return;
 
     // Always update the cache (and fetch the cookie in the same lock scope).
-    // While rendering, also queue the change for the render thread:
-    // flush() is forbidden while the plugin is processing and the adapter's
-    // event vectors are render-thread-owned, so the SPSC queue (producers
-    // serialized by this mutex) is the only legal delivery path — it is
-    // drained as input events at the top of the next render cycle. The
-    // rendering decision is made INSIDE the lock: allocate/deallocate flip
-    // _renderResourcesAllocated under the same mutex, so we can never
-    // flush while processing or queue on a freed adapter.
+    // While render resources are allocated, queue the change for the render
+    // thread: the adapter's event vectors are render-thread-owned, so the
+    // SPSC queue (producers serialized by this mutex) is the delivery path
+    // — it is drained as input events at the top of the next render cycle,
+    // or by the idle timer's flush if no render comes. The routing decision
+    // is made INSIDE the lock: allocate/deallocate flip
+    // _renderResourcesAllocated under the same mutex, so we can never queue
+    // on a freed adapter.
+    //
+    // _renderResourcesAllocated only chooses the route, never promises
+    // delivery: Apple defines it as resource state, and Audio Hijack keeps a
+    // switched-off block's resources allocated with no render running. The
+    // flush request below is what guarantees the change arrives regardless.
     clap_id pid = (clap_id)param.address;
     void *cookie = nullptr;
     bool queuedForRender = false;
@@ -1132,9 +1368,16 @@ static Clap::Library _library;
         queuedForRender = true;
       }
     }
-    if (queuedForRender) return;
+    if (queuedForRender)
+    {
+      // Nothing may ever render this: on a paused host process() is not
+      // coming, and then the idle timer is the only thing that will hand it
+      // to the plugin (see serviceFlushRequest()).
+      strongSelf->_impl->_requestedFlush = true;
+      return;
+    }
 
-    // Non-realtime path: push directly to the CLAP plugin via flush.
+    // Deactivated: push directly to the CLAP plugin via flush.
     strongSelf->_impl->flushParamValueWithCookie(pid, (double)value, cookie);
   };
 
@@ -1523,23 +1766,97 @@ static Clap::Library _library;
     _impl->_processAdapter->hostMIDIProtocol = self.hostMIDIProtocol;
   }
 
-  // Publish the adapter for the render block and flip the flag under the
-  // cache mutex BEFORE the plugin may start processing: producers
-  // (implementorValueObserver, bypass setter) must switch from the flush
-  // path to the render queue path first — flush during processing violates
-  // the CLAP contract. Queued changes wait in the adapter until the first
-  // render cycle. The mutex pairs with the producers' flag check.
-  _impl->_processAdapterLive.store(_impl->_processAdapter.get());
+  // How long the idle timer waits before it decides the host has paused the
+  // render. A fixed number of ticks cannot work: at 4096 frames and 44.1kHz a
+  // block is 93ms, so a host that is rendering perfectly normally leaves gaps
+  // longer than any small constant, and the idle tick would flush inside
+  // every one of them. Three blocks is a gap no rendering host produces.
   {
-    std::lock_guard<std::mutex> lock(_impl->_paramCacheMutex);
-    _renderResourcesAllocated = YES;
+    const double blockMs = 1000.0 * (double)self.maximumFramesToRender / std::max(sampleRate, 1.0);
+    const auto ticks = (uint32_t)std::ceil(3.0 * blockMs / _impl->kIdleTickMs);
+    _impl->_idleTicksBeforeFlush = std::max(_impl->kMinIdleTicksBeforeFlush, ticks);
   }
 
-  // Activate the CLAP plugin
-  AUV3LOG("allocateRenderResources: calling activate()");
-  _impl->_plugin->activate();
+  // Set when the plugin refuses to come up, and acted on below once the lock
+  // this block takes has been dropped again.
+  BOOL clapStartFailed = NO;
 
-  // Re-cache latency — the plugin may have set it during activation
+  {
+    // Under _processLock from here to _initialized: no flush can slip in
+    // between activate() and start_processing() and claim the wrong thread
+    // for an already-active plugin, and no render can reach process() before
+    // start_processing() (the adapter is published before activation).
+    ClapWrapper::detail::shared::SpinLockGuard processGuard(_impl->_processLock);
+
+    // Publish the adapter for the render block and flip the flag under the
+    // cache mutex BEFORE the plugin may start processing: producers
+    // (implementorValueObserver, bypass setter) must switch from the flush
+    // path to the render queue path first — flush during processing violates
+    // the CLAP contract. Queued changes wait in the adapter until the first
+    // render cycle. The mutex pairs with the producers' flag check.
+    _impl->_processAdapterLive.store(_impl->_processAdapter.get());
+    {
+      std::lock_guard<std::mutex> lock(_impl->_paramCacheMutex);
+      _renderResourcesAllocated = YES;
+    }
+
+    // Activate the CLAP plugin
+    AUV3LOG("allocateRenderResources: calling activate()");
+    const bool clapActivated = _impl->_plugin->activate();
+
+    // Both returns have to be honoured, and they have to be honoured together.
+    // CLAP forbids process() on a plugin whose start_processing() returned
+    // false, and forbids the matching stop_processing() as well; a plugin that
+    // never activated must not be asked to start in the first place, nor
+    // deactivated afterwards. There is no half-allocated state to park the
+    // unit in — _initialized is what tells the idle flush whether the plugin
+    // is active — so undo the whole allocation and fail the host's call.
+    AUV3LOG("allocateRenderResources: calling start_processing()");
+    if (!clapActivated || !_impl->_plugin->start_processing())
+    {
+      AUV3ERR("allocateRenderResources: %{public}s failed",
+              clapActivated ? "start_processing()" : "activate()");
+
+      if (clapActivated)
+      {
+        AUV3LOG("allocateRenderResources: calling deactivate()");
+        _impl->_plugin->deactivate();
+      }
+
+      // Unwind in the reverse order of the setup above. Nothing has rendered
+      // and nothing can have been queued for a render — producers check
+      // _renderResourcesAllocated under _paramCacheMutex, which is cleared
+      // here — so the adapter holds no events anyone is still owed.
+      _impl->_processAdapterLive.store(nullptr);
+      {
+        std::lock_guard<std::mutex> lock(_impl->_paramCacheMutex);
+        _renderResourcesAllocated = NO;
+      }
+      _impl->_processAdapter.reset();
+
+      clapStartFailed = YES;
+    }
+    else
+    {
+      _impl->_initialized = true;
+    }
+  }
+
+  if (clapStartFailed)
+  {
+    if (outError)
+      *outError = [NSError
+          errorWithDomain:NSOSStatusErrorDomain
+                     code:kAudioUnitErr_FailedInitialization
+                 userInfo:@{NSLocalizedDescriptionKey : @"The CLAP plugin refused to start processing"}];
+    // Tell the base class the allocation did not stand, so the host does not
+    // see an audio unit that reports allocated render resources it cannot use.
+    [super deallocateRenderResources];
+    return NO;
+  }
+
+  // Re-cache latency — the plugin may have set it during activation. Outside
+  // the lock: the KVO runs the host's listeners synchronously.
   if (_impl->_plugin->_ext._latency)
   {
     uint32_t newLatency = _impl->_plugin->_ext._latency->get(_impl->_plugin->_plugin);
@@ -1551,10 +1868,6 @@ static Clap::Library _library;
       [self didChangeValueForKey:@"latency"];
     }
   }
-
-  AUV3LOG("allocateRenderResources: calling start_processing()");
-  _impl->_plugin->start_processing();
-  _impl->_initialized = true;
 
   AUV3LOG("allocateRenderResources: completed successfully");
   return YES;
@@ -1577,18 +1890,26 @@ static Clap::Library _library;
     }
   }
 
-  if (_impl && _impl->_plugin && _impl->_initialized)
-  {
-    auto guarantee_mainthread = _impl->_plugin->AlwaysMainThread();
-    AUV3LOG("deallocateRenderResources: calling stop_processing()");
-    _impl->_plugin->stop_processing();
-    AUV3LOG("deallocateRenderResources: calling deactivate()");
-    _impl->_plugin->deactivate();
-    _impl->_initialized = false;
-  }
-
   if (_impl)
   {
+    // Under _processLock from stop_processing() to the adapter reset: the
+    // idle timer's flush checks _initialized and _processAdapter under the
+    // same lock, so it can neither claim the audio thread for a plugin that
+    // is being deactivated nor flush through an adapter that is being freed.
+    // Taken only after the render handshake above completed, so a render
+    // that holds the lock is never waited for while _renderInFlight is held.
+    ClapWrapper::detail::shared::SpinLockGuard processGuard(_impl->_processLock);
+
+    if (_impl->_plugin && _impl->_initialized)
+    {
+      auto guarantee_mainthread = _impl->_plugin->AlwaysMainThread();
+      AUV3LOG("deallocateRenderResources: calling stop_processing()");
+      _impl->_plugin->stop_processing();
+      AUV3LOG("deallocateRenderResources: calling deactivate()");
+      _impl->_plugin->deactivate();
+      _impl->_initialized = false;
+    }
+
     // Producers (implementorValueObserver, bypass setter) check this flag
     // and touch the adapter under _paramCacheMutex — flip it under the
     // same mutex so a producer can never race the adapter reset below.
@@ -1600,20 +1921,18 @@ static Clap::Library _library;
     }
 
     // Changes parked in the render queue while the last cycles ran would
-    // otherwise be lost (the cache and host UI already show them) —
-    // deliver them via flush, which is legal now that processing stopped.
-    if (_impl->_processAdapter)
+    // otherwise be lost (the cache and host UI already show them) — deliver
+    // them via flush, which is [main-thread] now that the plugin is
+    // deactivated, and hand the host whatever the plugin still had to say.
+    if (_impl->_processAdapter && _impl->_plugin)
     {
-      Clap::AUv3::ProcessAdapter::QueuedParamChange qpc;
-      while (_impl->_processAdapter->dequeueParameterChange(qpc))
-      {
-        _impl->flushParamValue(qpc.id, qpc.value);
-      }
+      auto guarantee_mainthread = _impl->_plugin->AlwaysMainThread();
+      _impl->_processAdapter->flush();
     }
-  }
 
-  AUV3LOG("deallocateRenderResources: resetting process adapter");
-  _impl->_processAdapter.reset();
+    AUV3LOG("deallocateRenderResources: resetting process adapter");
+    _impl->_processAdapter.reset();
+  }
 
   AUV3LOG("deallocateRenderResources: calling [super deallocateRenderResources]");
   [super deallocateRenderResources];
@@ -1652,10 +1971,19 @@ static Clap::Library _library;
     // thread during init, so the default heuristic is wrong.
     AUAudioUnitStatus status = kAudioUnitErr_Uninitialized;
     {
+      // Excludes the idle timer's flush (see serviceFlushRequest()), which
+      // only runs once three blocks have passed without a render — so in a
+      // rendering host this lock is free. Taken after the _renderInFlight
+      // announcement so deallocation, which waits on that counter without
+      // holding the lock, cannot form a cycle with a render waiting here.
+      ClapWrapper::detail::shared::SpinLockGuard processGuard(impl->_processLock);
       auto audioGuard = impl->_plugin->AlwaysAudioThread();
       status = adapter->process(actionFlags, timestamp, frameCount, outputBusNumber, outputData,
                                 realtimeEventListHead, pullInputBlock);
     }
+    // This render carried whatever was queued in either direction, so the
+    // next idle tick has nothing to make up for.
+    impl->_renderedSinceIdle = true;
     impl->_renderInFlight.fetch_sub(1);
 
     // Do NOT dispatch on_main_thread() from the render block. Surge XT's
@@ -1673,11 +2001,16 @@ static Clap::Library _library;
 
 // --- GUI methods for the view controller ---
 
-- (BOOL)createGUIInView:(CLAPWRAP_ViewClass *)parentView
-                  width:(uint32_t *)outWidth
-                 height:(uint32_t *)outHeight
+- (BOOL)prepareGUIAndReturnWidth:(uint32_t *)outWidth height:(uint32_t *)outHeight
 {
   if (!_impl || !_impl->_plugin || !_impl->_plugin->_ext._gui) return NO;
+
+  if (_impl->_guiCreated)
+  {
+    if (outWidth) *outWidth = _impl->_guiWidth;
+    if (outHeight) *outHeight = _impl->_guiHeight;
+    return YES;
+  }
 
   // In out-of-process AUv3, _main_thread_id was captured on the XPC worker
   // thread during init, so the CLAP proxy doesn't recognize the actual main
@@ -1687,24 +2020,15 @@ static Clap::Library _library;
   auto *gui = _impl->_plugin->_ext._gui;
   auto *plugin = _impl->_plugin->_plugin;
 
-  // CLAP defines _COCOA for NSView and no standard UIKit identifier. We use
-  // a private _UIKIT string (see auv3_platform.h) on iOS. Hosted plugins
-  // using clap-wrapper on iOS must recognise the same string.
-#if TARGET_OS_IPHONE
-  const char *windowApi = CLAP_WINDOW_API_UIKIT;
-#else
-  const char *windowApi = CLAP_WINDOW_API_COCOA;
-#endif
-
-  if (!gui->is_api_supported(plugin, windowApi, false))
+  if (!gui->is_api_supported(plugin, _windowApi, false))
   {
-    AUV3ERR("createGUIInView: plugin rejected api '%{public}s'", windowApi);
+    AUV3ERR("prepareGUI: plugin rejected api '%{public}s'", _windowApi);
     return NO;
   }
 
-  if (!gui->create(plugin, windowApi, false))
+  if (!gui->create(plugin, _windowApi, false))
   {
-    AUV3ERR("createGUIInView: gui->create failed for api '%{public}s'", windowApi);
+    AUV3ERR("prepareGUI: gui->create failed for api '%{public}s'", _windowApi);
     return NO;
   }
 
@@ -1721,13 +2045,36 @@ static Clap::Library _library;
   // Confirm the size to the plugin (matches VST3/AUv2 pattern).
   gui->set_size(plugin, w, h);
 
+  _impl->_guiCreated = true;
+  _impl->_guiWidth = w;
+  _impl->_guiHeight = h;
+
+  if (outWidth) *outWidth = w;
+  if (outHeight) *outHeight = h;
+
+  return YES;
+}
+
+- (BOOL)parentGUIInView:(CLAPWRAP_ViewClass *)parentView
+{
+  if (!_impl || !_impl->_plugin || !_impl->_plugin->_ext._gui) return NO;
+  if (!_impl->_guiCreated) return NO;
+
+  auto mainGuard = _impl->_plugin->AlwaysMainThread();
+
+  auto *gui = _impl->_plugin->_ext._gui;
+  auto *plugin = _impl->_plugin->_plugin;
+
   // Resize the parent view BEFORE set_parent() so the CLAP plugin's
   // subview is created inside a properly-sized container. Without this
   // the container is 0x0 and plugins that clip to parent bounds are invisible.
-  [parentView setFrame:CGRectMake(0, 0, w, h)];
+  if (_impl->_guiWidth > 0 && _impl->_guiHeight > 0)
+  {
+    [parentView setFrame:CGRectMake(0, 0, _impl->_guiWidth, _impl->_guiHeight)];
+  }
 
   clap_window_t window;
-  window.api = windowApi;
+  window.api = _windowApi;
 #if TARGET_OS_IPHONE
   // CLAP's clap_window union has no UIKit-typed member. The `ptr` slot is
   // the generic escape hatch; the hosted plugin reads it as a UIView*.
@@ -1737,9 +2084,7 @@ static Clap::Library _library;
 #endif
   gui->set_parent(plugin, &window);
   gui->show(plugin);
-
-  if (outWidth) *outWidth = w;
-  if (outHeight) *outHeight = h;
+  _impl->_guiShown = true;
 
   // Update the IHost gui_request_resize to notify the view controller
   _impl->_guiParentView = parentView;
@@ -1750,10 +2095,15 @@ static Clap::Library _library;
 - (void)destroyGUI
 {
   if (!_impl || !_impl->_plugin || !_impl->_plugin->_ext._gui) return;
+  if (!_impl->_guiCreated) return;
 
   auto mainGuard = _impl->_plugin->AlwaysMainThread();
-  _impl->_plugin->_ext._gui->hide(_impl->_plugin->_plugin);
+  // Only hide what was shown: the GUI may have been created purely to answer a
+  // size query and never parented.
+  if (_impl->_guiShown) _impl->_plugin->_ext._gui->hide(_impl->_plugin->_plugin);
   _impl->_plugin->_ext._gui->destroy(_impl->_plugin->_plugin);
+  _impl->_guiCreated = false;
+  _impl->_guiShown = false;
   _impl->_guiParentView = nil;
   _impl->_viewController = nil;
 }
@@ -1769,7 +2119,21 @@ static Clap::Library _library;
 {
   if (!_impl || !_impl->_plugin || !_impl->_plugin->_ext._gui) return NO;
   auto mainGuard = _impl->_plugin->AlwaysMainThread();
-  return _impl->_plugin->_ext._gui->set_size(_impl->_plugin->_plugin, width, height) ? YES : NO;
+
+  // CLAP contract: a host must pass set_size a size the plugin agreed to.
+  // Container bounds are arbitrary (rotation, split view), so run them
+  // through adjust_size first — a fixed-aspect plugin snaps them here, and
+  // strict clap-helpers builds treat an unadjusted set_size as host
+  // misbehaviour.
+  auto *gui = _impl->_plugin->_ext._gui;
+  if (gui->adjust_size) gui->adjust_size(_impl->_plugin->_plugin, &width, &height);
+  if (!gui->set_size(_impl->_plugin->_plugin, width, height)) return NO;
+
+  // Keep the cached size in step: prepareGUIAndReturnWidth:height: hands it
+  // back, and that is how the view controller learns the adjusted size.
+  _impl->_guiWidth = width;
+  _impl->_guiHeight = height;
+  return YES;
 }
 
 - (void)setViewController:(ClapAUv3ViewController *)vc
@@ -1781,17 +2145,10 @@ static Clap::Library _library;
 - (void)_applyGUISizeWidth:(uint32_t)width height:(uint32_t)height
 {
   if (!_impl) return;
+  _impl->_guiWidth = width;
+  _impl->_guiHeight = height;
   __strong ClapAUv3ViewController *vc = _impl->_viewController;
-  if (vc)
-  {
-    // CGRectMake / CGSizeMake work identically on macOS and iOS;
-    // NSMakeRect / NSMakeSize are AppKit-only.
-    vc.view.frame = CGRectMake(0, 0, width, height);
-
-    [vc willChangeValueForKey:@"preferredContentSize"];
-    vc.preferredContentSize = CGSizeMake(width, height);
-    [vc didChangeValueForKey:@"preferredContentSize"];
-  }
+  if (vc) [vc _publishSizeWidth:width height:height];
 }
 
 // --- View controller ---
@@ -1832,11 +2189,12 @@ static Clap::Library _library;
 
   double newValue = shouldBypassEffect ? 1.0 : 0.0;
 
-  // Update cache (and fetch the cookie in the same lock scope). While
-  // rendering, route the change through the render thread's queue —
-  // flush() is forbidden while the plugin is processing. The rendering
-  // decision is made INSIDE the lock (paired with allocate/deallocate
-  // flipping the flag under the same mutex).
+  // Update cache (and fetch the cookie in the same lock scope). While render
+  // resources are allocated, route the change through the render thread's
+  // queue, same as implementorValueObserver — and ask for a flush, since a
+  // paused host will never render it. The routing decision is made INSIDE
+  // the lock (paired with allocate/deallocate flipping the flag under the
+  // same mutex).
   void *cookie = nullptr;
   bool queuedForRender = false;
   {
@@ -1855,9 +2213,13 @@ static Clap::Library _library;
     }
   }
 
-  // Push to the CLAP plugin via params->flush() (only legal while not processing)
-  if (!queuedForRender)
+  if (queuedForRender)
   {
+    _impl->_requestedFlush = true;
+  }
+  else
+  {
+    // Deactivated: push to the CLAP plugin via params->flush() directly.
     _impl->flushParamValueWithCookie(_impl->_bypassParamId, newValue, cookie);
   }
 
@@ -1949,78 +2311,258 @@ static Clap::Library _library;
 // ClapAUv3ViewController implementation (also serves as AUAudioUnitFactory)
 // -----------------------------------------------------------------------
 
+// The viewbridge rejects zero-sized views, so the view is born with this
+// placeholder. It only ever reaches a host that has no plugin GUI to ask about.
+static const CGSize kClapAUv3PlaceholderSize = {400, 500};
+
 @implementation ClapAUv3ViewController
 {
-  BOOL _guiCreated;
+  // The CLAP GUI exists (gui->create succeeded). Independent of _guiParented:
+  // AUv3 wants the plugin's size before the view has a window, so the GUI is
+  // created as soon as the size is needed and parented later.
+  BOOL _guiPrepared;
+  // The CLAP GUI is embedded in our view and shown (set_parent + show).
+  BOOL _guiParented;
+  // Re-entrancy guard: publishing preferredContentSize can come back into the
+  // getter through KVO observers.
+  BOOL _preparing;
+  // _pluginSize holds the plugin's own size. AppKit's stored property is only
+  // a mirror of it: -setView: overwrites the property with the view's frame, so
+  // the ivar is the source of truth the getter answers from.
+  BOOL _sizeKnown;
+  CGSize _pluginSize;
+  // We already tried to create the audio unit ourselves (see _bootstrapAudioUnit).
+  BOOL _bootstrapAttempted;
+  // Serializes the two creation paths (see -createAudioUnitOnce:error:).
+  std::mutex _audioUnitMutex;
 }
 
 - (void)loadView
 {
+  // Ask the plugin before the view exists. The host reads preferredContentSize
+  // as soon as the view controller is vended — before the view has a window —
+  // and the viewbridge doesn't forward later changes; -setView: also overwrites
+  // preferredContentSize with the view's frame. So the view has to be born at
+  // the right size. Create the audio unit ourselves if the host hasn't got
+  // round to the factory method yet.
+  [self _bootstrapAudioUnit];
+  [self _ensureGUIPrepared];
+
   // Custom container view that detects when the view enters a window via
   // (view)didMoveToWindow / (view)didMoveToSuperview. AUViewController
   // lifecycle methods only fire when the VC is in the VC hierarchy —
-  // many hosts just call addSubview:.
-  //
-  // Start with a reasonable default size. The viewbridge rejects
-  // zero-sized views. The real size is set in _createPluginGUI once the
-  // CLAP plugin reports its preferred dimensions.
-  CGSize initialSize = CGSizeMake(400, 500);
+  // many hosts just call addSubview:. The viewbridge rejects zero-sized views,
+  // hence the placeholder when the plugin has no GUI to ask about.
+  CGSize initialSize = _sizeKnown ? _pluginSize : kClapAUv3PlaceholderSize;
   ClapAUv3ContainerView *view = [[ClapAUv3ContainerView alloc]
       initWithFrame:CGRectMake(0, 0, initialSize.width, initialSize.height)];
   view.viewController = self;
   view.translatesAutoresizingMaskIntoConstraints = YES;
   [self setView:view];
   self.preferredContentSize = initialSize;
+
+  AUV3LOG("loadView: view %dx%d (plugin size known=%d)", (int)initialSize.width, (int)initialSize.height,
+          _sizeKnown ? 1 : 0);
 }
 
 - (void)setAudioUnit:(ClapAUv3AudioUnit *)audioUnit
 {
+  if (_audioUnit == audioUnit) return;
+  // Never drop a live audio unit by bare overwrite: releasing the last reference
+  // reaches plugin->terminate() with the GUI still created, which CLAP forbids.
+  if (_audioUnit) [self _destroyGUI];
   _audioUnit = audioUnit;
   // Establish the back-reference so the AU can return us from
   // requestViewControllerWithCompletionHandler:
   if (audioUnit) audioUnit->_factoryViewController = self;
+
+  // The viewbridge can load the view before the factory method runs, in which
+  // case loadView had no plugin to ask. Now there is one. Out-of-process this
+  // runs on an XPC worker thread, and everything below — view access included —
+  // is main thread only.
+  if (audioUnit)
+  {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      if (self.isViewLoaded) [self _ensureGUIPrepared];
+    });
+  }
 }
 
-- (void)_createPluginGUI
+// A 4-character-code Info.plist string ("aufx") as an OSType.
+static BOOL clapAUv3FourCC(id value, OSType *outCode)
 {
-  if (!self.audioUnit) return;
+  if (![value isKindOfClass:NSString.class]) return NO;
+  const char *chars = [(NSString *)value UTF8String];
+  if (!chars || strlen(chars) != 4) return NO;
+  *outCode = ((OSType)(uint8_t)chars[0] << 24) | ((OSType)(uint8_t)chars[1] << 16) |
+             ((OSType)(uint8_t)chars[2] << 8) | (OSType)(uint8_t)chars[3];
+  return YES;
+}
 
-  // Establish the back-reference so gui_request_resize can reach this VC
+// Our own entry in the appex's AudioComponents array — the one whose
+// factoryFunction names this class.
+- (BOOL)_ownComponentDescription:(AudioComponentDescription *)outDesc
+{
+  NSDictionary *extension =
+      [[NSBundle bundleForClass:[self class]] objectForInfoDictionaryKey:@"NSExtension"];
+  NSArray *components = extension[@"NSExtensionAttributes"][@"AudioComponents"];
+  NSString *className = NSStringFromClass([self class]);
+
+  for (id entry in components)
+  {
+    if (![entry isKindOfClass:NSDictionary.class]) continue;
+    NSDictionary *component = entry;
+    if (![className isEqualToString:component[@"factoryFunction"]]) continue;
+
+    AudioComponentDescription desc = {};
+    if (!clapAUv3FourCC(component[@"type"], &desc.componentType)) return NO;
+    if (!clapAUv3FourCC(component[@"subtype"], &desc.componentSubType)) return NO;
+    if (!clapAUv3FourCC(component[@"manufacturer"], &desc.componentManufacturer)) return NO;
+    *outDesc = desc;
+    return YES;
+  }
+  return NO;
+}
+
+// Both creation paths meet here: the host's factory call, which arrives on an
+// XPC worker thread, and -loadView's self-bootstrap on the appex main thread.
+// Unserialized they both see a nil audioUnit and build an audio unit, and the
+// loser is then thrown away with its GUI still alive. Nothing under this lock
+// ever waits on the main queue, so the losing path only stalls.
+- (AUAudioUnit *)createAudioUnitOnce:(ClapAUv3AudioUnit * (^)(NSError **))make error:(NSError **)error
+{
+  std::lock_guard<std::mutex> lock(_audioUnitMutex);
+  if (_audioUnit) return _audioUnit;
+
+  ClapAUv3AudioUnit *au = make(error);
+  if (!au) return nil;
+  self.audioUnit = au;
+  return au;
+}
+
+// Out-of-process AUv3: the viewbridge loads our view from inside
+// -beginRequestWithExtensionContext:, before the host has asked the factory for
+// an audio unit, and it captures preferredContentSize as the view is vended —
+// nothing published afterwards reaches the host process. So the plugin has to
+// exist by then. Create the audio unit ourselves and hand that same instance to
+// the host when it does ask (the generated factory method is idempotent).
+// JUCE's AUv3 wrapper solves it the same way, from -loadView.
+- (void)_bootstrapAudioUnit
+{
+  if (self.audioUnit || _bootstrapAttempted) return;
+  _bootstrapAttempted = YES;
+  AUV3LOG("bootstrap: creating the audio unit ourselves (no host factory call yet)");
+
+  AudioComponentDescription desc = {};
+  if (![self _ownComponentDescription:&desc])
+  {
+    AUV3ERR("bootstrap: no AudioComponents entry for %{public}s",
+            NSStringFromClass([self class]).UTF8String);
+    return;
+  }
+
+  NSError *error = nil;
+  if (![self createAudioUnitWithComponentDescription:desc error:&error])
+  {
+    AUV3ERR("bootstrap: audio unit creation failed: %{public}s",
+            error ? error.localizedDescription.UTF8String : "unknown error");
+  }
+}
+
+// AUv3's only channel for a plugin-declared window size is this view
+// controller's preferredContentSize (plus the view's frame), and hosts read it
+// before the view is ever put into a window. CLAP can answer that early: once
+// plugin->init() has run, gui->create() is the only precondition for
+// get_size() — set_parent() and show() come afterwards (see clap/ext/gui.h).
+// So create the GUI here and keep it until the view goes away.
+- (BOOL)_ensureGUIPrepared
+{
+  if (_guiPrepared) return YES;
+  if (_preparing) return NO;
+  if (!self.audioUnit) return NO;  // factory hasn't run yet — setAudioUnit: retries
+
+  if (!NSThread.isMainThread)
+  {
+    // gui->create() builds a native view and preferredContentSize is an AppKit
+    // property — both main thread only. Out-of-process AUv3 calls into us from
+    // XPC worker threads, so hand the work over and let this read fall back to
+    // the placeholder; the KVO notification carries the real size shortly after.
+    AUV3LOG("_ensureGUIPrepared: off main thread, deferring");
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [self _ensureGUIPrepared];
+    });
+    return NO;
+  }
+
+  _preparing = YES;
+
+  // gui_request_resize can fire from inside gui->create(), so establish the
+  // back-reference first.
   [self.audioUnit setViewController:self];
 
   uint32_t w = 0, h = 0;
-  if ([self.audioUnit createGUIInView:self.view width:&w height:&h])
-  {
-    AUV3LOG("GUI created, size=%ux%u", w, h);
-    if (w > 0 && h > 0)
-    {
-      // Explicit KVO notifications — required for the remote proxy to
-      // forward preferredContentSize changes across the XPC boundary
-      // to the host process.
-      self.view.frame = CGRectMake(0, 0, w, h);
-      [self willChangeValueForKey:@"preferredContentSize"];
-      self.preferredContentSize = CGSizeMake(w, h);
-      [self didChangeValueForKey:@"preferredContentSize"];
-    }
-  }
-  else
-  {
-    _guiCreated = NO;
-  }
+  const BOOL created = [self.audioUnit prepareGUIAndReturnWidth:&w height:&h];
+  _preparing = NO;
+
+  if (!created) return NO;  // no gui extension, or the plugin refused the api
+
+  _guiPrepared = YES;
+  AUV3LOG("GUI created, size=%ux%u", w, h);
+  if (w > 0 && h > 0) [self _publishSizeWidth:w height:h];
+  return YES;
 }
 
-// Convergence point for GUI creation. Called from multiple triggers:
+// Tell the host how big the plugin wants to be. Also called by the audio unit
+// when the plugin itself requests a resize.
+- (void)_publishSizeWidth:(uint32_t)width height:(uint32_t)height
+{
+  // CGRectMake / CGSizeMake work identically on macOS and iOS;
+  // NSMakeRect / NSMakeSize are AppKit-only.
+  _pluginSize = CGSizeMake(width, height);
+  _sizeKnown = YES;
+
+  // Before the view exists there is nothing to resize and nobody observing —
+  // loadView applies the size when it builds the view.
+  if (!self.isViewLoaded) return;
+
+  self.view.frame = CGRectMake(0, 0, width, height);
+
+  // Explicit KVO notifications — required for the remote proxy to
+  // forward preferredContentSize changes across the XPC boundary
+  // to the host process.
+  [self willChangeValueForKey:@"preferredContentSize"];
+  self.preferredContentSize = _pluginSize;
+  [self didChangeValueForKey:@"preferredContentSize"];
+}
+
+- (CGSize)preferredContentSize
+{
+  // Some hosts read the size before they ever touch .view — our own AUv3
+  // standalone does (AUv3HostAppDelegate.mm). Make the first read the real one.
+  if (!_sizeKnown)
+  {
+    [self _bootstrapAudioUnit];
+    [self _ensureGUIPrepared];
+  }
+  // Answer from the plugin, not from AppKit's stored property: -setView:
+  // overwrites that with the view's frame.
+  return _sizeKnown ? _pluginSize : [super preferredContentSize];
+}
+
+// Convergence point for embedding the GUI. Called from multiple triggers:
 // - viewDidMoveToWindow / viewDidMoveToSuperview (in-process)
 // - viewDidAppear (out-of-process)
-// Creates the GUI once all preconditions are met. Guarded by _guiCreated.
+// Parents the GUI once all preconditions are met. Guarded by _guiParented.
 - (void)_tryCreateGUI
 {
-  if (_guiCreated) return;
+  if (_guiParented) return;
   if (!self.audioUnit) return;
   if (!self.isViewLoaded || !self.view.window) return;
 
-  _guiCreated = YES;
-  [self _createPluginGUI];
+  // Normally a no-op — the GUI already exists from the size query.
+  if (![self _ensureGUIPrepared]) return;
+
+  if ([self.audioUnit parentGUIInView:self.view]) _guiParented = YES;
 }
 
 // Called by ClapAUv3ContainerView when the view enters or leaves a window.
@@ -2034,22 +2576,26 @@ static Clap::Library _library;
   }
   else
   {
-    if (_guiCreated)
-    {
-      _guiCreated = NO;
-      [self.audioUnit destroyGUI];
-    }
+    [self _destroyGUI];
   }
+}
+
+// Drop the CLAP GUI. The last published size stays in preferredContentSize —
+// the host asked for the size the plugin wants, and that hasn't changed.
+- (void)_destroyGUI
+{
+  if (!_guiPrepared) return;
+  _guiPrepared = NO;
+  _guiParented = NO;
+  [self.audioUnit destroyGUI];
 }
 
 - (void)viewDidLoad
 {
   [super viewDidLoad];
-  // Try to create the GUI early so preferredContentSize is set BEFORE
-  // the host reads it via requestViewControllerWithCompletionHandler:.
-  // For out-of-process AUv3, the proxy doesn't forward property changes,
-  // so the host only sees the value that was set at VC creation time.
-  // If gui->create() blocks (JUCE plugins), viewDidAppear handles it later.
+  // loadView already created the GUI and published its size. If the view is
+  // already in a window (LoadInProcess), parent it right away; otherwise
+  // viewDidAppear / (view)didMoveToWindow does it later.
   [self _tryCreateGUI];
 }
 
@@ -2086,7 +2632,7 @@ static Clap::Library _library;
 #else
   [super viewDidLayoutSubviews];
 #endif
-  if (!_guiCreated) return;
+  if (!_guiParented) return;
 
   CGRect bounds = self.view.bounds;
   if (bounds.size.width > 0 && bounds.size.height > 0)
@@ -2097,10 +2643,20 @@ static Clap::Library _library;
       [self.audioUnit setGUISize:(uint32_t)bounds.size.width height:(uint32_t)bounds.size.height];
     }
 
-    // Ensure the CLAP plugin's subview fills the container
+    // adjust_size may have snapped the container bounds (fixed aspect ratio,
+    // step sizes), and the plugin laid out at the snapped size — so the subview
+    // has to get that size too, not the raw bounds.
+    CGRect childFrame = bounds;
+    uint32_t agreedWidth = 0, agreedHeight = 0;
+    if ([self.audioUnit prepareGUIAndReturnWidth:&agreedWidth height:&agreedHeight] && agreedWidth > 0 &&
+        agreedHeight > 0)
+    {
+      childFrame = CGRectMake(0, 0, agreedWidth, agreedHeight);
+    }
+
     for (CLAPWRAP_ViewClass *subview in self.view.subviews)
     {
-      subview.frame = bounds;
+      subview.frame = childFrame;
     }
   }
 }
@@ -2108,32 +2664,20 @@ static Clap::Library _library;
 #if TARGET_OS_OSX
 - (void)viewDidDisappear
 {
-  if (_guiCreated)
-  {
-    _guiCreated = NO;
-    [self.audioUnit destroyGUI];
-  }
+  [self _destroyGUI];
   [super viewDidDisappear];
 }
 #else
 - (void)viewDidDisappear:(BOOL)animated
 {
-  if (_guiCreated)
-  {
-    _guiCreated = NO;
-    [self.audioUnit destroyGUI];
-  }
+  [self _destroyGUI];
   [super viewDidDisappear:animated];
 }
 #endif
 
 - (void)dealloc
 {
-  if (_guiCreated)
-  {
-    [self.audioUnit destroyGUI];
-    _guiCreated = NO;
-  }
+  [self _destroyGUI];
 }
 
 // --- AUAudioUnitFactory ---

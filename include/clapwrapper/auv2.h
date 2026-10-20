@@ -30,6 +30,66 @@ extern "C"
                                   clap_plugin_info_as_auv2_t *info);
   } clap_plugin_factory_as_auv2_t;
 
+  // An AudioUnit is identified by the triple (type, subtype, manufacturer), so
+  // changing any of them -- an effect that grows a note port and has to become
+  // an 'aumf' to be given one, a rebrand that moves the manufacturer code --
+  // produces a component the host considers unrelated to the old one. Sessions
+  // referencing the old identity do not find the new one and open without the
+  // plugin.
+  //
+  // This factory lets a plugin keep answering to identities it used to have.
+  // Each one is written into the bundle's Info.plist as an additional
+  // AudioComponents entry, identical to the primary but for the identity
+  // triple. Old sessions load; new ones get the current identity.
+  //
+  // The entries are ordinary and visible. kAudioComponentFlag_Unsearchable
+  // looks like exactly the right flag here -- hide the retired identity from
+  // browsing, keep it resolvable by full description -- and it does not work.
+  // Logic restores a session against the registry its own AU scan builds, that
+  // scan enumerates, and enumeration is what the flag excludes; measured
+  // 01.09.2026, a hidden entry was reachable through AudioComponentFindNext and
+  // the session that named it still would not open. Do not add the flag back.
+  //
+  // Listing costs nothing, which is why there is no option to hide. A host
+  // filters a slot by component type, so an 'aufx' and an 'aumf' of the same
+  // plugin never appear together -- an effect slot offers one, an instrument
+  // slot the other. Two identities that *would* collide in one menu are two
+  // identities the plugin should not be claiming.
+  //
+  // The wrapper reads this at *build* time, when it generates the Info.plist,
+  // so it costs a plugin nothing at run time. A legacy identity that collides
+  // with the primary one, or with another legacy identity, fails the build.
+  //
+  // Optional, and separate from clap_plugin_factory_as_auv2 on purpose: a
+  // plugin adopting it does not restate what that one already answers, and the
+  // wrapper's existing readers of that factory -- auv2 and auv3 -- are
+  // untouched.
+  static const CLAP_CONSTEXPR char CLAP_PLUGIN_FACTORY_INFO_AUV2_LEGACY[] =
+      "clap.plugin-factory-info-as-auv2-legacy/0";
+
+  typedef struct clap_plugin_auv2_legacy_identity
+  {
+    char au_type[5];  // the type this plugin used to have, e.g. "aufx"
+    char au_subt[5];  // the subtype it used to have
+    char au_manu[5];  // the manufacturer code it used to have
+  } clap_plugin_auv2_legacy_identity_t;
+
+  typedef struct clap_plugin_factory_auv2_legacy
+  {
+    // How many identities the CLAP plugin at `plugin_index` also answers to.
+    // Zero, or an absent factory, means the plugin has never changed identity.
+    uint32_t(CLAP_ABI *count)(const clap_plugin_factory_auv2_legacy *factory, uint32_t plugin_index);
+
+    // Fills `identity` for legacy identity `n` of the plugin at `plugin_index`.
+    // Returning false skips that entry.
+    //
+    // Every field must be four characters. An empty field is not "same as the
+    // primary": an identity is a triple and a partial one cannot be resolved by
+    // a host, so it is rejected rather than completed.
+    bool(CLAP_ABI *get)(const clap_plugin_factory_auv2_legacy *factory, uint32_t plugin_index,
+                        uint32_t n, clap_plugin_auv2_legacy_identity_t *identity);
+  } clap_plugin_factory_auv2_legacy_t;
+
   // Parameter order matters in auv2 critically still in logic and garage band, and if you add
   // parameters after a release, you need to order them (alas) even if the ids aren't changed.
   // clap_plugin_auv2_param_ordering extension allows you to provide an ordering for your params

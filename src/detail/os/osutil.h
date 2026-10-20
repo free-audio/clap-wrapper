@@ -5,8 +5,8 @@
 */
 
 #include <atomic>
-#include <string>
 #include <functional>
+#include <string>
 
 #include "log.h"
 #include "fs.h"
@@ -57,18 +57,38 @@ class IPlugObject
 {
  public:
   virtual void onIdle() = 0;
+
+  // Windows drives onIdle() from a WM_TIMER on a message window and macOS from
+  // a CFRunLoopTimer on the main run loop, both of which already belong to the
+  // host's main thread. Linux has no such thread to hang a timer on, so its
+  // helper runs one of its own and asks here whether an object would rather be
+  // left alone -- which it would, while a host run loop is driving it instead.
+  virtual bool hasOwnIdleSource() const
+  {
+    return false;
+  }
+
   virtual ~IPlugObject()
   {
   }
 };
 void attach(IPlugObject *plugobject);
 void detach(IPlugObject *plugobject);
+// Tells the Linux helper that some object's answer to hasOwnIdleSource() has
+// changed, so that it can pause its thread or wake it up again. Implemented on
+// Linux only, and called only from LIN paths.
+void idleSourceChanged();
 uint64_t getTickInMS();
 
 // Used for clap_plugin_entry.init(). Path to DSO (Linux, Windows), or the bundle (macOS).
 fs::path getPluginPath();
 std::string getParentFolderName();
 std::string getBinaryName();
+
+#if MAC
+// empty when loaded into an xpc service or appex, where the real host is unknowable
+std::string getHostAppName();
+#endif
 
 #ifdef WIN32
 void init();

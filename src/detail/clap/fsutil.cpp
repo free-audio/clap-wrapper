@@ -109,14 +109,15 @@ std::vector<fs::path> getValidCLAPSearchPaths()
   }
   auto sep = ':';
 
-  if (cp.empty())
+  if (!cp.empty())
   {
     size_t pos;
     while ((pos = cp.find(sep)) != std::string::npos)
     {
       auto item = cp.substr(0, pos);
       cp = cp.substr(pos + 1);
-      res.emplace_back(item);
+      // an empty entry ("a::b", a trailing ':') names no directory, not the current one
+      if (!item.empty()) res.emplace_back(item);
     }
     if (!cp.empty()) res.emplace_back(cp);
   }
@@ -310,10 +311,20 @@ void Library::setupPluginsFromPluginEntry(const char *path)
       }
       _pluginFactoryAUv2Info = static_cast<decltype(_pluginFactoryAUv2Info)>(
           _pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_AUV2));
+      _pluginFactoryAUv2Legacy = static_cast<decltype(_pluginFactoryAUv2Legacy)>(
+          _pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_AUV2_LEGACY));
       _pluginFactoryAAXInfo = static_cast<decltype(_pluginFactoryAAXInfo)>(
           _pluginEntry->get_factory(CLAP_PLUGIN_FACTORY_INFO_AAX));
       _pluginFactoryARAInfo =
           static_cast<const clap_ara_factory_t *>(_pluginEntry->get_factory(CLAP_EXT_ARA_FACTORY));
+
+      _pluginFactoryPresetDiscovery = static_cast<const clap_preset_discovery_factory_t *>(
+          _pluginEntry->get_factory(CLAP_PRESET_DISCOVERY_FACTORY_ID));
+      if (!_pluginFactoryPresetDiscovery)
+      {
+        _pluginFactoryPresetDiscovery = static_cast<const clap_preset_discovery_factory_t *>(
+            _pluginEntry->get_factory(CLAP_PRESET_DISCOVERY_FACTORY_ID_COMPAT));
+      }
 
       // detect plugins that do not check the CLAP_PLUGIN_FACTORY_ID
       if ((void *)_pluginFactory == (void *)_pluginFactoryVst3Info)
@@ -322,7 +333,9 @@ void Library::setupPluginsFromPluginEntry(const char *path)
         _pluginFactoryVst3Info = nullptr;
         _pluginFactoryVst3InfoIsV1 = false;
         _pluginFactoryAUv2Info = nullptr;
+        _pluginFactoryAUv2Legacy = nullptr;
         _pluginFactoryARAInfo = nullptr;
+        _pluginFactoryPresetDiscovery = nullptr;
       }
 
       auto count = _pluginFactory->get_plugin_count(_pluginFactory);

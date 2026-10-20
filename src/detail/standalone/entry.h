@@ -17,4 +17,9 @@ StandaloneHost *getStandaloneHost();
 
 int mainWait();
 int mainFinish();
+
+// with --list-audio-devices among the arguments: prints every audio api's devices and the
+// MIDI ports, as the standalone sees them, to stdout and returns true; the caller then
+// exits. false otherwise. for support, and to compare backends on one machine
+bool mainListAudioDevices(int argc, const char *const *argv);
 }  // namespace freeaudio::clap_wrapper::standalone

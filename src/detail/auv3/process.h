@@ -86,10 +86,14 @@ class ProcessAdapter
   };
   void queueParameterChange(clap_id paramId, double value);
 
-  // Drain the host-change queue outside rendering (the wrapper calls this
-  // after stop_processing to flush changes that were parked while the last
-  // cycles ran). Only legal when the render thread is quiesced.
-  bool dequeueParameterChange(QueuedParamChange &out);
+  // Parameter-only round trip for when no render is coming to carry the
+  // events: hands the queued host changes to the plugin through
+  // clap_plugin_params.flush() and forwards the plugin's parameter output
+  // events to the automation sink, exactly as process() would. Legal only
+  // when excluded from process() — the caller holds the wrapper's process
+  // lock and claims the thread identity CLAP demands for the plugin's
+  // current state ([active ? audio-thread : main-thread]).
+  void flush();
 
   // MIDI output event block (set by the AU host) — legacy 3-byte MIDI 1.0 path
   AUMIDIOutputEventBlock __nullable midiOutputEventBlock;

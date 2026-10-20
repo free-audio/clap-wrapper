@@ -1,76 +1,459 @@
 #include "standalone_host.h"
 #include "standalone_details.h"
 
-#ifdef __GNUC__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wall"  // other peoples errors are outside my scope
-#endif
-
-#include "RtMidi.h"
-
-#ifdef __GNUC__
-#pragma GCC diagnostic pop
-#endif
+#include <algorithm>
+#include <chrono>
+#include <cmath>
 
 namespace freeaudio::clap_wrapper::standalone
 {
+
+void StandaloneHost::guaranteeMidiBackend()
+{
+  if (midiBackend) return;
+
+  midiBackend = createMidiBackend();
+  if (!midiBackend)
+  {
+    LOGINFO("[ERROR] This build has no MIDI api");
+    return;
+  }
+
+  midiBackend->onMessage = [this](const uint8_t *data, size_t size) { processMIDIMessage(data, size); };
+  // the port lists follow on the next poll, with the audio devices'
+  midiBackend->onPortsChanged = [this]() { devicesChangedPending = true; };
+}
+
+std::vector<MidiPort> StandaloneHost::getMidiInputPorts()
+{
+  guaranteeMidiBackend();
+  return midiBackend ? midiBackend->inputs() : std::vector<MidiPort>{};
+}
+
+std::vector<MidiPort> StandaloneHost::getMidiOutputPorts()
+{
+  guaranteeMidiBackend();
+  return midiBackend ? midiBackend->outputs() : std::vector<MidiPort>{};
+}
+
+namespace
+{
+// the port with this id exactly; null if none
+const MidiPort *portWithId(const std::vector<MidiPort> &ports, const std::string &id)
+{
+  for (const auto &port : ports)
+  {
+    if (!id.empty() && port.id == id) return &port;
+  }
+  return nullptr;
+}
+
+// the first port not taken yet that a reference names, as findMidiPort orders it: two
+// identical devices share a name
+const MidiPort *untakenPort(const std::vector<MidiPort> &ports, const std::string &reference,
+                            const std::vector<std::string> &taken)
+{
+  auto free = [&taken](const MidiPort &port)
+  { return std::find(taken.begin(), taken.end(), port.id) == taken.end(); };
+
+  for (auto field : {&MidiPort::id, &MidiPort::legacyName, &MidiPort::name})
+  {
+    for (const auto &port : ports)
+    {
+      if (!reference.empty() && port.*field == reference && free(port)) return &port;
+    }
+  }
+  return nullptr;
+}
+
+// whether the saved ids were saved with the names saved now, which an older build that
+// rewrote the names did not
+bool savedIdsCount(const std::vector<std::string> &names,
+                   const std::vector<StandaloneSettings::SavedPort> &saved)
+{
+  if (saved.size() != names.size()) return false;
+  for (size_t i = 0; i < names.size(); ++i)
+  {
+    if (saved[i].name != names[i]) return false;
+  }
+  return true;
+}
+
+// the saved selection against these ports. the ids count while they were saved with the
+// names saved now; then each port is found by its id, and by its name only where the id
+// is gone - rtmidi's windows names carry the port's index, which moves. otherwise an
+// older build has rewritten the names, and they alone count. a name found nowhere is
+// absent
+void resolveSaved(const std::vector<MidiPort> &ports, const std::vector<std::string> &names,
+                  const std::vector<StandaloneSettings::SavedPort> &saved,
+                  std::vector<std::string> &presentIds, std::vector<std::string> &absentNames)
+{
+  presentIds.clear();
+  absentNames.clear();
+
+  const bool idsCount{savedIdsCount(names, saved)};
+
+  for (size_t i = 0; i < names.size(); ++i)
+  {
+    const MidiPort *port{nullptr};
+    if (idsCount)
+    {
+      port = portWithId(ports, saved[i].id);
+      if (port && std::find(presentIds.begin(), presentIds.end(), port->id) != presentIds.end())
+        port = nullptr;
+    }
+    if (!port) port = untakenPort(ports, names[i], presentIds);
+
+    if (port)
+      presentIds.push_back(port->id);
+    else
+      absentNames.push_back(names[i]);
+  }
+}
+}  // namespace
+
+void StandaloneHost::savedMidiSelection(bool input, std::vector<std::string> &presentIds,
+                                        std::vector<std::string> &absentNames)
+{
+  resolveSaved(input ? getMidiInputPorts() : getMidiOutputPorts(),
+               input ? settings.midiPortNames : settings.midiOutputPortNames,
+               input ? settings.midiPortIds : settings.midiOutputPortIds, presentIds, absentNames);
+}
+
+void StandaloneHost::setChosenMidiPorts(bool input, const std::vector<std::string> &references)
+{
+  const auto ports{input ? getMidiInputPorts() : getMidiOutputPorts()};
+  auto &names{input ? settings.midiPortNames : settings.midiOutputPortNames};
+  auto &ids{input ? settings.midiPortIds : settings.midiOutputPortIds};
+  const auto before{ids};
+
+  names.clear();
+  ids.clear();
+  for (const auto &reference : references)
+  {
+    if (const auto *port{portWithId(ports, reference)})
+    {
+      // the name an older build finds the port by: rtmidi's, where there is one
+      names.push_back(port->legacyName.empty() ? port->name : port->legacyName);
+      ids.push_back({port->id, names.back()});
+    }
+    else
+    {
+      // saved before and not plugged in now: kept as it was saved, its id with it
+      std::string id;
+      for (const auto &old : before)
+      {
+        if (old.name == reference) id = old.id;
+      }
+      names.push_back(reference);
+      ids.push_back({id, reference});
+    }
+  }
+  if (input) settings.midiBindAllPorts = false;
+}
+
+void StandaloneHost::openMidiPorts(const std::vector<std::string> &references, bool bindAll)
+{
+  closeMidiPorts();
+
+  // a plugin with no note input has no port for what these would deliver; the
+  // selection stays in the settings, untouched
+  if (!(hasMIDIInput || hasClapNoteInput)) return;
+
+  guaranteeMidiBackend();
+  if (!midiBackend) return;
+
+  const auto available{midiBackend->inputs()};
+
+  std::vector<std::string> wanted;
+  for (const auto &port : available)
+  {
+    if (bindAll) wanted.push_back(port.id);
+  }
+  for (const auto &reference : bindAll ? std::vector<std::string>{} : references)
+  {
+    if (const auto *port{findMidiPort(available, reference)})
+      wanted.push_back(port->id);
+    else
+      LOGINFO("[WARNING] MIDI input '{}' is not available", reference);
+  }
+
+  currentMidiInputIds = midiBackend->openInputs(wanted);
+  for (const auto &id : wanted)
+  {
+    if (std::find(currentMidiInputIds.begin(), currentMidiInputIds.end(), id) ==
+        currentMidiInputIds.end())
+      LOGINFO("[ERROR] Unable to open MIDI input '{}'", id);
+  }
+}
+
+void StandaloneHost::closeMidiPorts()
+{
+  if (midiBackend && !currentMidiInputIds.empty()) midiBackend->openInputs({});
+  currentMidiInputIds.clear();
+}
+
+bool StandaloneHost::supportsVirtualMidiPorts()
+{
+  // what the midi api can do; every macos version has coremidi's virtual endpoints
+  guaranteeMidiBackend();
+  return midiBackend && midiBackend->supportsVirtualPorts();
+}
+
+std::string StandaloneHost::virtualMidiPortName(bool input) const
+{
+  std::string name{"MIDI"};
+  if (clapPlugin && clapPlugin->_plugin && clapPlugin->_plugin->desc &&
+      clapPlugin->_plugin->desc->name && *clapPlugin->_plugin->desc->name)
+    name = clapPlugin->_plugin->desc->name;
+  return name + (input ? " Virtual In" : " Virtual Out");
+}
+
+void StandaloneHost::setVirtualMidiInput(bool open)
+{
+  open = open && supportsVirtualMidiPorts() && (hasMIDIInput || hasClapNoteInput);
+  if (!midiBackend || (!open && !midiVirtualInputOpen)) return;
+
+  const auto name{virtualMidiPortName(true)};
+  midiVirtualInputOpen = midiBackend->setVirtualInput(open ? name : std::string{}) && open;
+  if (open && !midiVirtualInputOpen)
+    LOGINFO("[ERROR] Unable to create the virtual MIDI input '{}'", name);
+}
+
+void StandaloneHost::openMidiOutputPorts(const std::vector<std::string> &references)
+{
+  stopMidiOutputThread();
+  guaranteeMidiBackend();
+  if (!midiBackend) return;
+
+  std::vector<std::string> wanted;
+  if (createsMidiOutput)
+  {
+    const auto available{midiBackend->outputs()};
+    for (const auto &reference : references)
+    {
+      if (const auto *port{findMidiPort(available, reference)})
+        wanted.push_back(port->id);
+      else
+        LOGINFO("[WARNING] MIDI output '{}' is not available", reference);
+    }
+  }
+
+  currentMidiOutputIds = midiBackend->openOutputs(wanted);
+  for (const auto &id : wanted)
+  {
+    if (std::find(currentMidiOutputIds.begin(), currentMidiOutputIds.end(), id) ==
+        currentMidiOutputIds.end())
+      LOGINFO("[ERROR] Unable to open MIDI output '{}'", id);
+  }
+
+  startMidiOutputThreadIfNeeded();
+}
+
+void StandaloneHost::setVirtualMidiOutput(bool open)
+{
+  stopMidiOutputThread();
+
+  open = open && supportsVirtualMidiPorts() && createsMidiOutput;
+  if (midiBackend && (open || midiVirtualOutputOpen))
+  {
+    const auto name{virtualMidiPortName(false)};
+    midiVirtualOutputOpen = midiBackend->setVirtualOutput(open ? name : std::string{}) && open;
+    if (open && !midiVirtualOutputOpen)
+      LOGINFO("[ERROR] Unable to create the virtual MIDI output '{}'", name);
+  }
+
+  startMidiOutputThreadIfNeeded();
+}
+
+void StandaloneHost::closeMidiOutputPorts()
+{
+  stopMidiOutputThread();
+  if (midiBackend)
+  {
+    if (!currentMidiOutputIds.empty()) midiBackend->openOutputs({});
+    if (midiVirtualOutputOpen) midiBackend->setVirtualOutput({});
+  }
+  currentMidiOutputIds.clear();
+  midiVirtualOutputOpen = false;
+}
+
+void StandaloneHost::stopMidiOutputThread()
+{
+  midiOutputOpen = false;
+  if (midiOutputThread.joinable()) midiOutputThread.join();
+}
+
+void StandaloneHost::startMidiOutputThreadIfNeeded()
+{
+  if (midiOutputThread.joinable() || (currentMidiOutputIds.empty() && !midiVirtualOutputOpen)) return;
+
+  // whatever the audio thread queued before the last stop is stale. nothing is queued
+  // while midiOutputOpen is clear, and nothing else pops, so this empties the queue
+  midiFromAudio.clear();
+
+  midiOutputOpen = true;
+  midiOutputThread = std::thread([this]() { midiOutputLoop(); });
+}
+
+void StandaloneHost::midiOutputLoop()
+{
+  using namespace std::chrono_literals;
+
+  // a note held when the port closes would otherwise sound on until the device is
+  // switched off, so a port that has seen a note on is sent all notes off on the way out
+  bool sentNoteOn{false};
+
+  // to every open output and the virtual one
+  auto sendToAll = [this](const unsigned char *message, size_t size)
+  { midiBackend->send(message, size); };
+
+  // room for the largest message, sysex included; allocated here, off the audio thread
+  std::vector<uint8_t> message(decltype(midiFromAudio)::maxMessage);
+
+  while (midiOutputOpen)
+  {
+    while (const auto size{midiFromAudio.nextSize()})
+    {
+      midiFromAudio.pop(message.data());
+      if ((message[0] & 0xF0) == 0x90) sentNoteOn = true;
+      sendToAll(message.data(), size);
+    }
+
+    // the audio thread cannot wake this one without a call that may block, so it polls
+    std::this_thread::sleep_for(1ms);
+  }
+
+  if (sentNoteOn)
+  {
+    for (unsigned char channel = 0; channel < 16; ++channel)
+    {
+      const unsigned char allNotesOff[3]{static_cast<unsigned char>(0xB0 | channel), 123, 0};
+      sendToAll(allNotesOff, sizeof(allNotesOff));
+    }
+  }
+}
+
+bool StandaloneHost::outputEventPush(const clap_event_header_t *evt)
+{
+  // anything else, or nowhere to send it, is taken and dropped, as it always was
+  if (!evt || evt->space_id != CLAP_CORE_EVENT_SPACE_ID || !midiOutputOpen) return true;
+
+  uint8_t message[3]{};
+  uint32_t size{0};
+  switch (evt->type)
+  {
+    case CLAP_EVENT_MIDI:
+    {
+      const auto *midi = reinterpret_cast<const clap_event_midi_t *>(evt);
+      // what is not a whole short message cannot be sent as one
+      size = static_cast<uint32_t>(shortMidiMessageSize(midi->data[0]));
+      if (size == 0) return true;
+      memcpy(message, midi->data, size);
+      break;
+    }
+    case CLAP_EVENT_MIDI_SYSEX:
+    {
+      const auto *sysex = reinterpret_cast<const clap_event_midi_sysex_t *>(evt);
+      return midiFromAudio.tryPush(sysex->buffer, sysex->size);
+    }
+    case CLAP_EVENT_NOTE_ON:
+    case CLAP_EVENT_NOTE_OFF:
+    {
+      const auto *note = reinterpret_cast<const clap_event_note_t *>(evt);
+      // a wildcard channel or key names no single midi note
+      if (note->channel < 0 || note->channel > 15 || note->key < 0 || note->key > 127) return true;
+
+      const bool on = evt->type == CLAP_EVENT_NOTE_ON;
+      auto velocity = std::clamp((int)std::lround(note->velocity * 127.0), 0, 127);
+      // a note on at velocity 0 is a note off in midi
+      if (on && velocity == 0) velocity = 1;
+
+      message[0] = static_cast<uint8_t>((on ? 0x90 : 0x80) | note->channel);
+      message[1] = static_cast<uint8_t>(note->key);
+      message[2] = static_cast<uint8_t>(velocity);
+      size = 3;
+      break;
+    }
+    default:
+      return true;
+  }
+
+  return midiFromAudio.tryPush(message, size);
+}
+
 void StandaloneHost::startMIDIThread()
 {
-  try
-  {
-    LOGINFO("Initializing Midi");
-    auto midiIn = std::make_unique<RtMidiIn>();
-    numMidiPorts = midiIn->getPortCount();
-  }
-  catch (RtMidiError &error)
-  {
-    error.printMessage();
-    exit(EXIT_FAILURE);
-  }
+  LOGINFO("Initializing Midi");
 
-  LOGDETAIL("MIDI: There are {} MIDI input sources available. Binding all.", numMidiPorts);
-  for (unsigned int i = 0; i < numMidiPorts; i++)
+  // Honour the persisted selection. This used to bind every port unconditionally
+  // while the settings UI showed nothing as selected, and it ended the whole
+  // process with exit(EXIT_FAILURE) if constructing the first RtMidiIn threw.
+  std::vector<std::string> present, absent;
+
+  // a selection saved by names alone - by a build before the ids - gains the ids of the
+  // ports it names now, for the next save: rtmidi's windows names have the port's index
+  // in them, and another device plugged in before it moves that
+  auto addIds = [this, &present, &absent](bool input)
   {
-    try
-    {
-      auto midiIn = std::make_unique<RtMidiIn>();
-      LOGDETAIL("  - '{}'", midiIn->getPortName(i));
-      midiIn->openPort(i);
-      midiIn->setCallback(midiCallback, this);
-      midiIns.push_back(std::move(midiIn));
-    }
-    catch (RtMidiError &error)
-    {
-      error.printMessage();
-    }
+    const auto &names{input ? settings.midiPortNames : settings.midiOutputPortNames};
+    const auto &ids{input ? settings.midiPortIds : settings.midiOutputPortIds};
+    if (names.empty() || savedIdsCount(names, ids) || (input && settings.midiBindAllPorts)) return;
+    savedMidiSelection(input, present, absent);
+    auto references{present};
+    references.insert(references.end(), absent.begin(), absent.end());
+    setChosenMidiPorts(input, references);
+  };
+  addIds(true);
+  addIds(false);
+
+  savedMidiSelection(true, present, absent);
+  for (const auto &name : absent)
+  {
+    (void)name;  // with logging compiled out
+    LOGINFO("[WARNING] MIDI input '{}' is not available", name);
   }
+  openMidiPorts(present, settings.midiBindAllPorts);
+  setVirtualMidiInput(settings.midiVirtualInput);
+
+  savedMidiSelection(false, present, absent);
+  for (const auto &name : absent)
+  {
+    (void)name;  // with logging compiled out
+    LOGINFO("[WARNING] MIDI output '{}' is not available", name);
+  }
+  openMidiOutputPorts(present);
+  setVirtualMidiOutput(settings.midiVirtualOutput);
 }
 
-void StandaloneHost::processMIDIEvents(double deltatime, std::vector<unsigned char> *message)
+void StandaloneHost::processMIDIMessage(const uint8_t *data, size_t size)
 {
-  auto nBytes = message->size();
+  if (!data || size == 0) return;
 
-  if (nBytes <= 3)
+  // active sensing keeps a cable's link alive and means nothing to a plugin; rtmidi
+  // dropped it, as it is sent three times a second
+  if (data[0] == 0xFE) return;
+
+  // sysex goes to a plugin that takes the midi dialect only, and a short message has a
+  // status byte and at most two data bytes
+  if (data[0] == 0xF0 ? !hasMIDIInput : size > 3) return;
+
+  ClapWrapper::detail::shared::SpinLockGuard g(midiToAudioPushLock);
+  if (!midiToAudio.tryPush(data, static_cast<uint32_t>(size)))
   {
-    midiChunk ck;
-    memset(ck.dat, 0, sizeof(ck.dat));
-    memcpy(ck.dat, message->data(), nBytes);
-    midiToAudioQueue.push(ck);
+    const auto dropped{++midiDropped};
+    (void)dropped;  // with logging compiled out
+    if (dropped == 1 || dropped % 100 == 0)
+      LOGINFO("[WARNING] {} MIDI messages dropped: too large, or the plugin is not taking them",
+              dropped);
   }
-}
-
-void StandaloneHost::midiCallback(double deltatime, std::vector<unsigned char> *message, void *userData)
-{
-  auto sh = (StandaloneHost *)userData;
-  sh->processMIDIEvents(deltatime, message);
 }
 
 void StandaloneHost::stopMIDIThread()
 {
-  for (auto &m : midiIns)
-  {
-    m.reset();
-  }
+  closeMidiPorts();
+  setVirtualMidiInput(false);
+  closeMidiOutputPorts();
 }
 
 }  // namespace freeaudio::clap_wrapper::standalone

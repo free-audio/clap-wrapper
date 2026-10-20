@@ -19,6 +19,12 @@ inline clap_sectime doubleToSecTime(double t)
   return round(t * CLAP_SECTIME_FACTOR);
 }
 
+// the only event types a parameter flush may carry, per clap/ext/params.h
+inline bool isParameterEvent(uint16_t type)
+{
+  return type == CLAP_EVENT_PARAM_VALUE || type == CLAP_EVENT_PARAM_MOD;
+}
+
 ProcessAdapter::~ProcessAdapter()
 {
   if (_input_ports)
@@ -187,6 +193,45 @@ void ProcessAdapter::sortEventIndices()
             });
 }
 
+// Parameter-only round trip, for when no render is running to carry the events.
+// Two things are due when process() is not coming: the parameter events queued
+// since the last cycle -- host automation, arriving through SetParameter -- have
+// to reach the plugin, and the plugin has to be given somewhere to push its own
+// output events, which in CLAP it can only do from inside process() or flush().
+//
+// clap_plugin_params.flush() is [main-thread] while the plugin is deactivated and
+// [audio-thread] while it is active; the caller decides which of the two it is
+// and serializes this against Render() accordingly.
+//
+// Only parameter events are legal in a flush, so the index list is narrowed to
+// those. Anything else queued -- MIDI the host handed us outside a render --
+// keeps its place in _events and waits for the next process() cycle.
+void ProcessAdapter::flush()
+{
+  if (!_ext_params) return;
+
+  _eventindices.clear();
+  for (size_t i = 0; i < _events.size(); ++i)
+  {
+    if (isParameterEvent(_events[i].header.type)) _eventindices.emplace_back(i);
+  }
+  sortEventIndices();
+
+  _ext_params->flush(_plugin, _processData.in_events, _processData.out_events);
+
+  // What was just delivered is gone; whatever is left keeps waiting, so both the
+  // queue and the index list are rebuilt over the events that remain.
+  size_t kept = 0;
+  for (size_t i = 0; i < _events.size(); ++i)
+  {
+    if (!isParameterEvent(_events[i].header.type)) _events[kept++] = _events[i];
+  }
+  _events.resize(kept);
+
+  _eventindices.clear();
+  for (size_t i = 0; i < kept; ++i) _eventindices.emplace_back(i);
+}
+
 void ProcessAdapter::process(ProcessData &data)
 {
   // CLAP requires event times within [0, frames_count); a host stamping
@@ -247,7 +292,9 @@ void ProcessAdapter::process(ProcessData &data)
     for (uint32_t i = 0; i < _numInputs; ++i)
     {
       auto &m = static_cast<ausdk::AUInputElement &>(*_audioInputScope->SafeGetElement(i));
-      if (m.PullInput(data.flags, data.timestamp, i, data.numSamples) == noErr)
+      // Silence reported by one input must not describe another input or the plugin output.
+      auto inputFlags = data.flags & ~kAudioUnitRenderAction_OutputIsSilence;
+      if (m.PullInput(inputFlags, data.timestamp, i, data.numSamples) == noErr)
       {
         AudioBufferList &myInBuffers = m.GetBufferList();
         auto num = myInBuffers.mNumberBuffers;
@@ -307,7 +354,6 @@ void ProcessAdapter::process(ProcessData &data)
 #endif
 
   _plugin->process(_plugin, &_processData);
-
   processOutputEvents();
 
   // clean up and prepare the events for the next cycle
@@ -319,9 +365,11 @@ void ProcessAdapter::process(ProcessData &data)
 uint32_t ProcessAdapter::input_events_size(const struct clap_input_events *list)
 {
   auto self = static_cast<ProcessAdapter *>(list->ctx);
-  auto k = (uint32_t)self->_events.size();
+  // the index list, not the event list: the two match one to one for a process()
+  // cycle, but a flush narrows the indices to the parameter events and leaves the
+  // rest of the queue in place.
+  auto k = (uint32_t)self->_eventindices.size();
   return k;
-  // return self->_vstdata->inputEvents->getEventCount();
 }
 
 // returns the pointer to an event in the list. The index accessed is not the position in the event list itself
@@ -330,7 +378,7 @@ const clap_event_header_t *ProcessAdapter::input_events_get(const struct clap_in
                                                             uint32_t index)
 {
   auto self = static_cast<ProcessAdapter *>(list->ctx);
-  if (self->_events.size() > index)
+  if (self->_eventindices.size() > index)
   {
     // we can safely return the note.header also for other event types
     // since they are at the same memory address
@@ -804,5 +852,56 @@ void ProcessAdapter::addParameterEvent(const clap_param_info_t &info, double val
 
   this->_eventindices.emplace_back(this->_events.size());
   this->_events.emplace_back(n);
+}
+
+// Moves the queued parameter events onto another adapter. This exists for one
+// moment: deactivateCLAP() drops the process adapter, and anything the host set
+// since the last render or flush is still sitting in it. Those values are as
+// real as any other -- a host that sets a parameter and then deactivates the
+// unit (a restart, a format change, a project close-and-reopen) has been told
+// nothing went wrong -- so they move to the adapter the deactivated state
+// flushes from rather than dying with this one.
+//
+// Only parameter events move. Everything else queued here belongs to a render
+// that is not going to happen now, and a flush may not carry it anyway.
+//
+// The offsets go with the block they were offsets into, and dropping them is
+// not tidiness: sortEventIndices() sorts on time first, and only breaks ties on
+// the insertion index. Left as they were, an event stamped into some earlier
+// block would sort *after* a value the deactivated state queues later at time
+// 0 -- the stale value applied last, which is the inversion this transfer
+// exists to avoid. At 0 they all tie, and the tiebreak then orders them the way
+// they arrived: these first, anything queued afterwards over the top.
+//
+// Order follows position in _events, because flush() rebuilds _eventindices
+// over it before sorting. Keeping the index list in step here is for a
+// process() that never comes on the adapter these are going to.
+size_t ProcessAdapter::transferPendingParametersTo(ProcessAdapter &other)
+{
+  if (&other == this) return 0;
+
+  size_t moved = 0;
+  size_t kept = 0;
+  for (size_t i = 0; i < _events.size(); ++i)
+  {
+    if (isParameterEvent(_events[i].header.type))
+    {
+      clap_multi_event_t n = _events[i];
+      n.header.time = 0;
+      other._eventindices.emplace_back(other._events.size());
+      other._events.emplace_back(n);
+      ++moved;
+    }
+    else
+    {
+      _events[kept++] = _events[i];
+    }
+  }
+
+  _events.resize(kept);
+  _eventindices.clear();
+  for (size_t i = 0; i < kept; ++i) _eventindices.emplace_back(i);
+
+  return moved;
 }
 }  // namespace Clap::AUv2

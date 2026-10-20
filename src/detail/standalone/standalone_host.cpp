@@ -1,10 +1,17 @@
 
+#include <algorithm>
 #include <cassert>
 #include "standalone_host.h"
 #include <fstream>
 
 #if LIN && CLAP_WRAPPER_STANDALONE_X11
 #include "detail/standalone/linux/x11_gui.h"
+#endif
+
+#if LIN
+#include <pwd.h>
+#include <unistd.h>
+#include <cstdlib>
 #endif
 
 #if WIN
@@ -35,6 +42,34 @@ std::optional<fs::path> getStandaloneSettingsPath()
 
   return std::nullopt;
 }
+#elif LIN
+// the XDG config directory: $XDG_CONFIG_HOME where it is set and absolute (the spec has a
+// relative one ignored), else ~/.config, with the home from $HOME or the password database
+std::optional<fs::path> getStandaloneSettingsPath()
+{
+  fs::path config;
+  const char *xdg{std::getenv("XDG_CONFIG_HOME")};
+  if (xdg && *xdg && fs::path(xdg).is_absolute())
+  {
+    config = xdg;
+  }
+  else
+  {
+    const char *home{std::getenv("HOME")};
+    if (!home || !*home)
+    {
+      const auto *user{::getpwuid(::getuid())};
+      home = user ? user->pw_dir : nullptr;
+    }
+    if (!home || !*home) return std::nullopt;
+    config = fs::path(home) / ".config";
+  }
+
+  const auto data{config / "clap-wrapper-standalone"};
+  std::error_code error;
+  fs::create_directories(data, error);
+  return data;
+}
 #elif !MAC
 std::optional<fs::path> getStandaloneSettingsPath()
 {
@@ -43,35 +78,104 @@ std::optional<fs::path> getStandaloneSettingsPath()
 }
 #endif
 
+#if WIN && CLAP_WRAPPER_HAS_WIN32
+uint32_t supportedScreenAppearances()
+{
+  // the settings window's own colours, and the dark title bar windows 10 has from 1809
+  return (1u << CLAP_WRAPPER_STANDALONE_APPEARANCE_AUTO) |
+         (1u << CLAP_WRAPPER_STANDALONE_APPEARANCE_LIGHT) |
+         (1u << CLAP_WRAPPER_STANDALONE_APPEARANCE_DARK);
+}
+#elif LIN && CLAP_WRAPPER_STANDALONE_X11
+uint32_t supportedScreenAppearances()
+{
+  // the strip and the settings window are drawn in a light and a dark theme; auto has no
+  // system setting to follow on X11, and is the light one
+  return (1u << CLAP_WRAPPER_STANDALONE_APPEARANCE_AUTO) |
+         (1u << CLAP_WRAPPER_STANDALONE_APPEARANCE_LIGHT) |
+         (1u << CLAP_WRAPPER_STANDALONE_APPEARANCE_DARK);
+}
+#elif !MAC
+uint32_t supportedScreenAppearances()
+{
+  return 0;
+}
+#endif
+
 StandaloneHost::~StandaloneHost()
 {
+  // safety net for shutdown paths which don't run through mainFinish
+  deactivatePlugin();
+
+  // a midi output thread still running would end the process from ~thread
+  closeMidiOutputPorts();
+
+  // the backends call back into this host from their own threads
+  if (audioBackend) audioBackend->stop();
+  audioBackend.reset();
+  midiBackend.reset();
 }
 
 void StandaloneHost::setupAudioBusses(const clap_plugin_t *plugin,
                                       const clap_plugin_audio_ports_t *audioports)
 {
   if (!audioports) return;
+
+  inputChannelByBus.clear();
+  outputChannelByBus.clear();
+  totalInputChannels = 0;
+  totalOutputChannels = 0;
+  mainInput = 0;
+  mainOutput = 0;
+
   numAudioInputs = audioports->count(plugin, true);
   numAudioOutputs = audioports->count(plugin, false);
   LOGDETAIL("inputs/outputs : {}/{}", numAudioInputs, numAudioOutputs);
 
+  // clapProcess works out of fixed pools: one clap_audio_buffer per bus and
+  // one utilityBuffer lane per channel, utilityBufferMaxChannels of each. A
+  // release build has no assert to catch a plugin that reports more, so clamp
+  // here - surplus busses are dropped and surplus channels truncated to zero -
+  // to keep the process loop inside the pools.
+  const auto maxChannels = static_cast<uint32_t>(utilityBufferMaxChannels);
+  if (numAudioInputs + numAudioOutputs > maxChannels)
+  {
+    LOGINFO("[ERROR] plugin reports {} audio busses, more than the supported {}; dropping the surplus",
+            numAudioInputs + numAudioOutputs, maxChannels);
+    numAudioInputs = std::min(numAudioInputs, maxChannels);
+    numAudioOutputs = maxChannels - numAudioInputs;
+  }
+
+  uint32_t channelBudget{maxChannels};
   clap_audio_port_info_t info;
   for (auto i = 0U; i < numAudioInputs; ++i)
   {
     audioports->get(plugin, i, true, &info);
-    inputChannelByBus.push_back(info.channel_count);
-    totalInputChannels += info.channel_count;
+    auto busChans = std::min(info.channel_count, channelBudget);
+    if (busChans != info.channel_count)
+    {
+      LOGINFO("[ERROR] input bus {} truncated from {} to {} channels; the utility buffer holds {}", i,
+              info.channel_count, busChans, maxChannels);
+    }
+    channelBudget -= busChans;
+    inputChannelByBus.push_back(busChans);
+    totalInputChannels += busChans;
     if (info.flags & CLAP_AUDIO_PORT_IS_MAIN) mainInput = i;
   }
   for (auto i = 0U; i < numAudioOutputs; ++i)
   {
     audioports->get(plugin, i, false, &info);
-    outputChannelByBus.push_back(info.channel_count);
-    totalOutputChannels += info.channel_count;
+    auto busChans = std::min(info.channel_count, channelBudget);
+    if (busChans != info.channel_count)
+    {
+      LOGINFO("[ERROR] output bus {} truncated from {} to {} channels; the utility buffer holds {}", i,
+              info.channel_count, busChans, maxChannels);
+    }
+    channelBudget -= busChans;
+    outputChannelByBus.push_back(busChans);
+    totalOutputChannels += busChans;
     if (info.flags & CLAP_AUDIO_PORT_IS_MAIN) mainOutput = i;
   }
-
-  assert(totalOutputChannels + totalInputChannels < utilityBufferMaxChannels);
 }
 
 void StandaloneHost::setupMIDIBusses(const clap_plugin_t *plugin,
@@ -91,27 +195,42 @@ void StandaloneHost::setupMIDIBusses(const clap_plugin_t *plugin,
       hasClapNoteInput = true;
     }
   }
+  // the midi outputs send the plugin's midi events and its note on/off, whichever port
+  // they come from
   auto numMIDIOutPorts = noteports->count(plugin, false);
-  if (numMIDIOutPorts > 0)
+  for (uint32_t i = 0; i < numMIDIOutPorts; ++i)
   {
-    createsMidiOutput = true;
-    LOGINFO("[WARNING] Midi Output not supported yet");
+    clap_note_port_info_t info;
+    if (noteports->get(plugin, i, false, &info) &&
+        (info.supported_dialects & (CLAP_NOTE_DIALECT_MIDI | CLAP_NOTE_DIALECT_CLAP)))
+    {
+      createsMidiOutput = true;
+    }
   }
 }
 
-void StandaloneHost::clapProcess(void *pOutput, const void *pInput, uint32_t frameCount)
+void StandaloneHost::process(const float *const *inputs, uint32_t inputChannels, float *const *outputs,
+                             uint32_t outputChannels, uint32_t frameCount)
 {
   ClapWrapper::detail::shared::SpinLockGuard processLockGuard(processLock);
-  auto f = (float *)pOutput;
+
+  auto silenceOutputs = [&]()
+  {
+    for (auto ch = 0U; outputs && ch < outputChannels; ++ch)
+    {
+      memset(outputs[ch], 0, frameCount * sizeof(float));
+    }
+  };
 
   if (!running)
   {
-    memset(f, 0, frameCount * currentOutputChannels * sizeof(float));
+    silenceOutputs();
     finishedRunning = true;
     return;
   }
 
-  clap_process process;
+  clap_process process{};
+  process.steady_time = steadyTime;
   process.transport = nullptr;  // this is a freefloating host
   process.in_events = &inputEvents;
   process.out_events = &outputEvents;
@@ -126,34 +245,32 @@ void StandaloneHost::clapProcess(void *pOutput, const void *pInput, uint32_t fra
     std::terminate();
   }
 
-  process.audio_outputs_count = 1;
-
   float *bufferChanPtr[utilityBufferMaxChannels]{};
   clap_audio_buffer buffers[utilityBufferMaxChannels]{};  // probably twice as large
   size_t ptrIdx{0};
   size_t bufIdx{0};
 
   int32_t mainOutIdx{-1}, mainInIdx{-1};
+  uint32_t mainInChans{0}, mainOutChans{0};
 
   process.audio_inputs = &(buffers[0]);
   for (auto inp = 0U; inp < numAudioInputs; ++inp)
   {
-    // For now assert sterep
-    assert(inputChannelByBus[inp] == 2);
-    bufferChanPtr[ptrIdx] = &(utilityBuffer[ptrIdx][0]);
-    memset(bufferChanPtr[ptrIdx], 0, frameCount * sizeof(float));
-    ptrIdx++;
-    bufferChanPtr[ptrIdx] = &(utilityBuffer[ptrIdx][0]);
-    memset(bufferChanPtr[ptrIdx], 0, frameCount * sizeof(float));
-    ptrIdx++;
+    auto busChans = inputChannelByBus[inp];
+    buffers[bufIdx].channel_count = busChans;
+    buffers[bufIdx].data32 = &(bufferChanPtr[ptrIdx]);
 
-    buffers[bufIdx].channel_count = 2;
-    buffers[bufIdx].data32 = &(bufferChanPtr[ptrIdx - 2]);
-
-    if (mainInIdx < 0)
+    if (mainInIdx < 0 && inp == mainInput && busChans > 0)
     {
-      // TODO cleaner
-      mainInIdx = (int32_t)(ptrIdx - 2);
+      mainInIdx = (int32_t)ptrIdx;
+      mainInChans = busChans;
+    }
+
+    for (auto ch = 0U; ch < busChans; ++ch)
+    {
+      bufferChanPtr[ptrIdx] = &(utilityBuffer[ptrIdx][0]);
+      memset(bufferChanPtr[ptrIdx], 0, frameCount * sizeof(float));
+      ptrIdx++;
     }
     bufIdx++;
   }
@@ -161,59 +278,98 @@ void StandaloneHost::clapProcess(void *pOutput, const void *pInput, uint32_t fra
   process.audio_outputs = &(buffers[bufIdx]);
   for (auto oup = 0U; oup < numAudioOutputs; ++oup)
   {
-    // For now assert sterep
-    assert(outputChannelByBus[oup] == 2);
-    bufferChanPtr[ptrIdx] = &(utilityBuffer[ptrIdx][0]);
-    ptrIdx++;
-    bufferChanPtr[ptrIdx] = &(utilityBuffer[ptrIdx][0]);
-    ptrIdx++;
+    auto busChans = outputChannelByBus[oup];
+    buffers[bufIdx].channel_count = busChans;
+    buffers[bufIdx].data32 = &(bufferChanPtr[ptrIdx]);
 
-    buffers[bufIdx].channel_count = 2;
-    buffers[bufIdx].data32 = &(bufferChanPtr[ptrIdx - 2]);
-
-    if (mainOutIdx < 0)
+    if (mainOutIdx < 0 && oup == mainOutput && busChans > 0)
     {
-      // TODO cleaner
-      mainOutIdx = (int32_t)(ptrIdx - 2);
+      mainOutIdx = (int32_t)ptrIdx;
+      mainOutChans = busChans;
     }
 
+    for (auto ch = 0U; ch < busChans; ++ch)
+    {
+      bufferChanPtr[ptrIdx] = &(utilityBuffer[ptrIdx][0]);
+      ptrIdx++;
+    }
     bufIdx++;
   }
 
-  if (mainInIdx >= 0 && pInput)
+  // muted leaves the input buffers at the silence written above
+  if (mainInIdx >= 0 && inputs && inputChannels > 0 && !inputMuted.load(std::memory_order_relaxed))
   {
-    auto *g = (const float *)pInput;
-    auto stride = currentInputChannels;
-    auto chan2Off = (currentInputChannels > 1) ? 1 : 0;
-
-    for (auto i = 0U; i < frameCount; ++i)
+    // Route the device channels onto the plugin's main input bus. When the bus is wider
+    // than the device the last device channel repeats (a mono device feeds both channels
+    // of a stereo bus); when the device is wider the surplus device channels are dropped.
+    for (auto ch = 0U; ch < mainInChans; ++ch)
     {
-      utilityBuffer[mainInIdx][i] = g[stride * i];
-      utilityBuffer[mainInIdx + 1][i] = g[stride * i + chan2Off];
+      auto devChan = (ch < inputChannels) ? ch : inputChannels - 1;
+      memcpy(utilityBuffer[mainInIdx + ch], inputs[devChan], frameCount * sizeof(float));
     }
   }
 
+  // the midi that came in, in its order, as long as the block has room for events and the
+  // arena for sysex: what does not fit waits for the next block, with all that came after
   clearInputEvents();
-  clap_event_midi midi;
-  midiChunk ck;
-  while (midiToAudioQueue.pop(ck))
+  for (uint32_t arenaUsed = 0; inputEventSize() < maxEventsPerCycle;)
   {
-    midi.port_index = 0;
-    midi.header.size = sizeof(clap_event_midi);
-    midi.header.time = 0;
-    midi.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-    midi.header.type = CLAP_EVENT_MIDI;
-    midi.header.flags = 0;
-    memcpy(midi.data, ck.dat, sizeof(ck.dat));
-    pushInputEvent(&(midi.header));
+    const auto size{midiToAudio.nextSize()};
+    if (size == 0) break;
+
+    if (midiToAudio.nextStatus() != 0xF0)
+    {
+      clap_event_midi midi{};
+      midi.header.size = sizeof(clap_event_midi);
+      midi.header.time = 0;
+      midi.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+      midi.header.type = CLAP_EVENT_MIDI;
+      midi.header.flags = 0;
+      midi.port_index = 0;
+      midiToAudio.pop(midi.data);
+      pushInputEvent(&(midi.header));
+      continue;
+    }
+
+    if (arenaUsed + size > sizeof(sysexArena)) break;
+
+    clap_event_midi_sysex sysex{};
+    sysex.header.size = sizeof(clap_event_midi_sysex);
+    sysex.header.time = 0;
+    sysex.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+    sysex.header.type = CLAP_EVENT_MIDI_SYSEX;
+    sysex.header.flags = 0;
+    sysex.port_index = 0;
+    sysex.buffer = sysexArena + arenaUsed;
+    sysex.size = midiToAudio.pop(sysexArena + arenaUsed);
+    arenaUsed += size;
+    pushInputEvent(&(sysex.header));
   }
 
   clapPlugin->_plugin->process(clapPlugin->_plugin, &process);
+  steadyTime += frameCount;
 
-  for (auto i = 0U; i < frameCount; ++i)
+  if (mainOutIdx >= 0 && outputs && outputChannels > 0)
   {
-    f[2 * i] = utilityBuffer[mainOutIdx][i];
-    f[2 * i + 1] = utilityBuffer[mainOutIdx + 1][i];
+    // A mono bus is duplicated onto the first two device channels, anything else
+    // maps channel-for-channel. Surplus device channels are silenced rather than
+    // fed the last bus channel: devices now open at their full width, so that
+    // rule put a stereo plugin's right channel on outputs 3 to 8.
+    const bool monoBus{mainOutChans == 1};
+    const auto fedChannels{std::min(monoBus ? 2U : mainOutChans, outputChannels)};
+
+    for (auto ch = 0U; ch < fedChannels; ++ch)
+    {
+      memcpy(outputs[ch], utilityBuffer[mainOutIdx + (monoBus ? 0 : ch)], frameCount * sizeof(float));
+    }
+    for (auto ch = fedChannels; ch < outputChannels; ++ch)
+    {
+      memset(outputs[ch], 0, frameCount * sizeof(float));
+    }
+  }
+  else
+  {
+    silenceOutputs();
   }
 }
 
@@ -364,23 +520,375 @@ bool StandaloneHost::tryLoadStandaloneAndPluginSettings(const fs::path &fromDir,
   return true;
 }
 
-void StandaloneHost::activatePlugin(int32_t sr, int32_t minBlock, int32_t maxBlock)
+namespace
 {
-  if (isActive)
+// a path the plugin hands over in utf-8; std::filesystem would read a narrow string in
+// the windows code page
+fs::path pathFromUtf8(const std::string &text)
+{
+#if WIN && CLAP_WRAPPER_HAS_WIN32
+  if (text.empty()) return {};
+  const auto length{
+      ::MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0)};
+  std::wstring wide(static_cast<size_t>(length), L'\0');
+  ::MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), wide.data(), length);
+  return fs::path(wide);
+#else
+  return fs::path(text);
+#endif
+}
+
+// the plugin's entry's factory for the standalone, or null
+const clap_wrapper_plugin_factory_standalone_settings_t *standaloneSettingsFactory(
+    const clap_plugin_entry *entry, const void *pluginFactory)
+{
+  if (!entry || !entry->get_factory) return nullptr;
+
+  auto *factory = static_cast<const clap_wrapper_plugin_factory_standalone_settings_t *>(
+      entry->get_factory(CLAP_WRAPPER_PLUGIN_FACTORY_STANDALONE_SETTINGS));
+  // some entries answer every id with their plugin factory
+  if (factory == pluginFactory) return nullptr;
+  return factory;
+}
+
+// the base folder the entry names, or nullopt for the standalone's own
+std::optional<fs::path> pluginSettingsBase(
+    const clap_wrapper_plugin_factory_standalone_settings_t *factory)
+{
+  if (!factory || !factory->get_settings_base_folder) return std::nullopt;
+
+  char path[CLAP_PATH_SIZE]{};
+  if (!factory->get_settings_base_folder(factory, path, sizeof(path))) return std::nullopt;
+  path[sizeof(path) - 1] = 0;
+  if (!path[0]) return std::nullopt;
+
+  auto base{pathFromUtf8(path)};
+  if (!base.is_absolute())
   {
-    clapPlugin->stop_processing();
-    clapPlugin->deactivate();
-    isActive = false;
+    LOGINFO("[WARNING] The plugin's settings folder '{}' is not absolute; using the standalone's own",
+            path);
+    return std::nullopt;
   }
+
+  std::error_code error;
+  fs::create_directories(base, error);
+  if (error || !fs::is_directory(base, error))
+  {
+    LOGINFO("[WARNING] Unable to create the plugin's settings folder '{}'; using the standalone's own",
+            path);
+    return std::nullopt;
+  }
+  return base;
+}
+}  // namespace
+
+void StandaloneHost::resolveStandaloneSettings(const clap_plugin_entry *entry, const void *pluginFactory,
+                                               const std::string &pluginId)
+{
+  auto *factory{standaloneSettingsFactory(entry, pluginFactory)};
+
+  // the default state persistence, which holds until a choice is made
+  uint32_t persistence{CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION};
+  defaultStatePersistence = CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION;
+  if (factory && factory->get_default_state_persistence &&
+      factory->get_default_state_persistence(factory, &persistence) &&
+      (persistence == CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION ||
+       persistence == CLAP_WRAPPER_STANDALONE_STATE_PERSIST_NONE))
+    defaultStatePersistence = persistence;
+
+  settingsFolder.reset();
+  if (pluginId.empty()) return;
+
+  auto base{pluginSettingsBase(factory)};
+  if (!base.has_value())
+  {
+    try
+    {
+      base = getStandaloneSettingsPath();
+    }
+    catch (const fs::filesystem_error &e)
+    {
+      LOGINFO("[ERROR] Unable to create the settings folder: '{}'", e.what());
+    }
+  }
+  if (base.has_value()) settingsFolder = *base / pluginId;
+}
+
+std::optional<fs::path> StandaloneHost::standaloneSettingsFile()
+{
+  if (!settingsFolder.has_value()) return std::nullopt;
+
+  return *settingsFolder / "standalone-settings.conf";
+}
+
+bool StandaloneHost::loadStandaloneSettings()
+{
+  auto path = standaloneSettingsFile();
+  if (!path.has_value()) return false;
+
+  settingsLoaded = settings.load(*path);
+
+  // a plugin that has already set the appearance, from init() say, keeps it
+  if (settingsLoaded) setScreenAppearance(settings.screenAppearance, false);
+
+  return settingsLoaded;
+}
+
+bool StandaloneHost::setPluginStatePersistence(uint32_t persistence)
+{
+  if (!settingsFolder.has_value() || (persistence != CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION &&
+                                      persistence != CLAP_WRAPPER_STANDALONE_STATE_PERSIST_NONE))
+    return false;
+
+  settings.pluginStatePersistence = persistence;
+  if (!saveStandaloneSettings())
+    LOGINFO("[WARNING] Unable to save the state persistence; the next launch will not have it");
+  return true;
+}
+
+bool StandaloneHost::setScreenAppearance(uint32_t appearance, bool fromPlugin)
+{
+  if (appearance >= 32 || !(supportedScreenAppearances() & (1u << appearance))) return false;
+  if (!fromPlugin && screenAppearanceFromPlugin) return false;
+
+  screenAppearanceFromPlugin = screenAppearanceFromPlugin || fromPlugin;
+  screenAppearance = appearance;
+  if (onScreenAppearanceChanged) onScreenAppearanceChanged();
+  return true;
+}
+
+bool StandaloneHost::saveStandaloneSettings()
+{
+  auto path = standaloneSettingsFile();
+  if (!path.has_value()) return false;
+
+  // The plugin-id directory is shared with the state blobs and usually exists by
+  // now, but a first run which never saved state has yet to create it.
+  try
+  {
+    fs::create_directories(path->parent_path());
+  }
+  catch (const fs::filesystem_error &e)
+  {
+    LOGINFO("[ERROR] Unable to create settings directory '{}': '{}'", path->parent_path().u8string(),
+            e.what());
+    return false;
+  }
+
+  return settings.save(*path);
+}
+
+void StandaloneHost::captureAudioSettings()
+{
+  settings.audioApiName = audioApiName;
+  settings.bufferSize = currentBufferSize;
+
+  // Device names, used flags and the sample rate are deliberately not captured:
+  // they describe what could actually be opened (a fallback device, a side that
+  // failed to open, a rate the device does not offer), and saveSettings() runs
+  // often enough that persisting them would silently replace the user's choice.
+  // The frontend writes them at the point of choice instead.
+}
+
+void StandaloneHost::applyAudioSettings()
+{
+  // The API has to be selected first: the devices below are that api's.
+  setAudioApi(settings.audioApiName);
+  if (!settings.audioApiName.empty() && settings.audioApiName != audioApiName)
+  {
+    LOGINFO("[WARNING] Audio API '{}' is not available in this build; using '{}'", settings.audioApiName,
+            audioApiName);
+  }
+
+  audioOutputDevice = resolveOutputDevice(settings.outputDeviceId, settings.outputDeviceName);
+  audioInputDevice = resolveInputDevice(settings.inputDeviceId, settings.inputDeviceName);
+
+  // the channels as saved, where the device has them
+  const auto inChoice{channelChoiceFor(audioInputDevice, true, settings.inputFirstChannel)};
+  const auto outChoice{channelChoiceFor(audioOutputDevice, false, settings.outputFirstChannel)};
+  deviceInputFirstChannel = inChoice.first;
+  deviceInputChannels = std::max<uint32_t>(inChoice.count, 1);
+  deviceOutputFirstChannel = outChoice.first;
+  deviceOutputChannels = std::max<uint32_t>(outChoice.count, 1);
+
+  // "did we get a device back" is not the question - "is it a real device" is.
+  audioOutputUsed = settings.audioOutputUsed && isKnownDevice(audioOutputDevice);
+  audioInputUsed = settings.audioInputUsed && isKnownDevice(audioInputDevice);
+
+  // an input saved as one that is not here falls back to the system default above, as
+  // does an input saved with nothing; neither is the user choosing a microphone
+  if (audioInputUsed)
+  {
+    const auto *device{findDevice(audioInputDevice)};
+    const bool chosen{
+        device &&
+        ((!settings.inputDeviceId.empty() && device->id == settings.inputDeviceId) ||
+         (!settings.inputDeviceName.empty() && (device->legacyName == settings.inputDeviceName ||
+                                                device->name == settings.inputDeviceName)))};
+    if (device && !chosen && device->isMicrophone)
+    {
+      LOGINFO("Not opening '{}': the default input is a microphone, and not the one chosen",
+              device->name);
+      audioInputUsed = false;
+    }
+  }
+
+  currentSampleRate = settings.sampleRate;
+
+  // The .conf is hand-editable, and process() terminates the process if a callback
+  // delivers utilityBufferSize frames or more, so clamp to the largest size the
+  // settings panel offers. 0 still means "use the device default".
+  currentBufferSize = settings.bufferSize;
+  const auto offered{getBufferSizes()};
+  if (!offered.empty())
+  {
+    const auto largest{*std::max_element(offered.begin(), offered.end())};
+    if (currentBufferSize > largest)
+    {
+      LOGINFO("[WARNING] Buffer size {} from the settings file is beyond the supported {}; using {}",
+              currentBufferSize, largest, largest);
+      currentBufferSize = largest;
+    }
+  }
+
+  // The sample rate needs no clamp: startAudioThreadOn() resolves it against the
+  // device it is about to open.
+}
+
+void StandaloneHost::setChosenDevices(const std::string &outputId, const std::string &inputId)
+{
+  // the name an older build finds the device by: rtaudio's, where there is one
+  auto savedName = [](const AudioDevice &d) { return d.legacyName.empty() ? d.name : d.legacyName; };
+
+  if (const auto *output{findDevice(outputId)})
+  {
+    settings.outputDeviceId = output->id;
+    settings.outputDeviceName = savedName(*output);
+  }
+  if (const auto *input{findDevice(inputId)})
+  {
+    settings.inputDeviceId = input->id;
+    settings.inputDeviceName = savedName(*input);
+  }
+}
+
+namespace
+{
+// the device a saved id and name refer to, as resolveInputDevice describes; null if none
+const AudioDevice *savedDevice(const std::vector<AudioDevice> &devices, const std::string &id,
+                               const std::string &savedName, bool input)
+{
+  const auto *byId{findDevice(devices, id, input)};
+  if (byId && (savedName.empty() || byId->legacyName == savedName || byId->name == savedName))
+    return byId;
+
+  if (const auto *byName{findDevice(devices, savedName, input)}) return byName;
+  return byId;
+}
+}  // namespace
+
+std::string StandaloneHost::resolveInputDevice(const std::string &id, const std::string &savedName)
+{
+  guaranteeAudioBackend();
+  if (!audioBackend) return {};
+
+  if (!id.empty() || !savedName.empty())
+  {
+    if (const auto *device{savedDevice(deviceList(), id, savedName, true)}) return device->id;
+
+    LOGINFO("[WARNING] Input device '{}' is not available; using the default",
+            savedName.empty() ? id : savedName);
+  }
+
+  return audioBackend->defaultInputDevice();
+}
+
+std::string StandaloneHost::resolveOutputDevice(const std::string &id, const std::string &savedName)
+{
+  guaranteeAudioBackend();
+  if (!audioBackend) return {};
+
+  if (!id.empty() || !savedName.empty())
+  {
+    if (const auto *device{savedDevice(deviceList(), id, savedName, false)}) return device->id;
+
+    LOGINFO("[WARNING] Output device '{}' is not available; using the default",
+            savedName.empty() ? id : savedName);
+  }
+
+  return audioBackend->defaultOutputDevice();
+}
+
+bool StandaloneHost::activatePlugin(int32_t sr, int32_t minBlock, int32_t maxBlock)
+{
+  if (!clapPlugin) return false;
+
+  // no device has run yet, or none is attached
+  if (sr <= 0 || maxBlock < minBlock || minBlock < 1)
+  {
+    LOGINFO("[ERROR] Not activating with sampleRate={} blockBounds={} to {}", sr, minBlock, maxBlock);
+    return false;
+  }
+
+  deactivatePlugin();
 
   LOGINFO("Activating plugin : sampleRate={} blockBounds={} to {}", sr, minBlock, maxBlock);
   clapPlugin->setSampleRate(sr);
   clapPlugin->setBlockSizes(minBlock, maxBlock);
-  clapPlugin->activate();
-
-  clapPlugin->start_processing();
-
+  if (!clapPlugin->activate())
+  {
+    LOGINFO("[ERROR] Plugin activate() failed; plugin remains deactivated");
+    return false;
+  }
   isActive = true;
+
+  if (!clapPlugin->start_processing())
+  {
+    // CLAP: a false return means processing never started, so process() must not
+    // be called and stop_processing() must not be paired with it. Take the
+    // activation we just made back down rather than hand the audio callback a
+    // plugin that is not allowed to render - deactivatePlugin() skips the
+    // stop_processing() because isProcessing was never set.
+    LOGINFO("[ERROR] Plugin start_processing() failed; plugin remains deactivated");
+    deactivatePlugin();
+    return false;
+  }
+  isProcessing = true;
+
+  // Only now let the callback back in. Taking the lock keeps a callback which is
+  // mid-pass from seeing running flip to true against a half-built state.
+  {
+    ClapWrapper::detail::shared::SpinLockGuard g(processLock);
+    finishedRunning = false;
+    running = true;
+  }
+
+  return true;
+}
+
+void StandaloneHost::deactivatePlugin()
+{
+  // activate/deactivate has to stay balanced, so only ever deactivate what we
+  // know we activated. Without an audio device the plugin never gets activated
+  // at all, and the shutdown path would otherwise deactivate it regardless.
+  if (!clapPlugin || !isActive) return;
+
+  // Stop the callback and wait for it to say so before touching the plugin.
+  // Without this, any caller other than the Windows restart handler - an API
+  // switch, a device change, OK in a settings panel - could deactivate() while
+  // process() was in flight. Making the handshake part of deactivate is what
+  // stops each frontend from having to remember it.
+  quiesceProcessing();
+
+  if (isProcessing)
+  {
+    clapPlugin->stop_processing();
+    isProcessing = false;
+  }
+
+  LOGINFO("Deactivating plugin");
+  clapPlugin->deactivate();
+  isActive = false;
 }
 
 }  // namespace freeaudio::clap_wrapper::standalone

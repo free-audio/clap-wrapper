@@ -92,9 +92,13 @@ ParameterTreeResult createParameterTree(const clap_plugin_t *plugin, const clap_
 
     // Determine AU parameter unit
     AudioUnitParameterUnit unit = kAudioUnitParameterUnit_Generic;
+    // no CFName flags here: CFNameRelease hands the host ownership of the CFStringRef, and
+    // the AUv3 to v2 bridge fills that field from the AUParameter's displayName without a
+    // matching retain, so an honouring host over-releases a string it never owned. The AUv2
+    // wrapper can set the pair because it CFRetains the string itself; here there is no such
+    // hook. HasCFNameString goes too, since it only means anything alongside that contract.
     AudioUnitParameterOptions flags =
-        kAudioUnitParameterFlag_IsReadable | kAudioUnitParameterFlag_IsHighResolution |
-        kAudioUnitParameterFlag_HasCFNameString | kAudioUnitParameterFlag_CFNameRelease;
+        kAudioUnitParameterFlag_IsReadable | kAudioUnitParameterFlag_IsHighResolution;
 
     bool isStepped = (info.flags & CLAP_PARAM_IS_STEPPED) != 0;
     bool isHidden = (info.flags & CLAP_PARAM_IS_HIDDEN) != 0;

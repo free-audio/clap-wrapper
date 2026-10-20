@@ -5,24 +5,18 @@
 #include <unordered_set>
 #include <thread>
 #include <mutex>
+#include <chrono>
 #include <optional>
 #include <tuple>
 
 #include "standalone_details.h"
+#include "standalone_settings.h"
 
 #include "detail/clap/fsutil.h"
 
-#ifdef __GNUC__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wall"  // other peoples errors are outside my scope
-#endif
-
-#include "RtAudio.h"
-#include "RtMidi.h"
-
-#ifdef __GNUC__
-#pragma GCC diagnostic pop
-#endif
+#include "standalone_audio.h"
+#include "standalone_midi.h"
+#include "midi_ring.h"
 
 #include "clap_proxy.h"
 #include "detail/shared/fixedqueue.h"
@@ -39,7 +33,11 @@ struct X11Gui;
 
 std::optional<fs::path> getStandaloneSettingsPath();
 
-struct StandaloneHost : Clap::IHost
+// the clap_wrapper_standalone_appearance values the configuration screen can take, as
+// bits (1 << appearance); 0 where the frontend cannot set one
+uint32_t supportedScreenAppearances();
+
+struct StandaloneHost : Clap::IHost, AudioStreamCallback
 {
   StandaloneHost()
   {
@@ -53,7 +51,8 @@ struct StandaloneHost : Clap::IHost
 
   static bool oe_try_push(const struct clap_output_events *oe, const clap_event_header_t *evt)
   {
-    return true;
+    auto sh = (StandaloneHost *)oe->ctx;
+    return sh->outputEventPush(evt);
   }
 
   static uint32_t ie_getsize(const struct clap_input_events *ie)
@@ -115,6 +114,11 @@ struct StandaloneHost : Clap::IHost
   {
     restartRequested = true;
   }
+  std::atomic<bool> processRequested{false};
+  void request_process() override
+  {
+    processRequested = true;
+  }
   std::atomic<bool> callbackRequested{false};
   void request_callback() override
   {
@@ -128,6 +132,77 @@ struct StandaloneHost : Clap::IHost
   bool saveStandaloneAndPluginSettings(const fs::path &intoDir, const fs::path &withName);
   bool tryLoadStandaloneAndPluginSettings(const fs::path &fromDir, const fs::path &withName);
 
+  // The audio/MIDI configuration, as opposed to the plugin state blob above.
+  // Frontends read and write this rather than rolling their own store; see
+  // standalone_settings.h for the format and for why devices are held by name.
+  StandaloneSettings settings;
+  bool settingsLoaded{false};
+
+  // where the standalone keeps its files for the plugin it hosts: <base>/<plugin id>,
+  // the base being the one the plugin's entry names (its
+  // clap_wrapper_plugin_factory_standalone_settings) or getStandaloneSettingsPath().
+  // resolved by mainCreatePlugin before it creates the plugin, so it is there during
+  // init(); nullopt where there is none. the entry's default state persistence is taken
+  // from the same factory at the same time
+  std::optional<fs::path> settingsFolder;
+  void resolveStandaloneSettings(const clap_plugin_entry *entry, const void *pluginFactory,
+                                 const std::string &pluginId);
+
+  // <settings folder>/standalone-settings.conf, or nullopt when there is no settings folder
+  std::optional<fs::path> standaloneSettingsFile();
+  bool loadStandaloneSettings();
+  bool saveStandaloneSettings();
+
+  // Current audio configuration -> settings, and back. applyAudioSettings()
+  // selects the API and resolves the persisted devices against the devices this
+  // machine actually has right now.
+  // captureAudioSettings() writes back only the API and buffer size; the devices,
+  // used flags and sample rate are the user's request, written by the frontend
+  // (setChosenDevices).
+  void captureAudioSettings();
+  void applyAudioSettings();
+
+  // the devices chosen in a settings screen, into the settings: by id, and by the name an
+  // older build finds them by. an empty id leaves that side's saved device alone
+  void setChosenDevices(const std::string &outputId, const std::string &inputId);
+
+  // a plugin's request_audio_config (standalone_features.h). applied by pollAudioEvents()
+  // from the main loop, never inside the plugin's own call; request_pending until then
+  struct AudioConfigRequest
+  {
+    bool keepApi{true};                                    // api_id was nullptr
+    std::string api;                                       // "" is the build's default
+    bool useInput{false}, useOutput{false};                // that side's id was not nullptr
+    std::string inputId, outputId;                         // "" is the system default
+    int32_t sampleRate{0};                                 // 0 is the device's preferred rate
+    uint32_t bufferSize{0};                                // 0 keeps the current size
+    uint32_t inputFirstChannel{0}, outputFirstChannel{0};  // 0-based
+  };
+  std::optional<AudioConfigRequest> pendingAudioConfig;
+  // opens the stream the request describes and keeps it as the settings screen keeps a
+  // choice; the stream before it again if it does not open
+  void applyAudioConfigRequest(const AudioConfigRequest &request);
+
+  // The device id for a saved or requested one, falling back to the system default
+  // when it is empty or not present. savedName, from a settings file, checks the id: one
+  // whose device has another name now was saved by a newer build and rewritten by an
+  // older one, and the name wins. Never fails; empty only if there is no device at all.
+  std::string resolveInputDevice(const std::string &id, const std::string &savedName = {});
+  std::string resolveOutputDevice(const std::string &id, const std::string &savedName = {});
+
+  // The backend's devices, as it listed them last. It lists them again on its own when
+  // something changes; refreshDeviceList() asks it to now.
+  const std::vector<AudioDevice> &deviceList();
+  void refreshDeviceList();
+  // null if the id is not in the list
+  const AudioDevice *findDevice(const std::string &id);
+  bool isKnownDevice(const std::string &id)
+  {
+    return findDevice(id) != nullptr;
+  }
+  std::string deviceName(const std::string &id);
+
+ public:
   uint32_t numAudioInputs{0}, numAudioOutputs{0};
   std::vector<uint32_t> inputChannelByBus;
   std::vector<uint32_t> outputChannelByBus;
@@ -179,11 +254,69 @@ struct StandaloneHost : Clap::IHost
   bool unregister_timer(clap_id timer_id) override;
 
   const char *host_get_name() override;
+  const char *wrapper_flavor() const override
+  {
+    return CLAP_WRAPPER_HOST_FLAVOR_STANDALONE;
+  }
+  const char *underlying_host_name() const override
+  {
+#if MAC
+    return "Wrapper Mac Standalone";
+#elif WIN
+    return "Wrapper Windows Standalone";
+#else
+    return "Wrapper Linux Standalone";
+#endif
+  }
 
   bool track_info_get(clap_track_info_t *info) override
   {
     return false;
   }
+
+  // standalone features extension, in standalone_host_features.cpp
+  const clap_wrapper_standalone_features_t *standalone_features() override;
+
+  // set by the platform frontend; null means it has no settings screen to offer
+  std::function<bool()> onShowSettingsScreen{nullptr};
+
+  // called by the platform frontend once per close of its settings screen, after the
+  // screen is gone; passes it on to the plugin's side of the standalone features
+  // extension, if it has one. result is a clap_wrapper_standalone_configuration_result
+  void settingsScreenClosed(uint32_t result);
+
+  // the settings screen's appearance, a clap_wrapper_standalone_appearance. a plugin that
+  // sets it owns it for the session: the settings file and the screen's own choice no
+  // longer count, and the plugin's value is never saved
+  uint32_t screenAppearance{CLAP_WRAPPER_STANDALONE_APPEARANCE_AUTO};
+  bool screenAppearanceFromPlugin{false};
+  // false if the appearance is unsupported, or the plugin owns it and this is not it
+  bool setScreenAppearance(uint32_t appearance, bool fromPlugin);
+  // set by the platform frontend, which applies screenAppearance to what it shows
+  std::function<void()> onScreenAppearanceChanged{nullptr};
+
+  // whether the plugin's state is loaded back at launch and saved on quit, a
+  // clap_wrapper_standalone_state_persistence: the choice settings keep, made by the plugin
+  // or from the standalone's own menu, and until there is one the entry's default
+  // (clap_wrapper_plugin_factory_standalone_settings). setting it is a choice; false if
+  // there is no settings folder to keep it in
+  uint32_t defaultStatePersistence{CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION};
+  uint32_t statePersistence() const
+  {
+    return settings.pluginStatePersistence.value_or(defaultStatePersistence);
+  }
+  bool setPluginStatePersistence(uint32_t persistence);
+  bool restoresLastSession() const
+  {
+    return statePersistence() == CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION;
+  }
+
+  std::vector<clap_wrapper_standalone_endpoint_t> endpointSnapshot[4];
+  uint32_t snapshotEndpoints(uint32_t kind);
+  std::vector<uint32_t> sampleRateSnapshot;
+  uint32_t snapshotSampleRates(const char *outputId, const char *inputId);
+  std::vector<uint32_t> bufferSizeSnapshot;
+  uint32_t snapshotBufferSizes(const char *outputId, const char *inputId);
 
   // context menu extension
   bool supportsContextMenu() const override
@@ -226,65 +359,226 @@ struct StandaloneHost : Clap::IHost
   }
 
   // Implementation in standalone_host_midi.cpp
-  struct midiChunk
-  {
-    char dat[3]{};
-    midiChunk()
-    {
-      memset(dat, 0, sizeof(dat));
-    }
-  };
-  ClapWrapper::detail::shared::fixedqueue<midiChunk, 4096> midiToAudioQueue;
-  std::vector<std::unique_ptr<RtMidiIn>> midiIns;
-  uint32_t numMidiPorts{0};
-  std::vector<uint32_t> currentMidiPorts;
+  std::unique_ptr<MidiBackend> midiBackend;
+  void guaranteeMidiBackend();
+
+  // what the inputs deliver, short messages and sysex in one ring so that their order
+  // holds; on the audio thread a sysex is copied into the arena one block's events point
+  // into. what does not fit is dropped and counted, never split
+  MidiRing<65536> midiToAudio;
+  uint8_t sysexArena[65536]{};
+  std::atomic<uint32_t> midiDropped{0};
+  // the queue takes one producer at a time, and a backend may call each open input back
+  // on a thread of its own
+  ClapWrapper::detail::shared::SpinLock midiToAudioPushLock;
+  // the ids of the inputs open now
+  std::vector<std::string> currentMidiInputIds;
+  // The ports as the MIDI system reports them right now. Empty (rather than throwing or
+  // exiting) when there is no usable MIDI system.
+  std::vector<MidiPort> getMidiInputPorts();
+  std::vector<MidiPort> getMidiOutputPorts();
+
+  // the saved selection of one direction against the ports there now: the ids of those
+  // present, and the saved names of those that are not
+  void savedMidiSelection(bool input, std::vector<std::string> &presentIds,
+                          std::vector<std::string> &absentNames);
+  // a selection made in a settings screen into the settings: ids of ports present, or
+  // names of absent ones (savedMidiSelection) to keep
+  void setChosenMidiPorts(bool input, const std::vector<std::string> &references);
+
+  // Close whatever is open and open exactly these: ids, or names saved by any build.
+  // bindAll ignores the list and opens everything - which is a different thing from an
+  // empty list, that being a user who deliberately wants no MIDI input.
+  void openMidiPorts(const std::vector<std::string> &references, bool bindAll);
+  void closeMidiPorts();
+
+  // Virtual ports: a destination other applications send to, which feeds the plugin like
+  // an input, and a source they receive the plugin's output from. Each lives on its own,
+  // so reopening the port lists never makes another application lose its connection.
+  // Named after the plugin, with a suffix - Kemper's hardware, for one, has a port named
+  // like its plugin - and left out of the port lists, so that binding every input can
+  // never loop the plugin's output back into it.
+  bool supportsVirtualMidiPorts();
+  std::string virtualMidiPortName(bool input) const;
+  bool midiVirtualInputOpen{false}, midiVirtualOutputOpen{false};
+  void setVirtualMidiInput(bool open);
+  void setVirtualMidiOutput(bool open);
+
+  // MIDI output. what the plugin sends from its note output ports goes to every open
+  // output port: the audio thread queues it in outputEventPush() and a thread of its own
+  // sends it, since a midi send is no call to make from the audio thread
+  MidiRing<65536> midiFromAudio;
+  // the ids of the outputs open now
+  std::vector<std::string> currentMidiOutputIds;
+  // set while midiOutputThread runs; the audio thread queues nothing while it is clear
+  std::atomic<bool> midiOutputOpen{false};
+  std::thread midiOutputThread;
+  // the thread runs while there is a port to send to, the virtual output included
+  void stopMidiOutputThread();
+  void startMidiOutputThreadIfNeeded();
+
+  // Close whatever outputs are open and open exactly these, as openMidiPorts. Unlike the
+  // inputs there is no bind-all: an empty list opens none, which is also the first run,
+  // since sending to every port would play into whatever is plugged in. A plugin with no
+  // MIDI output opens none either - on Windows a MIDI port is held exclusively.
+  void openMidiOutputPorts(const std::vector<std::string> &names);
+  // closes every output, the virtual one included
+  void closeMidiOutputPorts();
+  void midiOutputLoop();
+
+  // [audio-thread] the plugin's output events. MIDI and note on/off events go to the MIDI
+  // outputs, anything else is taken and dropped
+  bool outputEventPush(const clap_event_header_t *evt);
+
+  // inputs and outputs, from the settings
   void startMIDIThread();
   void stopMIDIThread();
-  void processMIDIEvents(double deltatime, std::vector<unsigned char> *message);
-  static void midiCallback(double deltatime, std::vector<unsigned char> *message, void *userData);
+  // [midi-backend-threads] one message from an input
+  void processMIDIMessage(const uint8_t *data, size_t size);
 
-  // in standalone_host.cpp
-  void clapProcess(void *pOutput, const void *pInoput, uint32_t frameCount);
+  // in standalone_host.cpp: the AudioStreamCallback
+  void process(const float *const *inputs, uint32_t inputChannels, float *const *outputs,
+               uint32_t outputChannels, uint32_t frames) override;
+  // samples processed so far; never reset, so it stays monotonic across restarts
+  int64_t steadyTime{0};
 
   // Actual audio IO In standalone_host_audio.cpp
-  std::unique_ptr<RtAudio> rtaDac;
+  std::unique_ptr<AudioBackend> audioBackend;
+  // [main-thread] set by the frontend: puts an error in front of the user
   std::function<void(const std::string &)> displayAudioError{nullptr};
-  RtAudio::Api audioApi{RtAudio::Api::UNSPECIFIED};
-  std::string audioApiName{RtAudio::getApiName(RtAudio::Api::UNSPECIFIED)};
-  std::string audioApiDisplayName{RtAudio::getApiDisplayName(RtAudio::Api::UNSPECIFIED)};
-  unsigned int audioInputDeviceID{0}, audioOutputDeviceID{0};
+  // why the most recent startAudioThreadOn failed; empty if it succeeded
+  std::string lastAudioError;
+
+  // a stream is open and the plugin is processing it. startAudioThreadOn() settles this
+  // before it returns, so it answers whether that open worked
+  bool isAudioRunning() const
+  {
+    return isActive && (currentOutputChannels > 0 || currentInputChannels > 0);
+  }
+  // session only: a launch never starts muted on a previous session's say-so
+  std::atomic<bool> inputMuted{false};
+
+  // the audio driver's own settings window, which only asio has: whether the api in use
+  // has one
+  bool hasDriverControlPanel();
+  // shows it for the stream open now; false if no asio stream is open
+  bool showDriverControlPanel();
+
+  // an asio driver asks for a reset when its own panel changed the buffer size or the
+  // rate, and the backend closes the stream for it, from a thread of its own. true, once,
+  // when that stream is closed: the frontend then opens it again, on the main thread
+  bool takeDriverReset();
+  std::atomic<bool> driverResetRequested{false};
+
+  // [main-thread] what the backends reported from their threads since the last call: a
+  // stream that stopped on its own is reported, and opened again once its devices are
+  // back; a change in the devices goes to onAudioDevicesChanged. frontends call it from a
+  // timer
+  void pollAudioEvents();
+  // [main-thread] set by a frontend whose settings screen lists devices or ports
+  std::function<void()> onAudioDevicesChanged{nullptr};
+  std::atomic<bool> devicesChangedPending{false};
+  std::atomic<bool> streamStoppedPending{false}, rateChangedPending{false};
+  std::mutex streamStoppedLock;
+  std::string streamStoppedMessage;
+  // opens the stream as it was, quietly, if its devices are there; at another rate if
+  // one is given. true if it runs
+  bool reopenStream(int32_t sampleRate);
+  // a stream that stopped with its devices still there - a driver error, a watchdog - is
+  // tried again a few times, further apart each time, and then only when devices change
+  std::chrono::steady_clock::time_point nextReopen{};
+  int reopenTries{0};
+  // a stream stopped on its own, to open again as it was
+  bool reopenPending{false};
+
+  // Errors from a quiet try - the saved setup at launch, before falling back to the
+  // defaults - are not events to put in front of the user, so that try silences the
+  // dialog for its duration. Logging is never silenced.
+  std::atomic<int> audioErrorSilence{0};
+  bool audioErrorsAreSilent() const
+  {
+    return audioErrorSilence.load() > 0;
+  }
+  struct SilenceAudioErrors
+  {
+    StandaloneHost *host;
+    explicit SilenceAudioErrors(StandaloneHost *h) : host(h)
+    {
+      host->audioErrorSilence.fetch_add(1);
+    }
+    ~SilenceAudioErrors()
+    {
+      host->audioErrorSilence.fetch_sub(1);
+    }
+  };
+  // AudioApi::id and AudioApi::name of the backend in use
+  std::string audioApiName, audioApiDisplayName;
+  // AudioDevice::id
+  std::string audioInputDevice, audioOutputDevice;
+  // The user's wish (settings.audioInput/OutputUsed) AND a device being present;
+  // the probe half is why these are not persisted.
   bool audioInputUsed{true}, audioOutputUsed{true};
+  // How many channels to ask the *device* for. Distinct from
+  // totalInput/OutputChannels above, which are the plugin's bus totals.
+  uint32_t deviceInputChannels{2}, deviceOutputChannels{2};
+  // the 0-based device channel the opened ones start at
+  uint32_t deviceInputFirstChannel{0}, deviceOutputFirstChannel{0};
   int32_t currentSampleRate{0};
   uint32_t currentBufferSize{0};
   uint32_t currentInputChannels{0}, currentOutputChannels{0};
-  void guaranteeRtAudioDAC();
-  void setAudioApi(RtAudio::Api api);
-  std::tuple<unsigned int, unsigned int, int32_t> getDefaultAudioInOutSampleRate();
+  // what the running stream was granted
+  AudioStreamInfo currentStream;
+  void guaranteeAudioBackend();
+  // an AudioApi::id; empty or unknown is the build's default
+  void setAudioApi(const std::string &apiId);
+  // input device, output device, the output's rate. an input that is a microphone is
+  // returned all the same; the caller decides not to open it
+  std::tuple<std::string, std::string, int32_t> getDefaultAudioInOutSampleRate();
   void startAudioThread();
-  void startAudioThreadOn(unsigned int inputDeviceID, uint32_t inputChannels, bool useInput,
-                          unsigned int outputDeviceID, uint32_t outputChannels, bool useOutput,
+  void startAudioThreadOn(const std::string &inputDevice, uint32_t inputChannels, bool useInput,
+                          const std::string &outputDevice, uint32_t outputChannels, bool useOutput,
                           int32_t sampleRate);
   void stopAudioThread();
 
-  bool startupAudioSet{false};
-  unsigned int startAudioIn{0}, startAudioOut{0};
-  int startSampleRate{0};
-  void setStartupAudio(unsigned int in, unsigned int out, int sr)
-  {
-    startupAudioSet = true;
-    startAudioIn = in;
-    startAudioOut = out;
-    startSampleRate = sr;
-  }
+  // Park the audio callback: clear running under processLock, then wait for the
+  // callback to acknowledge. Returns false if the acknowledgement never came.
+  // Callers which are about to touch plugin state must go through this.
+  bool quiesceProcessing();
 
-  void activatePlugin(int32_t sr, int32_t minBlock, int32_t maxBlock);
+  // the actual work of startAudioThreadOn, wrapped there by an exception guard
+  void startAudioThreadOnImpl(const std::string &inputDevice, uint32_t inputChannels, bool useInput,
+                              const std::string &outputDevice, uint32_t outputChannels, bool useOutput,
+                              int32_t sampleRate);
+
+  // returns true if the plugin is activated and processing afterwards
+  bool activatePlugin(int32_t sr, int32_t minBlock, int32_t maxBlock);
+  // no-op unless activatePlugin() succeeded before, so the plugin never sees
+  // an unbalanced deactivate()
+  void deactivatePlugin();
   bool isActive{false};
+  bool isProcessing{false};
 
-  std::vector<RtAudio::Api> getCompiledApi();
-  std::vector<RtAudio::DeviceInfo> getInputAudioDevices();
-  std::vector<RtAudio::DeviceInfo> getOutputAudioDevices();
+  std::vector<AudioApi> getAudioApis();
+  std::vector<AudioDevice> getInputAudioDevices();
+  std::vector<AudioDevice> getOutputAudioDevices();
   std::vector<int32_t> getSampleRates();
   std::vector<uint32_t> getBufferSizes();
+  // getBufferSizes(), narrowed to what both devices accept where the backend can tell
+  // (AudioDevice::min/maxBufferFrames); an empty id narrows nothing
+  std::vector<uint32_t> getBufferSizesFor(const std::string &outputId, const std::string &inputId);
+
+  // the channels of the plugin's main bus in one direction; 0 without one
+  uint32_t mainBusChannels(bool input) const;
+  // channelChoices() for a device of the list, for the plugin's main bus
+  std::vector<AudioChannelChoice> getChannelChoices(const std::string &deviceId, bool input);
+  // the choice a saved first channel (1-based, 0 for the default) names on a device: the
+  // one that starts there, or the first. {0, 0} for a device not there
+  AudioChannelChoice channelChoiceFor(const std::string &deviceId, bool input, uint32_t savedFirst);
+
+  // the input a launch with nothing chosen opens: the system default, or an interface in
+  // its place when that is a microphone (preferredFirstRunInput). empty if there is none
+  // that may be opened, a microphone being opened only when chosen
+  std::string defaultInputToOpen();
 
   clap_input_events inputEvents{};
   clap_output_events outputEvents{};

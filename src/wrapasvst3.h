@@ -37,6 +37,7 @@
 #include "detail/os/osutil.h"
 #include "detail/vst3/plugview.h"
 #include "detail/clap/automation.h"
+#include "detail/clap/preset_discovery.h"
 #include "detail/shared/fixedqueue.h"
 #include "detail/ara/ara.h"
 #include "detail/vst3/aravst3.h"
@@ -51,6 +52,7 @@ namespace Clap
 {
 class ProcessAdapter;
 }
+class Vst3Parameter;
 
 class queueEvent
 {
@@ -305,6 +307,7 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   IPtr<Steinberg::Vst::IContextMenu> vst3ContextMenu = nullptr;
   IPtr<Steinberg::Vst::IHostApplication> vst3HostApplication = nullptr;
   std::string wrapper_hostname = "CLAP-As-VST3-Wrapper";
+  std::string underlying_hostname;
   std::vector<wrapper_context_menu_item> contextmenuitems;
   uint32_t vst3ContextMenuParamID = 0;
 
@@ -336,6 +339,8 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
 
   void restartPlugin() override;
 
+  void request_process() override;
+
   void request_callback() override;
 
   bool track_info_get(clap_track_info_t *info) override;
@@ -345,6 +350,14 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   bool unregister_timer(clap_id timer_id) override;
 
   const char *host_get_name() override;
+  const char *wrapper_flavor() const override
+  {
+    return CLAP_WRAPPER_HOST_FLAVOR_VST3;
+  }
+  const char *underlying_host_name() const override
+  {
+    return underlying_hostname.empty() ? nullptr : underlying_hostname.c_str();
+  }
 
   bool supportsContextMenu() const override;
   // context_menu
@@ -364,6 +377,16 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
  public:
   //----from IPlugObject
   void onIdle() override;
+#if LIN
+  // While an editor is open the host's run loop drives onIdle() on the real
+  // main thread and the Linux helper thread stands down. \see attachTimers()
+  //
+  // Called on the helper thread, which is why _iRunLoop is atomic.
+  bool hasOwnIdleSource() const override
+  {
+    return _iRunLoop.load() != nullptr;
+  }
+#endif
 
  private:
   std::vector<clap_id> _gesturedparameters;
@@ -371,13 +394,35 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   void onBeginEdit(clap_id id) override;
   void onPerformEdit(const clap_event_param_value_t *value) override;
   void onEndEdit(clap_id id) override;
+  void onRequestPresetLoad(size_t presetIndex) override;
+
+  //---from Clap::IHost, preset-load ---------------
+  void preset_loaded(uint32_t locationKind, const char *location, const char *loadKey) override;
+  void preset_load_error(uint32_t locationKind, const char *location, const char *loadKey,
+                         int32_t osError, const char *msg) override;
+
+  //---program lists, for the preset list -----------
+  // The preset list is answered from the index rather than from a
+  // Steinberg::Vst::ProgramList object, because the index fills in on a
+  // background thread and a ProgramList cannot be emptied once built. The MIDI
+  // "Program Changes" lists still come from the SDK, so both paths have to
+  // coexist here.
+  Steinberg::int32 PLUGIN_API getProgramListCount() override;
+  Steinberg::tresult PLUGIN_API getProgramListInfo(Steinberg::int32 listIndex,
+                                                   Vst::ProgramListInfo &info /*out*/) override;
+  Steinberg::tresult PLUGIN_API getProgramName(Vst::ProgramListID listId, Steinberg::int32 programIndex,
+                                               Vst::String128 name /*out*/) override;
 
   // information function to enable/disable the IMIDIMapping interface
   bool checkMIDIDialectSupport();
 
  private:
   // helper functions
-  void addAudioBusFrom(const clap_audio_port_info_t *info, bool is_input);
+  void addAudioBusFrom(uint32_t index, const clap_audio_port_info_t *info, bool is_input);
+  // the VST3 arrangement a CLAP port describes: its channel map when it implements
+  // clap.surround or clap.ambisonic, and otherwise a guess from the channel count
+  Vst::SpeakerArrangement speakerArrangementFor(uint32_t index, const clap_audio_port_info_t *info,
+                                                bool is_input);
   void addMIDIBusFrom(const clap_note_port_info_t *info, uint32_t index, bool is_input);
   void updateAudioBusses();
 
@@ -412,6 +457,17 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
 
   std::atomic_bool _requestUICallback = false;
   std::atomic_bool _requestRestart = false;
+
+  // Held by whichever thread is currently acting as this plug-in's main thread:
+  // the host's, or the Linux helper standing in for it while no editor is open.
+  // The VST3 entry points a host is expected to call on the main thread take it
+  // too, so that the two cannot be inside the plug-in at the same time.
+  // Recursive because a plug-in reaches back into the wrapper from within
+  // on_main_thread().
+  //
+  // Lock order is helper-then-plug-object: never call os::attach(), os::detach()
+  // or os::idleSourceChanged() while holding this.
+  std::recursive_mutex _mainThreadLock;
   bool _missedLatencyRequest = false;
 
   std::thread::id _main_thread_id{};
@@ -423,6 +479,69 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
 
   // set by param_rescan() whenever it syncs values, cleared and checked by setState()
   bool _paramValuesSyncedDuringLoad{false};
+
+  // ---- clap.preset-load, published as a VST3 program list ----
+  // Built in setupParameters() when the plugin implements preset-load. The
+  // index itself is shared per module and crawls on a background thread, so
+  // the list can be empty here and fill in later; onPresetIndexComplete() is
+  // what tells the host to look again. The selector always exists once an index
+  // does - hidden while the crawl runs - and onIdle() grows it in place.
+  void setupPresets();
+  void onPresetIndexComplete();
+  // The selector parameter, or nullptr. Its presetCount() - never the live size
+  // of _presetIndex - is what the host has been told about.
+  Vst3Parameter *presetSelector() const;
+  // Moves the selector to `index` and tells the host, as a bracketed edit.
+  void moveSelectorTo(Vst3Parameter &param, size_t index);
+  bool isPresetProgramList(Vst::ProgramListID listId) const
+  {
+    return _presetParamId != Vst::kNoParamId && listId == (Vst::ProgramListID)_presetParamId;
+  }
+
+  std::shared_ptr<Clap::PresetIndex> _presetIndex;
+  uint64_t _presetIndexToken = 0;
+  // The program list id and the selector parameter id are deliberately the
+  // same number - that is how VST3 ties a unit's program list to the
+  // parameter a host moves to change program.
+  Vst::ParamID _presetParamId = Vst::kNoParamId;
+  Vst::UnitID _presetUnitId = Vst::kRootUnitId;
+  // Set from the audio thread by onRequestPresetLoad(), drained in onIdle().
+  // Coalescing is correct: three program changes in one block should load the
+  // last preset, not three.
+  //
+  // One word carries two facts, on purpose:
+  //
+  //   >= 0                    a preset the host asked for, not yet loaded
+  //   kNoPresetRequest        nothing pending
+  //   kAdoptNextPresetValue   armed by a successful setState(): the next
+  //                           selector value the host sends is where the
+  //                           host's selector stands, not a preset to load
+  //
+  // One word is what closes the race: setState() arms and drops in a single
+  // store, the audio thread decides and publishes in a single compare-exchange
+  // (\see onRequestPresetLoad). Armed by setState() and nowhere else, so a
+  // fresh instance's first program change is a real one.
+  static constexpr int64_t kNoPresetRequest = -1;
+  static constexpr int64_t kAdoptNextPresetValue = -2;
+  std::atomic<int64_t> _presetLoadRequest{kNoPresetRequest};
+  // The selector value already in effect: the index onIdle() last acted on,
+  // or the one preset_loaded() resolved. A parameter change is only a request
+  // when it names something else.
+  //
+  // Both halves of that matter. preset_loaded() tells the host where the
+  // selector now stands, and a host that hands that value straight back would
+  // be asking for the preset that has just been loaded - a loop that reloads
+  // the plugin's entire state for as long as the instance lives, discarding
+  // whatever the user edited in between. A host is also entitled to send a
+  // program list parameter's current value in every process block, which is
+  // the same request arriving from the other side.
+  //
+  // Written on the main thread (onIdle, preset_loaded), read on the audio
+  // thread (onRequestPresetLoad).
+  std::atomic<int64_t> _presetIndexInEffect{-1};
+  // Set when the crawl finishes; onIdle() turns it into the host notification,
+  // because notifyProgramListChange() is not for a background thread.
+  std::atomic<bool> _presetListChanged{false};
 
   // for IMidiMapping
   bool _useIMidiMapping = false;
@@ -449,7 +568,9 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
 
   void attachTimers(Steinberg::Linux::IRunLoop *);
   void detachTimers(Steinberg::Linux::IRunLoop *);
-  Steinberg::Linux::IRunLoop *_iRunLoop{nullptr};
+  // Written on the host's main thread, read from the helper thread; every
+  // write to null is followed by os::idleSourceChanged() to wake the helper.
+  std::atomic<Steinberg::Linux::IRunLoop *> _iRunLoop{nullptr};
 #endif
 
 #if LIN

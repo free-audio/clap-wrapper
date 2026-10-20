@@ -94,6 +94,17 @@ add_library(clap-wrapper-compile-options INTERFACE)
 add_library(clap-wrapper-compile-options-public INTERFACE)
 target_link_libraries(clap-wrapper-compile-options INTERFACE clap-wrapper-compile-options-public)
 
+# The wrapper sources need C++17 - std::filesystem, if-initializers - and carry that requirement
+# themselves rather than leaving it to whoever is building them. The top-level CMakeLists sets
+# CMAKE_CXX_STANDARD, but only when it *is* the top level, so a project that reaches the wrapper
+# through add_subdirectory got no floor at all and failed in clap_proxy.cpp and
+# preset_discovery.cpp against a generator default older than 17 - Xcode's, for one, which is how
+# this surfaced while following docs/ios.md.
+#
+# A floor, not a pin: a consumer building at 20 stays at 20. It only raises a build that was
+# below 17, which was never a configuration this project supported.
+target_compile_features(clap-wrapper-compile-options-public INTERFACE cxx_std_17)
+
 # This is useful for debugging cmake link problems2
 # target_compile_definitions(clap-wrapper-compile-options INTERFACE -DTHIS_BUILD_USED_CLAP_WRAPPER_COMPILE_OPTIONS=1)
 # target_compile_definitions(clap-wrapper-compile-options-public INTERFACE -DTHIS_BUILD_USED_CLAP_WRAPPER_COMPILE_OPTIONS_PUBLIC=1)
@@ -231,6 +242,8 @@ function(guarantee_clap_wrapper_shared)
             src/detail/clap/fsutil.h
             src/detail/clap/fsutil.cpp
             src/detail/clap/automation.h
+            src/detail/clap/preset_discovery.h
+            src/detail/clap/preset_discovery.cpp
             )
     target_link_libraries(clap-wrapper-shared-detail PUBLIC clap clap-wrapper-extensions clap-wrapper-compile-options-public)
     target_link_libraries(clap-wrapper-shared-detail PRIVATE clap-wrapper-compile-options)

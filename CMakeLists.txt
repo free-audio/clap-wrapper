@@ -24,9 +24,11 @@
 # AAX_SDK_ROOT        The location of the AAX SDK (directory name 'aax');
 #                     only needed for AAX builds
 # RTAUDIO_SDK_ROOT    The location of RtAudio (directory name 'rtaudio');
-#                     only needed for standalone builds
+#                     only needed for standalone builds on Linux, with
+#                     CLAP_WRAPPER_STANDALONE_RTAUDIO, or for ASIO on Windows
 # RTMIDI_SDK_ROOT     The location of RtMidi (directory name 'rtmidi');
-#                     only needed for standalone builds
+#                     only needed for standalone builds on Linux, or with
+#                     CLAP_WRAPPER_STANDALONE_RTAUDIO
 # WIL_SDK_ROOT        The location of the Windows Implementation Library
 #                     (directory name 'wil'); only needed for standalone
 #                     builds on Windows
@@ -70,6 +72,13 @@
 #                                 plugin directory (~/Library/Audio/Plug-Ins/... on
 #                                 macOS, ~/.vst3 on Linux)
 # CLAP_WRAPPER_CXX_STANDARD       The C++ standard to compile with. Defaults to 17
+# CLAP_WRAPPER_STANDALONE_RTAUDIO  The standalone on RtAudio and RtMidi in place of
+#                                 CoreAudio/CoreMIDI (macOS) and WASAPI/WinMM (Windows).
+#                                 Defaults to OFF; Linux always uses them
+# CLAP_WRAPPER_STANDALONE_X11_HIDE_STRIP  The Linux standalone without the strip above
+#                                 the plugin (Audio/MIDI settings button, audio status); the
+#                                 plugin opens the settings itself. Defaults to ON; OFF shows
+#                                 the strip. A plugin without a gui always has it
 
 
 cmake_minimum_required(VERSION 3.21)
@@ -98,7 +107,7 @@ option(CLAP_WRAPPER_BUILD_TESTS "Build test CLAP wrappers" OFF)
 
 project(clap-wrapper
 	LANGUAGES C CXX
-	VERSION 0.16.0
+	VERSION 0.17.0
 	DESCRIPTION "CLAP-as-X wrappers"
 )
 set(CLAP_WRAPPER_VERSION "${PROJECT_VERSION}" CACHE STRING "Version of the wrapper project")

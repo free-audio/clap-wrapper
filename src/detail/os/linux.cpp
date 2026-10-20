@@ -11,11 +11,34 @@
 #include "osutil.h"
 #include <filesystem>
 #include <stdio.h>
+#include <chrono>
+#include <algorithm>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
+#include <vector>
 
 #include <dlfcn.h>
 
 namespace os
 {
+// A Linux VST3 plug-in has no main thread of its own to hang a timer on. The
+// only main-thread callback a VST3 host offers here is Steinberg::Linux::
+// IRunLoop, and that arrives through IPlugFrame -- which means it exists only
+// while an editor is open. Everything onIdle() drives (clap_host::
+// request_callback, clap timers, a deferred parameter flush, the queue of
+// parameter edits bound for the host) was therefore dead whenever the plug-in
+// window was shut.
+//
+// A thread of our own stands in for the main thread the host does not give us
+// -- hence the _standIn members below. It covers that gap and only that gap: a
+// plug object that has been handed a run loop reports hasOwnIdleSource() and is
+// skipped, and when every attached object has one the thread parks on the
+// condition variable rather than spinning. It is the same arrangement JUCE's
+// Linux plug-in client uses, which runs a MessageThread of its own and stops it
+// when the host's message thread appears.
+constexpr auto idleInterval = std::chrono::milliseconds(10);
+
 class LinuxHelper
 {
  public:
@@ -23,10 +46,23 @@ class LinuxHelper
   void terminate();
   void attach(IPlugObject *plugobject);
   void detach(IPlugObject *plugobject);
+  void idleSourceChanged();
 
  private:
+  // both want _standInLock held
+  bool anyoneWantsTicking() const;
   void executeDefered();
+
+  void run();
+
+  // Recursive, and paired with condition_variable_any, because it is held
+  // across onIdle() and a plug object may come back through attach(), detach()
+  // or idleSourceChanged() from inside its own idle.
+  std::recursive_mutex _standInLock;
+  std::condition_variable_any _standInWakeup;
+  std::thread _standInThread;
   std::vector<IPlugObject *> _plugs;
+  bool _standInRunning{false};
 } gLinuxHelper;
 
 #if 0
@@ -151,27 +187,96 @@ std::string getBinaryName()
 #endif
 void LinuxHelper::init()
 {
+  // The thread starts with the first attach() rather than here: a host scanning
+  // plug-ins dlopens and dlcloses this module without ever activating anything.
 }
 
 void LinuxHelper::terminate()
 {
+  {
+    std::lock_guard<std::recursive_mutex> guard(_standInLock);
+    _standInRunning = false;
+  }
+  _standInWakeup.notify_all();
+  if (_standInThread.joinable()) _standInThread.join();
+}
+
+bool LinuxHelper::anyoneWantsTicking() const
+{
+  for (auto const *p : _plugs)
+  {
+    if (p && !p->hasOwnIdleSource()) return true;
+  }
+  return false;
 }
 
 void LinuxHelper::executeDefered()
 {
-  for (auto p : _plugs)
+  for (auto *p : _plugs)
   {
-    if (p) p->onIdle();
+    // An object with a run loop is already being idled on the host's own main
+    // thread; ticking it here too would give it two main threads.
+    if (p && !p->hasOwnIdleSource()) p->onIdle();
   }
 }
+
+void LinuxHelper::run()
+{
+  LOGDETAIL("clap-wrapper: Linux idle thread started");
+
+  std::unique_lock<std::recursive_mutex> guard(_standInLock);
+  while (_standInRunning)
+  {
+    if (!anyoneWantsTicking())
+    {
+      LOGDETAIL("clap-wrapper: every attached object has a run loop, pausing the idle thread");
+      // Unbounded on purpose: every change that can turn the predicate back to
+      // "tick me" reaches this thread under _standInLock, so none can be lost.
+      _standInWakeup.wait(guard, [this] { return !_standInRunning || anyoneWantsTicking(); });
+      continue;
+    }
+
+    _standInWakeup.wait_for(guard, idleInterval, [this] { return !_standInRunning; });
+    if (!_standInRunning) break;
+
+    // The lock is held across the idle deliberately: detach() runs on the
+    // host's thread and is followed by the object's destruction, so it has to
+    // be able to wait out an idle that is already in flight. Lock order is
+    // helper-then-plug-object; nothing may call attach(), detach() or
+    // idleSourceChanged() while holding a plug object's own lock.
+    executeDefered();
+  }
+
+  LOGDETAIL("clap-wrapper: Linux idle thread exiting");
+}
+
 void LinuxHelper::attach(IPlugObject *plugobject)
 {
+  std::lock_guard<std::recursive_mutex> guard(_standInLock);
   _plugs.push_back(plugobject);
+
+  if (!_standInRunning)
+  {
+    _standInRunning = true;
+    _standInThread = std::thread([this] { run(); });
+  }
+  _standInWakeup.notify_all();
 }
 
 void LinuxHelper::detach(IPlugObject *plugobject)
 {
+  std::lock_guard<std::recursive_mutex> guard(_standInLock);
   _plugs.erase(std::remove(_plugs.begin(), _plugs.end(), plugobject), _plugs.end());
+  _standInWakeup.notify_all();
+}
+
+void LinuxHelper::idleSourceChanged()
+{
+  // The lock is not optional: run() tests its predicate and parks in one step,
+  // so an unlocked notify can be lost, leaving the helper parked forever. Safe
+  // to block on: lock order is helper-then-plug-object, onIdle() only try_locks.
+  std::lock_guard<std::recursive_mutex> guard(_standInLock);
+  _standInWakeup.notify_all();
 }
 
 }  // namespace os
@@ -190,8 +295,19 @@ void detach(IPlugObject *plugobject)
   gLinuxHelper.detach(plugobject);
 }
 
+void idleSourceChanged()
+{
+  gLinuxHelper.idleSourceChanged();
+}
+
 uint64_t getTickInMS()
 {
-  return clock();
+  // Wall-clock milliseconds since some fixed point — the CLAP timer extension
+  // schedules in real time. Deliberately not clock(): that is process CPU time
+  // summed over all threads, so it crawls while the process is idle (timers
+  // never fire) and can outrun real time while the audio threads are busy.
+  return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   std::chrono::steady_clock::now().time_since_epoch())
+                                   .count());
 }
 }  // namespace os

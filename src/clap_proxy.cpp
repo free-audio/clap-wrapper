@@ -6,12 +6,6 @@
 #include <TargetConditionals.h>
 #endif
 
-// Private iOS window-API handshake (clap-wrapper side). Kept in sync with
-// the constant declared in src/detail/auv3/auv3_platform.h.
-#ifndef CLAP_WINDOW_API_UIKIT
-#define CLAP_WINDOW_API_UIKIT "uikit"
-#endif
-
 #if MAC || LIN
 #include <iostream>
 #define OutputDebugString(x) std::cout << __FILE__ << ":" << __LINE__ << " " << (x) << std::endl;
@@ -151,6 +145,19 @@ static bool track_info_get(const clap_host_t *host, clap_track_info_t *info)
 
 const clap_host_track_info trackinfo = {track_info_get};
 
+const clap_wrapper_host_information_t wrapper_host_information = {
+    [](const clap_host_t *host) -> const char * { return self(host)->wrapper_flavor(); },
+    [](const clap_host_t *host) -> const char * { return self(host)->underlying_host_name(); }};
+
+const clap_host_preset_load_t preset_load = {
+    /* on_error */
+    [](const clap_host_t *host, uint32_t location_kind, const char *location, const char *load_key,
+       int32_t os_error, const char *msg) -> void
+    { self(host)->preset_load_error(location_kind, location, load_key, os_error, msg); },
+    /* loaded */
+    [](const clap_host_t *host, uint32_t location_kind, const char *location,
+       const char *load_key) -> void { self(host)->preset_loaded(location_kind, location, load_key); }};
+
 }  // namespace HostExt
 
 std::shared_ptr<Plugin> Plugin::createInstance(const clap_plugin_factory *factory, const std::string &id,
@@ -238,6 +245,10 @@ void Plugin::connectClap(const clap_plugin_t *clap)
   getExtension(_plugin, _ext._configurable_audio_ports, CLAP_EXT_CONFIGURABLE_AUDIO_PORTS);
   if (!_ext._configurable_audio_ports)
     getExtension(_plugin, _ext._configurable_audio_ports, CLAP_EXT_CONFIGURABLE_AUDIO_PORTS_COMPAT);
+  getExtension(_plugin, _ext._surround, CLAP_EXT_SURROUND);
+  if (!_ext._surround) getExtension(_plugin, _ext._surround, CLAP_EXT_SURROUND_COMPAT);
+  getExtension(_plugin, _ext._ambisonic, CLAP_EXT_AMBISONIC);
+  if (!_ext._ambisonic) getExtension(_plugin, _ext._ambisonic, CLAP_EXT_AMBISONIC_COMPAT);
   getExtension(_plugin, _ext._audio_ports_activation, CLAP_EXT_AUDIO_PORTS_ACTIVATION);
   if (!_ext._audio_ports_activation)
     getExtension(_plugin, _ext._audio_ports_activation, CLAP_EXT_AUDIO_PORTS_ACTIVATION_COMPAT);
@@ -257,7 +268,11 @@ void Plugin::connectClap(const clap_plugin_t *clap)
   }
 
   getExtension(_plugin, _ext._gainreduc, CLAP_EXT_GAIN_ADJUSTMENT_METERING);
+
+  getExtension(_plugin, _ext._preset_load, CLAP_EXT_PRESET_LOAD);
+  if (!_ext._preset_load) getExtension(_plugin, _ext._preset_load, CLAP_EXT_PRESET_LOAD_COMPAT);
   getExtension(_plugin, _ext._auv2_param_ordering, CLAP_PLUGIN_AUV2_PARAM_ORDERING);
+  getExtension(_plugin, _ext._standalone_features, CLAP_WRAPPER_STANDALONE_FEATURES);
 
 #if LIN
   getExtension(_plugin, _ext._posixfd, CLAP_EXT_POSIX_FD_SUPPORT);
@@ -270,8 +285,6 @@ void Plugin::connectClap(const clap_plugin_t *clap)
     api = CLAP_WINDOW_API_WIN32;
 #endif
 #if MAC
-    // CLAP has no standard UIKit API string; use the private "uikit"
-    // identifier on iOS, shared with the hosted plugin.
 #if TARGET_OS_IPHONE
     api = CLAP_WINDOW_API_UIKIT;
 #else
@@ -360,6 +373,13 @@ bool Plugin::load(const clap_istream_t *stream) const
   return false;
 }
 
+bool Plugin::loadPresetFromLocation(uint32_t locationKind, const char *location,
+                                    const char *loadKey) const
+{
+  if (!supportsPresetLoad()) return false;
+  return _ext._preset_load->from_location(_plugin, locationKind, location, loadKey);
+}
+
 bool Plugin::save(const clap_ostream_t *stream) const
 {
   if (_ext._state)
@@ -426,6 +446,17 @@ void Plugin::mark_dirty()
 void Plugin::latency_changed()
 {
   _parentHost->latency_changed();
+}
+
+void Plugin::preset_loaded(uint32_t locationKind, const char *location, const char *loadKey)
+{
+  _parentHost->preset_loaded(locationKind, location, loadKey);
+}
+
+void Plugin::preset_load_error(uint32_t locationKind, const char *location, const char *loadKey,
+                               int32_t osError, const char *msg)
+{
+  _parentHost->preset_load_error(locationKind, location, loadKey, osError, msg);
 }
 
 void Plugin::tail_changed()
@@ -552,7 +583,7 @@ void Plugin::param_request_flush()
 
 // Query an extension.
 // [thread-safe]
-const void *Plugin::clapExtension(const clap_host * /*host*/, const char *extension)
+const void *Plugin::clapExtension(const clap_host *host, const char *extension)
 {
   // TODO: add 'audio-ports' host-side extension
   if (!strcmp(extension, CLAP_EXT_LOG)) return &HostExt::log;
@@ -565,6 +596,11 @@ const void *Plugin::clapExtension(const clap_host * /*host*/, const char *extens
   if (!strcmp(extension, CLAP_EXT_TAIL)) return &HostExt::tail;
   if (!strcmp(extension, CLAP_EXT_STATE)) return &HostExt::state;
   if (!strcmp(extension, CLAP_EXT_CONTEXT_MENU)) return &HostExt::context_menu;
+  if (!strcmp(extension, CLAP_EXT_PRESET_LOAD) || !strcmp(extension, CLAP_EXT_PRESET_LOAD_COMPAT))
+    return &HostExt::preset_load;
+  if (!strcmp(extension, CLAP_WRAPPER_HOST_INFORMATION)) return &HostExt::wrapper_host_information;
+  if (!strcmp(extension, CLAP_WRAPPER_STANDALONE_FEATURES))
+    return HostExt::self(host)->standalone_features();
 
 #if LIN
   if (!strcmp(extension, CLAP_EXT_POSIX_FD_SUPPORT)) return &HostExt::hostposixfd;
@@ -595,8 +631,8 @@ void Plugin::clapRequestRestart(const clap_host *host)
 // [thread-safe]
 void Plugin::clapRequestProcess(const clap_host *host)
 {
-  // right now, I don't know how to communicate this to the host
-  // in VST3 you can't force processing...
+  auto self = static_cast<Plugin *>(host->host_data);
+  self->_parentHost->request_process();
 }
 
 // Registers a periodic timer.

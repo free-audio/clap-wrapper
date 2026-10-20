@@ -17,6 +17,7 @@
 #include "osutil.h"
 #include <vector>
 #include <iostream>
+#include <chrono>
 #include <dlfcn.h>
 
 #include "detail/os/fs.h"
@@ -117,7 +118,13 @@ void detach(IPlugObject *plugobject)
 
 uint64_t getTickInMS()
 {
-  return (::clock() * 1000) / CLOCKS_PER_SEC;
+  // Wall-clock milliseconds since some fixed point — the CLAP timer extension
+  // schedules in real time. Deliberately not clock(): that is process CPU time
+  // summed over all threads, so it crawls while the process is idle (timers
+  // never fire) and can outrun real time while the audio threads are busy.
+  return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   std::chrono::steady_clock::now().time_since_epoch())
+                                   .count());
 }
 
 fs::path getPluginPath()
@@ -140,6 +147,17 @@ std::string getParentFolderName()
 std::string getBinaryName()
 {
   return getPluginPath().stem();
+}
+
+std::string getHostAppName()
+{
+  NSBundle *mainBundle = [NSBundle mainBundle];
+  // AUHostingService and our own appex are both XPC! bundles
+  if ([[mainBundle objectForInfoDictionaryKey:@"CFBundlePackageType"] isEqualToString:@"XPC!"])
+    return {};
+  NSString *name = [mainBundle objectForInfoDictionaryKey:@"CFBundleName"];
+  if (!name) name = [[NSProcessInfo processInfo] processName];
+  return name ? std::string([name UTF8String]) : std::string();
 }
 
 }  // namespace os

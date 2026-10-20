@@ -85,6 +85,9 @@ class AAXProcessAdapter
                        ParamChangeQueue &inqueue, uint32_t midiportid, bool preferMIDI,
                        uint32_t placeholderInChannels, uint32_t placeholderOutChannels);
   void process(SAAX_Wrapper_AlgorithmicContext *context);
+  // Zero every output channel of this render context. Used in place of
+  // process() when CLAP does not allow the plugin to be rendered.
+  void silenceOutputs(SAAX_Wrapper_AlgorithmicContext *context);
   void flush();
 
  private:
@@ -236,6 +239,8 @@ class ClapAsAAX : public AAX_CEffectParameters,
 
   void restartPlugin() override;
 
+  void request_process() override;
+
   void request_callback() override;
 
   // clap_timer support
@@ -244,6 +249,14 @@ class ClapAsAAX : public AAX_CEffectParameters,
 
   bool track_info_get(clap_track_info_t *info) override;
   const char *host_get_name() override;
+  const char *wrapper_flavor() const override
+  {
+    return CLAP_WRAPPER_HOST_FLAVOR_AAX;
+  }
+  const char *underlying_host_name() const override
+  {
+    return _underlying_hostname.empty() ? nullptr : _underlying_hostname.c_str();
+  }
 
   bool supportsContextMenu() const override;
   // context_menu
@@ -256,7 +269,9 @@ class ClapAsAAX : public AAX_CEffectParameters,
 
   void onIdle() override;
 
-  void activatePlugin();
+  // Returns false when the plugin refused to activate, in which case it is left
+  // deactivated and must not be started.
+  bool activatePlugin();
   void deactivatePlugin();
   void startProcessing();
   void stopProcessing();
@@ -271,6 +286,7 @@ class ClapAsAAX : public AAX_CEffectParameters,
   os::State _os_attached;
 
   std::string _wrapper_hostname = "CLAP-As-AAX-Wrapper";
+  std::string _underlying_hostname;
 
   // _parameterMap maps the AAX CParamID to the wrapped parameter
   std::map<std::string, std::shared_ptr<AAXWrappedParameterInfo_t>> _parameterMap;

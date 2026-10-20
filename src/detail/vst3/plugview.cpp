@@ -5,13 +5,13 @@
 
 WrappedView::WrappedView(const clap_plugin_t *plugin, const clap_plugin_gui_t *gui,
                          std::function<void()> onReleaseAdditionalReferences,
-                         std::function<void(bool)> onDestroy, std::function<void()> onRunLoopAvailable)
+                         std::function<void(bool)> onDestroy, std::function<void()> onRunLoopChanged)
   : IPlugView()
   , FObject()
   , _plugin(plugin)
   , _extgui(gui)
   , _onReleaseAdditionalReferences(onReleaseAdditionalReferences)
-  , _onRunLoopAvailable(onRunLoopAvailable)
+  , _onRunLoopChanged(onRunLoopChanged)
   , _onDestroy(onDestroy)
 {
 }
@@ -224,14 +224,24 @@ tresult PLUGIN_API WrappedView::setFrame(IPlugFrame *frame)
   _plugFrame = frame;
 
 #if LIN
+  // The run loop going away matters as much as it arriving: it is the wrapper's
+  // only main thread, and something has to take over when the host takes it
+  // back. A host may hand back a null frame and keep the view alive across an
+  // editor being closed and reopened.
+  auto *const previousRunLoop = _runLoop;
+  Steinberg::Linux::IRunLoop *runLoop{nullptr};
   if (_plugFrame)
   {
-    if (_plugFrame->queryInterface(Steinberg::Linux::IRunLoop::iid, (void **)&_runLoop) ==
-            Steinberg::kResultOk &&
-        _onRunLoopAvailable)
+    if (_plugFrame->queryInterface(Steinberg::Linux::IRunLoop::iid, (void **)&runLoop) !=
+        Steinberg::kResultOk)
     {
-      _onRunLoopAvailable();
+      runLoop = nullptr;
     }
+  }
+  _runLoop = runLoop;
+  if (_runLoop != previousRunLoop && _onRunLoopChanged)
+  {
+    _onRunLoopChanged();
   }
 #endif
   return kResultOk;
@@ -259,16 +269,15 @@ tresult PLUGIN_API WrappedView::checkSizeConstraint(ViewRect *rect)
 
 bool WrappedView::request_resize(uint32_t width, uint32_t height)
 {
-  auto oldrect = _rect;
-  _rect.right = _rect.left + (int32)width;
-  _rect.bottom = _rect.top + (int32)height;
+  if (!_plugFrame) return false;
 
-  if (_plugFrame && !_plugFrame->resizeView(this, &_rect))
-  {
-    _rect = oldrect;
-    return false;
-  }
-  return true;
+  // Hosts can query getSize before onSize, which updates _rect with current geometry.
+  // Keep the requested rectangle independent so that query cannot alter the request.
+  auto requestedRect = _rect;
+  requestedRect.right = requestedRect.left + (int32)width;
+  requestedRect.bottom = requestedRect.top + (int32)height;
+
+  return _plugFrame->resizeView(this, &requestedRect) == kResultOk;
 }
 tresult WrappedView::setContentScaleFactor(IPlugViewContentScaleSupport::ScaleFactor factor)
 {

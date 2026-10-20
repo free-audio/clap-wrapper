@@ -77,6 +77,19 @@
                                     <action selector="streamWrapperFileAs:" target="-1" id="mDf-zr-I0C"/>
                                 </connections>
                             </menuItem>
+                            <menuItem title="Reset State" id="Qe4-Rs-7hN">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="resetState:" target="-1" id="Zr9-kD-c2V"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem isSeparatorItem="YES" id="Rl5-Sp-8tQ"/>
+                            <menuItem title="Restore Last Session" id="Rl5-Ss-3kW">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="toggleRestoreLastSession:" target="-1" id="Rl5-Ac-9nV"/>
+                                </connections>
+                            </menuItem>
                         </items>
                     </menu>
                 </menuItem>

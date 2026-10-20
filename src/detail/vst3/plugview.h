@@ -23,7 +23,7 @@ class WrappedView : public Steinberg::IPlugView,
  public:
   WrappedView(const clap_plugin_t *plugin, const clap_plugin_gui_t *gui,
               std::function<void()> onReleaseAdditionalReferences, std::function<void(bool)> onDestroy,
-              std::function<void()> onRunLoopAvailable);
+              std::function<void()> onRunLoopChanged);
   ~WrappedView();
 
   // IPlugView interface
@@ -100,7 +100,7 @@ class WrappedView : public Steinberg::IPlugView,
   void releaseAdditionalReferences();
   const clap_plugin_t *_plugin = nullptr;
   const clap_plugin_gui_t *_extgui = nullptr;
-  std::function<void()> _onReleaseAdditionalReferences = nullptr, _onRunLoopAvailable = nullptr;
+  std::function<void()> _onReleaseAdditionalReferences = nullptr, _onRunLoopChanged = nullptr;
   std::function<void(bool)> _onDestroy = nullptr;
   clap_window_t _window = {nullptr, {nullptr}};
   IPlugFrame *_plugFrame = nullptr;

@@ -11,20 +11,20 @@
     * NSView vs UIView: type alias `CLAPWRAP_ViewClass`.
     * NSRect/NSSize vs CGRect/CGSize: `NSMake*` macros don't exist on iOS,
       so we use `CGRectMake` / `CGSizeMake` (which work on both platforms).
-    * CLAP_WINDOW_API_COCOA vs a private UIKit identifier.
+    * CLAP_WINDOW_API_COCOA vs CLAP_WINDOW_API_UIKIT.
     * NSView lifecycle names (`viewDidMoveToWindow` / `viewDidMoveToSuperview`)
       versus UIView (`didMoveToWindow` / `didMoveToSuperview`).
 
     This header centralises those shims so the rest of the wrapper can be
-    written once. CLAP does not (yet) define a UIKit window API identifier
-    in clap/ext/gui.h; until it does, we use a private string "uikit" and
-    expect the hosted plugin to match (plugins that use clap-wrapper on
-    iOS must recognise this string on their side).
+    written once. The UIKit window API identifier comes from CLAP itself
+    (CLAP_WINDOW_API_UIKIT, "uikit", clap/ext/gui.h) - a hosted plugin
+    must support it to show a UI on iOS.
 */
 
 #pragma once
 
 #include <TargetConditionals.h>
+#include <clap/ext/gui.h>
 
 #if TARGET_OS_IPHONE
 #import <UIKit/UIKit.h>
@@ -36,6 +36,13 @@ typedef NSView CLAPWRAP_ViewClass;
 
 // Private CLAP window-API identifier for UIKit. Kept in sync with the
 // constant of the same name in the hosted plugin's editor code.
+//
+// Newer CLAP declares CLAP_WINDOW_API_UIKIT as a variable in ext/gui.h; if
+// this macro is defined before that header is parsed, it rewrites the
+// declaration into garbage. Parse the header first — it is #pragma once, so
+// it will not be parsed again after the macro exists.
+#include <clap/clap.h>
+
 #ifndef CLAP_WINDOW_API_UIKIT
 #define CLAP_WINDOW_API_UIKIT "uikit"
 #endif

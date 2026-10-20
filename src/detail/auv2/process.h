@@ -113,6 +113,10 @@ class ProcessAdapter
                  UInt32 inOffsetSampleFrame);
   void stopNote(int32_t note_id, int16_t channel, UInt32 inOffsetSampleFrame);
   void addParameterEvent(const clap_param_info_t &info, double value, uint32_t inOffsetSampleFrame);
+  // Hands the parameter events still queued here to another adapter, so they
+  // survive this one being destroyed. Returns how many moved. See
+  // WrapAsAUV2::deactivateCLAP().
+  size_t transferPendingParametersTo(ProcessAdapter &other);
   // void startNote()
   ~ProcessAdapter();
 
