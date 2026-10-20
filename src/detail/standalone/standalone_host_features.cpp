@@ -281,7 +281,12 @@ uint32_t supportedPersistence(const clap_host_t *)
 bool setPersistence(const clap_host_t *host, uint32_t persistence)
 {
   if (persistence >= 32 || !(supportedPersistence(host) & (1u << persistence))) return false;
-  getStandaloneHost()->pluginStatePersistence = persistence;
+
+  auto *sah = getStandaloneHost();
+  sah->pluginStatePersistence = persistence;
+  sah->settings.pluginStatePersistence = persistence;
+  if (!sah->saveStandaloneSettings())
+    LOGINFO("[WARNING] Unable to save the state persistence; the next launch will not have it");
   return true;
 }
 

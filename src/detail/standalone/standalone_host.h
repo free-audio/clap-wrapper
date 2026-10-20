@@ -295,7 +295,7 @@ struct StandaloneHost : Clap::IHost, AudioStreamCallback
   std::function<void()> onScreenAppearanceChanged{nullptr};
 
   // whether the plugin's state is loaded back at launch and saved on quit, a
-  // clap_wrapper_standalone_state_persistence. the plugin's to set, and never saved
+  // clap_wrapper_standalone_state_persistence. the plugin's to set; settings keeps it
   uint32_t pluginStatePersistence{CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION};
 
   std::vector<clap_wrapper_standalone_endpoint_t> endpointSnapshot[4];

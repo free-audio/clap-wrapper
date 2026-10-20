@@ -87,6 +87,11 @@ struct StandaloneSettings
   // appearance itself is never saved here
   uint32_t screenAppearance{0};
 
+  // whether the plugin's state is kept from one launch to the next, a
+  // clap_wrapper_standalone_state_persistence: 0 the session, 1 none. the plugin's to
+  // choose, through the standalone features, and kept here with the rest of the setup
+  uint32_t pluginStatePersistence{0};
+
   bool hasWindowPosition{false};
   int32_t windowX{0}, windowY{0};
   uint32_t windowWidth{0}, windowHeight{0};

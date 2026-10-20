@@ -186,6 +186,8 @@ bool StandaloneSettings::load(const fs::path &fromFile)
         loaded.midiVirtualOutput = asBool(value);
       else if (key == "screenAppearance")
         loaded.screenAppearance = value == "light" ? 1u : value == "dark" ? 2u : 0u;
+      else if (key == "pluginStatePersistence")
+        loaded.pluginStatePersistence = value == "none" ? 1u : 0u;
       else if (key == "windowX")
       {
         loaded.windowX = static_cast<int32_t>(std::atol(value.c_str()));
@@ -287,6 +289,7 @@ bool StandaloneSettings::save(const fs::path &intoFile) const
             : screenAppearance == 2 ? "dark"
                                     : "auto")
         << "\n";
+    ofs << "pluginStatePersistence=" << (pluginStatePersistence == 1 ? "none" : "session") << "\n";
 
     if (hasWindowPosition)
     {

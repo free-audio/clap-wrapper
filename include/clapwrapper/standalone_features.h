@@ -48,7 +48,8 @@
   the plugin's state: by default the standalone saves it when it quits and loads it back
   at the next launch, over the state the plugin has after init(). a plugin that keeps
   its state its own way, or wants every launch to start fresh, says so with
-  set_plugin_state_persistence, from init() for the launch's own restore to follow it.
+  set_plugin_state_persistence. the standalone keeps that choice with its audio and midi
+  setup, so a plugin can also leave it to the user and set it when they make it.
 
   the plugin side: a plugin which returns clap_wrapper_plugin_standalone_features from
   get_extension under the same id hears when the user is done with that screen, so it
@@ -387,11 +388,13 @@ extern "C"
     // [main-thread]
     uint32_t(CLAP_ABI *supported_plugin_state_persistence)(const clap_host_t *host);
 
-    // called from init(), it decides whether this launch loads the last session's state;
-    // called later, only whether this session's is saved on quit. the value is not saved -
-    // set it again, say from init(), on every launch. the launch state the standalone
-    // keeps for resetting, and a state the user saves to or opens from a file, are not
-    // affected. returns false if unsupported
+    // saved with the standalone's audio and midi setup, so it holds for the launches after
+    // this one: a plugin that offers the choice sets it when the user makes it, one that
+    // always wants the same can set it from init(). called from init(), it also decides
+    // whether this launch loads the last session's state; called later, whether this
+    // session's is saved on quit. the launch state the standalone keeps for resetting, and
+    // a state the user saves to or opens from a file, are not affected. returns false if
+    // unsupported
     // [main-thread]
     bool(CLAP_ABI *set_plugin_state_persistence)(const clap_host_t *host, uint32_t persistence);
 

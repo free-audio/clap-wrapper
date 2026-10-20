@@ -610,6 +610,8 @@ bool StandaloneHost::loadStandaloneSettings()
 
   // a plugin that has already set the appearance, from init() say, keeps it
   if (settingsLoaded) setScreenAppearance(settings.screenAppearance, false);
+  // the plugin's choice, which the settings keep as soon as it makes one
+  if (settingsLoaded) pluginStatePersistence = settings.pluginStatePersistence;
 
   return settingsLoaded;
 }

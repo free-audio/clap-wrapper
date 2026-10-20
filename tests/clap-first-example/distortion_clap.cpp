@@ -401,16 +401,19 @@ static bool clap1stDist_init(const struct clap_plugin *plugin)
     }
   }
 
-  // in a clap-wrapper standalone, from init(): whether this launch gets the last session's
-  // state back. this asks for the standalone's own default; PERSIST_NONE would start every
-  // launch from the state the plugin has now
-  if (plug->host)
+  // in a clap-wrapper standalone: whether this launch gets the last session's state back.
+  // the standalone keeps the choice with its settings; a plugin that offers it to the user
+  // calls set_plugin_state_persistence when they make it. this one only reports it
+  if (plug->hostLog && plug->host)
   {
     auto *sf = (const clap_wrapper_standalone_features_t *)plug->host->get_extension(
         plug->host, CLAP_WRAPPER_STANDALONE_FEATURES);
-    if (sf && (sf->supported_plugin_state_persistence(plug->host) &
-               (1u << CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION)))
-      sf->set_plugin_state_persistence(plug->host, CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION);
+    if (sf && sf->supported_plugin_state_persistence(plug->host) != 0)
+      plug->hostLog->log(
+          plug->host, CLAP_LOG_INFO,
+          sf->get_plugin_state_persistence(plug->host) == CLAP_WRAPPER_STANDALONE_STATE_PERSIST_NONE
+              ? "The standalone starts every launch afresh"
+              : "The standalone restores the last session");
   }
 
   return true;
