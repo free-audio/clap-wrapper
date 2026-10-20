@@ -278,6 +278,12 @@ void X11Gui::setPlugin(std::shared_ptr<Clap::Plugin> p)
 
 // the window's size from the plugin's: the strip above it, at least wide enough for the
 // strip's text and button
+namespace
+{
+const std::string restoreLabel{"Restore last session"};
+constexpr int restoreCheckSize{13};
+}  // namespace
+
 void X11Gui::layoutWindow()
 {
   if (!display || window == 0) return;
@@ -297,6 +303,13 @@ void X11Gui::layoutWindow()
   const auto label{std::string{"Settings\xE2\x80\xA6"}};
   const int bw{std::max(90, font.width(label) + 24)};
   settingsButton = {w - bw - 6, 4, bw, stripHeight - 8};
+
+  restoreBox = {};
+  if (host && host->settingsFolder.has_value())
+  {
+    const int rw{restoreCheckSize + 6 + font.width(restoreLabel)};
+    restoreBox = {settingsButton.x - 12 - rw, 0, rw, stripHeight};
+  }
   drawStrip();
 }
 
@@ -328,7 +341,9 @@ void X11Gui::updateStatus()
   {
     text = "Audio is off";
   }
-  if (text == status && error == statusIsError) return;
+  // the plugin may have changed the choice the strip shows
+  const bool restores{host->restoresLastSession()};
+  if (text == status && error == statusIsError && restores == restoreShownOn) return;
   status = text;
   statusIsError = error;
   drawStrip();
@@ -343,8 +358,21 @@ void X11Gui::drawStrip()
   Painter p{display, pixmap, gc, &font};
   p.fill({0, 0, w, stripHeight}, theme.strip);
   p.line(0, stripHeight - 1, w, stripHeight - 1, theme.rule);
-  p.textIn({0, 0, settingsButton.x - 6, stripHeight}, 10, status,
+  const int statusRight{restoreBox.w > 0 ? restoreBox.x - 12 : settingsButton.x - 6};
+  p.textIn({0, 0, statusRight, stripHeight}, 10, status,
            statusIsError ? theme.critical : theme.secondary);
+
+  restoreShownOn = host && host->restoresLastSession();
+  if (restoreBox.w > 0)
+  {
+    p.line(restoreBox.x - 6, 6, restoreBox.x - 6, stripHeight - 7, theme.rule);
+    const Rect b{restoreBox.x, (stripHeight - restoreCheckSize) / 2, restoreCheckSize, restoreCheckSize};
+    p.fill(b, restoreShownOn ? theme.accent : theme.field);
+    p.frame(b, restoreShownOn ? theme.accent : theme.fieldBorder);
+    if (restoreShownOn) p.tick(b, theme.accentText);
+    p.textIn({b.x + restoreCheckSize + 6, 0, restoreBox.w - restoreCheckSize - 6, stripHeight}, 0,
+             restoreLabel, theme.text);
+  }
 
   const auto &b{settingsButton};
   p.fill(b, settingsButtonHot ? theme.hover : theme.field);
@@ -384,10 +412,21 @@ void X11Gui::handleStrip(const XEvent &e)
     case ButtonPress:
       settingsButtonPressed =
           e.xbutton.button == Button1 && settingsButton.contains(e.xbutton.x, e.xbutton.y);
+      restorePressed = e.xbutton.button == Button1 && restoreBox.contains(e.xbutton.x, e.xbutton.y);
       break;
     case ButtonRelease:
       if (settingsButtonPressed && settingsButton.contains(e.xbutton.x, e.xbutton.y)) openSettings();
       settingsButtonPressed = false;
+      // whether the next launch gets this session's state back; saved with the audio and
+      // midi setup
+      if (restorePressed && restoreBox.contains(e.xbutton.x, e.xbutton.y) && host)
+      {
+        host->setPluginStatePersistence(host->restoresLastSession()
+                                            ? CLAP_WRAPPER_STANDALONE_STATE_PERSIST_NONE
+                                            : CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION);
+        drawStrip();
+      }
+      restorePressed = false;
       break;
     default:
       break;

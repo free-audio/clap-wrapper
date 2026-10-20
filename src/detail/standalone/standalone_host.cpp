@@ -616,6 +616,19 @@ bool StandaloneHost::loadStandaloneSettings()
   return settingsLoaded;
 }
 
+bool StandaloneHost::setPluginStatePersistence(uint32_t persistence)
+{
+  if (!settingsFolder.has_value() || (persistence != CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION &&
+                                      persistence != CLAP_WRAPPER_STANDALONE_STATE_PERSIST_NONE))
+    return false;
+
+  pluginStatePersistence = persistence;
+  settings.pluginStatePersistence = persistence;
+  if (!saveStandaloneSettings())
+    LOGINFO("[WARNING] Unable to save the state persistence; the next launch will not have it");
+  return true;
+}
+
 bool StandaloneHost::setScreenAppearance(uint32_t appearance, bool fromPlugin)
 {
   if (appearance >= 32 || !(supportedScreenAppearances() & (1u << appearance))) return false;

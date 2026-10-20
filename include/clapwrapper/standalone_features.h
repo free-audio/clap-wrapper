@@ -49,7 +49,9 @@
   at the next launch, over the state the plugin has after init(). a plugin that keeps
   its state its own way, or wants every launch to start fresh, says so with
   set_plugin_state_persistence. the standalone keeps that choice with its audio and midi
-  setup, so a plugin can also leave it to the user and set it when they make it.
+  setup, so a plugin can also leave it to the user and set it when they make it. the user
+  can make it in the standalone too: File > Restore Last Session on macOS, the window
+  menu's Restore last session on Windows, the checkbox in the strip on Linux.
 
   the plugin side: a plugin which returns clap_wrapper_plugin_standalone_features from
   get_extension under the same id hears when the user is done with that screen, so it
@@ -398,7 +400,8 @@ extern "C"
     // [main-thread]
     bool(CLAP_ABI *set_plugin_state_persistence)(const clap_host_t *host, uint32_t persistence);
 
-    // the clap_wrapper_standalone_state_persistence in effect
+    // the clap_wrapper_standalone_state_persistence in effect, whoever chose it: the user
+    // can change it in the standalone's own menu, so read it again before showing it
     // [main-thread]
     uint32_t(CLAP_ABI *get_plugin_state_persistence)(const clap_host_t *host);
   } clap_wrapper_standalone_features_t;

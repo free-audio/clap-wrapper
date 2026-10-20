@@ -994,6 +994,9 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                menu.add(menu.loadState, Menu::Identifier::LoadState);
                menu.add(menu.resetState, Menu::Identifier::ResetState);
                menu.addSeparator();
+               menu.addToggle(menu.restoreLastSession, Menu::Identifier::RestoreLastSession,
+                              sah && sah->restoresLastSession());
+               menu.addSeparator();
 
                menu.populate(hwnd.get());
 
@@ -1198,7 +1201,25 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
 
                    return 0;
                  }
+
+                 case Menu::Identifier::RestoreLastSession:
+                 {
+                   toggleRestoreLastSession();
+
+                   return 0;
+                 }
                }
+
+               ::DefWindowProcW(msg.hwnd, msg.msg, msg.wparam, msg.lparam);
+
+               return 0;
+             });
+
+  // the system menu shows the choice in effect, which the plugin may have changed since
+  message.on(WM_INITMENUPOPUP,
+             [this](Message msg)
+             {
+               if (HIWORD(msg.lparam)) showRestoreLastSession(reinterpret_cast<::HMENU>(msg.wparam));
 
                ::DefWindowProcW(msg.hwnd, msg.msg, msg.wparam, msg.lparam);
 
@@ -2824,6 +2845,23 @@ void Plugin::applyDefaultAudio()
   // Windows, so it is what a first run gets, ASIO compiled in or not.
   sah->setAudioApi({});
   selectDefaultDevices();
+}
+
+// whether the next launch gets this session's state back; saved with the audio and midi setup
+void Plugin::toggleRestoreLastSession()
+{
+  if (!sah) return;
+  sah->setPluginStatePersistence(sah->restoresLastSession()
+                                     ? CLAP_WRAPPER_STANDALONE_STATE_PERSIST_NONE
+                                     : CLAP_WRAPPER_STANDALONE_STATE_PERSIST_SESSION);
+  showRestoreLastSession(getSystemMenu(hwnd.get()));
+}
+
+void Plugin::showRestoreLastSession(::HMENU systemMenu)
+{
+  if (!sah || !systemMenu) return;
+  ::CheckMenuItem(systemMenu, Menu::Identifier::RestoreLastSession,
+                  MF_BYCOMMAND | (sah->restoresLastSession() ? MF_CHECKED : MF_UNCHECKED));
 }
 
 void Plugin::startAudio()
