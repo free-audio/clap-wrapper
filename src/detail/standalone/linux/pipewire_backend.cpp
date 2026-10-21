@@ -1008,7 +1008,7 @@ class PipeWireBackend final : public AudioBackend
       // the graph switches to a rate a stream asks for only among the allowed ones, and a
       // bluetooth device's profile sets its own
       device.sampleRateSettable = !device.isBluetooth && device.sampleRates.size() > 1;
-      if (!device.sampleRateSettable) device.sampleRates = {device.currentSampleRate};
+      if (!device.sampleRateSettable) device.sampleRates.assign(1, device.currentSampleRate);
 
       device.minBufferFrames = clock.minQuantum;
       device.maxBufferFrames = std::max(clock.minQuantum, clock.maxQuantum);
