@@ -464,6 +464,23 @@ static MIDIPortRef sMIDIInputPort = 0;
       // Effect: input -> AU -> output
       AVAudioNode *input = _engine.inputNode;
       AVAudioFormat *inputFormat = [input outputFormatForBus:0];
+      // A mono built-in microphone supplies a 1-channel format; AU input
+      // buses only accept their exact declared channel counts (via
+      // shouldChangeToFormat, kAudioUnitErr_FormatNotSupported -10868).
+      // Request the AU's channel count at the hardware sample rate —
+      // AVAudioEngine inserts the channel converter for us.
+      AVAudioChannelCount auChannels =
+          [_avAudioUnit.AUAudioUnit.inputBusses count] > 0
+              ? [[_avAudioUnit.AUAudioUnit.inputBusses objectAtIndexedSubscript:0].format
+                    channelCount]
+              : 0;
+      if (auChannels != 0 && inputFormat.channelCount != auChannels)
+      {
+        std::cout << "[auv3-standalone] connecting HW input (" << inputFormat.channelCount
+                  << " ch) through " << auChannels << " ch converter for the AU" << std::endl;
+        inputFormat = [[AVAudioFormat alloc] initStandardFormatWithSampleRate:inputFormat.sampleRate
+                                                                     channels:auChannels];
+      }
       [_engine connect:input to:_avAudioUnit format:inputFormat];
     }
     [_engine connect:_avAudioUnit to:output format:outputFormat];
