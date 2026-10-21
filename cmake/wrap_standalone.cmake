@@ -148,6 +148,8 @@ function(target_add_standalone_wrapper)
             clap-wrapper-shared-detail
             )
     target_link_libraries(${salib} PRIVATE clap-wrapper-compile-options)
+    # the backends each keep file-local helpers, some with the same names
+    set_target_properties(${salib} PROPERTIES UNITY_BUILD OFF)
 
     if (sa_rtaudio OR sa_asio)
         guarantee_rtaudio()
