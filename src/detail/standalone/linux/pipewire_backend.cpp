@@ -643,16 +643,16 @@ class PipeWireBackend final : public AudioBackend
     core = pw->context_connect(context, nullptr, 0);
     if (!core) return;
 
-    static const pw_core_events coreEvents{PW_VERSION_CORE_EVENTS,
-                                           &PipeWireBackend::coreInfo,
-                                           &PipeWireBackend::coreDone,
-                                           nullptr,
-                                           &PipeWireBackend::coreError,
-                                           nullptr,
-                                           nullptr,
-                                           nullptr,
-                                           nullptr,
-                                           nullptr};
+    // by name: older headers have no bound_props member
+    static const pw_core_events coreEvents{[]
+                                           {
+                                             pw_core_events res{};
+                                             res.version = PW_VERSION_CORE_EVENTS;
+                                             res.info = &PipeWireBackend::coreInfo;
+                                             res.done = &PipeWireBackend::coreDone;
+                                             res.error = &PipeWireBackend::coreError;
+                                             return res;
+                                           }()};
     pw_core_add_listener(core, &coreListener, &coreEvents, this);
 
     registry = pw_core_get_registry(core, PW_VERSION_REGISTRY, 0);
