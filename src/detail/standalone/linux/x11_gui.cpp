@@ -117,6 +117,9 @@ void X11Gui::runloop()
             }
           }
           break;
+          case ConfigureNotify:
+            windowResized(e.xconfigure.width, e.xconfigure.height);
+            break;
           case ClientMessage:
           {
             // 3. Check if the message is the delete request
@@ -137,6 +140,12 @@ void X11Gui::runloop()
     {
       settingsClosed = settings->result();
       settings.reset();
+    }
+
+    if (setSizePending)
+    {
+      setSizePending = false;
+      tellPluginSize();
     }
 
     // Poll for both X11 events and timer events
@@ -232,6 +241,16 @@ void X11Gui::setPlugin(std::shared_ptr<Clap::Plugin> p)
       pluginWidth = static_cast<int>(w);
       pluginHeight = static_cast<int>(h);
       hasGui = true;
+
+      // the smallest size the plugin accepts, from a request smaller than any it would
+      pluginCanResize = ui->can_resize(pl);
+      if (pluginCanResize)
+      {
+        uint32_t mw{1}, mh{1};
+        ui->adjust_size(pl, &mw, &mh);
+        pluginMinWidth = static_cast<int>(mw);
+        pluginMinHeight = static_cast<int>(mh);
+      }
     }
   }
 
@@ -293,13 +312,33 @@ void X11Gui::layoutWindow()
     XResizeWindow(display, pluginWindow, static_cast<unsigned>(std::max(pluginWidth, 1)),
                   static_cast<unsigned>(std::max(pluginHeight, 1)));
 
+  windowWidth = w;
+  windowHeight = h;
+
+  // a plugin that can be resized makes the window resizable, down to its smallest size;
+  // one that cannot keeps the window at its size
   XSizeHints *hints = XAllocSizeHints();
-  hints->flags = PMinSize | PMaxSize;
-  hints->min_width = hints->max_width = w;
-  hints->min_height = hints->max_height = h;
+  if (pluginCanResize)
+  {
+    hints->flags = PMinSize;
+    hints->min_width = widthFor(pluginMinWidth);
+    hints->min_height = pluginMinHeight + stripShown();
+  }
+  else
+  {
+    hints->flags = PMinSize | PMaxSize;
+    hints->min_width = hints->max_width = w;
+    hints->min_height = hints->max_height = h;
+  }
   XSetWMNormalHints(display, window, hints);
   XFree(hints);
 
+  layoutStrip(w);
+}
+
+// the strip's button and checkbox, from the right edge of a window w wide
+void X11Gui::layoutStrip(int w)
+{
   const auto label{std::string{"Settings\xE2\x80\xA6"}};
   const int bw{std::max(90, font.width(label) + 24)};
   settingsButton = {w - bw - 6, 4, bw, stripHeight - 8};
@@ -311,6 +350,44 @@ void X11Gui::layoutWindow()
     restoreBox = {settingsButton.x - 12 - rw, 0, rw, stripHeight};
   }
   drawStrip();
+}
+
+// the window manager's size for the window: the plugin gets what is below the strip, as
+// far as its adjust_size agrees, and the window keeps the size it was given
+//
+// compared with the plugin's size, not with the size last asked for: a window manager may
+// refuse a request_resize - one that keeps a maximised window at the screen's size - and
+// then the plugin gets the window it has, not the one it asked for
+void X11Gui::windowResized(int w, int h)
+{
+  if (w != windowWidth || h != windowHeight)
+  {
+    windowWidth = w;
+    windowHeight = h;
+    layoutStrip(w);
+  }
+
+  if (!pluginCanResize || !pluginWindow || !plugin || !plugin->_ext._gui) return;
+  auto ui = plugin->_ext._gui;
+  auto pl = plugin->_plugin;
+  uint32_t pw{static_cast<uint32_t>(std::max(w, 1))};
+  uint32_t ph{static_cast<uint32_t>(std::max(h - stripShown(), 1))};
+  ui->adjust_size(pl, &pw, &ph);
+  if (static_cast<int>(pw) == pluginWidth && static_cast<int>(ph) == pluginHeight) return;
+  pluginWidth = static_cast<int>(pw);
+  pluginHeight = static_cast<int>(ph);
+  XResizeWindow(display, pluginWindow, pw, ph);
+  tellPluginSize();
+}
+
+void X11Gui::tellPluginSize()
+{
+  if (!plugin || !plugin->_ext._gui || !pluginWindow) return;
+  if (pluginWidth == toldWidth && pluginHeight == toldHeight) return;
+  toldWidth = pluginWidth;
+  toldHeight = pluginHeight;
+  plugin->_ext._gui->set_size(plugin->_plugin, static_cast<uint32_t>(pluginWidth),
+                              static_cast<uint32_t>(pluginHeight));
 }
 
 // what runs, in a line: "PipeWire · Built-in Audio · 48000 Hz · 256 frames", or the
@@ -352,7 +429,7 @@ void X11Gui::updateStatus()
 void X11Gui::drawStrip()
 {
   if (!display || window == 0 || !gc || !showStrip) return;
-  const int w{std::max(pluginWidth, minimumWidth)};
+  const int w{std::max(windowWidth, minimumWidth)};
   auto pixmap{XCreatePixmap(display, window, static_cast<unsigned>(w), stripHeight,
                             static_cast<unsigned>(DefaultDepth(display, DefaultScreen(display))))};
   Painter p{display, pixmap, gc, &font};
@@ -571,6 +648,7 @@ bool X11Gui::resetSizeTo(int w, int h)
   pluginWidth = w;
   pluginHeight = h;
   layoutWindow();
+  setSizePending = true;
   return true;
 }
 };  // namespace freeaudio::clap_wrapper::standalone::linux_standalone
