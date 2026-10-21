@@ -643,16 +643,16 @@ class PipeWireBackend final : public AudioBackend
     core = pw->context_connect(context, nullptr, 0);
     if (!core) return;
 
-    static const pw_core_events coreEvents{PW_VERSION_CORE_EVENTS,
-                                           &PipeWireBackend::coreInfo,
-                                           &PipeWireBackend::coreDone,
-                                           nullptr,
-                                           &PipeWireBackend::coreError,
-                                           nullptr,
-                                           nullptr,
-                                           nullptr,
-                                           nullptr,
-                                           nullptr};
+    // by name: older headers have no bound_props member
+    static const pw_core_events coreEvents{[]
+                                           {
+                                             pw_core_events res{};
+                                             res.version = PW_VERSION_CORE_EVENTS;
+                                             res.info = &PipeWireBackend::coreInfo;
+                                             res.done = &PipeWireBackend::coreDone;
+                                             res.error = &PipeWireBackend::coreError;
+                                             return res;
+                                           }()};
     pw_core_add_listener(core, &coreListener, &coreEvents, this);
 
     registry = pw_core_get_registry(core, PW_VERSION_REGISTRY, 0);
@@ -1008,7 +1008,7 @@ class PipeWireBackend final : public AudioBackend
       // the graph switches to a rate a stream asks for only among the allowed ones, and a
       // bluetooth device's profile sets its own
       device.sampleRateSettable = !device.isBluetooth && device.sampleRates.size() > 1;
-      if (!device.sampleRateSettable) device.sampleRates = {device.currentSampleRate};
+      if (!device.sampleRateSettable) device.sampleRates.assign(1, device.currentSampleRate);
 
       device.minBufferFrames = clock.minQuantum;
       device.maxBufferFrames = std::max(clock.minQuantum, clock.maxQuantum);

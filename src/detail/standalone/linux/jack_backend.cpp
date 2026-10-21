@@ -519,7 +519,7 @@ class JackBackend final : public AudioBackend
       }
       if (device.inputChannels == 0 && device.outputChannels == 0) continue;
 
-      device.sampleRates = {rate};
+      device.sampleRates.assign(1, rate);
       device.currentSampleRate = rate;
       device.sampleRateSettable = false;
       device.minBufferFrames = device.maxBufferFrames = buffer;
