@@ -1853,6 +1853,8 @@ OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags &inFlags, const AudioTime
 
 void WrapAsAUV2::onBeginEdit(clap_id id)
 {
+  _openGestures.fetch_add(1, std::memory_order_relaxed);
+
 #ifdef NOTIFYDIRECT
   AudioUnitEvent myEvent;
   myEvent.mEventType = kAudioUnitEvent_BeginParameterChangeGesture;
@@ -1893,6 +1895,13 @@ void WrapAsAUV2::onPerformEdit(const clap_event_param_value_t *value)
 
 void WrapAsAUV2::onEndEdit(clap_id id)
 {
+  // Never below zero: an end without a begin must not make a later gesture
+  // look closed while it is still open.
+  auto open = _openGestures.load(std::memory_order_relaxed);
+  while (open > 0 && !_openGestures.compare_exchange_weak(open, open - 1, std::memory_order_relaxed))
+  {
+  }
+
 #ifdef NOTIFYDIRECT
   AudioUnitEvent myEvent;
   myEvent.mEventType = kAudioUnitEvent_EndParameterChangeGesture;
@@ -1993,8 +2002,26 @@ void WrapAsAUV2::onIdle()
     PropertyChanged(kAudioUnitProperty_BypassEffect, kAudioUnitScope_Global, 0);
   }
 
-  if (_requestMarkDirty.exchange(false))
+  // Not while the plugin is in a parameter gesture. Logic records none of the
+  // parameter changes of a gesture that the PresentPreset notification below
+  // arrives in, as if it were a preset load - in Latch and Write the lane
+  // keeps the value from before the touch. A plugin can easily get there:
+  // the change that a gesture reports is often a change to its state as well,
+  // and a mark_dirty() for it reaches onIdle() before the gesture has ended.
+  // Once every gesture has ended the host has recorded what it needed, and the
+  // notification goes out on the next idle tick.
+  bool holdMarkDirty = false;
+  if (_requestMarkDirty && _openGestures.load(std::memory_order_relaxed) > 0)
   {
+    const auto now = std::chrono::steady_clock::now();
+    if (!_markDirtyHeldSince) _markDirtyHeldSince = now;
+    holdMarkDirty = now - *_markDirtyHeldSince < kMaxMarkDirtyHold;
+  }
+
+  if (!holdMarkDirty && _requestMarkDirty.exchange(false))
+  {
+    _markDirtyHeldSince.reset();
+
     // The plugin's state no longer matches what the host last read. Apple's
     // v2->v3 bridge turns this into a KVO notification on the AUAudioUnit's
     // fullState, so v3 hosts hear it too.
