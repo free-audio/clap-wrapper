@@ -18,6 +18,7 @@
 #include <CoreMIDI/CoreMIDI.h>
 #include "auv2_shared.h"
 #include <atomic>
+#include <chrono>
 #include <iostream>
 #include <memory>
 #include <map>
@@ -622,7 +623,8 @@ class WrapAsAUV2 : public ausdk::AUBase,
     //
     // Accompanied by a kAudioUnitProperty_PresentPreset notification, though
     // the preset has not changed: Logic Pro ignores ClassInfo, and only that
-    // lights its Compare button. See onIdle().
+    // lights its Compare button. Held back while a parameter gesture is open,
+    // because Logic then records nothing of that gesture. See onIdle().
     _requestMarkDirty = true;
   }
   void restartPlugin() override
@@ -1056,6 +1058,15 @@ class WrapAsAUV2 : public ausdk::AUBase,
 
   // set by mark_dirty(), serviced in onIdle()
   std::atomic_bool _requestMarkDirty = false;
+  // Parameter gestures the plugin has begun and not ended yet: counted in
+  // onBeginEdit()/onEndEdit(), which run on the audio thread as well as the
+  // main one. onIdle() holds a mark_dirty() back while this is not zero, but
+  // not for longer than kMaxMarkDirtyHold, so an end the plugin never sends
+  // cannot keep the host from ever hearing of the change.
+  std::atomic<int32_t> _openGestures = 0;
+  static constexpr std::chrono::seconds kMaxMarkDirtyHold{5};
+  // main thread: when onIdle() first held the pending mark_dirty() back
+  std::optional<std::chrono::steady_clock::time_point> _markDirtyHeldSince;
   std::atomic_bool _requestRestart = false;
   // set by request_process(), serviced in onIdle()
   std::atomic_bool _requestProcess = false;
