@@ -259,9 +259,10 @@ void ProcessAdapter::process(ProcessData &data)
     _transport.flags |= data._isRecording ? CLAP_TRANSPORT_IS_RECORDING : 0;
     // CLAP_TRANSPORT_IS_RECORDING can not be retrieved from this data block
     _transport.flags |= data._isLooping ? CLAP_TRANSPORT_IS_LOOP_ACTIVE : 0;
-    // CLAP_TRANSPORT_IS_RECORDING can not be retrieved from the AudioUnit API
-    _transport.loop_end_beats = data._cycleStart;
-    _transport.loop_end_beats = data._cycleEnd;
+    // the cycle comes from the host in beats, which clap_beattime counts in
+    // CLAP_BEATTIME_FACTOR units, not in whole beats
+    _transport.loop_start_beats = doubleToBeatTime(data._cycleStart);
+    _transport.loop_end_beats = doubleToBeatTime(data._cycleEnd);
 
     _transport.song_pos_seconds = doubleToSecTime(data._currentSongPosInSeconds);
     _transport.flags |= CLAP_TRANSPORT_HAS_SECONDS_TIMELINE;
