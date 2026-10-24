@@ -273,11 +273,9 @@ void ProcessAdapter::process(ProcessData &data)
       _transport.tempo = data._tempo;
       _transport.flags |= CLAP_TRANSPORT_HAS_TEMPO;
     }
-    if (data._beat)
-    {
-      _transport.song_pos_beats = doubleToBeatTime(data._beat);
-      _transport.flags |= CLAP_TRANSPORT_HAS_BEATS_TIMELINE;
-    }
+
+    _transport.song_pos_beats = doubleToBeatTime(data._beat);
+    _transport.flags |= CLAP_TRANSPORT_HAS_BEATS_TIMELINE;
   }
   if (data._AUmusicalTimeValid)
   {
