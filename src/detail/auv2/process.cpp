@@ -236,7 +236,7 @@ void ProcessAdapter::reset()
 {
   // Host control changes remain valid when the audio history is discarded.
   _events.erase(std::remove_if(_events.begin(), _events.end(),
-                              [](const auto &event) { return !isParameterEvent(event.header.type); }),
+                               [](const auto &event) { return !isParameterEvent(event.header.type); }),
                 _events.end());
   _eventindices.clear();
   for (size_t i = 0; i < _events.size(); ++i) _eventindices.emplace_back(i);
