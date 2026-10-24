@@ -102,6 +102,9 @@ class ProcessAdapter
   void process(ProcessData &data);  // AU Data
   void flush();
 
+  /// Drops queued notes and SysEx while retaining queued parameter changes.
+  void reset();
+
   // interface for AUv2 wrapper:
   void addMIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData2, UInt32 inOffsetSampleFrame);
   // a single MIDI 2.0 Universal MIDI Packet message (1..4 words) forwarded raw

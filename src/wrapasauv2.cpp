@@ -1716,6 +1716,21 @@ void WrapAsAUV2::releaseHostMIDIOutput()
 #endif
 }
 
+OSStatus WrapAsAUV2::Reset(AudioUnitScope scope, AudioUnitElement element)
+{
+  ClapWrapper::detail::shared::SpinLockGuard processGuard(_processLock);
+  const auto result = Base::Reset(scope, element);
+  if (result != noErr) return result;
+  if (_processAdapter) _processAdapter->reset();
+  if (_flushAdapter) _flushAdapter->reset();
+  if (_initialized)
+  {
+    auto audioThread = _plugin->AlwaysAudioThread();
+    _plugin->_plugin->reset(_plugin->_plugin);
+  }
+  return noErr;
+}
+
 OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags &inFlags, const AudioTimeStamp &inTimeStamp,
                             UInt32 inFrames)
 {
