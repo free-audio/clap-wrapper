@@ -312,9 +312,6 @@ void X11Gui::layoutWindow()
     XResizeWindow(display, pluginWindow, static_cast<unsigned>(std::max(pluginWidth, 1)),
                   static_cast<unsigned>(std::max(pluginHeight, 1)));
 
-  windowWidth = w;
-  windowHeight = h;
-
   // a plugin that can be resized makes the window resizable, down to its smallest size;
   // one that cannot keeps the window at its size
   XSizeHints *hints = XAllocSizeHints();
@@ -339,6 +336,7 @@ void X11Gui::layoutWindow()
 // the strip's button and checkbox, from the right edge of a window w wide
 void X11Gui::layoutStrip(int w)
 {
+  stripWidth = w;
   const auto label{std::string{"Settings\xE2\x80\xA6"}};
   const int bw{std::max(90, font.width(label) + 24)};
   settingsButton = {w - bw - 6, 4, bw, stripHeight - 8};
@@ -352,8 +350,9 @@ void X11Gui::layoutStrip(int w)
   drawStrip();
 }
 
-// the window manager's size for the window: the plugin gets what is below the strip, as
-// far as its adjust_size agrees, and the window keeps the size it was given
+// the window manager's size for the window, and the only place the window's own size is
+// recorded: the plugin gets what is below the strip, of the width the strip leaves it and
+// as far as its adjust_size agrees, and the window keeps the size it was given
 //
 // compared with the plugin's size, not with the size last asked for: a window manager may
 // refuse a request_resize - one that keeps a maximised window at the screen's size - and
@@ -370,7 +369,7 @@ void X11Gui::windowResized(int w, int h)
   if (!pluginCanResize || !pluginWindow || !plugin || !plugin->_ext._gui) return;
   auto ui = plugin->_ext._gui;
   auto pl = plugin->_plugin;
-  uint32_t pw{static_cast<uint32_t>(std::max(w, 1))};
+  uint32_t pw{static_cast<uint32_t>(pluginWidthFor(w))};
   uint32_t ph{static_cast<uint32_t>(std::max(h - stripShown(), 1))};
   ui->adjust_size(pl, &pw, &ph);
   if (static_cast<int>(pw) == pluginWidth && static_cast<int>(ph) == pluginHeight) return;
@@ -429,7 +428,7 @@ void X11Gui::updateStatus()
 void X11Gui::drawStrip()
 {
   if (!display || window == 0 || !gc || !showStrip) return;
-  const int w{std::max(windowWidth, minimumWidth)};
+  const int w{std::max(stripWidth, minimumWidth)};
   auto pixmap{XCreatePixmap(display, window, static_cast<unsigned>(w), stripHeight,
                             static_cast<unsigned>(DefaultDepth(display, DefaultScreen(display))))};
   Painter p{display, pixmap, gc, &font};
