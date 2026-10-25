@@ -149,7 +149,9 @@ void utf8_to_utf16l(const char *utf8string, uint16_t *target, size_t targetsize)
 tresult PLUGIN_API ClapAsVst3::initialize(FUnknown *context)
 {
   auto result = super::initialize(context);
-  context->queryInterface(Vst::IHostApplication::iid, (void **)&vst3HostApplication);
+  // IPluginBase::initialize documents the context as mandatory, but a host that passes
+  // null should not take the plugin down with it
+  if (context) context->queryInterface(Vst::IHostApplication::iid, (void **)&vst3HostApplication);
   if (result == kResultOk)
   {
     if (!_plugin)

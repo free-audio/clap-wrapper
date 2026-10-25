@@ -1169,7 +1169,8 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         if (p->inOutMagicNumber != kARAAudioUnitMagic) return kAudioUnitErr_InvalidPropertyValue;
         auto guarantee_mainthread = _plugin->AlwaysMainThread();
         p->outFactory = _plugin->_ext._ara->get_factory(_plugin->_plugin);
-        return p->outFactory ? noErr : kAudioUnitErr_InvalidProperty;
+        if (!p->outFactory) return kAudioUnitErr_InvalidProperty;
+        return noErr;
       }
       case kAudioUnitProperty_ARAPlugInExtensionBindingWithRoles:
       case kAudioUnitProperty_ARAPlugInExtensionBinding:
@@ -1189,7 +1190,8 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         p->outPlugInExtension = _plugin->_ext._ara->bind_to_document_controller(
             _plugin->_plugin, p->inDocumentControllerRef, withRoles ? p->knownRoles : allRoles,
             withRoles ? p->assignedRoles : allRoles);
-        return p->outPlugInExtension ? noErr : kAudioUnitErr_InvalidPropertyValue;
+        if (!p->outPlugInExtension) return kAudioUnitErr_InvalidPropertyValue;
+        return noErr;
       }
 
       case kAudioUnitProperty_CocoaUI:
