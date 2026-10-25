@@ -6,6 +6,7 @@
 
 #include "detail/clap/fsutil.h"
 #include "detail/os/fs.h"
+#include "detail/ara/araaudiounit.h"
 
 struct auInfo
 {
@@ -207,12 +208,30 @@ bool buildUnitsFromClap(const std::string &clapfile, const std::string &clapname
       u.type = "aumu";
     }
 
+    bool araCapable = false;
     auto fp = clapPlug->features;
     while (*fp)
     {
       u.tags.push_back(*fp);
+      if (strcmp(*fp, CLAP_PLUGIN_FEATURE_ARA_SUPPORTED) == 0 ||
+          strcmp(*fp, CLAP_PLUGIN_FEATURE_ARA_REQUIRED) == 0)
+        araCapable = true;
       ++fp;
     }
+
+    // ARA hosts look for the exact tag "ARA" in the system-wide AU cache, so it can
+    // not be the generic feature tag above (which has its first letter upper-cased).
+    // \see kARAAudioComponentTag in detail/ara/araaudiounit.h
+    if (!araCapable && loader._pluginFactoryARAInfo)
+    {
+      auto n = loader._pluginFactoryARAInfo->get_factory_count(loader._pluginFactoryARAInfo);
+      for (uint32_t i = 0; i < n && !araCapable; ++i)
+      {
+        auto id = loader._pluginFactoryARAInfo->get_plugin_id(loader._pluginFactoryARAInfo, i);
+        if (id && u.clapid == id) araCapable = true;
+      }
+    }
+    if (araCapable) u.tags.push_back(kARAAudioComponentTag);
 
     if (loader._pluginFactoryAUv2Info)
     {

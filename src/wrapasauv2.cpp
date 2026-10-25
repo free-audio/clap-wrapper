@@ -1,5 +1,6 @@
 #include "generated_entrypoints.hxx"
 #include "detail/auv2/process.h"
+#include "detail/ara/araaudiounit.h"
 #include <set>
 #include <limits>
 #include <cassert>
@@ -1018,6 +1019,24 @@ OSStatus WrapAsAUV2::GetPropertyInfo(AudioUnitPropertyID inID, AudioUnitScope in
         return noErr;
         break;
 
+      // ARA is only advertised when the CLAP has the ARA extension
+      case kAudioUnitProperty_ARAFactory:
+        if (!_plugin || !_plugin->_ext._ara) return kAudioUnitErr_InvalidProperty;
+        outWritable = false;
+        outDataSize = sizeof(ARAAudioUnitFactory);
+        return noErr;
+      case kAudioUnitProperty_ARAPlugInExtensionBindingWithRoles:
+        if (!_plugin || !_plugin->_ext._ara) return kAudioUnitErr_InvalidProperty;
+        outWritable = false;
+        outDataSize = sizeof(ARAAudioUnitPlugInExtensionBinding);
+        return noErr;
+      case kAudioUnitProperty_ARAPlugInExtensionBinding:
+        if (!_plugin || !_plugin->_ext._ara) return kAudioUnitErr_InvalidProperty;
+        outWritable = false;
+        // ARA 1 hosts pass the struct without the role fields
+        outDataSize = offsetof(ARAAudioUnitPlugInExtensionBinding, knownRoles);
+        return noErr;
+
       case kAudioUnitProperty_CocoaUI:
         if (!_plugin->_ext._gui) return kAudioUnitErr_InvalidProperty;
         if (!_plugin->_ext._gui->is_api_supported(_plugin->_plugin, CLAP_WINDOW_API_COCOA, false))
@@ -1140,6 +1159,38 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         };
         *static_cast<ui_connection *>(outData) = _uiconn;
         return noErr;
+
+      // ARA: the host passes the struct in with the magic number set and reads the result
+      // from the same struct (like AudioUnitParameterStringFromValue)
+      case kAudioUnitProperty_ARAFactory:
+      {
+        if (!_plugin || !_plugin->_ext._ara) return kAudioUnitErr_InvalidProperty;
+        auto *p = static_cast<ARAAudioUnitFactory *>(outData);
+        if (p->inOutMagicNumber != kARAAudioUnitMagic) return kAudioUnitErr_InvalidPropertyValue;
+        auto guarantee_mainthread = _plugin->AlwaysMainThread();
+        p->outFactory = _plugin->_ext._ara->get_factory(_plugin->_plugin);
+        return p->outFactory ? noErr : kAudioUnitErr_InvalidProperty;
+      }
+      case kAudioUnitProperty_ARAPlugInExtensionBindingWithRoles:
+      case kAudioUnitProperty_ARAPlugInExtensionBinding:
+      {
+        if (!_plugin || !_plugin->_ext._ara) return kAudioUnitErr_InvalidProperty;
+        auto *p = static_cast<ARAAudioUnitPlugInExtensionBinding *>(outData);
+        if (p->inOutMagicNumber != kARAAudioUnitMagic) return kAudioUnitErr_InvalidPropertyValue;
+        // binding is allowed once, before the unit is initialized - also when the plugin
+        // refused the first attempt, the CLAP has been called already
+        if (IsInitialized() || _araBound) return kAudioUnitErr_Initialized;
+        _araBound = true;
+        // the ARA 1 struct has no role fields, ARA 1 hosts use all three roles
+        constexpr ARAPlugInInstanceRoleFlags allRoles =
+            kARAPlaybackRendererRole | kARAEditorRendererRole | kARAEditorViewRole;
+        const bool withRoles = (inID == kAudioUnitProperty_ARAPlugInExtensionBindingWithRoles);
+        auto guarantee_mainthread = _plugin->AlwaysMainThread();
+        p->outPlugInExtension = _plugin->_ext._ara->bind_to_document_controller(
+            _plugin->_plugin, p->inDocumentControllerRef, withRoles ? p->knownRoles : allRoles,
+            withRoles ? p->assignedRoles : allRoles);
+        return p->outPlugInExtension ? noErr : kAudioUnitErr_InvalidPropertyValue;
+      }
 
       case kAudioUnitProperty_CocoaUI:
         LOGINFO("[clap-wrapper] Property: kAudioUnitProperty_CocoaUI {}",
