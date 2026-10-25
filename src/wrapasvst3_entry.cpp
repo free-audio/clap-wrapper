@@ -389,11 +389,12 @@ IPluginFactory *GetPluginFactoryEntryPoint()
       LOGINFO("creating ARA companion factories");
       auto factory = gClapLibrary._pluginFactoryARAInfo;
       auto count = factory->get_factory_count(factory);
+      LOGDETAIL("number of ARA plugins: {}", count);
       for (decltype(count) i = 0; i < count; ++i)
       {
         auto matching_plugin = factory->get_plugin_id(factory, i);
-        LOGDETAIL("number of ARA plugins: {}", numPlugins);
-        for (int ctr = 0; ctr < numPlugins; ++ctr)
+        bool matched = false;
+        for (int ctr = 0; matching_plugin && ctr < numPlugins; ++ctr)
         {
           auto &clapdescr = gClapLibrary.plugins[ctr];
           if (!strcmp(clapdescr->id, matching_plugin))
@@ -422,8 +423,14 @@ IPluginFactory *GetPluginFactoryEntryPoint()
             gPluginFactory->registerClass(&gCreationContexts.back()->classinfo,
                                           ClapAsVst3::createInstance, gCreationContexts.back().get());
 
+            matched = true;
             break;
           }
+        }
+        if (!matched)
+        {
+          LOGINFO("ARA factory #{} refers to unknown plugin id '{}', skipped", i,
+                  matching_plugin ? matching_plugin : "(null)");
         }
       }
     }

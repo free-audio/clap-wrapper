@@ -258,35 +258,35 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
   }
   if (::Steinberg::FUnknownPrivate::iidEqual(iid, IContextMenuTarget::iid))
   {
-    if (_plugin->_ext._contextmenu)
+    if (_plugin && _plugin->_ext._contextmenu)
     {
       DEF_INTERFACE(IContextMenuTarget);
     }
   }
   if (::Steinberg::FUnknownPrivate::iidEqual(iid, IPlugInEntryPoint::iid))
   {
-    if (_plugin->_ext._ara)
+    if (_plugin && _plugin->_ext._ara)
     {
       DEF_INTERFACE(IPlugInEntryPoint)
     }
   }
   if (::Steinberg::FUnknownPrivate::iidEqual(iid, IPlugInEntryPoint2::iid))
   {
-    if (_plugin->_ext._ara)
+    if (_plugin && _plugin->_ext._ara)
     {
       DEF_INTERFACE(IPlugInEntryPoint2)
     }
   }
   if (::Steinberg::FUnknownPrivate::iidEqual(iid, Presonus::IGainReductionInfo::iid))
   {
-    if (_plugin->_ext._gainreduc)
+    if (_plugin && _plugin->_ext._gainreduc)
     {
       DEF_INTERFACE(Presonus::IGainReductionInfo);
     }
   }
   if (::Steinberg::FUnknownPrivate::iidEqual(iid, Steinberg::Vst::ChannelContext::IInfoListener::iid))
   {
-    if (_plugin->_ext._trackinfo)
+    if (_plugin && _plugin->_ext._trackinfo)
     {
       DEF_INTERFACE(Steinberg::Vst::ChannelContext::IInfoListener);
     }
