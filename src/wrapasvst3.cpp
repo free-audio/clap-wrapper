@@ -977,7 +977,7 @@ tresult ClapAsVst3::executeMenuItem(int32 tag)
 ARAFactoryPtr PLUGIN_API ClapAsVst3::getFactory()
 {
   LOGDETAIL("-> ARA::IPlugInEntryPoint::getFactory");
-  if (_plugin->_ext._ara)
+  if (_plugin && _plugin->_ext._ara)
   {
     return _plugin->_ext._ara->get_factory(_plugin->_plugin);
   }
@@ -987,9 +987,12 @@ ARAFactoryPtr PLUGIN_API ClapAsVst3::getFactory()
 ARAPlugInExtensionInstancePtr PLUGIN_API
 ClapAsVst3::bindToDocumentController(ARADocumentControllerRef documentControllerRef)
 {
-  LOGDETAIL("-> ARA::IPlugInEntryPoint::bindToDocumentController (!!! DEPRECATED !!!)");
-  // "call is deprecated in ARA 2, host must not call this"
-  return nullptr;
+  LOGDETAIL("-> ARA::IPlugInEntryPoint::bindToDocumentController (deprecated, ARA 1 host)");
+  // ARA 1 hosts use every instance as playback renderer, edit renderer and editor view,
+  // so this is bindToDocumentControllerWithRoles() with those three roles (see aravst3.h)
+  constexpr ARAPlugInInstanceRoleFlags allRoles =
+      kARAPlaybackRendererRole | kARAEditorRendererRole | kARAEditorViewRole;
+  return bindToDocumentControllerWithRoles(documentControllerRef, allRoles, allRoles);
 }
 
 ARAPlugInExtensionInstancePtr PLUGIN_API ClapAsVst3::bindToDocumentControllerWithRoles(
@@ -997,7 +1000,7 @@ ARAPlugInExtensionInstancePtr PLUGIN_API ClapAsVst3::bindToDocumentControllerWit
     ARAPlugInInstanceRoleFlags assignedRoles)
 {
   LOGDETAIL("-> ARA::IPlugInEntryPoint2::bindToDocumentControllerWithRoles");
-  if (_plugin->_ext._ara)
+  if (_plugin && _plugin->_ext._ara)
   {
     return _plugin->_ext._ara->bind_to_document_controller(_plugin->_plugin, documentControllerRef,
                                                            knownRoles, assignedRoles);
