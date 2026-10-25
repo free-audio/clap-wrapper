@@ -1027,6 +1027,9 @@ class WrapAsAUV2 : public ausdk::AUBase,
   MIDIProtocolID _host_midi_protocol = kMIDIProtocol_1_0;
 #endif
 
+  // ARA: the instance may be bound to a document controller only once
+  bool _araBound = false;
+
   std::atomic_bool _requestUICallback = false;
   // ---- clap.preset-load, published as AU factory presets ----
   void setupPresets();
