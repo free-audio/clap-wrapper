@@ -1232,6 +1232,7 @@ OSStatus WrapAsAUV2::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         {
           if (!tempNewSetting && IsBypassEffect() && IsInitialized())
           {  // turning bypass off and we're initialized
+            // Reset the CLAP processor's audio history before resuming from bypass.
             Reset(kAudioUnitScope_Global, 0);
           }
           SetBypassEffect(tempNewSetting);
@@ -1723,11 +1724,7 @@ OSStatus WrapAsAUV2::Reset(AudioUnitScope scope, AudioUnitElement element)
   if (result != noErr) return result;
   if (_processAdapter) _processAdapter->reset();
   if (_flushAdapter) _flushAdapter->reset();
-  if (_initialized)
-  {
-    auto audioThread = _plugin->AlwaysAudioThread();
-    _plugin->_plugin->reset(_plugin->_plugin);
-  }
+  if (_initialized) _plugin->reset();
   return noErr;
 }
 

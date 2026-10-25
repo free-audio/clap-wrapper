@@ -234,9 +234,15 @@ void ProcessAdapter::flush()
 
 void ProcessAdapter::reset()
 {
-  // Host control changes remain valid when the audio history is discarded.
+  // Keep gesture boundaries so a reset cannot leave an earlier gesture open.
   _events.erase(std::remove_if(_events.begin(), _events.end(),
-                               [](const auto &event) { return !isParameterEvent(event.header.type); }),
+                               [](const auto &event)
+                               {
+                                 const auto type = event.header.type;
+                                 return !isParameterEvent(type) &&
+                                        type != CLAP_EVENT_PARAM_GESTURE_BEGIN &&
+                                        type != CLAP_EVENT_PARAM_GESTURE_END;
+                               }),
                 _events.end());
   _eventindices.clear();
   for (size_t i = 0; i < _events.size(); ++i) _eventindices.emplace_back(i);

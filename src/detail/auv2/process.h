@@ -102,7 +102,7 @@ class ProcessAdapter
   void process(ProcessData &data);  // AU Data
   void flush();
 
-  /// Drops queued notes and SysEx while retaining queued parameter changes.
+  /// Drops queued notes and SysEx while retaining parameter changes and gesture boundaries.
   void reset();
 
   // interface for AUv2 wrapper:
