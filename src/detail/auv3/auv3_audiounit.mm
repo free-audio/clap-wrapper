@@ -465,6 +465,43 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
     _probedLayouts.push_back(std::move(probed));
   }
 
+  // The main-bus (in, out) pairs this audio unit advertises, in the order
+  // channelCapabilities reports them. A pair outside this list is one the
+  // plugin was never found to accept.
+  std::vector<std::pair<uint32_t, uint32_t>> advertisedMainPairs() const
+  {
+    std::vector<std::pair<uint32_t, uint32_t>> pairs;
+    auto add = [&pairs](uint32_t in, uint32_t out)
+    {
+      auto pair = std::make_pair(in, out);
+      if (std::find(pairs.begin(), pairs.end(), pair) == pairs.end()) pairs.push_back(pair);
+    };
+
+    if (!_probedLayouts.empty())
+    {
+      for (const auto &probed : _probedLayouts) add(probed.mainIn, probed.mainOut);
+      return pairs;
+    }
+
+    std::vector<uint32_t> inCounts, outCounts;
+    for (const auto &bus : _inputBusInfos) inCounts.push_back(bus.channelCount);
+    for (const auto &bus : _outputBusInfos) outCounts.push_back(bus.channelCount);
+    if (inCounts.empty()) inCounts.push_back(0);
+    if (outCounts.empty()) outCounts.push_back(0);
+    for (uint32_t ic : inCounts)
+      for (uint32_t oc : outCounts) add(ic, oc);
+    return pairs;
+  }
+
+  // The index of the main bus in a scope, or -1 where the scope has none.
+  ptrdiff_t mainBusIndex(bool isInput) const
+  {
+    const auto &infos = isInput ? _inputBusInfos : _outputBusInfos;
+    for (size_t i = 0; i < infos.size(); ++i)
+      if (infos[i].isMain) return static_cast<ptrdiff_t>(i);
+    return -1;
+  }
+
   // One request per port, as the AUv2 and VST3 wrappers send them: the main
   // ports get the given counts, the others keep theirs - or, when nonMain is
   // non-zero, move to that.
@@ -1280,6 +1317,19 @@ static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
 - (void)_publishSizeWidth:(uint32_t)width height:(uint32_t)height;
 @end
 
+// AUAudioUnitBus declares supportedChannelLayoutTags readonly, so a bus that
+// wants to advertise layouts has to carry them itself and override the getter.
+@interface ClapAUv3AudioUnitBus : AUAudioUnitBus
+@property(nonatomic, copy, nullable) NSArray<NSNumber *> *clapLayoutTags;
+@end
+
+@implementation ClapAUv3AudioUnitBus
+- (NSArray<NSNumber *> *)supportedChannelLayoutTags
+{
+  return self.clapLayoutTags;
+}
+@end
+
 // -----------------------------------------------------------------------
 // ClapAUv3AudioUnit implementation
 // -----------------------------------------------------------------------
@@ -1580,7 +1630,7 @@ static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
       }
 
       NSError *error = nil;
-      AUAudioUnitBus *bus = [[AUAudioUnitBus alloc] initWithFormat:format error:&error];
+      ClapAUv3AudioUnitBus *bus = [[ClapAUv3AudioUnitBus alloc] initWithFormat:format error:&error];
       if (bus)
       {
         bus.name = [NSString stringWithUTF8String:busInfo.name.c_str()];
@@ -1588,7 +1638,7 @@ static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
         {
           NSMutableArray<NSNumber *> *supported = [NSMutableArray new];
           for (auto tag : tags[i]) [supported addObject:@(tag)];
-          bus.supportedChannelLayoutTags = supported;
+          bus.clapLayoutTags = supported;
         }
         [busses addObject:bus];
       }
@@ -1826,45 +1876,15 @@ static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
 {
   if (!_impl) return nil;
 
+  // The main-bus pairs the probe found - the plugin's own first - or, without
+  // the extension, the pairs the CLAP audio ports give, matching AUv2's
+  // SupportedNumChannels(). A scope with no ports reports 0 on that side.
   NSMutableArray<NSNumber *> *caps = [NSMutableArray new];
-
-  // The main-bus pairs the probe found - the plugin's own first. Each layout
-  // was recorded per shape it was accepted in, so the same pair can be there
-  // twice.
-  if (!_impl->_probedLayouts.empty())
+  for (const auto &pair : _impl->advertisedMainPairs())
   {
-    std::vector<std::pair<uint32_t, uint32_t>> pairs;
-    for (const auto &probed : _impl->_probedLayouts)
-    {
-      auto pair = std::make_pair(probed.mainIn, probed.mainOut);
-      if (std::find(pairs.begin(), pairs.end(), pair) != pairs.end()) continue;
-      pairs.push_back(pair);
-      [caps addObject:@(probed.mainIn)];
-      [caps addObject:@(probed.mainOut)];
-    }
-    return caps;
+    [caps addObject:@(pair.first)];
+    [caps addObject:@(pair.second)];
   }
-
-  // Build the channel capability pairs from CLAP audio port info, matching AUv2's
-  // SupportedNumChannels() approach. Each pair is [inChannels, outChannels].
-  // If there are no input ports, report 0 for input (generator/instrument).
-
-  std::vector<int> inCounts, outCounts;
-  for (auto &bus : _impl->_inputBusInfos) inCounts.push_back((int)bus.channelCount);
-  for (auto &bus : _impl->_outputBusInfos) outCounts.push_back((int)bus.channelCount);
-
-  if (inCounts.empty()) inCounts.push_back(0);
-  if (outCounts.empty()) outCounts.push_back(0);
-
-  for (int ic : inCounts)
-  {
-    for (int oc : outCounts)
-    {
-      [caps addObject:@(ic)];
-      [caps addObject:@(oc)];
-    }
-  }
-
   return caps;
 }
 
@@ -1897,6 +1917,34 @@ static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
   return ok;
 }
 
+// Whether changing the main bus of one scope to a channel count leaves the unit
+// on a pair channelCapabilities advertises, given what the other scope's main
+// bus carries now. Only asked once the unit is initialized: before that a host
+// is free to walk through pairs on its way to the one it wants, and
+// allocateRenderResources has the plugin itself to answer to.
+- (BOOL)_mainPairStaysValidFor:(NSUInteger)index isInput:(BOOL)isInput channels:(uint32_t)channels
+{
+  if (!self.renderResourcesAllocated) return YES;
+
+  const ptrdiff_t main = _impl->mainBusIndex(isInput);
+  if (main < 0 || static_cast<NSUInteger>(main) != index) return YES;
+
+  const ptrdiff_t other = _impl->mainBusIndex(!isInput);
+  AUAudioUnitBusArray *otherBusses = isInput ? self.outputBusses : self.inputBusses;
+  uint32_t otherChannels = 0;
+  if (other >= 0 && static_cast<NSUInteger>(other) < otherBusses.count)
+    otherChannels = otherBusses[static_cast<NSUInteger>(other)].format.channelCount;
+
+  const uint32_t in = isInput ? channels : otherChannels;
+  const uint32_t out = isInput ? otherChannels : channels;
+
+  for (const auto &pair : _impl->advertisedMainPairs())
+    if (pair.first == in && pair.second == out) return YES;
+
+  AUV3LOG("shouldChangeToFormat: %u/%u is not a channel capability of this unit", in, out);
+  return NO;
+}
+
 - (BOOL)shouldChangeToFormat:(AVAudioFormat *)format forBus:(AUAudioUnitBus *)bus
 {
   if (!_impl) return NO;
@@ -1905,12 +1953,16 @@ static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
 
   for (NSUInteger i = 0; i < self.inputBusses.count; ++i)
   {
-    if (self.inputBusses[i] == bus) return [self _bus:i isInput:YES acceptsChannels:requestedChannels];
+    if (self.inputBusses[i] == bus)
+      return [self _bus:i isInput:YES acceptsChannels:requestedChannels] &&
+             [self _mainPairStaysValidFor:i isInput:YES channels:requestedChannels];
   }
 
   for (NSUInteger i = 0; i < self.outputBusses.count; ++i)
   {
-    if (self.outputBusses[i] == bus) return [self _bus:i isInput:NO acceptsChannels:requestedChannels];
+    if (self.outputBusses[i] == bus)
+      return [self _bus:i isInput:NO acceptsChannels:requestedChannels] &&
+             [self _mainPairStaysValidFor:i isInput:NO channels:requestedChannels];
   }
 
   AUV3LOG("shouldChangeToFormat: bus not found, rejecting");
