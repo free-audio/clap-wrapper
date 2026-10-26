@@ -139,27 +139,11 @@ function(target_add_auv3_standalone_wrapper)
     endif()
 
     # --- Embed the .appex in Contents/PlugIns/ ---
-    add_dependencies(${AUSA_TARGET} ${AUSA_AUV3_TARGET})
-
-    # Get the appex bundle path. For MODULE libraries built as bundles, the output
-    # is at LIBRARY_OUTPUT_DIRECTORY or the default build dir.
-    # The appex bundle is a directory at: <TARGET_FILE_DIR>/../../..
-    # which is the same as the .appex top-level directory.
-    # We use TARGET_BUNDLE_DIR for BUNDLE targets to get the correct path.
-    set(_auv3_appex_src "$<TARGET_BUNDLE_DIR:${AUSA_AUV3_TARGET}>")
-    set(_auv3_appex_dst "$<TARGET_BUNDLE_DIR:${AUSA_TARGET}>/Contents/PlugIns/$<TARGET_PROPERTY:${AUSA_AUV3_TARGET},OUTPUT_NAME>.appex")
-
-    add_custom_command(TARGET ${AUSA_TARGET} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_BUNDLE_DIR:${AUSA_TARGET}>/Contents/PlugIns"
-            COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${_auv3_appex_src}"
-                "${_auv3_appex_dst}"
-            )
-
     # No extra signing step: the copied appex keeps the entitlement-bearing
     # signature wrap_auv3.cmake applied. (AUv3 requires the Xcode generator,
     # so a non-Xcode re-sign branch here would be unreachable — and a plain
     # `codesign -s -` without --entitlements would strip the app-sandbox
     # entitlement macOS needs to register the appex.)
+    target_embed_auv3_appex(TARGET ${AUSA_TARGET} AUV3_TARGET ${AUSA_AUV3_TARGET})
 
 endfunction(target_add_auv3_standalone_wrapper)
