@@ -2074,6 +2074,18 @@ static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
     }
   }
 
+  // The bus count and the formats are the host's and stay; a port the plugin
+  // renamed for its new layout ("5.1 In") is passed on.
+  for (size_t i = 0; i < numPorts; ++i)
+  {
+    const bool isInput = i < numIn;
+    const size_t port = isInput ? i : i - numIn;
+    const auto &info = isInput ? _impl->_inputBusInfos[port] : _impl->_outputBusInfos[port];
+    AUAudioUnitBus *bus = (isInput ? self.inputBusses : self.outputBusses)[port];
+    NSString *name = [NSString stringWithUTF8String:info.name.c_str()];
+    if (name && ![bus.name isEqualToString:name]) bus.name = name;
+  }
+
   AUV3LOG("_applyBusFormatsToPlugin: applied the host's bus formats");
   return YES;
 }
