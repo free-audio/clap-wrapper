@@ -404,7 +404,9 @@ void ProcessAdapter::process(Steinberg::Vst::ProcessData &data)
     auto inbusses = _audioinputs->size();
     for (auto i = 0U; i < inbusses; ++i)
     {
-      if (_vstdata->inputs[i].numChannels == (Steinberg::int32)_input_ports[i].channel_count)
+      // a host may provide fewer busses than we declared; treat a missing bus like a channel mismatch
+      if (_vstdata->inputs && i < (uint32_t)_vstdata->numInputs &&
+          _vstdata->inputs[i].numChannels == (Steinberg::int32)_input_ports[i].channel_count)
       {
         _input_ports[i].data32 = _vstdata->inputs[i].channelBuffers32;
       }
@@ -417,7 +419,8 @@ void ProcessAdapter::process(Steinberg::Vst::ProcessData &data)
     auto outbusses = _audiooutputs->size();
     for (auto i = 0U; i < outbusses; ++i)
     {
-      if (_vstdata->outputs[i].numChannels == (Steinberg::int32)_output_ports[i].channel_count)
+      if (_vstdata->outputs && i < (uint32_t)_vstdata->numOutputs &&
+          _vstdata->outputs[i].numChannels == (Steinberg::int32)_output_ports[i].channel_count)
       {
         _output_ports[i].data32 = _vstdata->outputs[i].channelBuffers32;
       }
