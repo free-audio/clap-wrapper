@@ -60,5 +60,10 @@ make_clapfirst_plugins(
         # so it isn't very useful
         # STANDALONE_CONFIGURATIONS
         # standalone "${PRODUCT_NAME}" "org.free-audio.clap-first-bad-distortion"
+        #
+        # A link in one of these schemes, clicked in a browser, then opens the
+        # standalone and hands the plugin the url (open_url, standalone features),
+        # here clap-first-distortion://anything. See the README.
+        # STANDALONE_URL_SCHEMES clap-first-distortion
 )
 

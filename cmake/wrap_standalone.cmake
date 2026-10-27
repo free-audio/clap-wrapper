@@ -37,7 +37,10 @@ function(target_add_standalone_wrapper)
 
             MACOS_EMBEDDED_CLAP_LOCATION
             )
-    cmake_parse_arguments(SA "" "${oneValueArgs}" "" ${ARGN} )
+    set(multiValueArgs
+            URL_SCHEMES  # schemes a link opens the standalone with; the plugin gets the url
+            )
+    cmake_parse_arguments(SA "" "${oneValueArgs}" "${multiValueArgs}" ${ARGN} )
 
     if (NOT DEFINED SA_TARGET)
         message(FATAL_ERROR "clap-wrapper: target_add_standalone_wrapper requires a target")
@@ -81,6 +84,20 @@ function(target_add_standalone_wrapper)
         message(STATUS "No SA_BUNDLE_VERSION - using ${PROJECT_VERSION}")
         set(SA_BUNDLE_VERSION "${PROJECT_VERSION}")
     endif()
+
+    # the url schemes a link opens the standalone with (open_url, standalone features):
+    # declared in the macos bundle's Info.plist, and on every platform the ones the
+    # standalone takes from the system and hands the plugin. lowercase, as a scheme is
+    # compared without case
+    set(sa_url_schemes "")
+    foreach(_scheme IN LISTS SA_URL_SCHEMES)
+        string(TOLOWER "${_scheme}" _scheme)
+        if (NOT _scheme MATCHES "^[a-z][a-z0-9+.-]*$")
+            message(FATAL_ERROR "clap-wrapper: '${_scheme}' in URL_SCHEMES is not a url scheme: a letter, then letters, digits, '+', '-' or '.'")
+        endif()
+        list(APPEND sa_url_schemes "${_scheme}")
+    endforeach()
+    list(REMOVE_DUPLICATES sa_url_schemes)
 
     # RtAudio and RtMidi for everything, or RtAudio for ASIO only
     set(sa_rtaudio ${CLAP_WRAPPER_STANDALONE_RTAUDIO})
@@ -148,6 +165,9 @@ function(target_add_standalone_wrapper)
             clap-wrapper-shared-detail
             )
     target_link_libraries(${salib} PRIVATE clap-wrapper-compile-options)
+    # one string, the schemes separated by commas; empty for a standalone no link opens
+    string(REPLACE ";" "," sa_url_schemes_joined "${sa_url_schemes}")
+    target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_URL_SCHEMES="${sa_url_schemes_joined}")
     # the backends each keep file-local helpers, some with the same names
     set_target_properties(${salib} PROPERTIES UNITY_BUILD OFF)
 
@@ -206,6 +226,38 @@ function(target_add_standalone_wrapper)
         set(GEN_XIB "${CMAKE_BINARY_DIR}/generated_xib/${SA_TARGET}/MainMenu.xib")
         configure_file(${MAIN_XIB} ${GEN_XIB})
 
+        # the Info.plist template with the url schemes in it, one per target as the xib.
+        # cmake fills in the template's ${} and @@ itself when it makes the bundle, so the
+        # schemes go in by plain replacement, and what cmake fills in is left for it
+        set(MAIN_PLIST "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/macos/Info.plist.in")
+        set(GEN_PLIST "${CMAKE_BINARY_DIR}/generated_plist/${SA_TARGET}/Info.plist.in")
+        set(sa_url_types "")
+        if (sa_url_schemes)
+            string(CONCAT sa_url_types
+                    "<key>CFBundleURLTypes</key>\n"
+                    "\t<array>\n"
+                    "\t\t<dict>\n"
+                    "\t\t\t<key>CFBundleURLName</key>\n"
+                    "\t\t\t<string>\${MACOSX_BUNDLE_GUI_IDENTIFIER}</string>\n"
+                    "\t\t\t<key>CFBundleTypeRole</key>\n"
+                    "\t\t\t<string>Viewer</string>\n"
+                    "\t\t\t<key>CFBundleURLSchemes</key>\n"
+                    "\t\t\t<array>\n")
+            foreach(_scheme IN LISTS sa_url_schemes)
+                string(APPEND sa_url_types "\t\t\t\t<string>${_scheme}</string>\n")
+            endforeach()
+            string(APPEND sa_url_types
+                    "\t\t\t</array>\n"
+                    "\t\t</dict>\n"
+                    "\t</array>")
+        endif()
+        file(READ "${MAIN_PLIST}" sa_plist)
+        string(REPLACE "<!-- clap-wrapper: url types -->" "${sa_url_types}" sa_plist "${sa_plist}")
+        # written only when it changed, so that the bundle is not remade on every configure
+        file(WRITE "${GEN_PLIST}.tmp" "${sa_plist}")
+        configure_file("${GEN_PLIST}.tmp" "${GEN_PLIST}" COPYONLY)
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${MAIN_PLIST}")
+
         target_sources(${SA_TARGET} PRIVATE
                 "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/wrapasstandalone.mm"
                 ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/macos/AppDelegate.mm
@@ -225,7 +277,7 @@ function(target_add_standalone_wrapper)
                 MACOSX_BUNDLE_LONG_VERSION_STRING ${SA_BUNDLE_VERSION}
                 MACOSX_BUNDLE_BUNDLE_VERSION ${SA_BUNDLE_VERSION}
                 MACOSX_BUNDLE TRUE
-                MACOSX_BUNDLE_INFO_PLIST ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/macos/Info.plist.in
+                MACOSX_BUNDLE_INFO_PLIST ${GEN_PLIST}
                 XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${SA_BUNDLE_IDENTIFIER}"
                 RESOURCE "${GEN_XIB}"
                 )

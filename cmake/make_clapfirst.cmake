@@ -55,6 +55,7 @@ function(make_clapfirst_plugins)
     set(multiValueArgs
             PLUGIN_FORMATS   # A list of plugin formats, "CLAP" "VST3" "AUV2" "AAX"
             STANDALONE_CONFIGURATIONS # standalone configuration. This is a list of target names and clap ids
+            STANDALONE_URL_SCHEMES # url schemes a link opens every standalone with (URL_SCHEMES)
     )
     cmake_parse_arguments(C1ST "" "${oneValueArgs}" "${multiValueArgs}" ${ARGN} )
 
@@ -398,6 +399,7 @@ function(make_clapfirst_plugins)
                         WINDOWS_ICON "${C1ST_STANDALONE_WINDOWS_ICON}"
                         RESOURCE_DIRECTORY "${C1ST_RESOURCE_DIRECTORY}"
                         BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
+                        URL_SCHEMES ${C1ST_STANDALONE_URL_SCHEMES}
                 )
                 if (DEFINED C1ST_ASSET_OUTPUT_DIRECTORY)
                     if (NOT WIN32)

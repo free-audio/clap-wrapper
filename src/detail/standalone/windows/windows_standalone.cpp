@@ -816,6 +816,118 @@ bool showSettingsScreen()
 
 namespace
 {
+// a WM_COPYDATA that carries a url, as utf-8 without a terminator; anything else sent to
+// the receiver is not taken
+constexpr ::ULONG_PTR copyDataUrl{0x434c5552};  // 'CLUR'
+
+// what arrived and was not handed on yet
+std::vector<std::string> receivedUrls;
+
+// per plugin, so that the standalones of two plugins do not take each other's urls
+std::wstring urlReceiverClassName()
+{
+  std::string key{PLUGIN_ID};
+  if (key.empty()) key = OUTPUT_NAME;
+  return toUTF16("clap-wrapper.open-url." + key);
+}
+}  // namespace
+
+size_t forwardUrlsToRunningInstance(const std::vector<std::string> &urls)
+{
+  auto receiver{::FindWindowExW(HWND_MESSAGE, nullptr, urlReceiverClassName().c_str(), nullptr)};
+  if (!receiver) return 0;
+
+  // this launch may give the foreground away, having been started by the browser the user
+  // clicked in, and the instance brings its window to the front
+  ::DWORD processId{0};
+  ::GetWindowThreadProcessId(receiver, &processId);
+  if (processId != 0) ::AllowSetForegroundWindow(processId);
+
+  size_t taken{0};
+  for (const auto &url : urls)
+  {
+    ::COPYDATASTRUCT data{copyDataUrl, static_cast<::DWORD>(url.size()), const_cast<char *>(url.data())};
+    ::DWORD_PTR result{FALSE};
+    // an instance still starting up answers once its main loop runs: it made the receiver
+    // before the plugin, which can take seconds
+    if (::SendMessageTimeoutW(receiver, WM_COPYDATA, 0, reinterpret_cast<::LPARAM>(&data), SMTO_NORMAL,
+                              15000, &result) == 0 ||
+        result != TRUE)
+    {
+      log("The running instance did not take a url; this launch opens it itself");
+      break;
+    }
+    ++taken;
+  }
+
+  return taken;
+}
+
+bool UrlReceiver::create()
+{
+  const auto className{urlReceiverClassName()};
+  auto instance{getInstance()};
+
+  ::WNDCLASSEXW windowClass{sizeof(::WNDCLASSEXW)};
+  windowClass.lpfnWndProc = procedure;
+  windowClass.hInstance = instance;
+  windowClass.lpszClassName = className.c_str();
+
+  if (::GetClassInfoExW(instance, className.c_str(), &windowClass) == 0 &&
+      ::RegisterClassExW(&windowClass) == 0)
+  {
+    return false;
+  }
+
+  hwnd.reset(::CreateWindowExW(0, className.c_str(), L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, instance,
+                               nullptr));
+
+  return static_cast<bool>(hwnd);
+}
+
+::LRESULT CALLBACK UrlReceiver::procedure(::HWND hwnd, ::UINT msg, ::WPARAM wparam, ::LPARAM lparam)
+{
+  if (msg == WM_COPYDATA)
+  {
+    auto data{reinterpret_cast<const ::COPYDATASTRUCT *>(lparam)};
+    if (!data || data->dwData != copyDataUrl || !data->lpData) return FALSE;
+
+    std::string url{static_cast<const char *>(data->lpData), data->cbData};
+    if (!isOwnUrl(url)) return FALSE;
+
+    receivedUrls.push_back(std::move(url));
+    ::PostMessageW(hwnd, WM_OPEN_RECEIVED_URLS, 0, 0);
+
+    return TRUE;
+  }
+
+  if (msg == WM_OPEN_RECEIVED_URLS)
+  {
+    auto urls{std::move(receivedUrls)};
+    receivedUrls.clear();
+
+    auto *sah{getStandaloneHost()};
+
+    if (sah->urlDeliveryBegun)
+    {
+      // closing: the plugin is on its way out with its window
+      if (!settingsWindowOwner || !settingsWindowOwner->hwnd) return 0;
+
+      auto window{settingsWindowOwner->hwnd.get()};
+      if (::IsIconic(window)) ::ShowWindow(window, SW_RESTORE);
+      ::SetForegroundWindow(window);
+    }
+
+    for (const auto &url : urls) sah->openUrl(url);
+
+    return 0;
+  }
+
+  return ::DefWindowProcW(hwnd, msg, wparam, lparam);
+}
+
+namespace
+{
 // the settings window's measures, in device independent pixels; the macos window's, in
 // points, where windows has no convention of its own
 constexpr int windowMargin{20};
