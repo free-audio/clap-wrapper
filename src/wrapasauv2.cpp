@@ -689,7 +689,35 @@ void WrapAsAUV2::param_rescan(clap_param_rescan_flags flags)
   // Re-call setup parameters which will just reset info if the param exists
   setupParameters(_plugin->_plugin, _plugin->_ext._params);
 
-  // if ( flags & CLAP_PARAM_RESCAN_ALL) // TODO: check out how differentiated we can do this
+  // Only the values changed (a preset the plugin loaded itself, say): the list
+  // and the infos are the ones the host has, so a new ParameterList, ParameterInfo
+  // and ClassInfo are the wrong news. Logic Pro takes its time over each of them:
+  // a few presets stepped through in the plugin's UI backed its UI up by seconds.
+  // What the host needs is a value change per parameter; setupParameters() has
+  // already stored the new values. (Whether the state is dirty is mark_dirty's
+  // to say, not a rescan's.)
+  if ((flags & (CLAP_PARAM_RESCAN_ALL | CLAP_PARAM_RESCAN_INFO | CLAP_PARAM_RESCAN_TEXT)) == 0)
+  {
+    std::vector<AudioUnitParameterID> ids;
+    {
+      std::lock_guard<std::mutex> guard(_paramTreeMutex);
+      ids = _orderedParameterList;
+    }
+    for (auto id : ids)
+    {
+      AudioUnitEvent myEvent;
+      myEvent.mEventType = kAudioUnitEvent_ParameterValueChange;
+      myEvent.mArgument.mParameter.mAudioUnit = GetComponentInstance();
+      myEvent.mArgument.mParameter.mParameterID = id;
+      myEvent.mArgument.mParameter.mScope = kAudioUnitScope_Global;
+      myEvent.mArgument.mParameter.mElement = 0;
+      AUEventListenerNotify(NULL, NULL, &myEvent);
+    }
+    if (_isBypassed != wasBypassed)
+      PropertyChanged(kAudioUnitProperty_BypassEffect, kAudioUnitScope_Global, 0);
+    return;
+  }
+
   {
     PropertyChanged(kAudioUnitProperty_ParameterList, kAudioUnitScope_Global, 0);
     PropertyChanged(kAudioUnitProperty_ParameterInfo, kAudioUnitScope_Global, 0);
