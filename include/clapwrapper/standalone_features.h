@@ -56,14 +56,31 @@
 
   the plugin side: a plugin which returns clap_wrapper_plugin_standalone_features from
   get_extension under the same id hears when the user is done with that screen, so it
-  can, say, unmute an input it muted before showing it. a standalone asks for it once,
-  after init().
+  can, say, unmute an input it muted before showing it, and is handed the urls the
+  standalone is opened with (below). a standalone asks for it once, after init().
+
+  opening the standalone from a link: a standalone built with url schemes
+  (STANDALONE_URL_SCHEMES in make_clapfirst_plugins, URL_SCHEMES for
+  target_add_standalone_wrapper) is opened by a link in one of them, myplugin://open?x=1
+  say, clicked in a browser: it is launched, or brought to the front if it runs. macos
+  learns the schemes from the bundle's Info.plist; on windows and linux registering them is
+  the installer's job (see the readme). the url reaches the plugin through open_url: one
+  that launched the standalone once the plugin exists and its gui is shown, later ones as
+  they come, in order. on windows a launch with a url hands it to an instance of the
+  standalone already running, if there is one, and quits; a launch without one starts
+  another instance as before. anybody can write a link: a url is input from outside, like
+  a file the user opens, and a plugin does nothing with it that the user would not expect
+  from having clicked it.
 
   the settings folder: the standalone keeps its files for a plugin - the audio and midi
   setup, the saved state - in a folder named after the plugin id, under a base folder of
   its own (clap-wrapper-standalone in the platform's settings directory). a plugin can
   name that base folder from its entry, before any instance exists: see
   clap_wrapper_plugin_factory_standalone_settings at the end of this file.
+
+  draft/6, from draft/5:
+  - open_url on the plugin side: a link in a scheme the standalone was built to open
+  new functions are at the end of the struct. draft/5 is no longer answered.
 
   draft/5, from draft/4:
   - the plugin's state across launches: whether the standalone restores the last
@@ -89,7 +106,7 @@ extern "C"
 #endif
 
   static const CLAP_CONSTEXPR char CLAP_WRAPPER_STANDALONE_FEATURES[] =
-      "clap-wrapper.standalone-features.draft/5";
+      "clap-wrapper.standalone-features.draft/6";
 
   enum clap_wrapper_standalone_endpoint_kind
   {
@@ -439,6 +456,18 @@ extern "C"
     // [main-thread]
     void(CLAP_ABI *audio_midi_configuration_screen_closed)(const struct clap_plugin *plugin,
                                                            uint32_t result);
+
+    /* -- opening the standalone from a link (draft/6) -- */
+
+    // a url in one of the schemes the standalone was built to open, from a link clicked
+    // in a browser or an argument it was launched with. url is as the system passed it,
+    // percent-encoding and all, and what it means is the plugin's to decide. called once
+    // the plugin exists and its gui is shown - right then for a url that launched the
+    // standalone - in the order the urls came, and with the standalone's window brought
+    // to the front. returns false if the plugin did nothing with it, which the standalone
+    // only logs
+    // [main-thread]
+    bool(CLAP_ABI *open_url)(const struct clap_plugin *plugin, const char *url);
   } clap_wrapper_plugin_standalone_features_t;
 
   /*

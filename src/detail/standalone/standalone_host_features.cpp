@@ -383,4 +383,35 @@ void StandaloneHost::settingsScreenClosed(uint32_t result)
     ext->audio_midi_configuration_screen_closed(plugin->_plugin, result);
 }
 
+void StandaloneHost::openUrl(const std::string &url)
+{
+  if (!urlDeliveryBegun)
+  {
+    pendingUrls.push_back(url);
+    return;
+  }
+
+  // the scheme only: the rest of a url can carry what is nobody's business, a key or a token
+  const auto scheme{url.substr(0, url.find(':'))};
+  auto plugin = getMainPlugin();
+  auto *ext = plugin ? plugin->_ext._standalone_features : nullptr;
+  if (!ext || !ext->open_url)
+  {
+    LOGINFO("A {}: url is not passed on: the plugin has no open_url", scheme);
+    return;
+  }
+  if (!ext->open_url(plugin->_plugin, url.c_str()))
+    LOGINFO("A {}: url was not handled by the plugin", scheme);
+}
+
+void StandaloneHost::beginUrlDelivery()
+{
+  if (urlDeliveryBegun) return;
+  urlDeliveryBegun = true;
+
+  auto urls = std::move(pendingUrls);
+  pendingUrls.clear();
+  for (const auto &url : urls) openUrl(url);
+}
+
 }  // namespace freeaudio::clap_wrapper::standalone

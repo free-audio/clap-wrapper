@@ -13,7 +13,7 @@
 #include "detail/clap/fsutil.h"
 
 @interface ClapWrapperAppDelegate ()
-
+- (void)bringWindowToFront;
 @end
 
 namespace
@@ -326,6 +326,16 @@ static bool showingAudioError{false};
   auto plugin =
       freeaudio::clap_wrapper::standalone::mainCreatePlugin(entry, pid, pindex, 1, (char **)argv);
 
+  // the urls the standalone was opened with go to the plugin once this is done, whichever
+  // way it ends: with the gui shown, with none, or with one that could not be
+  struct BeginUrlDelivery
+  {
+    ~BeginUrlDelivery()
+    {
+      freeaudio::clap_wrapper::standalone::getStandaloneHost()->beginUrlDelivery();
+    }
+  } deliverUrlsWhenDone;
+
   [[self window] orderFrontRegardless];
   [[self window] setDelegate:self];
 
@@ -462,6 +472,33 @@ static bool showingAudioError{false};
                                  selector:@selector(doSetup)
                                  userInfo:nil
                                   repeats:NO];
+}
+
+// a link in a scheme the standalone was built to open: clicked while it runs, or the one
+// it was launched for, which arrives before applicationDidFinishLaunching - long before
+// doSetup has made the plugin - and is held by the host until then
+- (void)application:(NSApplication *)application openURLs:(NSArray<NSURL *> *)urls
+{
+  std::vector<std::string> own;
+  for (NSURL *url in urls)
+  {
+    const char *text = [[url absoluteString] UTF8String];
+    if (text && freeaudio::clap_wrapper::standalone::isOwnUrl(text)) own.emplace_back(text);
+  }
+  if (own.empty()) return;
+
+  // launching, the window comes up in front anyway
+  auto *standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
+  if (standaloneHost->urlDeliveryBegun) [self bringWindowToFront];
+
+  for (const auto &url : own) standaloneHost->openUrl(url);
+}
+
+- (void)bringWindowToFront
+{
+  if ([[self window] isMiniaturized]) [[self window] deminiaturize:nil];
+  [[self window] makeKeyAndOrderFront:nil];
+  [NSApp activateIgnoringOtherApps:YES];
 }
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender

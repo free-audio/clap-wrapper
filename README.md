@@ -110,6 +110,40 @@ a bundle — `YourPlugin.wclap/module.wasm` beside a copy of that directory, and
 `.tar.gz` of the whole bundle for shipping. Without one, a single flat
 `YourPlugin.wclap.wasm`.
 
+A **standalone** can be opened from a link, say a licence activation link on a
+shop page: give it url schemes with `URL_SCHEMES` (`STANDALONE_URL_SCHEMES` in
+`make_clapfirst_plugins`), and a link such as `yourplugin://activate?code=1234`
+launches the standalone, or brings it to the front if it runs, and hands the
+url to the plugin. The plugin takes it with `open_url` on its side of the
+standalone features extension (`clapwrapper/standalone_features.h`), once it
+exists and its GUI is shown. A url comes from whatever page the link is on, so
+treat it as untrusted input. What the system needs to know about the schemes:
+
+- **macOS** reads them from the bundle's Info.plist, which the build writes.
+  The system registers an app when it is installed or first launched; for a
+  build that is neither, `lsregister -f "Your Plugin.app"` (in
+  `/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/`)
+  makes it the handler.
+- **Windows** needs registry keys, which the installer writes, per machine
+  under `HKLM\Software\Classes` or per user under `HKCU\Software\Classes`:
+
+  ```
+  [HKEY_CURRENT_USER\Software\Classes\yourplugin]
+  @="URL:Your Plugin"
+  "URL Protocol"=""
+
+  [HKEY_CURRENT_USER\Software\Classes\yourplugin\shell\open\command]
+  @="\"C:\\Program Files\\Your Plugin\\Your Plugin.exe\" \"%1\""
+  ```
+
+  A link launches the standalone with the url as its argument. When an instance
+  is already running, the new process hands the url to it and quits; with more
+  than one running, one of them takes it. A launch without a url starts another
+  instance, as before.
+- **Linux** takes the scheme from the `.desktop` file the installer writes:
+  `MimeType=x-scheme-handler/yourplugin;` and `Exec=... %u`. The url arrives as
+  the argument of a new instance; one already running does not hear of it.
+
 ## Contribution
 
 Development happens on `next`; `main` only moves at a release. Before opening an

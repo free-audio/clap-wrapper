@@ -270,9 +270,31 @@ constexpr ::UINT WM_SHOW_AUDIO_ERROR{WM_APP + 1};
 // hears about it from the main loop. wparam is 1 if OK applied its choice.
 constexpr ::UINT WM_SETTINGS_CLOSED{WM_APP + 2};
 
+// Posted by the url receiver to itself, to hand on what a WM_COPYDATA brought from the main
+// loop rather than from inside the sending launch's call, which waits for the answer.
+constexpr ::UINT WM_OPEN_RECEIVED_URLS{WM_APP + 3};
+
 // What the standalone features extension calls to show the settings window, installed
 // before the plugin is created. False until the plugin window exists.
 bool showSettingsScreen();
+
+// Opening the standalone from a link. A launch whose arguments are urls in a scheme it
+// opens hands them to an instance already running, which takes them with a message-only
+// window named after the plugin. Returns how many it took, in order: all of them, and
+// this launch is done.
+size_t forwardUrlsToRunningInstance(const std::vector<std::string> &urls);
+
+// That window, in the instance: made before the plugin, so that a launch during this
+// one's startup finds it, and kept until it is destroyed. A url that arrives is passed to
+// the host from the main loop, with the plugin window brought to the front.
+struct UrlReceiver
+{
+  bool create();
+
+  static ::LRESULT CALLBACK procedure(::HWND hwnd, ::UINT msg, ::WPARAM wparam, ::LPARAM lparam);
+
+  wil::unique_hwnd hwnd;
+};
 
 struct Plugin final : public Window
 {

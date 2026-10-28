@@ -554,6 +554,25 @@ static clap_process_status clap1stDist_process(const struct clap_plugin *plugin,
   return CLAP_PROCESS_CONTINUE;
 }
 
+// in a clap-wrapper standalone built with url schemes: a link in one of them opened it.
+// this one only logs the url, which a real plugin might not do with a link's query
+static bool clap1stDist_open_url(const struct clap_plugin *plugin, const char *url)
+{
+  auto *plug = (clap1st_distortion_plug *)plugin->plugin_data;
+  if (!plug->hostLog) return false;
+
+  char msg[512];
+  snprintf(msg, sizeof(msg), "Opened with '%s'", url);
+  plug->hostLog->log(plug->host, CLAP_LOG_INFO, msg);
+  return true;
+}
+
+// the plugin side of the standalone features: what the standalone tells the plugin
+static const clap_wrapper_plugin_standalone_features_t s_clap1stDist_standalone_features = {
+    nullptr,  // audio_midi_configuration_screen_closed: it opens no such screen
+    clap1stDist_open_url,
+};
+
 static const void *clap1stDist_get_extension(const struct clap_plugin *plugin, const char *id)
 {
   if (!strcmp(id, CLAP_EXT_TRACK_INFO)) return &s_clap1stDist_track_info;
@@ -561,6 +580,7 @@ static const void *clap1stDist_get_extension(const struct clap_plugin *plugin, c
   if (!strcmp(id, CLAP_EXT_AUDIO_PORTS)) return &s_clap1stDist_audio_ports;
   if (!strcmp(id, CLAP_EXT_PARAMS)) return &s_clap1stDist_params;
   if (!strcmp(id, CLAP_EXT_STATE)) return &s_clap1stDist_state;
+  if (!strcmp(id, CLAP_WRAPPER_STANDALONE_FEATURES)) return &s_clap1stDist_standalone_features;
   return NULL;
 }
 

@@ -285,6 +285,18 @@ struct StandaloneHost : Clap::IHost, AudioStreamCallback
   // extension, if it has one. result is a clap_wrapper_standalone_configuration_result
   void settingsScreenClosed(uint32_t result);
 
+  // a url in a scheme this standalone was built to open (isOwnUrl), from a link clicked
+  // in a browser or an argument it was launched with: the platform frontend hands each one
+  // here, on the main thread. held until beginUrlDelivery(), then passed on in arrival
+  // order to the plugin's side of the standalone features extension, if it opens urls
+  void openUrl(const std::string &url);
+
+  // called by the platform frontend once the plugin exists and its gui is shown, or could
+  // not be: what openUrl() held is passed on now, and later urls at once
+  void beginUrlDelivery();
+  bool urlDeliveryBegun{false};
+  std::vector<std::string> pendingUrls;
+
   // the settings screen's appearance, a clap_wrapper_standalone_appearance. a plugin that
   // sets it owns it for the session: the settings file and the screen's own choice no
   // longer count, and the plugin's value is never saved

@@ -1,3 +1,4 @@
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <memory>
@@ -181,6 +182,53 @@ bool mainListAudioDevices(int argc, const char *const *argv)
 
   fflush(stdout);
   return true;
+}
+
+namespace
+{
+// the build's schemes, lowercase and separated by commas
+const std::string urlSchemes{
+#ifdef CLAP_WRAPPER_STANDALONE_URL_SCHEMES
+    CLAP_WRAPPER_STANDALONE_URL_SCHEMES
+#endif
+};
+}  // namespace
+
+bool opensUrls()
+{
+  return !urlSchemes.empty();
+}
+
+bool isOwnUrl(const std::string &url)
+{
+  // the scheme, up to the first colon: a letter, then letters, digits, '+', '-' or '.'
+  const auto colon{url.find(':')};
+  if (colon == std::string::npos || colon == 0 || !isalpha((unsigned char)url[0])) return false;
+  std::string scheme;
+  for (size_t i = 0; i < colon; ++i)
+  {
+    const auto c{(unsigned char)url[i]};
+    if (!isalnum(c) && c != '+' && c != '-' && c != '.') return false;
+    scheme += (char)tolower(c);
+  }
+
+  size_t from{0};
+  while (from <= urlSchemes.size())
+  {
+    auto to{urlSchemes.find(',', from)};
+    if (to == std::string::npos) to = urlSchemes.size();
+    if (urlSchemes.compare(from, to - from, scheme) == 0) return true;
+    from = to + 1;
+  }
+  return false;
+}
+
+std::vector<std::string> ownUrlsInArgs(int argc, const char *const *argv)
+{
+  std::vector<std::string> urls;
+  for (int i = 1; i < argc && argv && argv[i]; ++i)
+    if (isOwnUrl(argv[i])) urls.emplace_back(argv[i]);
+  return urls;
 }
 
 StandaloneHost *getStandaloneHost()
