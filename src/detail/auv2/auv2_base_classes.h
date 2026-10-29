@@ -593,6 +593,9 @@ class WrapAsAUV2 : public ausdk::AUBase,
   OSStatus SaveState(CFPropertyListRef *ptPList) override;
   OSStatus RestoreState(CFPropertyListRef plist) override;
 
+  /// Clears host render caches, pending notes, and the active CLAP processor.
+  OSStatus Reset(AudioUnitScope scope, AudioUnitElement element) override;
+
   // render
   OSStatus Render(AudioUnitRenderActionFlags &inFlags, const AudioTimeStamp &inTimeStamp,
                   UInt32 inFrames) override;
