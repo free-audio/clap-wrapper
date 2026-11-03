@@ -160,38 +160,19 @@ WrapAsAUV2::WrapAsAUV2(const std::string &clapname, const std::string &clapid, i
   , _idx{idx}
   , _os_attached([this] { os::attach(this); }, [this] { os::detach(this); })
 {
+  _uiIsOpened = false;
+  // Fail the AudioComponent open before the SDK publishes an unusable unit.
+  ausdk::ThrowExceptionIf(!initializeClapDesc(), kAudioUnitErr_FailedInitialization);
+  _underlying_hostname = os::getHostAppName();
+  _plugin = Clap::Plugin::createInstance(_library._pluginFactory, _desc->id, this);
+  ausdk::ThrowExceptionIf(!_plugin || !_plugin->initialize(), kAudioUnitErr_FailedInitialization);
+  std::cout << "[clap-wrapper] auv2: Initialized '" << _desc->id << "' / '" << _desc->name << "' / '"
+            << _desc->version << "'" << std::endl;
+
   // Logic may initialize an AU on a worker while its editor and idle timer run.
   // The SDK holds this lock across its complete non-realtime dispatch, including
   // changes to AUBase::IsInitialized() before and after the virtual callbacks.
   SetMutex(_mainThreadMutex.get());
-  _uiIsOpened = false;
-  if (!_desc)
-  {
-    if (initializeClapDesc())
-    {
-      std::cout << "[clap-wrapper] auv2: Initialized '" << _desc->id << "' / '" << _desc->name << "' / '"
-                << _desc->version << "'" << std::endl;
-      /*
-       * ToDo: Stand up the host, create the plugin instance here
-       */
-
-      // pffffrzz();  // <- enable this to have a hook to attach a debugger
-      _underlying_hostname = os::getHostAppName();
-      _plugin = Clap::Plugin::createInstance(_library._pluginFactory, _desc->id, this);
-      if (_plugin)
-      {
-        _plugin->initialize();
-      }
-      else
-      {
-        std::cout << "[clap-wrapper] ERROR: the clap did not create an instance with id " << _desc->id
-                  << std::endl;
-        // this will exit in WrapAsAUV2::Initialize() with an error
-        // if this happens, the wrapper or the clap plugin has a real bug
-        _desc = nullptr;
-      }
-    }
-  }
 }
 
 WrapAsAUV2::~WrapAsAUV2()

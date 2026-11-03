@@ -167,7 +167,7 @@ std::shared_ptr<Plugin> Plugin::createInstance(const clap_plugin_factory *factor
   auto instance = factory->create_plugin(factory, plug->getClapHostInterface(), id.c_str());
   if (instance)
   {
-    plug->connectClap(instance);
+    if (!plug->connectClap(instance)) return nullptr;
   }
   else
   {
@@ -194,7 +194,7 @@ std::shared_ptr<Plugin> Plugin::createInstance(Clap::Library &library, size_t in
         library._pluginFactory, plug->getClapHostInterface(), library.plugins[index]->id);
     if (instance)
     {
-      plug->connectClap(instance);
+      if (!plug->connectClap(instance)) return nullptr;
     }
     else
     {
@@ -226,7 +226,7 @@ void getExtension(const clap_plugin_t *plugin, T &ref, const char *name)
   ref = static_cast<T>(plugin->get_extension(plugin, name));
 }
 
-void Plugin::connectClap(const clap_plugin_t *clap)
+bool Plugin::connectClap(const clap_plugin_t *clap)
 {
   _plugin = clap;
 
@@ -235,7 +235,7 @@ void Plugin::connectClap(const clap_plugin_t *clap)
   {
     _plugin->destroy(_plugin);
     _plugin = nullptr;
-    return;
+    return false;
   }
 
   // if successful, query the extensions the wrapper might want to use
@@ -302,6 +302,7 @@ void Plugin::connectClap(const clap_plugin_t *clap)
       _ext._gui = nullptr;
     }
   }
+  return true;
 }
 
 Plugin::~Plugin()
