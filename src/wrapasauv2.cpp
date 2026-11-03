@@ -163,6 +163,8 @@ WrapAsAUV2::WrapAsAUV2(const std::string &clapname, const std::string &clapid, i
   _uiIsOpened = false;
   // Fail the AudioComponent open before the SDK publishes an unusable unit.
   ausdk::ThrowExceptionIf(!initializeClapDesc(), kAudioUnitErr_FailedInitialization);
+
+  // pffffrzz();  // <- enable this to have a hook to attach a debugger
   _underlying_hostname = os::getHostAppName();
   _plugin = Clap::Plugin::createInstance(_library._pluginFactory, _desc->id, this);
   ausdk::ThrowExceptionIf(!_plugin || !_plugin->initialize(), kAudioUnitErr_FailedInitialization);
