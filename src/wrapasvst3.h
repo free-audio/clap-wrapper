@@ -25,6 +25,7 @@
 #include <pluginterfaces/vst/ivstchannelcontextinfo.h>
 #include <pluginterfaces/vst/ivstcontextmenu.h>
 #include <pluginterfaces/vst/ivstattributes.h>
+#include <pluginterfaces/vst/ivstprefetchablesupport.h>
 #include <public.sdk/source/vst/vstsinglecomponenteffect.h>
 #include <public.sdk/source/vst/vstnoteexpressiontypes.h>
 
@@ -122,6 +123,7 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
                    public Steinberg::Vst::INoteExpressionController,
                    public Steinberg::Vst::IContextMenuTarget,
                    public Steinberg::Vst::ChannelContext::IInfoListener,
+                   public Steinberg::Vst::IPrefetchableSupport,
                    public ARA::IPlugInEntryPoint,
                    public ARA::IPlugInEntryPoint2,
                    public Presonus::IGainReductionInfo,
@@ -139,6 +141,7 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
     , Steinberg::Vst::IMidiMapping()
     , Steinberg::Vst::INoteExpressionController()
     , Steinberg::Vst::ChannelContext::IInfoListener()
+    , Steinberg::Vst::IPrefetchableSupport()
     , ARA::IPlugInEntryPoint()
     , ARA::IPlugInEntryPoint2()
     , Presonus::IGainReductionInfo()
@@ -192,6 +195,9 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
 
   //----from IInfoListener--------------------------------------
   tresult PLUGIN_API setChannelContextInfos(Vst::IAttributeList *list /*in*/) override;
+
+  //----from IPrefetchableSupport--------------------------------
+  tresult PLUGIN_API getPrefetchableSupport(Vst::PrefetchableSupport &prefetchable /*out*/) override;
 
   //----from INoteExpressionController-------------------------
   /** Returns number of supported note change types for event bus index and channel. */
@@ -289,6 +295,14 @@ class ClapAsVst3 : public Steinberg::Vst::SingleComponentEffect,
     if (_plugin && _plugin->_ext._trackinfo)
     {
       DEF_INTERFACE(Steinberg::Vst::ChannelContext::IInfoListener);
+    }
+  }
+
+  if (::Steinberg::FUnknownPrivate::iidEqual(iid, Steinberg::Vst::IPrefetchableSupport::iid))
+  {
+    if (_plugin && _plugin->_ext._render)
+    {
+      DEF_INTERFACE(Steinberg::Vst::IPrefetchableSupport);
     }
   }
 
