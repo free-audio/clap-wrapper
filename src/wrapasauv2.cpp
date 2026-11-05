@@ -196,6 +196,35 @@ WrapAsAUV2::WrapAsAUV2(const std::string &clapname, const std::string &clapid, i
 
 WrapAsAUV2::~WrapAsAUV2()
 {
+  // An editor still open goes first: it is AppKit's, and removing its view on
+  // another thread throws there. A host may dispose of an instance from another
+  // thread (an out-of-process AU host does when its application quits), so the
+  // editor is destroyed on the main thread, before the lock below: the view
+  // takes the lock on the main thread, and waiting for the main thread while
+  // holding it could deadlock.
+  const auto destroyOpenUI = [this]
+  {
+    if (_uiIsOpened && _uiconn._canary)
+    {
+      *_uiconn._canary = 0;       // notify the view
+      _uiconn._canary = nullptr;  // disable the canary reference
+
+      // close destroy the gui ourselves
+      _plugin->_ext._gui->destroy(_plugin->_plugin);
+      _uiconn._window = nullptr;
+      _uiIsOpened = false;
+    }
+  };
+  if (_plugin && !auv2shared_mm_is_main_thread())
+  {
+    auv2shared_mm_run_on_main_thread(
+        [&]
+        {
+          const ausdk::AUEntryGuard uiGuard(_mainThreadMutex.get());
+          destroyOpenUI();
+        });
+  }
+
   const std::lock_guard<ausdk::AUMutex> mainThreadGuard(*_mainThreadMutex);
   // The index outlives this instance (it is cached per module) and its crawl
   // thread holds our callback, so it has to be dropped before anything else.
@@ -215,16 +244,7 @@ WrapAsAUV2::~WrapAsAUV2()
 #endif
   if (_plugin)
   {
-    if (_uiIsOpened && _uiconn._canary)
-    {
-      *_uiconn._canary = 0;       // notify the view
-      _uiconn._canary = nullptr;  // disable the canary reference
-
-      // close destroy the gui ourselves
-      _plugin->_ext._gui->destroy(_plugin->_plugin);
-      _uiconn._window = nullptr;
-      _uiIsOpened = false;
-    }
+    destroyOpenUI();
 
     _os_attached.off();
     _plugin->terminate();
@@ -956,7 +976,18 @@ void WrapAsAUV2::Cleanup()
 {
   LOGINFO("[clap-wrapper] Cleaning up Plugin");
   auto guarantee_mainthread = _plugin->AlwaysMainThread();
-  if (this->_uiIsOpened)
+  // The editor is AppKit's, so it is destroyed here on the main thread only. A
+  // host may uninitialize from another thread (an out-of-process AU host does
+  // when its application quits); removing the view there throws in AppKit. Nor
+  // can this wait for the main thread: the SDK holds _mainThreadMutex across
+  // this call and the view takes it there. The editor stays open - a plugin
+  // that is not active may keep its GUI - until its view goes or the instance
+  // is destroyed, which both close it on the main thread.
+  if (this->_uiIsOpened && !auv2shared_mm_is_main_thread())
+  {
+    LOGINFO("[clap-wrapper] UI still open, uninitialized off the main thread: left to its view");
+  }
+  else if (this->_uiIsOpened)
   {
     LOGINFO("[clap-wrapper] !! UI still open, destroying UI and disconnecting view");
     if (_uiconn._canary)
