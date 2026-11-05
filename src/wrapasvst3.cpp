@@ -884,6 +884,23 @@ tresult PLUGIN_API ClapAsVst3::getMidiControllerAssignment(int32 busIndex, int16
   return kResultFalse;
 }
 
+//----from IPrefetchableSupport--------------------------------
+// A plugin with a hard realtime requirement, such as one driving external hardware,
+// cannot be processed ahead of playback; ASIO-Guard in Cubase would otherwise do so.
+tresult PLUGIN_API ClapAsVst3::getPrefetchableSupport(Vst::PrefetchableSupport &prefetchable)
+{
+  // [UI-thread]
+  std::lock_guard<std::recursive_mutex> mainThreadGuard(_mainThreadLock);
+  if (!_plugin || !_plugin->_ext._render)
+  {
+    return kNotImplemented;
+  }
+  prefetchable = _plugin->_ext._render->has_hard_realtime_requirement(_plugin->_plugin)
+                     ? Vst::kIsNeverPrefetchable
+                     : Vst::kIsYetPrefetchable;
+  return kResultOk;
+}
+
 //----from IInfoListener--------------------------------------
 tresult PLUGIN_API ClapAsVst3::setChannelContextInfos(Vst::IAttributeList *list /*in*/)
 {
