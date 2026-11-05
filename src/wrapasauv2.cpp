@@ -1344,6 +1344,7 @@ OSStatus WrapAsAUV2::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         {
           if (!tempNewSetting && IsBypassEffect() && IsInitialized())
           {  // turning bypass off and we're initialized
+            // Reset the CLAP processor's audio history before resuming from bypass.
             Reset(kAudioUnitScope_Global, 0);
           }
           SetBypassEffect(tempNewSetting);
@@ -1826,6 +1827,17 @@ void WrapAsAUV2::releaseHostMIDIOutput()
   for (auto blk : _retiredEventListBlocks) Block_release(blk);
   _retiredEventListBlocks.clear();
 #endif
+}
+
+OSStatus WrapAsAUV2::Reset(AudioUnitScope scope, AudioUnitElement element)
+{
+  ClapWrapper::detail::shared::SpinLockGuard processGuard(_processLock);
+  const auto result = Base::Reset(scope, element);
+  if (result != noErr) return result;
+  if (_processAdapter) _processAdapter->reset();
+  if (_flushAdapter) _flushAdapter->reset();
+  if (_initialized) _plugin->reset();
+  return noErr;
 }
 
 OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags &inFlags, const AudioTimeStamp &inTimeStamp,
