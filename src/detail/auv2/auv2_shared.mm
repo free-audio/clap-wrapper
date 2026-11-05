@@ -1,6 +1,7 @@
 
 #include <clap/ext/gui.h>
 #include <cstdint>
+#include <functional>
 #include <iostream>
 
 #include <Cocoa/Cocoa.h>
@@ -23,5 +24,18 @@ bool auv2shared_mm_request_resize(const clap_window_t *win, uint32_t w, uint32_t
 bool auv2shared_mm_is_main_thread()
 {
   return [NSThread isMainThread];
+}
+
+void auv2shared_mm_run_on_main_thread(const std::function<void()> &f)
+{
+  if ([NSThread isMainThread])
+  {
+    f();
+    return;
+  }
+  const auto *fn = &f;
+  dispatch_sync(dispatch_get_main_queue(), ^{
+    (*fn)();
+  });
 }
 }  // namespace free_audio::auv2_wrapper

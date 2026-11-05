@@ -48,4 +48,10 @@ bool auv2shared_mm_request_resize(const clap_window_t *win, uint32_t width, uint
 // main-thread role AlwaysMainThread() lends to other threads.
 bool auv2shared_mm_is_main_thread();
 
+// Runs `f` on the real main thread and waits for it to return; runs it at once
+// on the main thread itself. The caller must not hold anything the main thread
+// may wait for - the instance's _mainThreadMutex above all, which the view takes
+// there.
+void auv2shared_mm_run_on_main_thread(const std::function<void()> &f);
+
 }  // namespace free_audio::auv2_wrapper
