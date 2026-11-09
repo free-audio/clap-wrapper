@@ -76,7 +76,9 @@ endif()
 # deployment targets below 10.15 do not support std::filesystem
 if (APPLE)
     add_library(macos_filesystem_support INTERFACE)
-    if ("${CMAKE_OSX_DEPLOYMENT_TARGET}" VERSION_GREATER_EQUAL "10.15")
+    # Empty is the SDK's default, 10.15 or later in any SDK that builds this project. CMake
+    # defines the variable empty on Apple, so a parent project that sets no target lands here.
+    if (("${CMAKE_OSX_DEPLOYMENT_TARGET}" STREQUAL "") OR ("${CMAKE_OSX_DEPLOYMENT_TARGET}" VERSION_GREATER_EQUAL "10.15"))
         message(STATUS "cmake-wrapper: using std::filesystem as macOS deployment it ${CMAKE_OSX_DEPLOYMENT_TARGET}; using std::filesystem")
         target_compile_definitions(macos_filesystem_support INTERFACE -DMACOS_USE_STD_FILESYSTEM)
     else()
