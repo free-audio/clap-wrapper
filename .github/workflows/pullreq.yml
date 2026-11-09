@@ -111,13 +111,13 @@ jobs:
           #  run_aptget: false
           #  name: Windows clang
 
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             cmakeargs: -DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_C_COMPILER=gcc-12
             install_ninja: false
             run_aptget: true
             name: Linux gcc12
 
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             cmakeargs: -DCMAKE_CXX_COMPILER=g++-13 -DCMAKE_C_COMPILER=gcc-13
             install_ninja: false
             run_aptget: true
@@ -129,13 +129,13 @@ jobs:
             run_aptget: true
             name: Linux ub-24 gcc14
 
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             cmakeargs: -DCLAP_WRAPPER_CXX_STANDARD=20 -DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_C_COMPILER=gcc-12
             install_ninja: false
             run_aptget: true
             name: Linux gcc12 C++20
 
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             cmakeargs: -DCLAP_WRAPPER_CXX_STANDARD=23 -DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_C_COMPILER=gcc-12
             install_ninja: false
             run_aptget: true
@@ -220,7 +220,7 @@ jobs:
             vst3_path: ./build/clap-first-distortion_assets/VST3/ClapFirst Bad Distortion.vst3
             name: ClapFirst Windows 64bit Folder MSVC
 
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             cmakeargs: -DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_C_COMPILER=gcc-12
             install_ninja: false
             run_aptget: true
