@@ -33,6 +33,7 @@
 #include <memory>
 
 #include "../clap/automation.h"
+#include "../shared/midi_translation.h"
 
 namespace Clap
 {
@@ -131,6 +132,9 @@ class ProcessAdapter
 
   std::vector<clap_multi_event_t> _events;
   std::vector<size_t> _eventindices;
+
+  // owns output SysEx payloads: the host reads them after process() returns
+  ClapWrapper::detail::shared::SysExBufferPool _sysexOutBuffers;
 
   bool _supportsPolyPressure = false;
   bool _supportsTuningNoteExpression = false;
