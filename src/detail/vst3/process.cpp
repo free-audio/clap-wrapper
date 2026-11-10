@@ -114,6 +114,7 @@ void ProcessAdapter::setupProcessing(const clap_plugin_t *plugin, const clap_plu
   _out_events.ctx = this;
 
   _activeNotes.reserve(32);
+  _sysexOutBuffers.prepare(16);
 
   _supportsPolyPressure = enablePolyPressure;
   _supportsTuningNoteExpression = supportsTuningNoteExpression;
@@ -169,6 +170,7 @@ void ProcessAdapter::process(Steinberg::Vst::ProcessData &data)
 {
   // remember the ProcessData pointer during process
   _vstdata = &data;
+  _sysexOutBuffers.reset();
 
   /// convert timing
   _transport.header = {sizeof(_transport), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_TRANSPORT, 0};
@@ -887,6 +889,19 @@ bool ProcessAdapter::enqueueOutputEvent(const clap_event_header_t *event)
     }
       return true;
     case CLAP_EVENT_MIDI_SYSEX:
+    {
+      auto sevt = reinterpret_cast<const clap_event_midi_sysex *>(event);
+      if (!sevt->buffer || sevt->size == 0 || !_vstdata || !_vstdata->outputEvents) return true;
+      Steinberg::Vst::Event oe{};
+      oe.busIndex = 0;
+      oe.sampleOffset = sevt->header.time;
+      oe.type = Steinberg::Vst::Event::kDataEvent;
+      oe.data.type = Steinberg::Vst::DataEvent::kMidiSysEx;
+      oe.data.size = sevt->size;
+      oe.data.bytes = _sysexOutBuffers.acquire(sevt->buffer, sevt->size).data();
+      _vstdata->outputEvents->addEvent(oe);
+    }
+      return true;
     case CLAP_EVENT_MIDI2:
       return true;
       break;
