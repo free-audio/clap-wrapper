@@ -290,23 +290,42 @@ class SysEx7Reassembler
 // Per-cycle pool of byte buffers owning SysEx payloads (clap_event_midi_sysex_t
 // only borrows a pointer). acquire() copies into a recycled buffer whose heap
 // capacity survives reset(), so steady-state audio-thread use does not allocate;
-// the pool only grows when one cycle holds more SysEx messages than any before.
+// the pool only grows when one cycle holds more SysEx messages than any before,
+// or when a payload outgrows the slot it lands in.
 // Handed-out payload pointers stay valid while the pool grows: growth moves the
 // inner vector objects, never their heap storage.
 class SysExBufferPool
 {
  public:
-  // pre-size the pool (never shrinks) and mark all entries free
-  void prepare(size_t entries)
+  // Bytes reserved per slot by prepare(). Covers the control-level SysEx that
+  // dominates in practice (identity replies, parameter and patch dumps); a
+  // larger payload still works, it just grows its slot once and then stays put.
+  static constexpr size_t defaultBytesPerEntry = 256;
+
+  // Pre-size the pool (never shrinks), reserve each slot's payload storage and
+  // mark all entries free. Reserving up front is what keeps the *first*
+  // acquire() of each slot off the allocator: a default-constructed slot has no
+  // capacity at all, so without this every slot allocates on first use.
+  // Call only from setup, never with payloads in flight - growing a slot here
+  // reallocates it and would invalidate a pointer already handed to the host.
+  void prepare(size_t entries, size_t bytesPerEntry = defaultBytesPerEntry)
   {
     if (_buffers.size() < entries) _buffers.resize(entries);
+    _bytesPerEntry = bytesPerEntry;
+    for (auto &b : _buffers) b.reserve(bytesPerEntry);
     _used = 0;
   }
 
   // copy a payload into the next free buffer and return it
   const std::vector<uint8_t> &acquire(const uint8_t *data, uint32_t size)
   {
-    if (_used == _buffers.size()) _buffers.emplace_back();
+    if (_used == _buffers.size())
+    {
+      // Overflow: this cycle holds more messages than any before. Allocating
+      // here is unavoidable, so reserve the new slot too and let it amortize.
+      _buffers.emplace_back();
+      _buffers.back().reserve(_bytesPerEntry);
+    }
     auto &b = _buffers[_used++];
     b.assign(data, data + size);
     return b;
@@ -320,6 +339,7 @@ class SysExBufferPool
 
  private:
   std::vector<std::vector<uint8_t>> _buffers;
+  size_t _bytesPerEntry = defaultBytesPerEntry;
   size_t _used = 0;
 };
 
