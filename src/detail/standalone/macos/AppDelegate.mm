@@ -1,19 +1,37 @@
 #import "AppDelegate.h"
 
 #include <AVFoundation/AVFoundation.h>
+#include <QuartzCore/QuartzCore.h>
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <vector>
 
 #include "detail/standalone/entry.h"
 #include "detail/standalone/standalone_details.h"
 #include "detail/standalone/standalone_host.h"
+#include "detail/standalone/standalone_window_hints.h"
 
 #include "detail/clap/fsutil.h"
 
 @interface ClapWrapperAppDelegate ()
+{
+  // the plugin's entry, found and prepared (mainPrepare) before the window is shown
+  const clap_plugin_entry *pluginEntry;
+  bool pluginPrepared;
+  // the splash image, until the plugin's view is in place. retained here too: a gui that
+  // replaces the content view takes the splash with it
+  NSView *splashView;
+  // the window has a frame of its own: the last launch's, or the hinted size
+  bool windowPlaced;
+}
 - (void)bringWindowToFront;
+- (void)findPluginEntry;
+- (void)prepareWindow;
+- (void)showWindow;
+- (void)endSplash;
+- (void)setWindowContentSize:(NSSize)size;
 @end
 
 namespace
@@ -109,9 +127,110 @@ void applyScreenAppearance(NSWindow *window)
     [window setAppearance:appearance];
   }
 }
+
+// where the window's frame is kept from one launch to the next: in the standalone's user
+// defaults, as NSWindow's frame autosave keeps it. not in standalone-settings.conf, which a
+// first run does not write: a file written for the frame alone would have the next launch
+// take its audio defaults for a choice the user made (StandaloneHost::startAudioThread)
+NSString *const windowFrameName{@"ClapWrapperStandaloneWindow"};
+
+// BACKGROUND_COLOR, or nil
+NSColor *hintedBackground()
+{
+  const auto &hints{sa::windowHints()};
+  if (!hints.hasBackground) return nil;
+  return [NSColor colorWithSRGBRed:((hints.background >> 16) & 0xff) / 255.0
+                             green:((hints.background >> 8) & 0xff) / 255.0
+                              blue:(hints.background & 0xff) / 255.0
+                             alpha:1.0];
+}
+
+// SPLASH_IMAGE at its size in points, or nil
+NSImage *hintedSplashImage()
+{
+  const auto &hints{sa::windowHints()};
+  if (!hints.splashPng || hints.splashScale == 0) return nil;
+  NSData *data = [NSData dataWithBytesNoCopy:const_cast<unsigned char *>(hints.splashPng)
+                                      length:hints.splashPngSize
+                                freeWhenDone:NO];
+  NSBitmapImageRep *rep = [NSBitmapImageRep imageRepWithData:data];
+  if (!rep) return nil;
+  const NSSize points = NSMakeSize(static_cast<CGFloat>([rep pixelsWide]) / hints.splashScale,
+                                   static_cast<CGFloat>([rep pixelsHigh]) / hints.splashScale);
+  [rep setSize:points];
+  NSImage *image = [[[NSImage alloc] initWithSize:points] autorelease];
+  [image addRepresentation:rep];
+  return image;
+}
+
+// whether enough of a frame is on one of the screens there are now to drag it by
+bool isOnAScreen(NSRect frame)
+{
+  for (NSScreen *screen in [NSScreen screens])
+  {
+    const NSRect seen = NSIntersectionRect(frame, [screen visibleFrame]);
+    if (seen.size.width >= 64 && seen.size.height >= 32) return true;
+  }
+  return false;
+}
 }  // namespace
 
 @interface AudioSettingsFlippedView : NSView
+@end
+
+// the splash's text: each line centred on whole points, the first one's top at the view's
+// top. drawn as a gui typically draws a label - at the whole point a label as wide as its
+// text, rounded up, is centred at, and without font smoothing, as text drawn into a layer is
+// - so that it matches the same text the gui then draws in the splash's place
+@interface SplashTextView : NSView
+{
+  NSArray<NSAttributedString *> *lines;
+  CGFloat lineHeight;
+}
+- (instancetype)initWithText:(NSString *)text attributes:(NSDictionary *)attributes width:(CGFloat)width;
+@end
+
+@implementation SplashTextView
+- (instancetype)initWithText:(NSString *)text attributes:(NSDictionary *)attributes width:(CGFloat)width
+{
+  auto *each = [NSMutableArray array];
+  for (NSString *line in [text componentsSeparatedByString:@"\n"])
+    [each addObject:[[[NSAttributedString alloc] initWithString:line
+                                                     attributes:attributes] autorelease]];
+
+  auto *layout = [[[NSLayoutManager alloc] init] autorelease];
+  const CGFloat height = [layout defaultLineHeightForFont:attributes[NSFontAttributeName]];
+  if ((self = [super initWithFrame:NSMakeRect(0, 0, width, std::ceil(height * [each count]))]))
+  {
+    lines = [each copy];
+    lineHeight = height;
+  }
+  return self;
+}
+
+- (void)dealloc
+{
+  [lines release];
+  [super dealloc];
+}
+
+- (BOOL)isFlipped
+{
+  return YES;
+}
+
+- (void)drawRect:(NSRect)dirtyRect
+{
+  CGContextSetShouldSmoothFonts([[NSGraphicsContext currentContext] CGContext], false);
+  const CGFloat width = [self bounds].size.width;
+  CGFloat top = 0;
+  for (NSAttributedString *line in lines)
+  {
+    const CGFloat left = std::floor((width - std::ceil([line size].width)) / 2);
+    [line drawAtPoint:NSMakePoint(left, top)];
+    top += lineHeight;
+  }
+}
 @end
 
 @implementation AudioSettingsFlippedView
@@ -247,9 +366,10 @@ static bool showingAudioError{false};
   }
 }
 
-- (void)doSetup
+// the plugin's entry, and what it has to say before the plugin exists: the settings, and
+// what the window shows until the plugin's gui is there (mainPrepare)
+- (void)findPluginEntry
 {
-  // Insert code here to initialize your application
   const char *argv[2] = {OUTPUT_NAME, 0};
 
   const clap_plugin_entry *entry{nullptr};
@@ -263,7 +383,9 @@ static bool showingAudioError{false};
 
   auto pts = Clap::getValidCLAPSearchPaths();
 
-  auto lib = Clap::Library();
+  // kept for as long as the application runs. its destructor deinit()s the entry, which
+  // mainFinish does when the application terminates
+  auto *lib = new Clap::Library();
 
   for (const auto &searchPaths : pts)
   {
@@ -271,14 +393,163 @@ static bool showingAudioError{false};
 
     if (fs::is_directory(clapPath) && !entry)
     {
-      lib.load(clapPath);
-      entry = lib._pluginEntry;
+      lib->load(clapPath);
+      entry = lib->_pluginEntry;
     }
   }
 #endif
 
-  if (!entry)
+  pluginEntry = entry;
+  pluginPrepared = entry && freeaudio::clap_wrapper::standalone::mainPrepare(
+                                entry, PLUGIN_ID, PLUGIN_INDEX, 1, (char **)argv);
+}
+
+// before the plugin exists: the window at the place it had when the standalone last quit,
+// or at the size the plugin's gui is going to ask for (windowHints()), in the gui's
+// background and with the splash image in its middle - on screen before doSetup holds up
+// the main thread making the plugin. a window with neither a place nor a size to go by is
+// shown once the gui has told it its size
+- (void)prepareWindow
+{
+  NSWindow *window = [self window];
+  const auto &hints{sa::windowHints()};
+
+  if (NSColor *background = hintedBackground()) [window setBackgroundColor:background];
+  // the appearance the plugin's entry named, if it did (mainPrepare): the title bar drawn so
+  // from the first frame
+  applyScreenAppearance(window);
+
+  // setFrameUsingName keeps a saved frame on the screens there are; isOnAScreen also turns
+  // down one left mostly on a display unplugged since
+  const NSRect xibFrame = [window frame];
+  if ([window setFrameUsingName:windowFrameName] && isOnAScreen([window frame]))
   {
+    windowPlaced = true;
+  }
+  else
+  {
+    [window setFrame:xibFrame display:NO];
+    if (hints.hasSize())
+    {
+      [window setContentSize:NSMakeSize(hints.width, hints.height)];
+      [window center];
+      windowPlaced = true;
+    }
+  }
+  if (!windowPlaced) return;
+
+  NSImage *image = hintedSplashImage();
+  if (image || !hints.text.empty())
+  {
+    NSView *content = [window contentView];
+    const NSRect area = [content bounds];
+    const NSUInteger centred = NSViewMinXMargin | NSViewMaxXMargin | NSViewMinYMargin | NSViewMaxYMargin;
+
+    // the image and the text in one view, which goes in one piece
+    auto *splash = [[NSView alloc] initWithFrame:area];
+    [splash setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+
+    // where the text is measured from, down from the top: the image's top edge, or the middle
+    CGFloat anchor = std::floor(area.size.height / 2);
+    if (image)
+    {
+      const NSSize size = [image size];
+      // whole points from the top left, rounded down: where a gui that centres the same
+      // image in the same area draws it, so that the image stays put when the gui takes over
+      const CGFloat left = std::floor((area.size.width - size.width) / 2);
+      const CGFloat top = std::floor((area.size.height - size.height) / 2);
+      auto *view = [[NSImageView alloc]
+          initWithFrame:NSMakeRect(left, area.size.height - top - size.height, size.width, size.height)];
+      [view setImage:image];
+      [view setImageScaling:NSImageScaleNone];
+      [view setAutoresizingMask:centred];
+      [splash addSubview:view];
+      [view release];
+      anchor = top;
+    }
+
+    if (!hints.text.empty())
+    {
+      NSString *string = [NSString stringWithUTF8String:hints.text.c_str()];
+      NSColor *color = [NSColor colorWithSRGBRed:((hints.textColor >> 16) & 0xff) / 255.0
+                                           green:((hints.textColor >> 8) & 0xff) / 255.0
+                                            blue:(hints.textColor & 0xff) / 255.0
+                                           alpha:1.0];
+      auto *view =
+          [[SplashTextView alloc] initWithText:string ? string : @""
+                                    attributes:@{
+                                      NSFontAttributeName : [NSFont systemFontOfSize:hints.textSize],
+                                      NSForegroundColorAttributeName : color
+                                    }
+                                         width:area.size.width];
+      const CGFloat height = [view frame].size.height;
+      [view setFrame:NSMakeRect(0, area.size.height - (anchor + hints.textTop) - height, area.size.width,
+                                height)];
+      [view setAutoresizingMask:centred];
+      [splash addSubview:view];
+      [view release];
+    }
+
+    [content addSubview:splash];
+    // the reference alloc gave, kept until endSplash
+    splashView = splash;
+  }
+
+  [self showWindow];
+  // drawn and handed to the window server now: the run loop, which would do it, stops for as
+  // long as making the plugin takes
+  [window display];
+  [CATransaction flush];
+}
+
+// the window up and in front, once
+- (void)showWindow
+{
+  NSWindow *window = [self window];
+  if ([window isVisible]) return;
+  [window makeKeyAndOrderFront:nil];
+  // in front even while the activation the launch asked for is still on its way
+  [window orderFrontRegardless];
+}
+
+- (void)endSplash
+{
+  [splashView removeFromSuperview];
+  [splashView release];
+  splashView = nil;
+}
+
+// the content at this size, with the window's top left corner where it is, so that the title
+// bar does not move when the gui asks for another height. a window that is not up yet and has
+// no place of its own is centred
+- (void)setWindowContentSize:(NSSize)size
+{
+  NSWindow *window = [self window];
+  if (!windowPlaced && ![window isVisible])
+  {
+    [window setContentSize:size];
+    [window center];
+    windowPlaced = true;
+    return;
+  }
+
+  NSRect content = [window contentRectForFrameRect:[window frame]];
+  if (NSEqualSizes(content.size, size)) return;
+  content.origin.y += content.size.height - size.height;
+  content.size = size;
+  [window setFrame:[window frameRectForContentRect:content] display:YES];
+}
+
+- (void)doSetup
+{
+  const char *argv[2] = {OUTPUT_NAME, 0};
+  const clap_plugin_entry *entry{pluginEntry};
+
+  if (!entry || !pluginPrepared)
+  {
+    // the window there was before the plugin: the empty one, which closing quits
+    [self endSplash];
+    [self showWindow];
     return;
   }
   self.requestCallbackTimer = [NSTimer timerWithTimeInterval:0.08
@@ -318,13 +589,21 @@ static bool showingAudioError{false};
     [self openAudioSettingsWindow:nil];
     return true;
   };
-  freeaudio::clap_wrapper::standalone::getStandaloneHost()->onScreenAppearanceChanged = []()
+  freeaudio::clap_wrapper::standalone::getStandaloneHost()->onScreenAppearanceChanged = [self]()
   {
+    // the window the gui is in too: its title bar
+    applyScreenAppearance([self window]);
     if (openAudioSettings) [openAudioSettings applyAppearance];
   };
 
   auto plugin =
       freeaudio::clap_wrapper::standalone::mainCreatePlugin(entry, pid, pindex, 1, (char **)argv);
+  if (!plugin)
+  {
+    [self endSplash];
+    [self showWindow];
+    return;
+  }
 
   // the urls the standalone was opened with go to the plugin once this is done, whichever
   // way it ends: with the gui shown, with none, or with one that could not be
@@ -336,7 +615,6 @@ static bool showingAudioError{false};
     }
   } deliverUrlsWhenDone;
 
-  [[self window] orderFrontRegardless];
   [[self window] setDelegate:self];
 
   freeaudio::clap_wrapper::standalone::getStandaloneHost()->onRequestResize =
@@ -345,7 +623,7 @@ static bool showingAudioError{false};
     NSSize sz;
     sz.width = w;
     sz.height = h;
-    [[self window] setContentSize:sz];
+    [self setWindowContentSize:sz];
     // The size was accepted -- it has just been applied. Returning false said the
     // opposite, and a plugin that believed it left its own GUI a size behind the
     // window it is drawn in. Windows answers true from the same place.
@@ -362,6 +640,8 @@ static bool showingAudioError{false};
     if (!ui->create(p, CLAP_WINDOW_API_COCOA, false))
     {
       LOGINFO("[ERROR] Plugin GUI create() failed");
+      [self endSplash];
+      [self showWindow];
       @autoreleasepool
       {
         NSAlert *alert = [[NSAlert alloc] init];
@@ -387,6 +667,8 @@ static bool showingAudioError{false};
     if (sizeError)
     {
       LOGINFO("[ERROR] Plugin GUI get_size() failed: {}", [sizeError UTF8String]);
+      [self endSplash];
+      [self showWindow];
       @autoreleasepool
       {
         NSAlert *alert = [[NSAlert alloc] init];
@@ -410,7 +692,7 @@ static bool showingAudioError{false};
     NSSize sz;
     sz.width = w;
     sz.height = h;
-    [[self window] setContentSize:sz];
+    [self setWindowContentSize:sz];
 
     clap_window win;
     win.api = CLAP_WINDOW_API_COCOA;
@@ -418,6 +700,8 @@ static bool showingAudioError{false};
     if (!ui->set_parent(p, &win))
     {
       LOGINFO("[ERROR] Plugin GUI set_parent() failed");
+      [self endSplash];
+      [self showWindow];
       @autoreleasepool
       {
         NSAlert *alert = [[NSAlert alloc] init];
@@ -432,7 +716,19 @@ static bool showingAudioError{false};
       return;
     }
     ui->show(p);
+
+    // the splash goes once the gui's view, which is over it, has drawn: a gui that draws a
+    // turn of the run loop late would otherwise show the bare background for a moment
+    if (splashView) [self performSelector:@selector(endSplash) withObject:nil afterDelay:0.5];
   }
+
+  // up now, where the gui had to say its size first, or there is no gui to wait for; and kept
+  // from here on, the place it is in now and wherever it is moved or resized to. saved before
+  // the autosave is named: naming it puts back a frame saved before, the last launch's, over
+  // the size the gui has just asked for
+  [self showWindow];
+  [[self window] saveFrameUsingName:windowFrameName];
+  [[self window] setFrameAutosaveName:windowFrameName];
 
   // shown from a turn of the run loop of its own: the host reports from inside its own
   // calls, and from the timer that polls for a device coming back, which a modal alert run
@@ -461,12 +757,19 @@ static bool showingAudioError{false};
   freeaudio::clap_wrapper::standalone::getStandaloneHost()->onAudioDevicesChanged = []()
   { [openAudioSettings devicesChanged]; };
 
+  // the gui drawn before the audio starts, which can take a while to find and open its
+  // devices: the run loop that would draw it does not turn until this returns
+  [[self window] displayIfNeeded];
+  [CATransaction flush];
+
   freeaudio::clap_wrapper::standalone::mainStartAudio();
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification
 {
   [NSApp activateIgnoringOtherApps:YES];
+  [self findPluginEntry];
+  [self prepareWindow];
   [NSTimer scheduledTimerWithTimeInterval:0.001
                                    target:self
                                  selector:@selector(doSetup)

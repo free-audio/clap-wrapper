@@ -78,6 +78,10 @@
   name that base folder from its entry, before any instance exists: see
   clap_wrapper_plugin_factory_standalone_settings at the end of this file.
 
+  the window before the gui: the entry can also say what the standalone's window shows
+  while the plugin and its gui are being made - the gui's size and background, a splash
+  image - see clap_wrapper_plugin_factory_standalone_window at the end of this file.
+
   draft/6, from draft/5:
   - open_url on the plugin side: a link in a scheme the standalone was built to open
   new functions are at the end of the struct. draft/5 is no longer answered.
@@ -390,11 +394,13 @@ extern "C"
     // [main-thread]
     uint32_t(CLAP_ABI *supported_configuration_screen_appearances)(const clap_host_t *host);
 
-    // takes effect at once, on an open screen too, and on the standalone's own alerts
-    // where the system lets them be drawn so (macos; windows' message boxes cannot). a
-    // plugin that sets the appearance owns it: the screen offers no choice of its own for
-    // the rest of the session, and the value is not saved - set it again, say from
-    // init(), on every launch. returns false if unsupported
+    // takes effect at once, on an open screen too, on the standalone's own alerts where
+    // the system lets them be drawn so (macos; windows' message boxes cannot), and on the
+    // window the plugin's gui is in: its title bar, and on macos the controls of the system's
+    // inside it. a plugin that sets the appearance owns it: the screen offers no choice of
+    // its own for the rest of the session, and the value is not saved - set it again, say
+    // from init(), on every launch, or name it in the window hints (the factory at the end),
+    // which are read before the window is shown. returns false if unsupported
     // [main-thread]
     bool(CLAP_ABI *set_configuration_screen_appearance)(const clap_host_t *host, uint32_t appearance);
 
@@ -506,6 +512,90 @@ extern "C"
     bool(CLAP_ABI *get_default_state_persistence)(
         const struct clap_wrapper_plugin_factory_standalone_settings *factory, uint32_t *persistence);
   } clap_wrapper_plugin_factory_standalone_settings_t;
+
+  /*
+    clap_wrapper_plugin_factory_standalone_window  (DRAFT)
+
+    a factory a plugin's entry returns from get_factory under this id, to say what the
+    standalone's window shows before the plugin's gui exists: the size the gui is going to
+    ask for, the gui's background colour, and an image for the middle of the window. making
+    the plugin and its gui takes a moment, and only the gui knows its size; with these the
+    window comes up at once, as a splash the plugin's view then takes the place of without
+    the window moving or changing colour. the splash can carry a few lines of text, a
+    version say, which only the entry can give.
+
+    the standalone asks once, after the entry's init() and before it creates the plugin, for
+    the id of the plugin it is going to create, and shows the window right after. so the
+    answer is the entry's, from what it keeps between launches (a zoom, a size the user left
+    the window at), not an instance's.
+
+    every hint is optional. what a plugin leaves out comes from the standalone's build
+    (STANDALONE_WINDOW_SIZE, STANDALONE_BACKGROUND_COLOR, STANDALONE_SPLASH_IMAGE and
+    STANDALONE_SPLASH_IMAGE_SCALE in make_clapfirst_plugins), and without either the window
+    is shown once the gui has its size. the size is used when the window has no place of its
+    own from an earlier launch; once the gui exists, its get_size decides, as always.
+  */
+
+  static const CLAP_CONSTEXPR char CLAP_WRAPPER_PLUGIN_FACTORY_STANDALONE_WINDOW[] =
+      "clap-wrapper.plugin-factory-standalone-window.draft/1";
+
+  enum clap_wrapper_standalone_window_hint_flags
+  {
+    CLAP_WRAPPER_STANDALONE_WINDOW_HINT_SIZE = 1 << 0,
+    CLAP_WRAPPER_STANDALONE_WINDOW_HINT_BACKGROUND = 1 << 1,
+    CLAP_WRAPPER_STANDALONE_WINDOW_HINT_SPLASH_IMAGE = 1 << 2,
+    CLAP_WRAPPER_STANDALONE_WINDOW_HINT_SPLASH_TEXT = 1 << 3,
+    CLAP_WRAPPER_STANDALONE_WINDOW_HINT_APPEARANCE = 1 << 4,
+  };
+
+  typedef struct clap_wrapper_standalone_window_hints
+  {
+    // which of the hints below are given, clap_wrapper_standalone_window_hint_flags
+    uint32_t flags;
+
+    // the size the gui's get_size is going to answer, at a scale of 1: points on macos,
+    // pixels at 96 dpi on windows (the standalone scales them by the dpi of the screen the
+    // window opens on), pixels on linux
+    uint32_t width, height;
+
+    // the gui's background, 0xRRGGBB in srgb
+    uint32_t background;
+
+    // a png, drawn in the middle of the window until the gui is in place. the bytes are the
+    // plugin's and stay valid until the entry's deinit(). scale is how many of its pixels
+    // make one unit of the size above: 2 for an image made for a 2x screen
+    const uint8_t *splash_png;
+    uint32_t splash_png_size;
+    uint32_t splash_scale;
+
+    // text on the splash, a version say: utf-8, lines separated by '\n', in the system's ui
+    // font, each line centred on the image's middle. top is where its first line's top
+    // edge is, down from the image's top edge (or from the middle of the window, where there
+    // is no image), in the units of the size above: more than the image's height puts the
+    // text under the image. a size of 0 is 12. the standalone copies the text. not drawn on
+    // linux, which draws no image either
+    const char *splash_text;
+    uint32_t splash_text_color;  // 0xRRGGBB in srgb
+    uint32_t splash_text_size;
+    int32_t splash_text_top;
+
+    // the appearance of the standalone's windows, a clap_wrapper_standalone_appearance: as if
+    // the plugin had set the configuration screen's appearance from init(), only before the
+    // window is shown, so that its title bar is drawn so from the start (the window follows
+    // that appearance from then on, see set_configuration_screen_appearance)
+    uint32_t appearance;
+  } clap_wrapper_standalone_window_hints_t;
+
+  typedef struct clap_wrapper_plugin_factory_standalone_window
+  {
+    // fills in hints, which the standalone has zeroed, for the plugin with this id, and sets
+    // a flag for each hint given. returns false for none. a hint out of range - a size of 0
+    // or over 16384 a side, a scale of 0, bytes that are not a png - is logged and ignored
+    // [main-thread]
+    bool(CLAP_ABI *get_window_hints)(const struct clap_wrapper_plugin_factory_standalone_window *factory,
+                                     const char *plugin_id,
+                                     clap_wrapper_standalone_window_hints_t *hints);
+  } clap_wrapper_plugin_factory_standalone_window_t;
 
 #ifdef __cplusplus
 }
