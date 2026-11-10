@@ -1015,8 +1015,6 @@ class WrapAsAUV2 : public ausdk::AUBase,
   // writing the parameter - from announcing the host's own write back to it.
   void noteBypassParameterValue(clap_id id, double value);
 
-  CFStringRef _current_program_name = 0;
-
   // ------------- for the MIDI output
   AUMIDIOutputCallbackStruct _midioutput_hostcallback = {nullptr, nullptr};
 #if AUSDK_MIDI2_AVAILABLE

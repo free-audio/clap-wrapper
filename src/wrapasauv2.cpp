@@ -233,10 +233,6 @@ WrapAsAUV2::~WrapAsAUV2()
     _plugin->terminate();
     _plugin.reset();
   }
-  if (_current_program_name)
-  {
-    CFRelease(_current_program_name);
-  }
   // AUBase must not retain a pointer to a member-owned lock during base destruction.
   SetMutex(nullptr);
 }
@@ -2387,13 +2383,17 @@ OSStatus WrapAsAUV2::SaveState(CFPropertyListRef *ptPList)
     CFRelease(tData);
     chunk.clear();
 
-    if (_current_program_name == nullptr)
+    // The name is the present preset's, as AUBase::SaveState writes it: the
+    // factory preset the host or the plugin chose last, or the name of the
+    // state restored last.
+    AUPreset present{};
+    if (DispatchGetProperty(kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0, &present) ==
+            noErr &&
+        present.presetName)
     {
-      _current_program_name = CFStringCreateWithCString(NULL, "Program", kCFStringEncodingUTF8);
+      CFDictionarySetValue(*dict, CFSTR(kAUPresetNameKey), present.presetName);
+      CFRelease(present.presetName);  // retained for the caller
     }
-    // const char  *name = "blarb";
-    // mPlugin->getProgramName(name);
-    CFDictionarySetValue(*dict, CFSTR(kAUPresetNameKey), _current_program_name);
 
     *ptPList = static_cast<CFPropertyListRef>(dict.release());  // transfer ownership
 #endif
@@ -2416,6 +2416,15 @@ OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
   {
     return -1;
   }
+
+  // The saved name becomes the present preset, as in AUBase::RestoreState, so
+  // the next SaveState writes it again. Set before the state loads: a preset
+  // the plugin reports as loaded from it takes its place.
+  const void *pName = CFDictionaryGetValue(tDict, CFSTR(kAUPresetNameKey));
+  const bool hasName = pName && CFGetTypeID(CFTypeRef(pName)) == CFStringGetTypeID();
+  NewCustomPresetSet(AUPreset{-1, hasName ? static_cast<CFStringRef>(pName) : CFSTR("Untitled")});
+  PropertyChanged(kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0);
+
   /*
    * In the read side I fall through to default, whereas in the write
    * side I use an 'else' on the set of stream formats. This means
@@ -2447,12 +2456,6 @@ OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
     return noErr;
   }
 #endif
-
-  const void *pName = CFDictionaryGetValue(tDict, CFSTR(kAUPresetNameKey));
-  if (pName)
-  {
-    _current_program_name = CFStringCreateCopy(NULL, (CFStringRef)pName);
-  }
 
   CFDataRef tData = CFDataRef(pData);
 
