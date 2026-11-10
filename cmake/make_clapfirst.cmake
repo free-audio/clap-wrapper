@@ -39,6 +39,13 @@ function(make_clapfirst_plugins)
             STANDALONE_MACOS_ICON # Icons for standalone
             STANDALONE_WINDOWS_ICON
 
+            # what a standalone's window shows before the plugin's gui exists (WINDOW_SIZE,
+            # BACKGROUND_COLOR, SPLASH_IMAGE, SPLASH_IMAGE_SCALE of target_add_standalone_wrapper)
+            STANDALONE_WINDOW_SIZE
+            STANDALONE_BACKGROUND_COLOR
+            STANDALONE_SPLASH_IMAGE
+            STANDALONE_SPLASH_IMAGE_SCALE
+
             WINDOWS_FOLDER_VST3 # True for a filder, false for single file (default)
 
             ASSET_OUTPUT_DIRECTORY
@@ -400,6 +407,10 @@ function(make_clapfirst_plugins)
                         RESOURCE_DIRECTORY "${C1ST_RESOURCE_DIRECTORY}"
                         BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"
                         URL_SCHEMES ${C1ST_STANDALONE_URL_SCHEMES}
+                        WINDOW_SIZE "${C1ST_STANDALONE_WINDOW_SIZE}"
+                        BACKGROUND_COLOR "${C1ST_STANDALONE_BACKGROUND_COLOR}"
+                        SPLASH_IMAGE "${C1ST_STANDALONE_SPLASH_IMAGE}"
+                        SPLASH_IMAGE_SCALE "${C1ST_STANDALONE_SPLASH_IMAGE_SCALE}"
                 )
                 if (DEFINED C1ST_ASSET_OUTPUT_DIRECTORY)
                     if (NOT WIN32)

@@ -2,18 +2,116 @@
 
 #include <dwmapi.h>
 #include <uxtheme.h>
+#include <wincodec.h>
 
 #include <algorithm>
 #include <cmath>
 #include <iterator>
+
+#include "detail/standalone/standalone_window_hints.h"
 
 namespace freeaudio::clap_wrapper::standalone::windows_standalone
 {
 namespace
 {
 // the plugin window whose settings window the standalone features extension shows;
-// null before it is created and after it is destroyed
+// null before the plugin is in it and after it is destroyed
 Plugin *settingsWindowOwner{nullptr};
+
+::COLORREF fromRgb(uint32_t rgb)
+{
+  return RGB((rgb >> 16) & 0xff, (rgb >> 8) & 0xff, rgb & 0xff);
+}
+
+// a whole number of pixels, rounded down also below zero
+int floorHalf(int value)
+{
+  return static_cast<int>(std::floor(value / 2.0));
+}
+
+// the splash image at a dpi, as a premultiplied 32-bit dib section: the png's pixels over its
+// scale make units of 96 dpi, which the dpi scales. null when the bytes do not decode
+::HBITMAP decodeSplashImage(const unsigned char *png, size_t size, uint32_t scale, uint32_t dpi,
+                            uint32_t &width, uint32_t &height)
+{
+  auto factory{wil::CoCreateInstanceNoThrow<::IWICImagingFactory>(CLSID_WICImagingFactory)};
+  wil::com_ptr_nothrow<::IWICStream> stream;
+  if (!factory || FAILED(factory->CreateStream(&stream)) ||
+      FAILED(stream->InitializeFromMemory(const_cast<::BYTE *>(png), static_cast<::DWORD>(size))))
+    return nullptr;
+
+  wil::com_ptr_nothrow<::IWICBitmapDecoder> decoder;
+  wil::com_ptr_nothrow<::IWICBitmapFrameDecode> frame;
+  ::UINT pixelsWide{0}, pixelsHigh{0};
+  if (FAILED(factory->CreateDecoderFromStream(stream.get(), nullptr, WICDecodeMetadataCacheOnDemand,
+                                              &decoder)) ||
+      FAILED(decoder->GetFrame(0, &frame)) || FAILED(frame->GetSize(&pixelsWide, &pixelsHigh)) ||
+      pixelsWide == 0 || pixelsHigh == 0)
+    return nullptr;
+
+  const auto toPixels = [&](::UINT imagePixels)
+  { return std::max<::UINT>(1, static_cast<::UINT>(std::lround(imagePixels * dpi / (96.0 * scale)))); };
+  width = toPixels(pixelsWide);
+  height = toPixels(pixelsHigh);
+
+  wil::com_ptr_nothrow<::IWICBitmapScaler> scaler;
+  wil::com_ptr_nothrow<::IWICFormatConverter> converter;
+  if (FAILED(factory->CreateBitmapScaler(&scaler)) ||
+      FAILED(scaler->Initialize(frame.get(), width, height, WICBitmapInterpolationModeFant)) ||
+      FAILED(factory->CreateFormatConverter(&converter)) ||
+      FAILED(converter->Initialize(scaler.get(), GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone,
+                                   nullptr, 0.0, WICBitmapPaletteTypeCustom)))
+    return nullptr;
+
+  ::BITMAPINFO info{};
+  info.bmiHeader.biSize = sizeof(info.bmiHeader);
+  info.bmiHeader.biWidth = static_cast<::LONG>(width);
+  info.bmiHeader.biHeight = -static_cast<::LONG>(height);  // top down
+  info.bmiHeader.biPlanes = 1;
+  info.bmiHeader.biBitCount = 32;
+  info.bmiHeader.biCompression = BI_RGB;
+  void *bits{nullptr};
+  wil::unique_hbitmap bitmap{::CreateDIBSection(nullptr, &info, DIB_RGB_COLORS, &bits, nullptr, 0)};
+  if (!bitmap || !bits ||
+      FAILED(converter->CopyPixels(nullptr, width * 4, width * height * 4, static_cast<::BYTE *>(bits))))
+    return nullptr;
+
+  return bitmap.release();
+}
+
+// a window's title bar, dark or not; one already on screen is drawn again
+void applyTitleBarAppearance(::HWND hwnd, bool dark)
+{
+  // 20 from Windows 10 20H1, 19 before it
+  ::BOOL useDark{dark ? TRUE : FALSE};
+  if (FAILED(::DwmSetWindowAttribute(hwnd, 20, &useDark, sizeof(useDark))))
+    ::DwmSetWindowAttribute(hwnd, 19, &useDark, sizeof(useDark));
+
+  // a title bar already on screen keeps its colours until its frame is drawn again, which
+  // windows 10 does only on a change of activation
+  if (::IsWindowVisible(hwnd))
+  {
+    ::SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+                   SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    if (::GetActiveWindow() == hwnd)
+    {
+      ::DefWindowProcW(hwnd, WM_NCACTIVATE, FALSE, 0);
+      ::DefWindowProcW(hwnd, WM_NCACTIVATE, TRUE, 0);
+    }
+  }
+}
+
+// the font of Windows' own dialogs, at a size in units of 96 dpi
+::HFONT getMessageFontOfSize(uint32_t dpi, uint32_t size)
+{
+  ::NONCLIENTMETRICSW metrics{sizeof(::NONCLIENTMETRICSW)};
+  if (!::SystemParametersInfoForDpi(SPI_GETNONCLIENTMETRICS, sizeof(metrics), &metrics, 0, dpi))
+    ::GetObjectW(getFontFromSystem(), sizeof(metrics.lfMessageFont), &metrics.lfMessageFont);
+
+  auto font{metrics.lfMessageFont};
+  font.lfHeight = -::MulDiv(static_cast<int>(size), static_cast<int>(dpi), USER_DEFAULT_SCREEN_DPI);
+  return ::CreateFontIndirectW(&font);
+}
 }  // namespace
 
 std::vector<std::string> getArgs()
@@ -457,6 +555,10 @@ void Window::setPosition(Position position)
 void Window::setStyle(::LONG_PTR style)
 {
   ::SetWindowLongPtrW(hwnd.get(), GWL_STYLE, style);
+  // the frame follows only when told, which matters for a window already on screen (the
+  // splash), whose size is set for the new frame next
+  ::SetWindowPos(hwnd.get(), nullptr, 0, 0, 0, 0,
+                 SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 void Window::toggleCentered(bool centered)
@@ -1090,13 +1192,8 @@ void Plugin::hideSettings()
   ::PostMessageW(hwnd.get(), WM_SETTINGS_CLOSED, settingsApplied ? 1 : 0, 0);
 }
 
-Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
+Plugin::Plugin(int nCmdShow) : showCommand{nCmdShow == SW_HIDE ? SW_SHOWNORMAL : nCmdShow}
 {
-  plugin.clap = clapPlugin;
-  plugin.plugin = plugin.clap->_plugin;
-  plugin.gui = plugin.clap->_ext._gui;
-  plugin.state = plugin.clap->_ext._state;
-
   message.on(WM_CREATE,
              [this](Message msg)
              {
@@ -1133,7 +1230,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
              {
                auto windowPos{reinterpret_cast<::LPWINDOWPOS>(msg.lparam)};
 
-               if (plugin.gui)
+               if (plugin.gui && guiCreated)
                {
                  if (windowPos->flags & SWP_SHOWWINDOW)
                  {
@@ -1186,10 +1283,35 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
   message.on(WM_DPICHANGED,
              [this](Message msg)
              {
-               if (plugin.gui)
+               if (plugin.gui && guiCreated)
                {
                  plugin.gui->set_scale(plugin.plugin, scale);
                }
+
+               return 0;
+             });
+
+  // the gui's background, where the window shows it: under the splash, and wherever the gui
+  // does not cover the window
+  message.on(WM_ERASEBKGND,
+             [this](Message msg) -> ::LRESULT
+             {
+               if (!backgroundBrush) return ::DefWindowProcW(msg.hwnd, msg.msg, msg.wparam, msg.lparam);
+
+               ::RECT area{};
+               ::GetClientRect(msg.hwnd, &area);
+               ::FillRect(reinterpret_cast<::HDC>(msg.wparam), &area, backgroundBrush.get());
+
+               return 1;
+             });
+
+  message.on(WM_PAINT,
+             [this](Message msg)
+             {
+               ::PAINTSTRUCT paint{};
+               auto dc{::BeginPaint(msg.hwnd, &paint)};
+               if (splashUp) paintSplash(dc);
+               ::EndPaint(msg.hwnd, &paint);
 
                return 0;
              });
@@ -1218,6 +1340,15 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
              [this](Message msg)
              {
                if (!sah) return 0;
+
+               // the menu's own entries need the plugin, which the window is up without while
+               // the plugin is made (attach); the system's still work, and closing is refused
+               // until then (WM_CLOSE)
+               if (!plugin.clap)
+               {
+                 ::DefWindowProcW(msg.hwnd, msg.msg, msg.wparam, msg.lparam);
+                 return 0;
+               }
 
                switch (msg.wparam)
                {
@@ -1633,7 +1764,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                sah->onScreenAppearanceChanged = nullptr;
                settingsWindowOwner = nullptr;
 
-               if (plugin.gui)
+               if (plugin.gui && guiCreated)
                {
                  plugin.gui->destroy(plugin.plugin);
                }
@@ -1675,6 +1806,16 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                return 0;
              });
 
+  // closing quits (WM_DESTROY), which cannot happen while the plugin is still being made: a
+  // modal box during that, from the plugin say, would let the window be closed under it
+  message.on(WM_CLOSE,
+             [this](Message msg)
+             {
+               if (plugin.clap) hwnd.reset();
+
+               return 0;
+             });
+
   // the title bar's close button, which is Cancel
   settings.message.on(WM_CLOSE,
                       [this](Message msg)
@@ -1696,14 +1837,20 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                return 0;
              });
 
+  if (windowHints().hasBackground)
+    backgroundBrush.reset(::CreateSolidBrush(fromRgb(windowHints().background)));
+
   create(OUTPUT_NAME);
+  // in the appearance the plugin's entry named, if it did (mainPrepare), from the first frame
+  applyTitleBarAppearance(hwnd.get(), isDark(sah->screenAppearance));
 
   settings.create("Audio/MIDI Settings");
-  settingsWindowOwner = this;
 
-  // a plugin may set the appearance at any time, on an open window too
+  // a plugin may set the appearance at any time, on an open window too, and the window the
+  // gui is in follows it: its title bar
   sah->onScreenAppearanceChanged = [this]()
   {
+    if (hwnd) applyTitleBarAppearance(hwnd.get(), isDark(sah->screenAppearance));
     if (!settings.hwnd) return;
     applySettingsAppearance();
     if (settings.isVisible())
@@ -1712,6 +1859,136 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
       layoutSettings();
     }
   };
+
+  showSplash();
+}
+
+void Plugin::showSplash()
+{
+  const auto &hints{windowHints()};
+
+  // the place the window had when the standalone last quit, which Windows keeps with the
+  // frame; or the size the gui is going to ask for, in the middle of the screen
+  if (sah->settings.hasWindowPosition)
+  {
+    position.x = sah->settings.windowX;
+    position.y = sah->settings.windowY;
+    position.width = sah->settings.windowWidth;
+    position.height = sah->settings.windowHeight;
+  }
+  if ((position.width != 0 || position.height != 0) && isRectOnAnyMonitor(position))
+  {
+    setPosition(position);
+  }
+  else if (hints.hasSize())
+  {
+    adjustSize(static_cast<uint32_t>(std::lround(hints.width * scale)),
+               static_cast<uint32_t>(std::lround(hints.height * scale)));
+
+    ::MONITORINFO info{sizeof(::MONITORINFO)};
+    ::RECT frame{};
+    if (::GetMonitorInfoW(::MonitorFromWindow(hwnd.get(), MONITOR_DEFAULTTONEAREST), &info) &&
+        ::GetWindowRect(hwnd.get(), &frame))
+    {
+      const auto &work{info.rcWork};
+      const auto x{work.left + floorHalf((work.right - work.left) - (frame.right - frame.left))};
+      const auto y{work.top + floorHalf((work.bottom - work.top) - (frame.bottom - frame.top))};
+      ::SetWindowPos(hwnd.get(), nullptr, std::max<int>(x, work.left), std::max<int>(y, work.top), 0, 0,
+                     SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOSIZE);
+    }
+  }
+  else
+  {
+    // nothing to go by: shown once the gui has its size
+    return;
+  }
+
+  splashUp = hints.splashPng != nullptr || !hints.text.empty();
+  showWindow();
+  // painted now: the message loop, which would paint it, runs only once the plugin is made
+  ::UpdateWindow(hwnd.get());
+}
+
+void Plugin::paintSplash(::HDC dc)
+{
+  const auto &hints{windowHints()};
+
+  ::RECT area{};
+  ::GetClientRect(hwnd.get(), &area);
+
+  // where the text is measured from, down from the top: the image's top edge, or the middle
+  int anchor{floorHalf(area.bottom)};
+
+  if (hints.splashPng)
+  {
+    if (splashBitmapDpi != dpi)
+    {
+      splashBitmap.reset(decodeSplashImage(hints.splashPng, hints.splashPngSize, hints.splashScale, dpi,
+                                           splashBitmapWidth, splashBitmapHeight));
+      splashBitmapDpi = dpi;
+    }
+    if (splashBitmap)
+    {
+      // whole pixels from the top left, rounded down: where a gui that centres the same
+      // image in the same area draws it
+      const auto w{static_cast<int>(splashBitmapWidth)}, h{static_cast<int>(splashBitmapHeight)};
+      const int left{floorHalf(area.right - w)}, top{floorHalf(area.bottom - h)};
+
+      wil::unique_hdc source{::CreateCompatibleDC(dc)};
+      const auto previous{::SelectObject(source.get(), splashBitmap.get())};
+      const ::BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
+      ::AlphaBlend(dc, left, top, w, h, source.get(), 0, 0, w, h, blend);
+      ::SelectObject(source.get(), previous);
+
+      anchor = top;
+    }
+  }
+
+  if (!hints.text.empty())
+  {
+    if (splashFontDpi != dpi)
+    {
+      splashFont.reset(getMessageFontOfSize(dpi, hints.textSize));
+      splashFontDpi = dpi;
+    }
+
+    // DrawText breaks lines at a carriage return and line feed
+    std::string lines;
+    for (auto c : hints.text)
+    {
+      if (c == '\n') lines += '\r';
+      lines += c;
+    }
+    auto text{toUTF16(lines)};
+
+    const auto previous{::SelectObject(dc, splashFont.get())};
+    ::SetBkMode(dc, TRANSPARENT);
+    ::SetTextColor(dc, fromRgb(hints.textColor));
+    ::RECT box{0, anchor + ::MulDiv(hints.textTop, static_cast<int>(dpi), USER_DEFAULT_SCREEN_DPI),
+               area.right, area.bottom};
+    ::DrawTextW(dc, text.c_str(), static_cast<int>(text.size()), &box,
+                DT_CENTER | DT_TOP | DT_NOPREFIX | DT_NOCLIP);
+    ::SelectObject(dc, previous);
+  }
+}
+
+void Plugin::showWindow()
+{
+  if (isVisible()) return;
+
+  // the show state the launcher asked for (a shortcut's "Run:", STARTUPINFO); SW_HIDE would
+  // leave the standalone running unseen
+  ::ShowWindow(hwnd.get(), showCommand);
+}
+
+void Plugin::attach(std::shared_ptr<Clap::Plugin> clapPlugin)
+{
+  plugin.clap = clapPlugin;
+  plugin.plugin = plugin.clap->_plugin;
+  plugin.gui = plugin.clap->_ext._gui;
+  plugin.state = plugin.clap->_ext._state;
+
+  settingsWindowOwner = this;
 
   isTimerRunning = startTimer(timerId, 8);
 
@@ -1739,7 +2016,16 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
   {
     if (plugin.gui->is_api_supported(plugin.plugin, CLAP_WINDOW_API_WIN32, false))
     {
-      plugin.gui->create(plugin.plugin, CLAP_WINDOW_API_WIN32, false);
+      guiCreated = plugin.gui->create(plugin.plugin, CLAP_WINDOW_API_WIN32, false);
+      if (!guiCreated) log("The plugin's gui create() failed");
+    }
+    else
+    {
+      log("CLAP_WINDOW_API_WIN32 is not supported");
+    }
+
+    if (guiCreated)
+    {
       plugin.gui->set_scale(plugin.plugin, scale);
 
       if (plugin.gui->can_resize(plugin.plugin))
@@ -1766,10 +2052,11 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
 
       clap_window clapWindow{CLAP_WINDOW_API_WIN32, static_cast<void *>(hwnd.get())};
       plugin.gui->set_parent(plugin.plugin, &clapWindow);
-    }
-    else
-    {
-      log("CLAP_WINDOW_API_WIN32 is not supported");
+
+      // the gui is over it now; and a window already up shows the gui here, where one that is
+      // not does so when it comes up (WM_WINDOWPOSCHANGED)
+      splashUp = false;
+      if (isVisible()) plugin.gui->show(plugin.plugin);
     }
   }
   else
@@ -1847,9 +2134,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
 
   startAudio();
 
-  // Honor the show state requested by the launcher (shortcut "Run:" / STARTUPINFO),
-  // falling back to a normal window. SW_HIDE would otherwise leave us invisible-but-running.
-  ::ShowWindow(hwnd.get(), nCmdShow == SW_HIDE ? SW_SHOWNORMAL : nCmdShow);
+  showWindow();
 }
 
 std::optional<clap_gui_resize_hints> Plugin::getResizeHints()

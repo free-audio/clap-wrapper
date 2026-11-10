@@ -7,6 +7,14 @@
 
 namespace freeaudio::clap_wrapper::standalone
 {
+// the first half of mainCreatePlugin, for a frontend that shows its window before the plugin
+// exists: initializes the entry, resolves the settings folder and reads the settings in it,
+// and asks the entry for its window hints (windowHints(), standalone_window_hints.h). once;
+// mainCreatePlugin does it itself where the frontend has not. false when the entry has no
+// plugin factory
+bool mainPrepare(const clap_plugin_entry *entry, const std::string &clapId, uint32_t clapIndex, int argc,
+                 char **argv);
+
 std::shared_ptr<Clap::Plugin> mainCreatePlugin(const clap_plugin_entry *entry, const std::string &clapId,
                                                uint32_t clapIndex, int argc, char **argv);
 void mainStartAudio();

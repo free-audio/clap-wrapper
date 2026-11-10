@@ -36,6 +36,12 @@ function(target_add_standalone_wrapper)
             MACOS_ICON
 
             MACOS_EMBEDDED_CLAP_LOCATION
+
+            # what the window shows before the plugin's gui exists (standalone_window_hints.h)
+            WINDOW_SIZE         # "<width>x<height>", the gui's size, for a first launch
+            BACKGROUND_COLOR    # "#RRGGBB", the gui's background
+            SPLASH_IMAGE        # a png, drawn in the middle of the window until the gui is there
+            SPLASH_IMAGE_SCALE  # how many of the png's pixels make one point; 1 if not given
             )
     set(multiValueArgs
             URL_SCHEMES  # schemes a link opens the standalone with; the plugin gets the url
@@ -99,6 +105,72 @@ function(target_add_standalone_wrapper)
     endforeach()
     list(REMOVE_DUPLICATES sa_url_schemes)
 
+    # what the window shows before the plugin's gui exists, checked here so that a typo is a
+    # configure error and not a window that silently comes up without it
+    set(sa_window_definitions "")
+    if (DEFINED SA_WINDOW_SIZE AND NOT "${SA_WINDOW_SIZE}" STREQUAL "")
+        if (NOT SA_WINDOW_SIZE MATCHES "^([1-9][0-9]*)x([1-9][0-9]*)$")
+            message(FATAL_ERROR "clap-wrapper: WINDOW_SIZE '${SA_WINDOW_SIZE}' is not <width>x<height>, such as 800x600")
+        endif()
+        set(sa_window_width ${CMAKE_MATCH_1})
+        set(sa_window_height ${CMAKE_MATCH_2})
+        if (sa_window_width GREATER 16384 OR sa_window_height GREATER 16384)
+            message(FATAL_ERROR "clap-wrapper: WINDOW_SIZE '${SA_WINDOW_SIZE}' is larger than 16384 a side")
+        endif()
+        list(APPEND sa_window_definitions
+                CLAP_WRAPPER_STANDALONE_WINDOW_WIDTH=${sa_window_width}
+                CLAP_WRAPPER_STANDALONE_WINDOW_HEIGHT=${sa_window_height})
+    endif()
+    if (DEFINED SA_BACKGROUND_COLOR AND NOT "${SA_BACKGROUND_COLOR}" STREQUAL "")
+        if (NOT SA_BACKGROUND_COLOR MATCHES "^#([0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F])$")
+            message(FATAL_ERROR "clap-wrapper: BACKGROUND_COLOR '${SA_BACKGROUND_COLOR}' is not #RRGGBB")
+        endif()
+        list(APPEND sa_window_definitions CLAP_WRAPPER_STANDALONE_BACKGROUND_COLOR=0x${CMAKE_MATCH_1})
+    endif()
+    set(sa_splash_source "")
+    if (DEFINED SA_SPLASH_IMAGE AND NOT "${SA_SPLASH_IMAGE}" STREQUAL "")
+        get_filename_component(sa_splash_image "${SA_SPLASH_IMAGE}" ABSOLUTE)
+        if (NOT EXISTS "${sa_splash_image}" OR IS_DIRECTORY "${sa_splash_image}")
+            message(FATAL_ERROR "clap-wrapper: SPLASH_IMAGE '${SA_SPLASH_IMAGE}' is not a file")
+        endif()
+        file(READ "${sa_splash_image}" sa_splash_signature LIMIT 8 HEX)
+        if (NOT sa_splash_signature STREQUAL "89504e470d0a1a0a")
+            message(FATAL_ERROR "clap-wrapper: SPLASH_IMAGE '${SA_SPLASH_IMAGE}' is not a png")
+        endif()
+        set(sa_splash_scale 1)
+        if (DEFINED SA_SPLASH_IMAGE_SCALE AND NOT "${SA_SPLASH_IMAGE_SCALE}" STREQUAL "")
+            if (NOT SA_SPLASH_IMAGE_SCALE MATCHES "^[1-8]$")
+                message(FATAL_ERROR "clap-wrapper: SPLASH_IMAGE_SCALE '${SA_SPLASH_IMAGE_SCALE}' is not a whole number from 1 to 8")
+            endif()
+            set(sa_splash_scale ${SA_SPLASH_IMAGE_SCALE})
+        endif()
+
+        # the png's bytes as a c array, written only when they changed, so that the
+        # standalone is not rebuilt on every configure
+        file(READ "${sa_splash_image}" sa_splash_hex HEX)
+        string(LENGTH "${sa_splash_hex}" sa_splash_hex_length)
+        math(EXPR sa_splash_size "${sa_splash_hex_length} / 2")
+        string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," sa_splash_bytes "${sa_splash_hex}")
+        string(REGEX REPLACE "((0x[0-9a-f][0-9a-f],){32})" "\\1\n  " sa_splash_bytes "${sa_splash_bytes}")
+        set(sa_splash_source "${CMAKE_BINARY_DIR}/generated_splash/${SA_TARGET}/splash_image.cpp")
+        file(WRITE "${sa_splash_source}.tmp"
+                "// written by clap-wrapper's wrap_standalone.cmake from ${sa_splash_image}\n"
+                "#include <cstddef>\n\n"
+                "namespace freeaudio::clap_wrapper::standalone\n{\n"
+                "extern const unsigned char splashImagePng[];\n"
+                "extern const size_t splashImagePngSize;\n"
+                "const unsigned char splashImagePng[] = {\n  ${sa_splash_bytes}\n};\n"
+                "const size_t splashImagePngSize = ${sa_splash_size};\n"
+                "}  // namespace freeaudio::clap_wrapper::standalone\n")
+        configure_file("${sa_splash_source}.tmp" "${sa_splash_source}" COPYONLY)
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${sa_splash_image}")
+        list(APPEND sa_window_definitions
+                CLAP_WRAPPER_STANDALONE_SPLASH_IMAGE=1
+                CLAP_WRAPPER_STANDALONE_SPLASH_SCALE=${sa_splash_scale})
+    elseif (DEFINED SA_SPLASH_IMAGE_SCALE AND NOT "${SA_SPLASH_IMAGE_SCALE}" STREQUAL "")
+        message(FATAL_ERROR "clap-wrapper: SPLASH_IMAGE_SCALE is given without a SPLASH_IMAGE")
+    endif()
+
     # RtAudio and RtMidi for everything, or RtAudio for ASIO only
     set(sa_rtaudio ${CLAP_WRAPPER_STANDALONE_RTAUDIO})
 
@@ -159,6 +231,8 @@ function(target_add_standalone_wrapper)
             ${sasrc}/standalone_settings.cpp
             ${sasrc}/standalone_audio.cpp
             ${sasrc}/standalone_backends.cpp
+            ${sasrc}/standalone_window_hints.cpp
+            ${sa_splash_source}
             )
     target_link_libraries(${salib}
             PUBLIC
@@ -168,6 +242,8 @@ function(target_add_standalone_wrapper)
     # one string, the schemes separated by commas; empty for a standalone no link opens
     string(REPLACE ";" "," sa_url_schemes_joined "${sa_url_schemes}")
     target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_URL_SCHEMES="${sa_url_schemes_joined}")
+    # read only by standalone_window_hints.cpp; the frontends ask windowHints()
+    target_compile_definitions(${salib} PRIVATE ${sa_window_definitions})
     # the backends each keep file-local helpers, some with the same names
     set_target_properties(${salib} PROPERTIES UNITY_BUILD OFF)
 
@@ -213,7 +289,7 @@ function(target_add_standalone_wrapper)
         endif()
         target_link_libraries(${salib}
                 PUBLIC "-framework AVFoundation" "-framework Foundation" "-framework CoreFoundation" "-framework AppKit"
-                "-framework CoreAudio" "-framework CoreMIDI")
+                "-framework QuartzCore" "-framework CoreAudio" "-framework CoreMIDI")
     elseif (WIN32 AND NOT sa_rtaudio)
         target_sources(${salib} PRIVATE
                 ${sasrc}/windows/wasapi_backend.cpp
@@ -339,8 +415,10 @@ function(target_add_standalone_wrapper)
             target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_ASIO=1)
         endif()
 
-        # Dwmapi and UxTheme give the settings window its dark title bar and controls
-        target_link_libraries(${SA_TARGET} PRIVATE base-sdk-wil ComCtl32.Lib Dwmapi.lib UxTheme.lib)
+        # Dwmapi and UxTheme give the settings window its dark title bar and controls;
+        # windowscodecs decodes the splash image and Msimg32 draws it (AlphaBlend)
+        target_link_libraries(${SA_TARGET} PRIVATE base-sdk-wil ComCtl32.Lib Dwmapi.lib UxTheme.lib
+                windowscodecs.lib Msimg32.lib)
 
     elseif(UNIX)
         target_sources(${SA_TARGET} PRIVATE

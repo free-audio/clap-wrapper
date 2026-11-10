@@ -12,6 +12,7 @@
 #include <algorithm>
 
 #include "x11_gui.h"
+#include "detail/standalone/standalone_window_hints.h"
 #include <sys/epoll.h>
 
 namespace freeaudio::clap_wrapper::standalone::linux_standalone
@@ -268,9 +269,21 @@ void X11Gui::setPlugin(std::shared_ptr<Clap::Plugin> p)
   gc = XCreateGC(display, window, 0, nullptr);
   if (hasGui)
   {
-    pluginWindow = XCreateSimpleWindow(
-        display, window, 0, stripShown(), static_cast<unsigned>(pluginWidth),
-        static_cast<unsigned>(pluginHeight), 0, BlackPixel(display, s), BlackPixel(display, s));
+    // the gui's background where the build or the plugin's entry names one (windowHints()):
+    // what the window shows until the gui has drawn, rather than black
+    unsigned long background{BlackPixel(display, s)};
+    if (const auto &hints{windowHints()}; hints.hasBackground)
+    {
+      XColor c{};
+      c.red = static_cast<unsigned short>(((hints.background >> 16) & 0xFF) * 257);
+      c.green = static_cast<unsigned short>(((hints.background >> 8) & 0xFF) * 257);
+      c.blue = static_cast<unsigned short>((hints.background & 0xFF) * 257);
+      c.flags = DoRed | DoGreen | DoBlue;
+      if (XAllocColor(display, DefaultColormap(display, s), &c)) background = c.pixel;
+    }
+    pluginWindow =
+        XCreateSimpleWindow(display, window, 0, stripShown(), static_cast<unsigned>(pluginWidth),
+                            static_cast<unsigned>(pluginHeight), 0, background, background);
     XMapWindow(display, pluginWindow);
   }
 

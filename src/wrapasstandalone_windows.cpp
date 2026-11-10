@@ -90,25 +90,33 @@ int WINAPI wWinMain(HINSTANCE /* hInstance */, HINSTANCE /* hPrevInstance */, PW
   }
 
   // Before the plugin is created, so that supports_audio_midi_configuration_screen
-  // answers true from init() on. Showing works once the plugin window exists.
+  // answers true from init() on. Showing works once the plugin is in its window.
   freeaudio::clap_wrapper::standalone::getStandaloneHost()->onShowSettingsScreen =
       &freeaudio::clap_wrapper::standalone::windows_standalone::showSettingsScreen;
 
-  auto clapPlugin{freeaudio::clap_wrapper::standalone::mainCreatePlugin(
-      entry, PLUGIN_ID, PLUGIN_INDEX, static_cast<int>(argv.size()), argv.data())};
-
-  if (!clapPlugin)
-  {
-    // The Plugin constructor dereferences this immediately, so a failed create
-    // used to be a null dereference rather than a message.
-    freeaudio::clap_wrapper::standalone::windows_standalone::MessageHandler{}.error(
-        "Unable to create the plugin. The CLAP was found but did not provide '" PLUGIN_ID "'.");
-
-    return 4;
-  }
+  // the entry's settings and window hints, so that the window is up, at its size and with its
+  // splash, while the plugin is made
+  freeaudio::clap_wrapper::standalone::mainPrepare(entry, PLUGIN_ID, PLUGIN_INDEX,
+                                                   static_cast<int>(argv.size()), argv.data());
 
   {
-    freeaudio::clap_wrapper::standalone::windows_standalone::Plugin plugin{clapPlugin, nCmdShow};
+    freeaudio::clap_wrapper::standalone::windows_standalone::Plugin plugin{nCmdShow};
+
+    auto clapPlugin{freeaudio::clap_wrapper::standalone::mainCreatePlugin(
+        entry, PLUGIN_ID, PLUGIN_INDEX, static_cast<int>(argv.size()), argv.data())};
+
+    if (!clapPlugin)
+    {
+      plugin.message.error(
+          "Unable to create the plugin. The CLAP was found but did not provide '" PLUGIN_ID "'.");
+
+      // taken down here, while it can still run its WM_DESTROY, which finishes the host
+      plugin.hwnd.reset();
+
+      return 4;
+    }
+
+    plugin.attach(clapPlugin);
 
     // Drop our own reference before the scope ends. The wrapper's shutdown runs
     // from WM_DESTROY inside run(), and the CLAP must not outlive it.

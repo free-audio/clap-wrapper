@@ -65,5 +65,14 @@ make_clapfirst_plugins(
         # standalone and hands the plugin the url (open_url, standalone features),
         # here clap-first-distortion://anything. See the README.
         # STANDALONE_URL_SCHEMES clap-first-distortion
+        #
+        # What the standalone's window shows while the plugin and its gui are being
+        # made: the gui's size and background, and an image in the middle, which the
+        # gui's view then takes the place of. The plugin's entry can give these too,
+        # per plugin (clap_wrapper_plugin_factory_standalone_window). See the README.
+        # STANDALONE_WINDOW_SIZE 800x600
+        # STANDALONE_BACKGROUND_COLOR "#1e1e1e"
+        # STANDALONE_SPLASH_IMAGE "${CMAKE_CURRENT_SOURCE_DIR}/logo@2x.png"
+        # STANDALONE_SPLASH_IMAGE_SCALE 2
 )
 

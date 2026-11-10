@@ -425,7 +425,15 @@ struct Plugin final : public Window
     const clap_plugin_state_t *state;
   };
 
-  explicit Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow = SW_SHOWDEFAULT);
+  // the window, made before the plugin is: shown at once where it knows its size - the place
+  // it had when the standalone last quit, or the size the plugin's gui is going to ask for
+  // (windowHints()) - in the gui's background, with the splash in its middle; else hidden
+  // until attach() has the gui's size
+  explicit Plugin(int nCmdShow = SW_SHOWDEFAULT);
+
+  // the plugin, into the window: its gui, which takes the splash's place, then its audio and
+  // midi, and the window up if it is not yet
+  void attach(std::shared_ptr<Clap::Plugin> clapPlugin);
 
   std::optional<clap_gui_resize_hints> getResizeHints();
 
@@ -519,7 +527,22 @@ struct Plugin final : public Window
   // can stop a stream again within moments, which is still the failure already shown
   std::optional<std::chrono::steady_clock::time_point> audioRunningSince;
 
-  ClapPlugin plugin;
+  // the window before the gui: the splash while it is up, and the background around the gui
+  void showSplash();
+  void paintSplash(::HDC dc);
+  void showWindow();
+  int showCommand{SW_SHOWNORMAL};
+  bool splashUp{false};
+  wil::unique_hbrush backgroundBrush;
+  // the image as drawn, at a dpi; made again when the window moves to another
+  wil::unique_hbitmap splashBitmap;
+  uint32_t splashBitmapDpi{0}, splashBitmapWidth{0}, splashBitmapHeight{0};
+  wil::unique_hfont splashFont;
+  uint32_t splashFontDpi{0};
+
+  ClapPlugin plugin{};
+  // the gui has been created, and is the plugin's to show, size and destroy
+  bool guiCreated{false};
   Position position;
   Menu menu;
   Settings settings;

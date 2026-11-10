@@ -144,6 +144,38 @@ treat it as untrusted input. What the system needs to know about the schemes:
   `MimeType=x-scheme-handler/yourplugin;` and `Exec=... %u`. The url arrives as
   the argument of a new instance; one already running does not hear of it.
 
+A **standalone's window** can come up at once, while the plugin and its gui are
+still being made, instead of once the gui has told it its size. Tell it what to
+show meanwhile:
+
+```cmake
+make_clapfirst_plugins(
+    ...
+    STANDALONE_WINDOW_SIZE "800x600"           # what the gui's get_size will answer
+    STANDALONE_BACKGROUND_COLOR "#1e1e1e"      # the gui's background
+    STANDALONE_SPLASH_IMAGE "res/logo@2x.png"  # drawn in the middle of the window
+    STANDALONE_SPLASH_IMAGE_SCALE 2            # the png's pixels per point
+)
+```
+
+(`WINDOW_SIZE`, `BACKGROUND_COLOR`, `SPLASH_IMAGE` and `SPLASH_IMAGE_SCALE` for
+`target_add_standalone_wrapper`.) The window opens at that size, in that colour,
+with the image in its middle, and the gui's view then takes its place. A gui
+that draws the same image centred on the same background therefore makes the
+swap invisible. The plugin's entry can give each of these itself, per plugin
+id, together with a few lines of text such as a version, and the appearance,
+light or dark, that the window and its title bar are drawn in from the first
+frame. It does so with
+`clap_wrapper_plugin_factory_standalone_window` in
+`clapwrapper/standalone_features.h`, which the standalone asks after the entry's
+`init()` and before it creates the plugin. What the entry gives wins over the
+build. The size only applies until the window has a place of its own: the
+standalone remembers where the window was left (on macOS in its user defaults,
+on Windows in `standalone-settings.conf`). Once the gui exists, its `get_size`
+decides as before, and a different answer resizes the window with its top-left
+corner fixed. Without any of this the window is shown once the gui has its
+size. Linux takes only the background, for the area under the gui.
+
 ## Contribution
 
 Development happens on `next`; `main` only moves at a release. Before opening an
