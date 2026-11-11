@@ -546,6 +546,15 @@ void Window::adjustSize(uint32_t width, uint32_t height)
                  SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOMOVE);
 }
 
+::SIZE Window::frameSize()
+{
+  ::RECT rect{};
+  ::AdjustWindowRectExForDpi(&rect, static_cast<::DWORD>(::GetWindowLongPtrW(hwnd.get(), GWL_STYLE)),
+                             ::GetMenu(hwnd.get()) != nullptr,
+                             static_cast<::DWORD>(::GetWindowLongPtrW(hwnd.get(), GWL_EXSTYLE)), dpi);
+  return {rect.right - rect.left, rect.bottom - rect.top};
+}
+
 // adjustSize keeps the top-left corner, so a window that grows near the screen's edge, as a gui
 // asks for when it zooms, runs off it. If the size changed, the window is moved as little as it
 // takes to lie on its monitor's work area: pushed back from the right and the bottom, and, if
@@ -1326,12 +1335,8 @@ Plugin::Plugin(int nCmdShow) : showCommand{nCmdShow == SW_HIDE ? SW_SHOWNORMAL :
           return ::DefWindowProcW(msg.hwnd, msg.msg, msg.wparam, msg.lparam);
 
         auto rect{reinterpret_cast<::LPRECT>(msg.lparam)};
-        ::RECT frame{};
-        ::AdjustWindowRectExForDpi(
-            &frame, static_cast<::DWORD>(::GetWindowLongPtrW(msg.hwnd, GWL_STYLE)),
-            ::GetMenu(msg.hwnd) != nullptr,
-            static_cast<::DWORD>(::GetWindowLongPtrW(msg.hwnd, GWL_EXSTYLE)), dpi);
-        const auto frameWidth{frame.right - frame.left}, frameHeight{frame.bottom - frame.top};
+        const auto frame{frameSize()};
+        const auto frameWidth{frame.cx}, frameHeight{frame.cy};
 
         auto width{static_cast<uint32_t>(std::max(0L, (rect->right - rect->left) - frameWidth))};
         auto height{static_cast<uint32_t>(std::max(0L, (rect->bottom - rect->top) - frameHeight))};
@@ -1364,6 +1369,29 @@ Plugin::Plugin(int nCmdShow) : showCommand{nCmdShow == SW_HIDE ? SW_SHOWNORMAL :
 
         return TRUE;
       });
+
+  // The smallest window the gui takes, for whatever sizes the window without a drag of its
+  // edge: a snap to half or a quarter of the screen keeps to this minimum, and does not ask
+  // WM_SIZING. The gui's adjust_size gives it as its answer to the smallest size, 1 x 1.
+  message.on(WM_GETMINMAXINFO,
+             [this](Message msg) -> ::LRESULT
+             {
+               if (!plugin.gui || !guiCreated || !plugin.gui->can_resize(plugin.plugin))
+                 return ::DefWindowProcW(msg.hwnd, msg.msg, msg.wparam, msg.lparam);
+
+               uint32_t width{1}, height{1};
+               if (!plugin.gui->adjust_size(plugin.plugin, &width, &height))
+                 return ::DefWindowProcW(msg.hwnd, msg.msg, msg.wparam, msg.lparam);
+
+               const auto frame{frameSize()};
+               auto info{reinterpret_cast<::LPMINMAXINFO>(msg.lparam)};
+               info->ptMinTrackSize.x =
+                   std::max(info->ptMinTrackSize.x, static_cast<::LONG>(width) + frame.cx);
+               info->ptMinTrackSize.y =
+                   std::max(info->ptMinTrackSize.y, static_cast<::LONG>(height) + frame.cy);
+
+               return 0;
+             });
 
   message.on(WM_EXITSIZEMOVE,
              [this](Message msg)

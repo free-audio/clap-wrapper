@@ -150,6 +150,8 @@ struct Window
   bool isVisible();
 
   void adjustSize(uint32_t width, uint32_t height);
+  // what the window's frame adds to its client, at its style and dpi
+  ::SIZE frameSize();
   // adjustSize, and a window whose size that changed kept on its monitor's work area
   void resizeOnWorkArea(uint32_t width, uint32_t height);
   void setPosition(Position position);
