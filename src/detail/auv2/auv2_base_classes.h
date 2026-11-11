@@ -891,6 +891,8 @@ class WrapAsAUV2 : public ausdk::AUBase,
     return _isBypassed;
   }
   void SetBypassEffect(bool bypass);
+  // passes kAudioUnitProperty_OfflineRender on through clap.render
+  void applyRenderMode();
 
   // --------------- internals
 
@@ -998,6 +1000,9 @@ class WrapAsAUV2 : public ausdk::AUBase,
   // the CLAP parameter flagged CLAP_PARAM_IS_BYPASS, driven by kAudioUnitProperty_BypassEffect
   clap_id _bypassParamID = CLAP_INVALID_ID;
   bool _isBypassed = false;
+
+  // kAudioUnitProperty_OfflineRender, which a host sets around a faster than real time bounce
+  bool _offlineRender = false;
 
   // Set when the bypass parameter moved from the plugin's side of the wrapper
   // - a value the plugin emitted, or a host write of the parameter rather than

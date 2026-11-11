@@ -907,6 +907,31 @@ void WrapAsAUV2::SetBypassEffect(bool bypass)
   }
 }
 
+// as vst3 does for kOffline and auv3 for renderingOffline; logic sets it around a bounce
+void WrapAsAUV2::applyRenderMode()
+{
+  if (!_plugin || !_plugin->_ext._render) return;
+
+  auto *render = _plugin->_ext._render;
+  auto *plugin = _plugin->_plugin;
+
+  // render.set is [main-thread], and a host sets the property from wherever it is
+  auto guarantee_mainthread = _plugin->AlwaysMainThread();
+
+  auto mode = _offlineRender ? CLAP_RENDER_OFFLINE : CLAP_RENDER_REALTIME;
+  if (mode == CLAP_RENDER_OFFLINE && render->has_hard_realtime_requirement(plugin))
+  {
+    // the property cannot be refused, so the plugin simply stays in real time
+    LOGDETAIL("[clap-wrapper] auv2: hard realtime requirement, staying in realtime render");
+    mode = CLAP_RENDER_REALTIME;
+  }
+
+  if (!render->set(plugin, mode))
+  {
+    LOGDETAIL("[clap-wrapper] auv2: plugin refused render mode {}", (int)mode);
+  }
+}
+
 OSStatus WrapAsAUV2::CopyClumpName(AudioUnitScope inScope, UInt32 inClumpID, UInt32 inDesiredNameLength,
                                    CFStringRef *outClumpName)
 {
@@ -1044,6 +1069,10 @@ OSStatus WrapAsAUV2::GetPropertyInfo(AudioUnitPropertyID inID, AudioUnitScope in
         outWritable = true;
         outDataSize = sizeof(UInt32);
         return noErr;
+      case kAudioUnitProperty_OfflineRender:
+        outWritable = true;
+        outDataSize = sizeof(UInt32);
+        return noErr;
 #ifdef DUAL_SCHEDULING_ENABLED
       case kMusicDeviceProperty_DualSchedulingMode:
         outWritable = true;
@@ -1163,6 +1192,9 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
       case kAudioUnitProperty_BypassEffect:
         LOGDETAIL("[clap-wrapper] auv2: host read BypassEffect={}", IsBypassEffect() ? 1 : 0);
         *static_cast<UInt32 *>(outData) = (IsBypassEffect() ? 1 : 0);  // NOLINT
+        return noErr;
+      case kAudioUnitProperty_OfflineRender:
+        *static_cast<UInt32 *>(outData) = (_offlineRender ? 1 : 0);
         return noErr;
         //    case kAudioUnitProperty_InPlaceProcessing:
         //      *static_cast<UInt32*>(outData) = (mProcessesInPlace ? 1 : 0); // NOLINT
@@ -1334,6 +1366,19 @@ OSStatus WrapAsAUV2::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
       //      mProcessesInPlace = *static_cast<const UInt32*>(inData) != 0;
       //      return noErr;
       break;
+      case kAudioUnitProperty_OfflineRender:
+      {
+        if (inDataSize < sizeof(UInt32)) return kAudioUnitErr_InvalidPropertyValue;
+        const bool offline = *static_cast<const UInt32 *>(inData) != 0;
+        LOGDETAIL("[clap-wrapper] auv2: host set OfflineRender={} (was {})", offline ? 1 : 0,
+                  _offlineRender ? 1 : 0);
+        if (offline != _offlineRender)
+        {
+          _offlineRender = offline;
+          applyRenderMode();
+        }
+        return noErr;
+      }
       case kAudioUnitProperty_MIDIOutputCallbackInfo:
         // this is actually read only
         return noErr;
@@ -1656,6 +1701,9 @@ bool WrapAsAUV2::activateCLAP()
     auto minSampleFrames = (maxSampleFrames >= 16) ? 16 : 1;
     _plugin->setBlockSizes(minSampleFrames, maxSampleFrames);
     _plugin->setSampleRate(Output(0).GetStreamFormat().mSampleRate);
+
+    // set whenever the host changes it; once more here for a plugin that only reads it at activation
+    applyRenderMode();
 
     // How long onIdle() waits before it decides the host has stopped rendering.
     // A fixed number of ticks cannot work: at 4096 frames and 44.1kHz a block is
