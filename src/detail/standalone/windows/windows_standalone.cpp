@@ -546,6 +546,41 @@ void Window::adjustSize(uint32_t width, uint32_t height)
                  SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOMOVE);
 }
 
+// adjustSize keeps the top-left corner, so a window that grows near the screen's edge, as a gui
+// asks for when it zooms, runs off it. If the size changed, the window is moved as little as it
+// takes to lie on its monitor's work area: pushed back from the right and the bottom, and, if
+// it is larger than the area, with its top-left corner and so its title bar in it. A window the
+// user left partly off the screen stays where it is as long as its size does.
+void Window::resizeOnWorkArea(uint32_t width, uint32_t height)
+{
+  const auto before{client};
+  adjustSize(width, height);
+  if (client.width == before.width && client.height == before.height) return;
+
+  ::MONITORINFO info{sizeof(::MONITORINFO)};
+  ::RECT frame{};
+  if (!::GetMonitorInfoW(::MonitorFromWindow(hwnd.get(), MONITOR_DEFAULTTONEAREST), &info) ||
+      !::GetWindowRect(hwnd.get(), &frame))
+    return;
+
+  // what is seen of the window: without the resize borders Windows draws invisibly around it
+  ::RECT visible{frame};
+  if (FAILED(
+          ::DwmGetWindowAttribute(hwnd.get(), DWMWA_EXTENDED_FRAME_BOUNDS, &visible, sizeof(visible))))
+    visible = frame;
+
+  const auto &work{info.rcWork};
+  ::LONG dx{0}, dy{0};
+  if (visible.right > work.right) dx = work.right - visible.right;
+  if (visible.bottom > work.bottom) dy = work.bottom - visible.bottom;
+  dx = std::max(dx, work.left - visible.left);
+  dy = std::max(dy, work.top - visible.top);
+  if (dx == 0 && dy == 0) return;
+
+  ::SetWindowPos(hwnd.get(), nullptr, frame.left + dx, frame.top + dy, 0, 0,
+                 SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOSIZE);
+}
+
 void Window::setPosition(Position position)
 {
   ::SetWindowPos(hwnd.get(), nullptr, position.x, position.y, position.width, position.height,
@@ -1278,6 +1313,57 @@ Plugin::Plugin(int nCmdShow) : showCommand{nCmdShow == SW_HIDE ? SW_SHOWNORMAL :
 
                return 0;
              });
+
+  // A drag of the window's edge or corner gives the gui the size it would make, and the window
+  // takes the gui's answer (adjust_size), the edge opposite the one dragged staying where it
+  // is. So the window never becomes smaller than the gui, which would clip it, nor of a size
+  // the gui does not take - and the size the gui remembers is the window's.
+  message.on(
+      WM_SIZING,
+      [this](Message msg) -> ::LRESULT
+      {
+        if (!plugin.gui || !guiCreated || !plugin.gui->can_resize(plugin.plugin))
+          return ::DefWindowProcW(msg.hwnd, msg.msg, msg.wparam, msg.lparam);
+
+        auto rect{reinterpret_cast<::LPRECT>(msg.lparam)};
+        ::RECT frame{};
+        ::AdjustWindowRectExForDpi(
+            &frame, static_cast<::DWORD>(::GetWindowLongPtrW(msg.hwnd, GWL_STYLE)),
+            ::GetMenu(msg.hwnd) != nullptr,
+            static_cast<::DWORD>(::GetWindowLongPtrW(msg.hwnd, GWL_EXSTYLE)), dpi);
+        const auto frameWidth{frame.right - frame.left}, frameHeight{frame.bottom - frame.top};
+
+        auto width{static_cast<uint32_t>(std::max(0L, (rect->right - rect->left) - frameWidth))};
+        auto height{static_cast<uint32_t>(std::max(0L, (rect->bottom - rect->top) - frameHeight))};
+        if (!plugin.gui->adjust_size(plugin.plugin, &width, &height)) return TRUE;
+
+        const auto outerWidth{static_cast<::LONG>(width) + frameWidth};
+        const auto outerHeight{static_cast<::LONG>(height) + frameHeight};
+        switch (msg.wparam)
+        {
+          case WMSZ_LEFT:
+          case WMSZ_TOPLEFT:
+          case WMSZ_BOTTOMLEFT:
+            rect->left = rect->right - outerWidth;
+            break;
+          default:
+            rect->right = rect->left + outerWidth;
+            break;
+        }
+        switch (msg.wparam)
+        {
+          case WMSZ_TOP:
+          case WMSZ_TOPLEFT:
+          case WMSZ_TOPRIGHT:
+            rect->top = rect->bottom - outerHeight;
+            break;
+          default:
+            rect->bottom = rect->top + outerHeight;
+            break;
+        }
+
+        return TRUE;
+      });
 
   message.on(WM_EXITSIZEMOVE,
              [this](Message msg)
@@ -2057,7 +2143,7 @@ void Plugin::attach(std::shared_ptr<Clap::Plugin> clapPlugin)
       plugin.gui->get_size(plugin.plugin, &pluginSize.width, &pluginSize.height);
       log("{}, {}", pluginSize.width, pluginSize.height);
 
-      adjustSize(pluginSize.width, pluginSize.height);
+      resizeOnWorkArea(pluginSize.width, pluginSize.height);
 
       clap_window clapWindow{CLAP_WINDOW_API_WIN32, static_cast<void *>(hwnd.get())};
       plugin.gui->set_parent(plugin.plugin, &clapWindow);
@@ -2082,7 +2168,7 @@ void Plugin::attach(std::shared_ptr<Clap::Plugin> clapPlugin)
     if (placement.showCmd != SW_MAXIMIZE && placement.showCmd != SW_SHOWMINIMIZED &&
         !::IsIconic(hwnd.get()))
     {
-      adjustSize(width, height);
+      resizeOnWorkArea(width, height);
     }
 
     return true;
