@@ -268,6 +268,20 @@ function(guarantee_clap_wrapper_shared)
     endif()
 endfunction(guarantee_clap_wrapper_shared)
 
+# The category a macOS app the wrapper makes is filed under (LSApplicationCategoryType):
+# Finder groups the Applications folder by it, and the Apps view sorts by it. `category` is
+# one of Apple's public.app-category.* identifiers; empty means Music, which is what a
+# standalone or an AUv3's host app is. `result` gets the identifier, for the Info.plist.
+function(macos_app_category category result)
+    if ("${category}" STREQUAL "")
+        set(category "public.app-category.music")
+    endif()
+    if (NOT category MATCHES "^public\\.app-category\\.[a-z]+(-[a-z]+)*$")
+        message(FATAL_ERROR "clap-wrapper: MACOS_APP_CATEGORY '${category}' is not an app category such as public.app-category.music")
+    endif()
+    set(${result} "${category}" PARENT_SCOPE)
+endfunction(macos_app_category)
+
 # add a SetFile POST_BUILD for bundles if you aren't using xcode
 function(macos_bundle_flag)
     set(oneValueArgs TARGET)

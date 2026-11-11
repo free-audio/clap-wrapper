@@ -13,6 +13,7 @@ function(target_add_auv3_standalone_wrapper)
             AU_MANUFACTURER
 
             MACOS_ICON
+            MACOS_APP_CATEGORY  # the app's category; public.app-category.music if not given
             )
     cmake_parse_arguments(AUSA "" "${oneValueArgs}" "" ${ARGN})
 
@@ -71,6 +72,19 @@ function(target_add_auv3_standalone_wrapper)
     set(GEN_XIB "${CMAKE_BINARY_DIR}/generated_xib/${AUSA_TARGET}/MainMenu.xib")
     configure_file(${MAIN_XIB} ${GEN_XIB})
 
+    # --- Info.plist ---
+    # one per target, with the app category in it. cmake fills in the template's ${} itself
+    # when it makes the bundle, so the category goes in by plain replacement
+    macos_app_category("${AUSA_MACOS_APP_CATEGORY}" ausa_app_category)
+    set(MAIN_PLIST "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/macos/auv3/Info.plist.in")
+    set(GEN_PLIST "${CMAKE_BINARY_DIR}/generated_plist/${AUSA_TARGET}/Info.plist.in")
+    file(READ "${MAIN_PLIST}" ausa_plist)
+    string(REPLACE "<!-- clap-wrapper: app category -->" "${ausa_app_category}" ausa_plist "${ausa_plist}")
+    # written only when it changed, so that the bundle is not remade on every configure
+    file(WRITE "${GEN_PLIST}.tmp" "${ausa_plist}")
+    configure_file("${GEN_PLIST}.tmp" "${GEN_PLIST}" COPYONLY)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${MAIN_PLIST}")
+
     # --- Sources ---
     target_sources(${AUSA_TARGET} PRIVATE
             "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/wrapasauv3standalone.mm"
@@ -116,7 +130,7 @@ function(target_add_auv3_standalone_wrapper)
             MACOSX_BUNDLE_BUNDLE_NAME "${AUSA_OUTPUT_NAME}"
             MACOSX_BUNDLE_GUI_IDENTIFIER "${AUSA_BUNDLE_IDENTIFIER}"
             MACOSX_BUNDLE TRUE
-            MACOSX_BUNDLE_INFO_PLIST "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/macos/auv3/Info.plist.in"
+            MACOSX_BUNDLE_INFO_PLIST "${GEN_PLIST}"
             XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${AUSA_BUNDLE_IDENTIFIER}"
             RESOURCE "${GEN_XIB}"
             )

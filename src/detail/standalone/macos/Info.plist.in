@@ -30,6 +30,8 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>LSApplicationCategoryType</key>
+	<string><!-- clap-wrapper: app category --></string>
 	<!-- clap-wrapper: url types -->
 </dict>
 </plist>
