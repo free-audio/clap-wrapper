@@ -1253,6 +1253,15 @@ Plugin::Plugin(int nCmdShow) : showCommand{nCmdShow == SW_HIDE ? SW_SHOWNORMAL :
                  }
                }
 
+               // The splash is drawn for the window's size, and while it is up nothing else
+               // paints the window: the message loop runs once the plugin and its gui are made.
+               // So a new size, such as the gui's own, is painted now, with the splash in its
+               // middle; otherwise what was kept of the old one shows until the gui covers it.
+               if (splashUp && !(windowPos->flags & SWP_NOSIZE))
+               {
+                 ::RedrawWindow(msg.hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW);
+               }
+
                // Only remember the restored (normal) geometry. Capturing while minimized or
                // maximized would persist the -32000 iconic sentinel and throw the window
                // off-screen on the next launch. GetWindowRect is the true screen rect (the
@@ -2053,9 +2062,11 @@ void Plugin::attach(std::shared_ptr<Clap::Plugin> clapPlugin)
       clap_window clapWindow{CLAP_WINDOW_API_WIN32, static_cast<void *>(hwnd.get())};
       plugin.gui->set_parent(plugin.plugin, &clapWindow);
 
-      // the gui is over it now; and a window already up shows the gui here, where one that is
-      // not does so when it comes up (WM_WINDOWPOSCHANGED)
+      // the gui is over it now, and wherever it does not cover the window, the background
+      // alone is painted from the next paint on; a window already up shows the gui here, where
+      // one that is not does so when it comes up (WM_WINDOWPOSCHANGED)
       splashUp = false;
+      ::InvalidateRect(hwnd.get(), nullptr, true);
       if (isVisible()) plugin.gui->show(plugin.plugin);
     }
   }
