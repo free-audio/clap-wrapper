@@ -34,6 +34,7 @@ function(target_add_standalone_wrapper)
 
             WINDOWS_ICON
             MACOS_ICON
+            MACOS_APP_CATEGORY  # the app's category on macOS; public.app-category.music if not given
 
             MACOS_EMBEDDED_CLAP_LOCATION
 
@@ -104,6 +105,10 @@ function(target_add_standalone_wrapper)
         list(APPEND sa_url_schemes "${_scheme}")
     endforeach()
     list(REMOVE_DUPLICATES sa_url_schemes)
+
+    # the app's category in the macos bundle's Info.plist, checked on every platform so that
+    # a typo fails where it is made
+    macos_app_category("${SA_MACOS_APP_CATEGORY}" sa_app_category)
 
     # what the window shows before the plugin's gui exists, checked here so that a typo is a
     # configure error and not a window that silently comes up without it
@@ -302,9 +307,9 @@ function(target_add_standalone_wrapper)
         set(GEN_XIB "${CMAKE_BINARY_DIR}/generated_xib/${SA_TARGET}/MainMenu.xib")
         configure_file(${MAIN_XIB} ${GEN_XIB})
 
-        # the Info.plist template with the url schemes in it, one per target as the xib.
-        # cmake fills in the template's ${} and @@ itself when it makes the bundle, so the
-        # schemes go in by plain replacement, and what cmake fills in is left for it
+        # the Info.plist template with the url schemes and the app category in it, one per
+        # target as the xib. cmake fills in the template's ${} and @@ itself when it makes the
+        # bundle, so these go in by plain replacement, and what cmake fills in is left for it
         set(MAIN_PLIST "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/macos/Info.plist.in")
         set(GEN_PLIST "${CMAKE_BINARY_DIR}/generated_plist/${SA_TARGET}/Info.plist.in")
         set(sa_url_types "")
@@ -329,6 +334,7 @@ function(target_add_standalone_wrapper)
         endif()
         file(READ "${MAIN_PLIST}" sa_plist)
         string(REPLACE "<!-- clap-wrapper: url types -->" "${sa_url_types}" sa_plist "${sa_plist}")
+        string(REPLACE "<!-- clap-wrapper: app category -->" "${sa_app_category}" sa_plist "${sa_plist}")
         # written only when it changed, so that the bundle is not remade on every configure
         file(WRITE "${GEN_PLIST}.tmp" "${sa_plist}")
         configure_file("${GEN_PLIST}.tmp" "${GEN_PLIST}" COPYONLY)

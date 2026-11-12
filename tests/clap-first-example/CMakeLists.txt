@@ -74,5 +74,9 @@ make_clapfirst_plugins(
         # STANDALONE_BACKGROUND_COLOR "#1e1e1e"
         # STANDALONE_SPLASH_IMAGE "${CMAKE_CURRENT_SOURCE_DIR}/logo@2x.png"
         # STANDALONE_SPLASH_IMAGE_SCALE 2
+        #
+        # The category macOS files the standalone and the AUv3's host app under. Music
+        # if not given. See the README.
+        # STANDALONE_MACOS_APP_CATEGORY public.app-category.music
 )
 

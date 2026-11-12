@@ -39,6 +39,10 @@ function(make_clapfirst_plugins)
             STANDALONE_MACOS_ICON # Icons for standalone
             STANDALONE_WINDOWS_ICON
 
+            # the macOS app category of the standalone and of the AUv3's host app
+            # (MACOS_APP_CATEGORY); public.app-category.music if not given
+            STANDALONE_MACOS_APP_CATEGORY
+
             # what a standalone's window shows before the plugin's gui exists (WINDOW_SIZE,
             # BACKGROUND_COLOR, SPLASH_IMAGE, SPLASH_IMAGE_SCALE of target_add_standalone_wrapper)
             STANDALONE_WINDOW_SIZE
@@ -304,6 +308,7 @@ function(make_clapfirst_plugins)
                     AU_SUBTYPE "${C1ST_AUV2_SUBTYPE_CODE}"
                     AU_MANUFACTURER "${C1ST_AUV2_MANUFACTURER_CODE}"
                     MACOS_ICON "${C1ST_STANDALONE_MACOS_ICON}"
+                    MACOS_APP_CATEGORY "${C1ST_STANDALONE_MACOS_APP_CATEGORY}"
             )
 
             if (DEFINED C1ST_ASSET_OUTPUT_DIRECTORY)
@@ -403,6 +408,7 @@ function(make_clapfirst_plugins)
                         PLUGIN_ID "${clapid}"
                         BUNDLE_IDENTIFIER "${C1ST_BUNDLE_IDENTIFIER}.standalone"
                         MACOS_ICON "${C1ST_STANDALONE_MACOS_ICON}"
+                        MACOS_APP_CATEGORY "${C1ST_STANDALONE_MACOS_APP_CATEGORY}"
                         WINDOWS_ICON "${C1ST_STANDALONE_WINDOWS_ICON}"
                         RESOURCE_DIRECTORY "${C1ST_RESOURCE_DIRECTORY}"
                         BUNDLE_VERSION "${C1ST_BUNDLE_VERSION}"

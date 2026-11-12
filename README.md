@@ -176,6 +176,13 @@ decides as before, and a different answer resizes the window with its top-left
 corner fixed. Without any of this the window is shown once the gui has its
 size. Linux takes only the background, for the area under the gui.
 
+On **macOS**, a standalone and an AUv3's host app are filed under **Music**: their
+Info.plist says so in `LSApplicationCategoryType`, which Finder groups the
+Applications folder by and the Apps view sorts by. Another of Apple's
+categories goes in `STANDALONE_MACOS_APP_CATEGORY`, as an identifier such as
+`public.app-category.utilities` (`MACOS_APP_CATEGORY` for
+`target_add_standalone_wrapper` and `target_add_auv3_standalone_wrapper`).
+
 ## Contribution
 
 Development happens on `next`; `main` only moves at a release. Before opening an
