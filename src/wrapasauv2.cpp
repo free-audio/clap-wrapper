@@ -2382,7 +2382,7 @@ OSStatus WrapAsAUV2::SaveState(CFPropertyListRef *ptPList)
 {
   if (!ptPList) return kAudioUnitErr_InvalidParameter;
 
-  if (!IsInitialized()) return kAudioUnitErr_Uninitialized;
+  if (!_plugin) return kAudioUnitErr_Uninitialized;
 
   auto guarantee_mainthread = _plugin->AlwaysMainThread();
 
@@ -2454,7 +2454,14 @@ OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
 {
   if (!plist) return kAudioUnitErr_InvalidParameter;
 
-  if (!IsInitialized()) return kAudioUnitErr_Uninitialized;
+  if (!_plugin) return kAudioUnitErr_Uninitialized;
+
+  auto guarantee_mainthread = _plugin->AlwaysMainThread();
+
+  if (!_plugin->_ext._state)
+  {
+    return AUBase::RestoreState(plist);
+  }
 
   CFDictionaryRef tDict = CFDictionaryRef(plist);
 
