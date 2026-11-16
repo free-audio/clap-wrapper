@@ -900,8 +900,10 @@ void SettingsWindow::updateInputNote()
   }
 }
 
-// "Latency: in 5.3 ms, out 30.0 ms" for the running stream, while the window shows its
-// devices, channels, rate and size. not shown when the numbers are not known
+// the running stream's whole latency, input device, the blocks and output device added up
+// (latencyReadoutOf): "Latency: 27.4 ms round trip", or "Latency: 18.5 ms output" with no
+// input open. while the window shows its devices, channels, rate and size; not shown when
+// the backend could not tell the devices' share
 void SettingsWindow::updateLatencyNote()
 {
   const auto &stream{host->currentStream};
@@ -918,13 +920,10 @@ void SettingsWindow::updateLatencyNote()
   std::string text;
   if (showsRunning)
   {
-    const bool hasIn{stream.inputChannels > 0 && stream.inputLatency > 0};
-    const bool hasOut{stream.outputChannels > 0 && stream.outputLatency > 0};
-    if (hasIn) text = "in " + formatMs(stream.inputLatency, stream.sampleRate) + " ms";
-    if (hasOut)
-      text += (text.empty() ? "" : ", ") + std::string{"out "} +
-              formatMs(stream.outputLatency, stream.sampleRate) + " ms";
-    if (!text.empty()) text = "Latency: " + text;
+    const auto readout{latencyReadoutOf(stream)};
+    if (readout.known)
+      text = "Latency: " + formatMs(readout.total, stream.sampleRate) + " ms " +
+             (readout.roundTrip ? "round trip" : "output");
   }
   latencyNote.text = text;
 }
@@ -1079,8 +1078,16 @@ bool SettingsWindow::openShownAudio()
   {
     audioOpenedHere = true;
     apiChanged = false;
-    // the size the device granted, where it is not the one asked for
-    if (shown.frames != host->currentBufferSize) fillBufferSizes(host->currentBufferSize);
+    // the rate and the size the device granted, where they are not the ones asked for: the
+    // sizes' lengths are at the rate the stream runs at
+    const auto grantedRate{host->currentStream.sampleRate};
+    if (grantedRate > 0 && shownRate() != grantedRate)
+    {
+      fillRates(grantedRate);
+      fillBufferSizes(host->currentBufferSize);
+    }
+    else if (shown.frames != host->currentBufferSize)
+      fillBufferSizes(host->currentBufferSize);
     updateLatencyNote();
     return true;
   }

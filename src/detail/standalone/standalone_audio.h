@@ -154,6 +154,39 @@ struct AudioStreamInfo
   uint32_t inputLatency{0}, outputLatency{0};
 };
 
+// the latency the settings windows show beside the buffer size, in frames: what a sound
+// takes from the input's connector to the output's, or with no input open from the
+// plugin to the output's connector. inputLatency and outputLatency leave the blocks out
+// (the standalone features' audio status keeps them so); here they are added back, one
+// block to fill on the way in and one to play out on the way out, so that the total
+// follows the buffer size as well as the devices
+struct AudioLatencyReadout
+{
+  uint32_t input{0};    // the input device's and its driver's, as the stream reports it
+  uint32_t buffers{0};  // the blocks: two with an input, one without
+  uint32_t output{0};   // the output device's and its driver's
+  uint32_t total{0};
+  bool roundTrip{false};  // an input is open: input to output, rather than the output alone
+  bool known{false};      // the backend reported a device latency, so the total means something
+};
+
+inline AudioLatencyReadout latencyReadoutOf(const AudioStreamInfo &stream)
+{
+  AudioLatencyReadout readout;
+  readout.roundTrip = stream.inputChannels > 0;
+  readout.input = readout.roundTrip ? stream.inputLatency : 0;
+  readout.output = stream.outputChannels > 0 ? stream.outputLatency : 0;
+  readout.buffers = stream.bufferFrames * (readout.roundTrip ? 2u : 1u);
+  readout.total = readout.input + readout.buffers + readout.output;
+  readout.known = stream.sampleRate > 0 && (readout.input > 0 || readout.output > 0);
+  return readout;
+}
+
+inline double millisecondsOf(uint32_t frames, uint32_t sampleRate)
+{
+  return sampleRate > 0 ? 1000.0 * static_cast<double>(frames) / static_cast<double>(sampleRate) : 0.0;
+}
+
 class AudioStreamCallback
 {
  public:

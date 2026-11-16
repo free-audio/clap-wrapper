@@ -281,8 +281,8 @@ bool isOnAScreen(NSRect frame)
   NSTextField *inputNote;
   NSGridRow *inputNoteRow;
 
-  // beside the buffer size: the running stream's latency each way, as its devices report
-  // it (the buffer not included), while the window shows what runs
+  // beside the buffer size: the running stream's whole latency, devices and blocks added
+  // up (latencyReadoutOf), while the window shows what runs
   NSTextField *latencyNote;
 
   // the window's own appearance menu, offered while the plugin has not set the
@@ -1654,9 +1654,16 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
   if (openSetup(shown))
   {
     audioOpenedHere = true;
-    // the size the device granted, where it is not the one asked for
+    // the rate and the size the device granted, where they are not the ones asked for: the
+    // sizes' lengths are at the rate the stream runs at
     auto standaloneHost = sa::getStandaloneHost();
-    if (shown.frames != standaloneHost->currentBufferSize)
+    const auto grantedRate = standaloneHost->currentStream.sampleRate;
+    if (grantedRate > 0 && shown.rate != static_cast<int32_t>(grantedRate))
+    {
+      [self resetSampleRateSelectionPreferring:grantedRate];
+      [self resetBufferSizeSelectionPreferring:standaloneHost->currentBufferSize];
+    }
+    else if (shown.frames != standaloneHost->currentBufferSize)
       [self resetBufferSizeSelectionPreferring:standaloneHost->currentBufferSize];
     [self updateLatencyNote];
     return true;
@@ -1780,9 +1787,11 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
   [inputNoteRow setHidden:text == nil];
 }
 
-// "Latency: in 5.3 ms, out 30.0 ms" for the running stream, while the window shows its
-// devices, channels, rate and size: for anything else the numbers would describe another
-// stream. not shown when they are not known
+// the running stream's whole latency, input device, the blocks and output device added up
+// (latencyReadoutOf): "Latency: 27.4 ms round trip", or "Latency: 18.5 ms output" with no
+// input open, the parts in its tooltip. while the window shows the stream's devices,
+// channels, rate and size: for anything else the numbers would describe another stream.
+// not shown when the backend could not tell the devices' share
 - (void)updateLatencyNote
 {
   auto standaloneHost = sa::getStandaloneHost();
@@ -1804,22 +1813,25 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
       (input.empty() || [self shownChoice:true].first == standaloneHost->deviceInputFirstChannel)};
 
   NSString *text{nil};
-  if (showsRunning)
+  NSString *parts{nil};
+  const auto readout = sa::latencyReadoutOf(stream);
+  if (showsRunning && readout.known)
   {
-    auto ms = [&stream](uint32_t frames) { return 1000.0 * frames / stream.sampleRate; };
-    const bool in{stream.inputChannels > 0 && stream.inputLatency > 0};
-    const bool out{stream.outputChannels > 0 && stream.outputLatency > 0};
-    if (in && out)
-      text = [NSString stringWithFormat:@"Latency: in %.1f ms, out %.1f ms", ms(stream.inputLatency),
-                                        ms(stream.outputLatency)];
-    else if (out)
-      text = [NSString stringWithFormat:@"Latency: out %.1f ms", ms(stream.outputLatency)];
-    else if (in)
-      text = [NSString stringWithFormat:@"Latency: in %.1f ms", ms(stream.inputLatency)];
+    auto ms = [&stream](uint32_t frames) { return sa::millisecondsOf(frames, stream.sampleRate); };
+    text = [NSString stringWithFormat:@"Latency: %.1f ms %@", ms(readout.total),
+                                      readout.roundTrip ? @"round trip" : @"output"];
+    parts =
+        readout.roundTrip
+            ? [NSString stringWithFormat:@"Input device %.1f ms + 2 \u00d7 buffer %.1f ms + "
+                                         @"output device %.1f ms",
+                                         ms(readout.input), ms(stream.bufferFrames), ms(readout.output)]
+            : [NSString stringWithFormat:@"Buffer %.1f ms + output device %.1f ms", ms(readout.buffers),
+                                         ms(readout.output)];
   }
 
   // called from the polling timer too: the same text is left alone
   if (text && ![[latencyNote stringValue] isEqualToString:text]) [latencyNote setStringValue:text];
+  if (parts && ![[latencyNote toolTip] isEqualToString:parts]) [latencyNote setToolTip:parts];
   [latencyNote setHidden:text == nil];
 }
 
