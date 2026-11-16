@@ -1789,9 +1789,10 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
 
 // the running stream's whole latency, input device, the blocks and output device added up
 // (latencyReadoutOf): "Latency: 27.4 ms round trip", or "Latency: 18.5 ms output" with no
-// input open, the parts in its tooltip. while the window shows the stream's devices,
-// channels, rate and size: for anything else the numbers would describe another stream.
-// not shown when the backend could not tell the devices' share
+// input open, the parts in its tooltip. a device latency the backend could not tell makes
+// it "Latency: \u2265 5.8 ms output (device latency unknown)". while the window shows the
+// stream's devices, channels, rate and size: for anything else the numbers would describe
+// another stream
 - (void)updateLatencyNote
 {
   auto standaloneHost = sa::getStandaloneHost();
@@ -1815,18 +1816,29 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
   NSString *text{nil};
   NSString *parts{nil};
   const auto readout = sa::latencyReadoutOf(stream);
-  if (showsRunning && readout.known)
+  if (showsRunning)
   {
     auto ms = [&stream](uint32_t frames) { return sa::millisecondsOf(frames, stream.sampleRate); };
-    text = [NSString stringWithFormat:@"Latency: %.1f ms %@", ms(readout.total),
-                                      readout.roundTrip ? @"round trip" : @"output"];
+    auto part = [&ms](NSString *name, uint32_t frames, bool unknown)
+    {
+      return unknown ? [NSString stringWithFormat:@"%@ unknown", name]
+                     : [NSString stringWithFormat:@"%@ %.1f ms", name, ms(frames)];
+    };
+    if (readout.atLeast())
+      text =
+          [NSString stringWithFormat:@"Latency: \u2265 %.1f ms %@ (device latency unknown)",
+                                     ms(readout.total), readout.roundTrip ? @"round trip" : @"output"];
+    else
+      text = [NSString stringWithFormat:@"Latency: %.1f ms %@", ms(readout.total),
+                                        readout.roundTrip ? @"round trip" : @"output"];
     parts =
         readout.roundTrip
-            ? [NSString stringWithFormat:@"Input device %.1f ms + 2 \u00d7 buffer %.1f ms + "
-                                         @"output device %.1f ms",
-                                         ms(readout.input), ms(stream.bufferFrames), ms(readout.output)]
-            : [NSString stringWithFormat:@"Buffer %.1f ms + output device %.1f ms", ms(readout.buffers),
-                                         ms(readout.output)];
+            ? [NSString stringWithFormat:@"%@ + 2 \u00d7 buffer %.1f ms + %@",
+                                         part(@"Input device", readout.input, readout.inputUnknown),
+                                         ms(stream.bufferFrames),
+                                         part(@"output device", readout.output, readout.outputUnknown)]
+            : [NSString stringWithFormat:@"Buffer %.1f ms + %@", ms(readout.buffers),
+                                         part(@"output device", readout.output, readout.outputUnknown)];
   }
 
   // called from the polling timer too: the same text is left alone

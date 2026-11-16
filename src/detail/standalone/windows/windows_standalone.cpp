@@ -2708,8 +2708,8 @@ void Plugin::refreshBufferSizeTitles()
 // beside the buffer size, the running stream's whole latency: input device, the blocks
 // and output device added up (latencyReadoutOf), "Latency: 27.4 ms round trip", or
 // "Latency: 18.5 ms output" with no input open. shown only while the window shows what
-// runs - another device, rate or size would have another - and only when the backend
-// could tell the devices' share
+// runs - another device, rate or size would have another. a device latency the backend
+// could not tell makes it "Latency: \u2265 5.8 ms output (device latency unknown)"
 void Plugin::refreshLatencyNote()
 {
   const auto out{shownOutput()};
@@ -2732,9 +2732,10 @@ void Plugin::refreshLatencyNote()
   if (asRunning)
   {
     const auto readout{latencyReadoutOf(stream)};
-    if (readout.known)
-      text = fmt::format("Latency: {:.1f} ms {}", millisecondsOf(readout.total, stream.sampleRate),
-                         readout.roundTrip ? "round trip" : "output");
+    text = fmt::format("Latency: {}{:.1f} ms {}{}", readout.atLeast() ? "\u2265 " : "",
+                       millisecondsOf(readout.total, stream.sampleRate),
+                       readout.roundTrip ? "round trip" : "output",
+                       readout.atLeast() ? " (device latency unknown)" : "");
   }
 
   settings.latencyNote.setText(text);

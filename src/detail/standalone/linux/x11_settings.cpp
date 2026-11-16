@@ -902,8 +902,9 @@ void SettingsWindow::updateInputNote()
 
 // the running stream's whole latency, input device, the blocks and output device added up
 // (latencyReadoutOf): "Latency: 27.4 ms round trip", or "Latency: 18.5 ms output" with no
-// input open. while the window shows its devices, channels, rate and size; not shown when
-// the backend could not tell the devices' share
+// input open, or "Latency: \u2265 5.8 ms output (device latency unknown)" when the backend
+// could not tell a device's share. while the window shows its devices, channels, rate and
+// size
 void SettingsWindow::updateLatencyNote()
 {
   const auto &stream{host->currentStream};
@@ -921,9 +922,10 @@ void SettingsWindow::updateLatencyNote()
   if (showsRunning)
   {
     const auto readout{latencyReadoutOf(stream)};
-    if (readout.known)
-      text = "Latency: " + formatMs(readout.total, stream.sampleRate) + " ms " +
-             (readout.roundTrip ? "round trip" : "output");
+    text = std::string{"Latency: "} + (readout.atLeast() ? "\u2265 " : "") +
+           formatMs(readout.total, stream.sampleRate) + " ms " +
+           (readout.roundTrip ? "round trip" : "output") +
+           (readout.atLeast() ? " (device latency unknown)" : "");
   }
   latencyNote.text = text;
 }

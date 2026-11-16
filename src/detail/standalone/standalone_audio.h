@@ -159,7 +159,9 @@ struct AudioStreamInfo
 // plugin to the output's connector. inputLatency and outputLatency leave the blocks out
 // (the standalone features' audio status keeps them so); here they are added back, one
 // block to fill on the way in and one to play out on the way out, so that the total
-// follows the buffer size as well as the devices
+// follows the buffer size as well as the devices. a device latency the backend could not
+// tell (0) is left out, and the total is then the least it can be: shown as such, never
+// hidden
 struct AudioLatencyReadout
 {
   uint32_t input{0};    // the input device's and its driver's, as the stream reports it
@@ -167,7 +169,13 @@ struct AudioLatencyReadout
   uint32_t output{0};   // the output device's and its driver's
   uint32_t total{0};
   bool roundTrip{false};  // an input is open: input to output, rather than the output alone
-  bool known{false};      // the backend reported a device latency, so the total means something
+  bool inputUnknown{false}, outputUnknown{false};  // a direction in use reported no latency
+
+  // the total is a lower bound: a device latency in it is not known
+  bool atLeast() const
+  {
+    return inputUnknown || outputUnknown;
+  }
 };
 
 inline AudioLatencyReadout latencyReadoutOf(const AudioStreamInfo &stream)
@@ -176,9 +184,10 @@ inline AudioLatencyReadout latencyReadoutOf(const AudioStreamInfo &stream)
   readout.roundTrip = stream.inputChannels > 0;
   readout.input = readout.roundTrip ? stream.inputLatency : 0;
   readout.output = stream.outputChannels > 0 ? stream.outputLatency : 0;
+  readout.inputUnknown = readout.roundTrip && readout.input == 0;
+  readout.outputUnknown = stream.outputChannels > 0 && readout.output == 0;
   readout.buffers = stream.bufferFrames * (readout.roundTrip ? 2u : 1u);
   readout.total = readout.input + readout.buffers + readout.output;
-  readout.known = stream.sampleRate > 0 && (readout.input > 0 || readout.output > 0);
   return readout;
 }
 
