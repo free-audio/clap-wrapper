@@ -1224,12 +1224,14 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
     [bufferSizeSelection setAction:@selector(onAudioMenuChanged:)];
     [bufferSizeSelection setTarget:self];
 
+    // a row of its own under the buffer size, as wide as the device menus: the text's length
+    // changes with every value, and beside the menu it widened the column and pushed the
+    // whole grid around, past the window's edge
     latencyNote = makeLabel(@"");
     [latencyNote setFont:[NSFont systemFontOfSize:[NSFont smallSystemFontSize]]];
     [latencyNote setTextColor:[NSColor secondaryLabelColor]];
-    NSStackView *bufferSizeCell = [NSStackView stackViewWithViews:@[ bufferSizeSelection, latencyNote ]];
-    [bufferSizeCell setAlignment:NSLayoutAttributeFirstBaseline];
-    [bufferSizeCell setSpacing:12];
+    [latencyNote setLineBreakMode:NSLineBreakByTruncatingTail];
+    [[latencyNote widthAnchor] constraintEqualToConstant:controlWidth].active = YES;
 
     // the input is the default's even with no input open, and showing that device would
     // have OK open it
@@ -1329,7 +1331,8 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
       @[ makeLabel(inputChannelLabel), inputChannelSelection ],
       @[ none, inputNote ],
       @[ makeLabel(@"Sample Rate:"), sampleRateSelection ],
-      @[ makeLabel(@"Buffer Size:"), bufferSizeCell ],
+      @[ makeLabel(@"Buffer Size:"), bufferSizeSelection ],
+      @[ none, latencyNote ],
       @[ none, defaultButton ],
       @[ none, noRateNote ],
       @[ sectionRule, none ],
@@ -1842,9 +1845,10 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
   }
 
   // called from the polling timer too: the same text is left alone
-  if (text && ![[latencyNote stringValue] isEqualToString:text]) [latencyNote setStringValue:text];
-  if (parts && ![[latencyNote toolTip] isEqualToString:parts]) [latencyNote setToolTip:parts];
-  [latencyNote setHidden:text == nil];
+  // empty rather than hidden: the row keeps its height, so nothing below it moves
+  if (!text) text = @"";
+  if (![[latencyNote stringValue] isEqualToString:text]) [latencyNote setStringValue:text];
+  if (![([latencyNote toolTip] ?: @"") isEqualToString:(parts ?: @"")]) [latencyNote setToolTip:parts];
 }
 
 // the device menus from the host's list, with these selected; an output not there selects
