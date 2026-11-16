@@ -2705,10 +2705,11 @@ void Plugin::refreshBufferSizeTitles()
   settings.bufferSize.set(static_cast<int>(selected));
 }
 
-// the latencies the running stream's devices report, beside the buffer size and not added
-// to it: they are the device's and the driver's, which no buffer size changes. shown only
-// while the window shows what runs - another device, rate or size would have others - and
-// only what the backend could tell
+// beside the buffer size, the running stream's whole latency: input device, the blocks
+// and output device added up (latencyReadoutOf), "Latency: 27.4 ms round trip", or
+// "Latency: 18.5 ms output" with no input open. shown only while the window shows what
+// runs - another device, rate or size would have another. a device latency the backend
+// could not tell makes it "Latency: \u2265 5.8 ms output (device latency unknown)"
 void Plugin::refreshLatencyNote()
 {
   const auto out{shownOutput()};
@@ -2730,13 +2731,14 @@ void Plugin::refreshLatencyNote()
   std::string text;
   if (asRunning)
   {
-    auto ms = [&stream](uint32_t frames)
-    { return fmt::format("{:.1f} ms", 1000.0 * frames / static_cast<double>(stream.sampleRate)); };
-    if (in && stream.inputLatency > 0) text = "in " + ms(stream.inputLatency);
-    if (stream.outputLatency > 0) text += (text.empty() ? "out " : ", out ") + ms(stream.outputLatency);
+    const auto readout{latencyReadoutOf(stream)};
+    text = fmt::format("Latency: {}{:.1f} ms {}{}", readout.atLeast() ? "\u2265 " : "",
+                       millisecondsOf(readout.total, stream.sampleRate),
+                       readout.roundTrip ? "round trip" : "output",
+                       readout.atLeast() ? " (device latency unknown)" : "");
   }
 
-  settings.latencyNote.setText(text.empty() ? std::string{} : "Latency: " + text);
+  settings.latencyNote.setText(text);
   settings.latencyNote.setVisible(!text.empty());
 }
 
@@ -3159,7 +3161,11 @@ void Plugin::applyShownAudio()
   {
     if (openShownAudio())
     {
-      // the size the device granted, which a driver may have chosen itself
+      // the rate and the size the device granted, which a driver may have chosen itself:
+      // the sizes' lengths are at the rate the stream runs at
+      if (sah->currentStream.sampleRate > 0 &&
+          shownSampleRate() != static_cast<int32_t>(sah->currentStream.sampleRate))
+        refreshSampleRates(static_cast<int32_t>(sah->currentStream.sampleRate));
       refreshBufferSizes(sah->currentBufferSize);
     }
     else
