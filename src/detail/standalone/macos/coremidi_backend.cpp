@@ -225,7 +225,10 @@ class CoreMidiBackend final : public MidiBackend
   CoreMidiBackend()
   {
     auto name{CFSTR("clap-wrapper standalone")};
-    // the notify block runs on the run loop of the thread that made the client, the main one
+    // the notify block runs on the run loop of the thread that made the client, the main one,
+    // and only there does CoreMIDI bring its list of endpoints up to date: made on a thread
+    // whose run loop does not run, a client never hears of a port coming or going, and
+    // MIDIGetNumberOfSources() keeps the count it had
     if (MIDIClientCreateWithBlock(name, &client, ^(const MIDINotification *notification) {
           switch (notification->messageID)
           {
@@ -294,26 +297,42 @@ class CoreMidiBackend final : public MidiBackend
 
   std::vector<std::string> openInputs(const std::vector<std::string> &ids) override
   {
-    // a read block may still be running on a parser, so they are kept, not freed
-    for (auto &[source, parser] : connected)
+    // a source still wanted, and still the endpoint of its id, stays connected: nothing
+    // it sends is lost while another port comes or goes, a sysex it is in the middle of
+    // goes on. a read block may still be running on the parser of one that does not, so
+    // those parsers are kept, not freed
+    for (auto it = connected.begin(); it != connected.end();)
     {
-      MIDIPortDisconnectSource(inputPort, source);
-      retired.push_back(std::move(parser));
+      if (std::find(ids.begin(), ids.end(), it->id) != ids.end() &&
+          endpointWithId(it->id, true) == it->source)
+      {
+        ++it;
+        continue;
+      }
+      MIDIPortDisconnectSource(inputPort, it->source);
+      retired.push_back(std::move(it->parser));
+      it = connected.erase(it);
     }
-    connected.clear();
 
     std::vector<std::string> opened;
     if (!inputPort) return opened;
 
     for (const auto &id : ids)
     {
+      if (std::any_of(connected.begin(), connected.end(),
+                      [&id](const Connection &c) { return c.id == id; }))
+      {
+        opened.push_back(id);
+        continue;
+      }
+
       const auto source{endpointWithId(id, true)};
       if (source == 0) continue;
 
       auto parser{std::make_unique<MidiParser>()};
       if (MIDIPortConnectSource(inputPort, source, parser.get()) != noErr) continue;
       LOGDETAIL("MIDI: opening '{}'", connectedEndpointName(source));
-      connected.emplace_back(source, std::move(parser));
+      connected.push_back({id, source, std::move(parser)});
       opened.push_back(id);
     }
     return opened;
@@ -457,8 +476,15 @@ class CoreMidiBackend final : public MidiBackend
   MIDIClientRef client{0};
   MIDIPortRef inputPort{0}, outputPort{0};
 
-  // the sources the input port is connected to, each with the parser its packets go through
-  std::vector<std::pair<MIDIEndpointRef, std::unique_ptr<MidiParser>>> connected;
+  // the sources the input port is connected to, each by the id it was opened under and with
+  // the parser its packets go through
+  struct Connection
+  {
+    std::string id;
+    MIDIEndpointRef source{0};
+    std::unique_ptr<MidiParser> parser;
+  };
+  std::vector<Connection> connected;
 
   MIDIEndpointRef virtualDestination{0}, virtualSource{0};
   std::unique_ptr<MidiParser> virtualParser;

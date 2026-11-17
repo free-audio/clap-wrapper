@@ -356,8 +356,9 @@ extern "C"
                                          const clap_wrapper_standalone_audio_config_t *config);
 
     // replaces the open midi endpoints of kind with exactly these ids. count 0 opens
-    // none. bind_all ignores ids and opens every endpoint present now, which is what
-    // a fresh standalone does. ids not present now are remembered and logged, not opened.
+    // none. bind_all ignores ids and opens every endpoint present now, and for inputs
+    // every one plugged in later too, which is what a fresh standalone does. ids not
+    // present now are remembered and logged, and opened once they are plugged in.
     // returns false if unsupported or kind is not a midi kind
     // [main-thread]
     bool(CLAP_ABI *request_midi_bindings)(const clap_host_t *host, uint32_t kind, const char *const *ids,

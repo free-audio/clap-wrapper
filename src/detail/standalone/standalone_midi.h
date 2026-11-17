@@ -57,7 +57,8 @@ class MidiBackend
   virtual std::vector<MidiPort> outputs() = 0;
 
   // [main-thread] opens exactly these ports (MidiPort::id) and closes every other; an id
-  // that is not there is skipped. returns the ids that opened
+  // that is not there is skipped. returns the ids that opened. called again when a port
+  // comes or goes, so a port open already should stay open where the api allows
   virtual std::vector<std::string> openInputs(const std::vector<std::string> &ids) = 0;
   virtual std::vector<std::string> openOutputs(const std::vector<std::string> &ids) = 0;
 
@@ -82,8 +83,8 @@ class MidiBackend
   // threads at once
   std::function<void(const uint8_t *data, size_t size)> onMessage;
 
-  // [any-thread] a port came or went; inputs() and outputs() list them again. the
-  // handler hops to the main thread itself
+  // [any-thread] set before anything is opened. a port came or went; inputs() and
+  // outputs() list them again. the handler hops to the main thread itself
   std::function<void()> onPortsChanged;
 };
 
