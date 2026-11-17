@@ -854,26 +854,15 @@ void SettingsWindow::fillBufferSizes(uint32_t preferred)
   if (running > 0 && std::find(sizes.begin(), sizes.end(), running) == sizes.end())
     sizes.insert(std::upper_bound(sizes.begin(), sizes.end(), running), running);
 
+  // each size in samples only, "256": what it comes to in time is the latency note's
   if (preferred == 0) preferred = StandaloneSettings::defaultBufferSize;
   buffer.tags.assign(sizes.begin(), sizes.end());
+  buffer.items.clear();
   buffer.selected = sizes.empty() ? -1 : 0;
   for (size_t i = 0; i < sizes.size(); ++i)
   {
+    buffer.items.push_back(std::to_string(sizes[i]));
     if (sizes[i] <= preferred) buffer.selected = static_cast<int>(i);
-  }
-  updateBufferTitles();
-}
-
-// each size with how long it lasts at the selected rate: "256 (5.8 ms)"
-void SettingsWindow::updateBufferTitles()
-{
-  const auto r{shownRate()};
-  buffer.items.clear();
-  for (auto frames : buffer.tags)
-  {
-    const auto f{static_cast<uint32_t>(frames)};
-    buffer.items.push_back(r > 0 ? std::to_string(f) + " (" + formatMs(f, r) + " ms)"
-                                 : std::to_string(f));
   }
   updateLatencyNote();
 }
@@ -1173,7 +1162,7 @@ void SettingsWindow::onDeviceChanged()
 
 void SettingsWindow::onRateChanged()
 {
-  updateBufferTitles();
+  updateLatencyNote();
   openShownAudio();
 }
 

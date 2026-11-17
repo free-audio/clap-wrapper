@@ -1641,11 +1641,7 @@ Plugin::Plugin(int nCmdShow) : showCommand{nCmdShow == SW_HIDE ? SW_SHOWNORMAL :
             break;
 
           case Settings::Identifier::AudioSamplerate:
-            if (code == CBN_SELCHANGE)
-            {
-              refreshBufferSizeTitles();
-              applyShownAudio();
-            }
+            if (code == CBN_SELCHANGE) applyShownAudio();
             break;
 
           case Settings::Identifier::AudioBuffersize:
@@ -2658,7 +2654,8 @@ void Plugin::refreshSampleRates(int32_t preferred)
 }
 
 // the sizes both selected devices accept, from the standalone's list; selects the
-// preferred size, or the largest below it, or the smallest there is
+// preferred size, or the largest below it, or the smallest there is. each size is shown
+// in samples only, "256": what it comes to in time is the latency note's
 void Plugin::refreshBufferSizes(uint32_t preferred)
 {
   const auto out{shownOutput()};
@@ -2678,31 +2675,14 @@ void Plugin::refreshBufferSizes(uint32_t preferred)
 
   settings.bufferSizesShown = sizes;
 
+  settings.bufferSize.reset();
   int selected{sizes.empty() ? -1 : 0};
   for (size_t i = 0; i < sizes.size(); ++i)
   {
+    settings.bufferSize.add(std::to_string(sizes[i]));
     if (sizes[i] <= preferred) selected = static_cast<int>(i);
   }
-
-  refreshBufferSizeTitles();
   settings.bufferSize.set(selected);
-}
-
-// each size with how long it lasts at the selected rate, "256 (5.8 ms)"
-void Plugin::refreshBufferSizeTitles()
-{
-  const auto selected{settings.bufferSize.get()};
-  const auto rate{shownSampleRate()};
-
-  settings.bufferSize.reset();
-  for (auto frames : settings.bufferSizesShown)
-  {
-    settings.bufferSize.add(
-        rate > 0 ? fmt::format("{} ({:.1f} ms)", frames,
-                               1000.0 * static_cast<double>(frames) / static_cast<double>(rate))
-                 : std::to_string(frames));
-  }
-  settings.bufferSize.set(static_cast<int>(selected));
 }
 
 // beside the buffer size, the running stream's whole latency: input device, the blocks

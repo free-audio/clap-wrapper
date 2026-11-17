@@ -300,7 +300,6 @@ bool isOnAScreen(NSRect frame)
 - (sa::AudioChannelChoice)shownChoice:(bool)input;
 - (void)resetSampleRateSelectionPreferring:(uint32_t)rate;
 - (void)resetBufferSizeSelectionPreferring:(uint32_t)frames;
-- (void)updateBufferSizeTitles;
 - (void)updateInputNote;
 - (void)updateLatencyNote;
 - (void)applyAppearance;
@@ -1535,7 +1534,6 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
   [self resetBufferSizeSelectionPreferring:freeaudio::clap_wrapper::standalone::StandaloneSettings::
                                                defaultBufferSize];
   [self updateInputNote];
-  [self updateBufferSizeTitles];
   [self openShownAudio];
 }
 
@@ -1607,7 +1605,7 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
 
 - (void)onSampleRateChanged:(id)sender
 {
-  [self updateBufferSizeTitles];
+  [self updateLatencyNote];
   [self openShownAudio];
 }
 
@@ -1692,24 +1690,9 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
   [self updateInputNote];
 }
 
-// each size with how long it lasts at the selected rate, "256 (5.8 ms)". the item's tag
-// holds the size, so the title is free to say more
-- (void)updateBufferSizeTitles
-{
-  const auto rate = [[[sampleRateSelection selectedItem] title] integerValue];
-  for (NSMenuItem *item in [bufferSizeSelection itemArray])
-  {
-    const auto frames = [item tag];
-    [item setTitle:rate > 0 ? [NSString stringWithFormat:@"%ld (%.1f ms)", (long)frames,
-                                                         1000.0 * (double)frames / (double)rate]
-                            : [NSString stringWithFormat:@"%ld", (long)frames]];
-  }
-  [bufferSizeSelection synchronizeTitleAndSelectedItem];
-  [self updateLatencyNote];
-}
-
 // the sizes both selected devices accept, from the standalone's list; selects the
-// preferred size, or the largest below it, or the smallest there is
+// preferred size, or the largest below it, or the smallest there is. each size is shown
+// in samples only, "256": what it comes to in time is the latency note's
 - (void)resetBufferSizeSelectionPreferring:(uint32_t)preferred
 {
   namespace sa = freeaudio::clap_wrapper::standalone;
@@ -1739,7 +1722,7 @@ std::vector<std::string> ticked(const std::vector<MidiPortRow> &rows)
     if (sizes[i] <= preferred) selected = (NSInteger)i;
   }
   if (selected >= 0) [bufferSizeSelection selectItemAtIndex:selected];
-  [self updateBufferSizeTitles];
+  [self updateLatencyNote];
 }
 
 - (void)onAppearanceChanged:(id)sender
