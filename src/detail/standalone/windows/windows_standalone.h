@@ -453,7 +453,6 @@ struct Plugin final : public Window
   void devicesChanged();
   void refreshSampleRates(int32_t preferred);
   void refreshBufferSizes(uint32_t preferred);
-  void refreshBufferSizeTitles();
   // the channel menus for the shown devices, selecting the choice that starts at these
   // channels (0-based), or the first; the input's row only while there is an input
   void refreshChannelChoices(uint32_t outputFirst, uint32_t inputFirst);
