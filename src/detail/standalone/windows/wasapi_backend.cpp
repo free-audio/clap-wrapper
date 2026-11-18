@@ -8,12 +8,15 @@
  * than the engine's period at the mix rate goes through IAudioClient3's small periods
  * where the driver offers them; that stream takes the mix format as it is.
  *
- * The output drives: each of its events writes whole buffers of the granted size while
- * there is room for one, so that every process() call has the same number of frames. A
- * capture endpoint beside it runs on its own clock and is read without events into a
- * ring, which process() takes its input from: when the ring has too little the input is
- * a buffer of silence (and keeps what it had, which gives the ring a cushion), and when
- * it has too much the oldest frames are dropped. With no output the capture event drives.
+ * The output drives: each of its events writes whole buffers of the granted size until
+ * the engine's period and one buffer are queued, not until the endpoint buffer is full,
+ * so that every process() call has the same number of frames and no more waits ahead of
+ * it than the engine needs. A capture endpoint beside it runs on its own clock and is
+ * read without events into a ring, which process() takes its input from: when the ring
+ * has too little the input is a buffer of silence (and keeps what it had, which gives
+ * the ring a cushion), and a cushion that is never drawn on for a while is cut back to
+ * a small margin, so that the input is not delayed by more than the two clocks need.
+ * With no output the capture event drives.
  *
  * Nothing in here throws.
  */
@@ -376,6 +379,7 @@ struct Side
   uint32_t frameChannels{0}, bytesPerFrame{0};
   uint32_t first{0}, count{0};
   uint32_t bufferSize{0};
+  uint32_t period{0};  // the engine's, in frames at the stream's rate
 
   void close()
   {
@@ -555,6 +559,11 @@ class WasapiBackend final : public AudioBackend
     ringSize = hasInput ? input.bufferSize + 4 * bufferFrames : 0;
     ring.assign(input.count, std::vector<float>(ringSize, 0.f));
     ringRead = ringFill = 0;
+    resetRingTrim();
+
+    // what the output keeps queued once an event has written: the engine takes a period
+    // per event, so a period and one buffer leave it a full period at its next one
+    outputTarget = hasOutput ? std::min(output.bufferSize, output.period + bufferFrames) : 0;
 
     // and the pointers to them, so that the audio thread allocates nothing
     inputPointers.clear();
@@ -577,11 +586,10 @@ class WasapiBackend final : public AudioBackend
     // between the device and the plugin's block, the block itself not included (the
     // standalone features' audio status): the engine's own latency, plus on the way out
     // what the buffer holds ahead of a block - it is kept filled to within one block of
-    // full - and on the way in the capture's period, which a block beside an output
+    // the target - and on the way in the capture's period, which a block beside an output
     // waits for at most, since the input is read once per output event
     granted.outputLatency =
-        hasOutput ? latencyOf(output) +
-                        (output.bufferSize > bufferFrames ? output.bufferSize - bufferFrames : 0)
+        hasOutput ? latencyOf(output) + (outputTarget > bufferFrames ? outputTarget - bufferFrames : 0)
                   : 0;
     granted.inputLatency = hasInput ? latencyOf(input) + (hasOutput ? capturePeriod(rate) : 0) : 0;
 
@@ -601,13 +609,13 @@ class WasapiBackend final : public AudioBackend
     callback = &streamCallback;
     ::ResetEvent(stopEvent);
 
-    // the output starts out with a buffer of silence, so that its first event finds room
-    // for no more than the engine has played
+    // the output starts out with a period of silence, which the engine's first event takes
     if (output.isOpen())
     {
+      const auto silence{std::min(output.period, output.bufferSize)};
       BYTE *data{nullptr};
-      if (SUCCEEDED(output.render->GetBuffer(output.bufferSize, &data)))
-        output.render->ReleaseBuffer(output.bufferSize, AUDCLNT_BUFFERFLAGS_SILENT);
+      if (silence && SUCCEEDED(output.render->GetBuffer(silence, &data)))
+        output.render->ReleaseBuffer(silence, AUDCLNT_BUFFERFLAGS_SILENT);
     }
 
     HRESULT hr{S_OK};
@@ -831,6 +839,7 @@ class WasapiBackend final : public AudioBackend
             client3.p = nullptr;
             smallPeriod = true;
             period = wanted;
+            side.period = wanted;
             side.format = sampleFormatOf(mix);
             side.frameChannels = mix->nChannels;
             side.bytesPerFrame = mix->nBlockAlign;
@@ -886,6 +895,7 @@ class WasapiBackend final : public AudioBackend
         return false;
       }
       period = frames;
+      side.period = periodFrames;
       side.format = SampleFormat::Float32;
       side.frameChannels = mix->nChannels;
       side.bytesPerFrame = format.Format.nBlockAlign;
@@ -1018,11 +1028,11 @@ class WasapiBackend final : public AudioBackend
       failure = {hr, output.name};
       return false;
     }
-    auto room{output.bufferSize - padding};
+    auto room{outputTarget > padding ? outputTarget - padding : 0};
     const auto chunk{std::min(bufferFrames, output.bufferSize)};
     while (room >= chunk)
     {
-      if (input.isOpen()) balanceRing();
+      if (input.isOpen()) trimRing();
       processBuffer(chunk);
 
       BYTE *data{nullptr};
@@ -1087,17 +1097,26 @@ class WasapiBackend final : public AudioBackend
 
   // [audio-thread] input and output run on clocks of their own. with too little in the
   // ring for the next buffer, that buffer's input is silence and the ring keeps what it
-  // has, which leaves it a cushion from then on; with more than a capture buffer and two
-  // of ours, the oldest frames go
-  void balanceRing()
+  // has, which leaves it a cushion from then on. processBuffer() notes the least the ring
+  // held beyond a buffer; when that stayed above the margin for a whole window, nothing
+  // needed it, and the oldest frames down to the margin go. a capture clock that runs
+  // fast is taken back the same way
+  void trimRing()
   {
-    const auto high{input.bufferSize / 2 + 2 * bufferFrames};
-    if (ringFill > high)
+    if (ringWindowFrames < streamRate) return;
+    if (ringSlackMin != ~0u && ringSlackMin > ringMargin)
     {
-      const auto drop{ringFill - (high - bufferFrames)};
+      const auto drop{std::min(ringSlackMin - ringMargin, ringFill)};
       ringRead = (ringRead + drop) % ringSize;
       ringFill -= drop;
     }
+    resetRingTrim();
+  }
+
+  void resetRingTrim()
+  {
+    ringSlackMin = ~0u;
+    ringWindowFrames = 0;
   }
 
   // [audio-thread] one process() call of frames: its input from the ring, or silence
@@ -1115,10 +1134,20 @@ class WasapiBackend final : public AudioBackend
         std::fill(buffer.begin(), buffer.begin() + frames, 0.f);
       }
     }
-    if (input.count && ringFill >= frames)
+    if (input.count)
     {
-      ringRead = (ringRead + frames) % ringSize;
-      ringFill -= frames;
+      if (ringFill >= frames)
+      {
+        ringSlackMin = std::min(ringSlackMin, ringFill - frames);
+        ringRead = (ringRead + frames) % ringSize;
+        ringFill -= frames;
+      }
+      else
+      {
+        // the cushion was needed: none of it goes this window
+        ringSlackMin = 0;
+      }
+      ringWindowFrames += frames;
     }
 
     if (callback)
@@ -1140,6 +1169,11 @@ class WasapiBackend final : public AudioBackend
   std::vector<const float *> inputPointers, outputSources;
   std::vector<float *> outputPointers, ringTargets;
   uint32_t ringSize{0}, ringRead{0}, ringFill{0};
+  // the trim: the least the ring held beyond a buffer, over a window of a second of
+  // buffers, and what of that is kept for the two endpoints' events to wander
+  uint32_t ringSlackMin{~0u}, ringWindowFrames{0};
+  static constexpr uint32_t ringMargin{64};
+  uint32_t outputTarget{0};
 
   AudioStreamCallback *callback{nullptr};
   HANDLE stopEvent{nullptr};
