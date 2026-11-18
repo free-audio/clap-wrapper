@@ -37,8 +37,9 @@ std::unique_ptr<MidiBackend> createRtMidiBackend();
 std::unique_ptr<AudioBackend> createCoreAudioBackend();
 std::unique_ptr<MidiBackend> createCoreMidiBackend();
 #elif !CLAP_WRAPPER_STANDALONE_RTAUDIO && WIN
-// windows/wasapi_backend.cpp, windows/winmm_midi_backend.cpp
+// windows/wasapi_backend.cpp (shared and exclusive mode), windows/winmm_midi_backend.cpp
 std::unique_ptr<AudioBackend> createWasapiBackend();
+std::unique_ptr<AudioBackend> createWasapiExclusiveBackend();
 std::unique_ptr<MidiBackend> createWinMmMidiBackend();
 #endif
 

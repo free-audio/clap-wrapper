@@ -1,5 +1,6 @@
 /*
- * The standalone's WASAPI backend: shared mode, event driven, one thread.
+ * The standalone's WASAPI backend: shared mode, event driven, one thread. A second api,
+ * "WASAPI (Exclusive)", is the same backend in exclusive mode.
  *
  * Every active render and capture endpoint is a device of its own, as RtAudio listed them
  * (renders first), and RtAudio's name for one is its friendly name. A stream asks the
@@ -17,6 +18,13 @@
  * the ring a cushion), and a cushion that is never drawn on for a while is cut back to
  * a small margin, so that the input is not delayed by more than the two clocks need.
  * With no output the capture event drives.
+ *
+ * Exclusive mode takes the device from every other application while the stream runs,
+ * for a shorter period than the shared engine's. It opens the device's own format at the
+ * stream's rate (no converter), with a period of the device's minimum or one buffer of
+ * ours, whichever is longer, so that an event has about one process() call to make. Each
+ * output event takes exactly one period, which a fifo cuts from whole buffers; an input
+ * beside it is read on its own events, since its endpoint buffer is a single period too.
  *
  * Nothing in here throws.
  */
@@ -183,6 +191,46 @@ SampleFormat sampleFormatOf(const WAVEFORMATEX *format)
   if (isPcm && format->wBitsPerSample == 24) return SampleFormat::Int24;
   if (isPcm && format->wBitsPerSample == 32) return SampleFormat::Int32;
   return SampleFormat::Unsupported;
+}
+
+// the channel mask of a mix format, 0 where it has none
+DWORD channelMaskOf(const WAVEFORMATEX *format)
+{
+  return format->wFormatTag == WAVE_FORMAT_EXTENSIBLE && format->cbSize >= 22
+             ? reinterpret_cast<const WAVEFORMATEXTENSIBLE *>(format)->dwChannelMask
+             : 0;
+}
+
+// the format an exclusive stream opens with, which is the device's own: the first of
+// float, 32 bit, 24 bit in 32, packed 24 bit and 16 bit integer that it takes at this rate
+// and width. false if it takes none of them
+bool exclusiveFormat(IAudioClient *client, uint32_t rate, WORD channels, DWORD channelMask,
+                     WAVEFORMATEXTENSIBLE &format)
+{
+  struct Candidate
+  {
+    WORD bits, validBits;
+    bool isFloat;
+  };
+  static constexpr Candidate candidates[]{
+      {32, 32, true}, {32, 32, false}, {32, 24, false}, {24, 24, false}, {16, 16, false}};
+  for (const auto &candidate : candidates)
+  {
+    format = {};
+    format.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
+    format.Format.nChannels = channels;
+    format.Format.nSamplesPerSec = rate;
+    format.Format.wBitsPerSample = candidate.bits;
+    format.Format.nBlockAlign = static_cast<WORD>(channels * candidate.bits / 8);
+    format.Format.nAvgBytesPerSec = rate * format.Format.nBlockAlign;
+    format.Format.cbSize = sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX);
+    format.Samples.wValidBitsPerSample = candidate.validBits;
+    format.dwChannelMask = channelMask;
+    format.SubFormat = candidate.isFloat ? subtypeFloat : subtypePcm;
+    if (client->IsFormatSupported(AUDCLNT_SHAREMODE_EXCLUSIVE, &format.Format, nullptr) == S_OK)
+      return true;
+  }
+  return false;
 }
 
 // channels [first, first + count) of interleaved frames into one float buffer each
@@ -407,8 +455,9 @@ struct StreamFailure
 class WasapiBackend final : public AudioBackend
 {
  public:
-  WasapiBackend() : com(COINIT_APARTMENTTHREADED)
+  explicit WasapiBackend(bool exclusiveMode) : com(COINIT_APARTMENTTHREADED)
   {
+    exclusive = exclusiveMode;
     ::CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, __uuidof(IMMDeviceEnumerator),
                        enumerator.putVoid());
     stopEvent = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
@@ -445,11 +494,11 @@ class WasapiBackend final : public AudioBackend
 
   std::string apiId() const override
   {
-    return "wasapi";
+    return exclusive ? "wasapi-exclusive" : "wasapi";
   }
   std::string apiDisplayName() const override
   {
-    return "WASAPI";
+    return exclusive ? "WASAPI (Exclusive)" : "WASAPI";
   }
 
   const std::vector<AudioDevice> &devices() override
@@ -517,7 +566,9 @@ class WasapiBackend final : public AudioBackend
     const uint32_t frames{request.bufferFrames ? std::min(request.bufferFrames, maxBufferFrames)
                                                : enginePeriod};
 
-    // the output, or the input that drives in its place, gets the event
+    // the output, or the input that drives in its place, gets the event. in exclusive mode
+    // the input has one of its own as well: its buffer is a single period, which has to be
+    // read every period
     uint32_t period{0};
     bool ok{true};
     if (hasOutput)
@@ -526,8 +577,8 @@ class WasapiBackend final : public AudioBackend
     if (ok && hasInput)
     {
       uint32_t inputPeriod{0};
-      ok = initialize(input, request.inputFirstChannel, request.inputChannels, rate, frames, !hasOutput,
-                      inputPeriod, error);
+      ok = initialize(input, request.inputFirstChannel, request.inputChannels, rate, frames,
+                      exclusive || !hasOutput, inputPeriod, error);
       if (!hasOutput) period = inputPeriod;
     }
     if (!ok)
@@ -565,6 +616,13 @@ class WasapiBackend final : public AudioBackend
     // per event, so a period and one buffer leave it a full period at its next one
     outputTarget = hasOutput ? std::min(output.bufferSize, output.period + bufferFrames) : 0;
 
+    // exclusive: each event takes exactly one period, which the buffers process() fills
+    // reach through a fifo; it never holds a whole buffer once an event has written
+    fifo.assign(exclusive ? output.count : 0, std::vector<float>(output.bufferSize + bufferFrames, 0.f));
+    fifoFill = 0;
+    fifoSources.clear();
+    for (const auto &channel : fifo) fifoSources.push_back(channel.data());
+
     // and the pointers to them, so that the audio thread allocates nothing
     inputPointers.clear();
     for (const auto &buffer : inputBuffers) inputPointers.push_back(buffer.data());
@@ -587,11 +645,20 @@ class WasapiBackend final : public AudioBackend
     // standalone features' audio status): the engine's own latency, plus on the way out
     // what the buffer holds ahead of a block - it is kept filled to within one block of
     // the target - and on the way in the capture's period, which a block beside an output
-    // waits for at most, since the input is read once per output event
-    granted.outputLatency =
-        hasOutput ? latencyOf(output) + (outputTarget > bufferFrames ? outputTarget - bufferFrames : 0)
-                  : 0;
-    granted.inputLatency = hasInput ? latencyOf(input) + (hasOutput ? capturePeriod(rate) : 0) : 0;
+    // waits for at most, since the input is read once per output event. exclusive: the
+    // period being played ahead of the one written, and an input read on its own events
+    if (exclusive)
+    {
+      granted.outputLatency = hasOutput ? latencyOf(output) + output.bufferSize : 0;
+      granted.inputLatency = hasInput ? latencyOf(input) : 0;
+    }
+    else
+    {
+      granted.outputLatency =
+          hasOutput ? latencyOf(output) + (outputTarget > bufferFrames ? outputTarget - bufferFrames : 0)
+                    : 0;
+      granted.inputLatency = hasInput ? latencyOf(input) + (hasOutput ? capturePeriod(rate) : 0) : 0;
+    }
 
     opened = true;
     return true;
@@ -731,13 +798,34 @@ class WasapiBackend final : public AudioBackend
     (capture ? device.inputChannels : device.outputChannels) = mix->nChannels;
     device.currentSampleRate = mix->nSamplesPerSec;
 
-    // every standard rate up to 192 kHz, through the engine's converter, as RtAudio
-    // offered them through its own, and the mix rate
-    for (auto rate : standardSampleRates())
+    if (exclusive)
     {
-      if (rate <= 192000) device.sampleRates.push_back(rate);
+      // the standard rates the device itself takes in one of our formats: there is no
+      // converter in between
+      WAVEFORMATEXTENSIBLE format{};
+      for (auto rate : standardSampleRates())
+      {
+        if (rate <= 192000 &&
+            exclusiveFormat(client.p, rate, mix->nChannels, channelMaskOf(mix), format))
+          device.sampleRates.push_back(rate);
+      }
+      if (device.sampleRates.empty())
+      {
+        // a device that takes none of them is not listed for exclusive use
+        ::CoTaskMemFree(mix);
+        return false;
+      }
     }
-    device.sampleRates.push_back(mix->nSamplesPerSec);
+    else
+    {
+      // every standard rate up to 192 kHz, through the engine's converter, as RtAudio
+      // offered them through its own, and the mix rate
+      for (auto rate : standardSampleRates())
+      {
+        if (rate <= 192000) device.sampleRates.push_back(rate);
+      }
+      device.sampleRates.push_back(mix->nSamplesPerSec);
+    }
     std::sort(device.sampleRates.begin(), device.sampleRates.end());
     device.sampleRates.erase(std::unique(device.sampleRates.begin(), device.sampleRates.end()),
                              device.sampleRates.end());
@@ -812,6 +900,15 @@ class WasapiBackend final : public AudioBackend
     const DWORD eventFlag{withEvent ? static_cast<DWORD>(AUDCLNT_STREAMFLAGS_EVENTCALLBACK) : 0};
     REFERENCE_TIME defaultPeriod{0}, minimumPeriod{0};
     side.client->GetDevicePeriod(&defaultPeriod, &minimumPeriod);
+
+    if (exclusive)
+    {
+      // the buffers process() fills keep the size asked for
+      period = 0;
+      const bool ok{initializeExclusive(side, mix, rate, frames, minimumPeriod, error)};
+      ::CoTaskMemFree(mix);
+      return ok && finishInitialize(side, first, count, true, error);
+    }
 
     HRESULT hr{E_FAIL};
     bool smallPeriod{false};
@@ -901,7 +998,81 @@ class WasapiBackend final : public AudioBackend
       side.bytesPerFrame = format.Format.nBlockAlign;
     }
     ::CoTaskMemFree(mix);
+    return finishInitialize(side, first, count, withEvent, error);
+  }
 
+  // exclusive: the device's own format at the stream's rate, and a period of at least one
+  // buffer of ours, so that an event has about one process() call to make, never several
+  // in the time of a short period. always with an event: the endpoint buffer is a single
+  // period
+  bool initializeExclusive(Side &side, const WAVEFORMATEX *mix, uint32_t rate, uint32_t frames,
+                           REFERENCE_TIME minimumPeriod, std::string &error)
+  {
+    WAVEFORMATEXTENSIBLE format{};
+    if (!exclusiveFormat(side.client.p, rate, mix->nChannels, channelMaskOf(mix), format))
+    {
+      error = "The audio device " + side.name + " cannot be used exclusively at " +
+              std::to_string(rate) + " Hz.";
+      return false;
+    }
+
+    // in whole frames, the minimum rounded up: windows rounds a duration down to frames,
+    // and a period a frame short of the minimum (132 frames for 3 ms at 44.1 kHz) loses
+    // input on a usb device
+    const auto minimumFrames{
+        static_cast<uint32_t>((minimumPeriod * rate + hnsPerSecond - 1) / hnsPerSecond)};
+    auto duration{durationOf(std::max(minimumFrames, frames), rate)};
+    auto hr{side.client->Initialize(AUDCLNT_SHAREMODE_EXCLUSIVE, AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+                                    duration, duration, &format.Format, nullptr)};
+    if (hr == AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED)
+    {
+      // the size the device can do instead, on a new client: a failed Initialize leaves
+      // this one unusable
+      UINT32 aligned{0};
+      side.client->GetBufferSize(&aligned);
+      side.client.reset();
+      side.device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, side.client.putVoid());
+      if (!side.client || aligned == 0)
+      {
+        error = "The audio device " + side.name + " could not be opened.";
+        return false;
+      }
+      duration = durationOf(aligned, rate);
+      hr = side.client->Initialize(AUDCLNT_SHAREMODE_EXCLUSIVE, AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+                                   duration, duration, &format.Format, nullptr);
+    }
+    if (FAILED(hr))
+    {
+      switch (hr)
+      {
+        case AUDCLNT_E_DEVICE_IN_USE:
+          error = "The audio device " + side.name + " is in use by another application.";
+          break;
+        case AUDCLNT_E_EXCLUSIVE_MODE_NOT_ALLOWED:
+          error = "Windows does not allow exclusive use of the audio device " + side.name +
+                  " (Sound settings, the device's Properties, Advanced).";
+          break;
+        default:
+          error = "The audio device " + side.name + " could not be opened exclusively at " +
+                  std::to_string(rate) + " Hz (" + hresultText(hr) + ").";
+          break;
+      }
+      return false;
+    }
+
+    side.format = sampleFormatOf(&format.Format);
+    side.frameChannels = mix->nChannels;
+    side.bytesPerFrame = format.Format.nBlockAlign;
+    UINT32 bufferSize{0};
+    side.client->GetBufferSize(&bufferSize);
+    side.period = bufferSize;
+    return true;
+  }
+
+  // what every side has once its client is initialized: its buffer size, its channels
+  // and, for the side that drives, its event
+  bool finishInitialize(Side &side, uint32_t first, uint32_t count, bool withEvent, std::string &error)
+  {
     if (side.format == SampleFormat::Unsupported)
     {
       error = "The audio device " + side.name + " has a sample format this application cannot use.";
@@ -958,15 +1129,29 @@ class WasapiBackend final : public AudioBackend
     auto task{::AvSetMmThreadCharacteristicsW(L"Pro Audio", &taskIndex)};
 
     StreamFailure failure;
-    const HANDLE events[2]{stopEvent, output.isOpen() ? output.event : input.event};
+    // the side that drives, and in exclusive mode an input beside the output, which is
+    // read on its own events as well
+    const bool captureEvents{exclusive && output.isOpen() && input.isOpen()};
+    const HANDLE events[3]{stopEvent, output.isOpen() ? output.event : input.event, input.event};
+    const DWORD eventCount{captureEvents ? 3u : 2u};
     while (true)
     {
-      const auto wait{::WaitForMultipleObjects(2, events, FALSE, 2000)};
+      const auto wait{::WaitForMultipleObjects(eventCount, events, FALSE, 2000)};
       if (wait == WAIT_OBJECT_0) break;
       if (wait == WAIT_TIMEOUT)
       {
         failure = {AUDCLNT_E_DEVICE_INVALIDATED, output.isOpen() ? output.name : input.name};
         break;
+      }
+      if (captureEvents && wait == WAIT_OBJECT_0 + 2)
+      {
+        const auto hr{readCapture()};
+        if (FAILED(hr))
+        {
+          failure = {hr, input.name};
+          break;
+        }
+        continue;
       }
       if (wait != WAIT_OBJECT_0 + 1)
       {
@@ -1020,6 +1205,7 @@ class WasapiBackend final : public AudioBackend
       while (ringFill >= bufferFrames) processBuffer(bufferFrames);
       return true;
     }
+    if (exclusive) return writePeriod(failure);
 
     UINT32 padding{0};
     auto hr{output.client->GetCurrentPadding(&padding)};
@@ -1052,6 +1238,43 @@ class WasapiBackend final : public AudioBackend
       }
       room -= chunk;
     }
+    return true;
+  }
+
+  // [audio-thread] exclusive: the one period the device asks for at each event, from the
+  // fifo, which buffers are processed into until it holds a period
+  bool writePeriod(StreamFailure &failure)
+  {
+    const auto frames{output.bufferSize};
+    while (fifoFill < frames)
+    {
+      if (input.isOpen()) trimRing();
+      processBuffer(bufferFrames);
+      for (uint32_t c = 0; c < output.count; ++c)
+        std::copy_n(outputBuffers[c].data(), bufferFrames, fifo[c].data() + fifoFill);
+      fifoFill += bufferFrames;
+    }
+
+    BYTE *data{nullptr};
+    auto hr{output.render->GetBuffer(frames, &data)};
+    if (FAILED(hr))
+    {
+      failure = {hr, output.name};
+      return false;
+    }
+    writeFrames(data, output.format, output.frameChannels, output.first, output.count, frames,
+                fifoSources.data(), output.bytesPerFrame);
+    hr = output.render->ReleaseBuffer(frames, 0);
+    if (FAILED(hr))
+    {
+      failure = {hr, output.name};
+      return false;
+    }
+
+    // what is left, less than a buffer, to the front
+    fifoFill -= frames;
+    for (auto &channel : fifo)
+      std::copy(channel.begin() + frames, channel.begin() + frames + fifoFill, channel.begin());
     return true;
   }
 
@@ -1174,6 +1397,12 @@ class WasapiBackend final : public AudioBackend
   uint32_t ringSlackMin{~0u}, ringWindowFrames{0};
   static constexpr uint32_t ringMargin{64};
   uint32_t outputTarget{0};
+  // exclusive mode's output fifo, planar, and its sources for writeFrames()
+  std::vector<std::vector<float>> fifo;
+  std::vector<const float *> fifoSources;
+  uint32_t fifoFill{0};
+
+  bool exclusive{false};
 
   AudioStreamCallback *callback{nullptr};
   HANDLE stopEvent{nullptr};
@@ -1185,6 +1414,11 @@ class WasapiBackend final : public AudioBackend
 
 std::unique_ptr<AudioBackend> createWasapiBackend()
 {
-  return std::make_unique<WasapiBackend>();
+  return std::make_unique<WasapiBackend>(false);
+}
+
+std::unique_ptr<AudioBackend> createWasapiExclusiveBackend()
+{
+  return std::make_unique<WasapiBackend>(true);
 }
 }  // namespace freeaudio::clap_wrapper::standalone
