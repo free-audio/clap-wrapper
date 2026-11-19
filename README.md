@@ -64,6 +64,23 @@ stop at configure time with an explanatory error. In the clap-first flow,
 add `AUV3` to `PLUGIN_FORMATS` instead. See the wiki for the current AUv3
 feature status.
 
+`target_add_auv3_wrapper` also takes:
+
+- `INFO_PLIST_ADDITIONS <file.plist>` — keys merged into the generated
+  Info.plist of the appex. Dictionaries are merged key by key, anything else
+  (strings, numbers, arrays) replaces the generated value.
+  (`AUV3_INFO_PLIST_ADDITIONS` in `make_clapfirst_plugins`.)
+- `ENTITLEMENTS <file.entitlements>` — the appex's entitlements, e.g. an App
+  Group shared with your app. (`AUV3_ENTITLEMENTS` in `make_clapfirst_plugins`.)
+- `CODE_SIGN_IDENTITY` / `DEVELOPMENT_TEAM` — let Xcode sign the appex with
+  your team instead of ad hoc. They default to
+  `CMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY` / `CMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM`;
+  with neither set the appex is signed ad hoc as before.
+
+`target_embed_auv3_appex(TARGET <your app> AUV3_TARGET <appex target>)`
+embeds the appex in an application bundle of your own. The appex's bundle
+identifier has to be the app's identifier plus a suffix.
+
 On **iOS** the AUv3 app extension is the only available format, and it
 places two requirements on your CLAP:
 
@@ -92,6 +109,79 @@ The layout depends on whether you pass a `RESOURCE_DIRECTORY`. With one, you get
 a bundle — `YourPlugin.wclap/module.wasm` beside a copy of that directory, and a
 `.tar.gz` of the whole bundle for shipping. Without one, a single flat
 `YourPlugin.wclap.wasm`.
+
+A **standalone** can be opened from a link, say a licence activation link on a
+shop page: give it url schemes with `URL_SCHEMES` (`STANDALONE_URL_SCHEMES` in
+`make_clapfirst_plugins`), and a link such as `yourplugin://activate?code=1234`
+launches the standalone, or brings it to the front if it runs, and hands the
+url to the plugin. The plugin takes it with `open_url` on its side of the
+standalone features extension (`clapwrapper/standalone_features.h`), once it
+exists and its GUI is shown. A url comes from whatever page the link is on, so
+treat it as untrusted input. What the system needs to know about the schemes:
+
+- **macOS** reads them from the bundle's Info.plist, which the build writes.
+  The system registers an app when it is installed or first launched; for a
+  build that is neither, `lsregister -f "Your Plugin.app"` (in
+  `/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/`)
+  makes it the handler.
+- **Windows** needs registry keys, which the installer writes, per machine
+  under `HKLM\Software\Classes` or per user under `HKCU\Software\Classes`:
+
+  ```
+  [HKEY_CURRENT_USER\Software\Classes\yourplugin]
+  @="URL:Your Plugin"
+  "URL Protocol"=""
+
+  [HKEY_CURRENT_USER\Software\Classes\yourplugin\shell\open\command]
+  @="\"C:\\Program Files\\Your Plugin\\Your Plugin.exe\" \"%1\""
+  ```
+
+  A link launches the standalone with the url as its argument. When an instance
+  is already running, the new process hands the url to it and quits; with more
+  than one running, one of them takes it. A launch without a url starts another
+  instance, as before.
+- **Linux** takes the scheme from the `.desktop` file the installer writes:
+  `MimeType=x-scheme-handler/yourplugin;` and `Exec=... %u`. The url arrives as
+  the argument of a new instance; one already running does not hear of it.
+
+A **standalone's window** can come up at once, while the plugin and its gui are
+still being made, instead of once the gui has told it its size. Tell it what to
+show meanwhile:
+
+```cmake
+make_clapfirst_plugins(
+    ...
+    STANDALONE_WINDOW_SIZE "800x600"           # what the gui's get_size will answer
+    STANDALONE_BACKGROUND_COLOR "#1e1e1e"      # the gui's background
+    STANDALONE_SPLASH_IMAGE "res/logo@2x.png"  # drawn in the middle of the window
+    STANDALONE_SPLASH_IMAGE_SCALE 2            # the png's pixels per point
+)
+```
+
+(`WINDOW_SIZE`, `BACKGROUND_COLOR`, `SPLASH_IMAGE` and `SPLASH_IMAGE_SCALE` for
+`target_add_standalone_wrapper`.) The window opens at that size, in that colour,
+with the image in its middle, and the gui's view then takes its place. A gui
+that draws the same image centred on the same background therefore makes the
+swap invisible. The plugin's entry can give each of these itself, per plugin
+id, together with a few lines of text such as a version, and the appearance,
+light or dark, that the window and its title bar are drawn in from the first
+frame. It does so with
+`clap_wrapper_plugin_factory_standalone_window` in
+`clapwrapper/standalone_features.h`, which the standalone asks after the entry's
+`init()` and before it creates the plugin. What the entry gives wins over the
+build. The size only applies until the window has a place of its own: the
+standalone remembers where the window was left (on macOS in its user defaults,
+on Windows in `standalone-settings.conf`). Once the gui exists, its `get_size`
+decides as before, and a different answer resizes the window with its top-left
+corner fixed. Without any of this the window is shown once the gui has its
+size. Linux takes only the background, for the area under the gui.
+
+On **macOS**, a standalone and an AUv3's host app are filed under **Music**: their
+Info.plist says so in `LSApplicationCategoryType`, which Finder groups the
+Applications folder by and the Apps view sorts by. Another of Apple's
+categories goes in `STANDALONE_MACOS_APP_CATEGORY`, as an identifier such as
+`public.app-category.utilities` (`MACOS_APP_CATEGORY` for
+`target_add_standalone_wrapper` and `target_add_auv3_standalone_wrapper`).
 
 ## Contribution
 

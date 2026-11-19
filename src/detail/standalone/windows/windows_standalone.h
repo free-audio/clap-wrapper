@@ -150,6 +150,10 @@ struct Window
   bool isVisible();
 
   void adjustSize(uint32_t width, uint32_t height);
+  // what the window's frame adds to its client, at its style and dpi
+  ::SIZE frameSize();
+  // adjustSize, and a window whose size that changed kept on its monitor's work area
+  void resizeOnWorkArea(uint32_t width, uint32_t height);
   void setPosition(Position position);
   void setStyle(::LONG_PTR style);
 
@@ -270,9 +274,31 @@ constexpr ::UINT WM_SHOW_AUDIO_ERROR{WM_APP + 1};
 // hears about it from the main loop. wparam is 1 if OK applied its choice.
 constexpr ::UINT WM_SETTINGS_CLOSED{WM_APP + 2};
 
+// Posted by the url receiver to itself, to hand on what a WM_COPYDATA brought from the main
+// loop rather than from inside the sending launch's call, which waits for the answer.
+constexpr ::UINT WM_OPEN_RECEIVED_URLS{WM_APP + 3};
+
 // What the standalone features extension calls to show the settings window, installed
 // before the plugin is created. False until the plugin window exists.
 bool showSettingsScreen();
+
+// Opening the standalone from a link. A launch whose arguments are urls in a scheme it
+// opens hands them to an instance already running, which takes them with a message-only
+// window named after the plugin. Returns how many it took, in order: all of them, and
+// this launch is done.
+size_t forwardUrlsToRunningInstance(const std::vector<std::string> &urls);
+
+// That window, in the instance: made before the plugin, so that a launch during this
+// one's startup finds it, and kept until it is destroyed. A url that arrives is passed to
+// the host from the main loop, with the plugin window brought to the front.
+struct UrlReceiver
+{
+  bool create();
+
+  static ::LRESULT CALLBACK procedure(::HWND hwnd, ::UINT msg, ::WPARAM wparam, ::LPARAM lparam);
+
+  wil::unique_hwnd hwnd;
+};
 
 struct Plugin final : public Window
 {
@@ -403,7 +429,15 @@ struct Plugin final : public Window
     const clap_plugin_state_t *state;
   };
 
-  explicit Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow = SW_SHOWDEFAULT);
+  // the window, made before the plugin is: shown at once where it knows its size - the place
+  // it had when the standalone last quit, or the size the plugin's gui is going to ask for
+  // (windowHints()) - in the gui's background, with the splash in its middle; else hidden
+  // until attach() has the gui's size
+  explicit Plugin(int nCmdShow = SW_SHOWDEFAULT);
+
+  // the plugin, into the window: its gui, which takes the splash's place, then its audio and
+  // midi, and the window up if it is not yet
+  void attach(std::shared_ptr<Clap::Plugin> clapPlugin);
 
   std::optional<clap_gui_resize_hints> getResizeHints();
 
@@ -419,7 +453,6 @@ struct Plugin final : public Window
   void devicesChanged();
   void refreshSampleRates(int32_t preferred);
   void refreshBufferSizes(uint32_t preferred);
-  void refreshBufferSizeTitles();
   // the channel menus for the shown devices, selecting the choice that starts at these
   // channels (0-based), or the first; the input's row only while there is an input
   void refreshChannelChoices(uint32_t outputFirst, uint32_t inputFirst);
@@ -497,7 +530,22 @@ struct Plugin final : public Window
   // can stop a stream again within moments, which is still the failure already shown
   std::optional<std::chrono::steady_clock::time_point> audioRunningSince;
 
-  ClapPlugin plugin;
+  // the window before the gui: the splash while it is up, and the background around the gui
+  void showSplash();
+  void paintSplash(::HDC dc);
+  void showWindow();
+  int showCommand{SW_SHOWNORMAL};
+  bool splashUp{false};
+  wil::unique_hbrush backgroundBrush;
+  // the image as drawn, at a dpi; made again when the window moves to another
+  wil::unique_hbitmap splashBitmap;
+  uint32_t splashBitmapDpi{0}, splashBitmapWidth{0}, splashBitmapHeight{0};
+  wil::unique_hfont splashFont;
+  uint32_t splashFontDpi{0};
+
+  ClapPlugin plugin{};
+  // the gui has been created, and is the plugin's to show, size and destroy
+  bool guiCreated{false};
   Position position;
   Menu menu;
   Settings settings;

@@ -61,6 +61,14 @@ struct X11Gui
   {
     return showStrip ? std::max(width, minimumWidth) : std::max(width, 1);
   }
+  // the plugin's share of a window w wide: all of it, except where the strip's minimum
+  // made the window wider than the plugin asked for. That room belongs to the strip, and
+  // a plugin narrower than it keeps the width it chose rather than being grown into it
+  int pluginWidthFor(int w) const
+  {
+    if (showStrip && w <= minimumWidth && pluginWidth < w) return pluginWidth;
+    return std::max(w, 1);
+  }
   UiFont font;
   Theme theme;
   GC gc{nullptr};
@@ -74,7 +82,25 @@ struct X11Gui
   std::string status;
   bool statusIsError{false};
   int pluginWidth{0}, pluginHeight{0};
+  // the window's own size, as the window manager last reported it and from nowhere else:
+  // a size asked for is not a size granted. Wider than the plugin's where the strip needs it
+  int windowWidth{0}, windowHeight{0};
+  // the width the strip was last laid out for, which is a size asked for until the window
+  // manager has answered
+  int stripWidth{0};
+  // whether the plugin can be resized, and the smallest size its adjust_size allows
+  bool pluginCanResize{false};
+  int pluginMinWidth{0}, pluginMinHeight{0};
+  // the size the plugin was last told of with set_size, so that a ConfigureNotify of our
+  // own resize is not one more set_size
+  int toldWidth{0}, toldHeight{0};
+  // a request_resize granted: the plugin hears its set_size on the loop's next turn, never
+  // from inside its own call
+  bool setSizePending{false};
   void layoutWindow();
+  void layoutStrip(int w);
+  void windowResized(int w, int h);
+  void tellPluginSize();
   void drawStrip();
   void updateStatus();
   void handleStrip(const XEvent &event);

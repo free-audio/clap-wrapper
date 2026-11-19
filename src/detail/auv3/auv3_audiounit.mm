@@ -4,6 +4,7 @@
 
 #import "auv3_audiounit.h"
 #include "auv3_parameters.h"
+#include "auv3_channellayout.h"
 #include "process.h"
 
 #include "clap_proxy.h"
@@ -22,6 +23,7 @@
 #include <atomic>
 #include <mutex>
 #include <string>
+#include <cstring>
 #include <vector>
 #include <map>
 #include <unordered_map>
@@ -51,6 +53,8 @@ static thread_local bool s_suppressParamObserverEcho = false;
 - (void)_notifyParameterValuesChanged;
 - (void)_wireParameterObserver;
 - (void)_applyGUISizeWidth:(uint32_t)width height:(uint32_t)height;
+- (void)_applyRenderMode;
+- (BOOL)_applyBusFormatsToPlugin;
 @end
 
 // -----------------------------------------------------------------------
@@ -111,14 +115,43 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
   std::atomic<Clap::AUv3::ProcessAdapter *> _processAdapterLive{nullptr};
   std::atomic<int> _renderInFlight{0};
 
-  // Audio bus info
+  // Audio bus info, one per CLAP audio port: what the port is right now
   struct BusInfo
   {
-    uint32_t channelCount;
+    uint32_t channelCount = 0;
     std::string name;
+    bool isMain = false;
+
+    // what the port says about its layout - a CLAP_PORT_SURROUND map backed by
+    // clap.surround, or a CLAP_PORT_AMBISONIC configuration backed by clap.ambisonic
+    std::vector<uint8_t> channelMap;
+    bool hasAmbisonicConfig = false;
+    clap_ambisonic_config_t ambisonicConfig{};
+
+    // the bus format's layout: described by the port, or guessed from its count
+    AVAudioChannelLayout *layout = nil;
   };
   std::vector<BusInfo> _inputBusInfos;
   std::vector<BusInfo> _outputBusInfos;
+
+  // The layouts the plugin accepts through clap.configurable-audio-ports,
+  // probed once at init while it is deactivated - the only source of alternate
+  // layouts, as in the AUv2 wrapper. Each records the channel count it gives
+  // every bus. Empty without the extension, which pins every bus to its port.
+  struct ProbedLayout
+  {
+    uint32_t mainIn = 0;
+    uint32_t mainOut = 0;
+    std::vector<uint32_t> inputBusChannels;
+    std::vector<uint32_t> outputBusChannels;
+  };
+  static constexpr uint32_t kMaxProbedChannels = 8;
+  std::vector<ProbedLayout> _probedLayouts;
+
+  // Every layout tag a bus takes in one of the probed layouts, per bus - what
+  // the host offers the user (kAudioUnitProperty_SupportedChannelLayoutTags).
+  std::vector<std::vector<AudioChannelLayoutTag>> _inputLayoutTags;
+  std::vector<std::vector<AudioChannelLayoutTag>> _outputLayoutTags;
 
   // MIDI
   uint32_t _midi_preferred_dialect = CLAP_NOTE_DIALECT_CLAP;
@@ -332,32 +365,310 @@ class AUv3ImplDetail : public Clap::IHost, public Clap::IAutomation, public os::
     // AUv3-specific extensions could be queried here
   }
 
+  // What a port is, including its layout. A plugin that implements
+  // clap.surround or clap.ambisonic states the layout itself - the only way the
+  // host can learn which channel is the centre, the LFE or a height channel;
+  // for any other port the layout is guessed from the channel count.
+  BusInfo scanPort(const clap_plugin_t *plugin, bool isInput, uint32_t index,
+                   const clap_audio_port_info_t &info) const
+  {
+    BusInfo bus;
+    bus.channelCount = info.channel_count;
+    bus.name = info.name;
+    bus.isMain = (info.flags & CLAP_AUDIO_PORT_IS_MAIN) != 0;
+
+    const char *type = info.port_type;
+    if (type && info.channel_count > 0 && _plugin)
+    {
+      if (!strcmp(type, CLAP_PORT_SURROUND) && _plugin->_ext._surround)
+      {
+        std::vector<uint8_t> map(info.channel_count);
+        auto mapped = _plugin->_ext._surround->get_channel_map(plugin, isInput, index, map.data(),
+                                                               info.channel_count);
+        if (mapped == info.channel_count)
+        {
+          bus.layout = Clap::AUv3Channels::layoutFromChannelMap(map.data(), mapped);
+          bus.channelMap = std::move(map);
+        }
+      }
+      else if (!strcmp(type, CLAP_PORT_AMBISONIC) && _plugin->_ext._ambisonic)
+      {
+        clap_ambisonic_config_t config{};
+        if (_plugin->_ext._ambisonic->get_config(plugin, isInput, index, &config))
+        {
+          bus.hasAmbisonicConfig = true;
+          bus.ambisonicConfig = config;
+          bus.layout = Clap::AUv3Channels::layoutFromAmbisonicConfig(config, info.channel_count);
+        }
+      }
+    }
+
+    if (!bus.layout)
+    {
+      bus.layout = Clap::AUv3Channels::layoutFromChannelCount(info.channel_count);
+    }
+    return bus;
+  }
+
+  std::vector<BusInfo> scanPorts(const clap_plugin_t *plugin,
+                                 const clap_plugin_audio_ports_t *audioports, bool isInput) const
+  {
+    std::vector<BusInfo> result;
+    auto count = audioports->count(plugin, isInput);
+    for (decltype(count) i = 0; i < count; ++i)
+    {
+      clap_audio_port_info_t info;
+      if (audioports->get(plugin, i, isInput, &info))
+      {
+        result.push_back(scanPort(plugin, isInput, i, info));
+      }
+    }
+    return result;
+  }
+
   void setupAudioBusses(const clap_plugin_t *plugin,
                         const clap_plugin_audio_ports_t *audioports) override
   {
-    _inputBusInfos.clear();
-    _outputBusInfos.clear();
+    _inputBusInfos = scanPorts(plugin, audioports, true);
+    _outputBusInfos = scanPorts(plugin, audioports, false);
+  }
 
-    auto numIn = audioports->count(plugin, true);
-    auto numOut = audioports->count(plugin, false);
-
-    for (decltype(numIn) i = 0; i < numIn; ++i)
+  static void addLayoutTag(std::vector<std::vector<AudioChannelLayoutTag>> &tags, size_t bus,
+                           AVAudioChannelLayout *layout)
+  {
+    if (bus >= tags.size()) tags.resize(bus + 1);
+    if (!layout || layout.layoutTag == kAudioChannelLayoutTag_UseChannelDescriptions) return;
+    auto &list = tags[bus];
+    if (std::find(list.begin(), list.end(), layout.layoutTag) == list.end())
     {
-      clap_audio_port_info_t info;
-      if (audioports->get(plugin, i, true, &info))
+      list.push_back(layout.layoutTag);
+    }
+  }
+
+  // Remembers a port layout of the plugin as a probed one.
+  void recordProbedLayout(uint32_t mainIn, uint32_t mainOut, const std::vector<BusInfo> &inputs,
+                          const std::vector<BusInfo> &outputs)
+  {
+    ProbedLayout probed;
+    probed.mainIn = mainIn;
+    probed.mainOut = mainOut;
+    for (size_t i = 0; i < inputs.size(); ++i)
+    {
+      probed.inputBusChannels.push_back(inputs[i].channelCount);
+      addLayoutTag(_inputLayoutTags, i, inputs[i].layout);
+    }
+    for (size_t i = 0; i < outputs.size(); ++i)
+    {
+      probed.outputBusChannels.push_back(outputs[i].channelCount);
+      addLayoutTag(_outputLayoutTags, i, outputs[i].layout);
+    }
+    _probedLayouts.push_back(std::move(probed));
+  }
+
+  // The main-bus (in, out) pairs this audio unit advertises, in the order
+  // channelCapabilities reports them. A pair outside this list is one the
+  // plugin was never found to accept.
+  std::vector<std::pair<uint32_t, uint32_t>> advertisedMainPairs() const
+  {
+    std::vector<std::pair<uint32_t, uint32_t>> pairs;
+    auto add = [&pairs](uint32_t in, uint32_t out)
+    {
+      auto pair = std::make_pair(in, out);
+      if (std::find(pairs.begin(), pairs.end(), pair) == pairs.end()) pairs.push_back(pair);
+    };
+
+    if (!_probedLayouts.empty())
+    {
+      for (const auto &probed : _probedLayouts) add(probed.mainIn, probed.mainOut);
+      return pairs;
+    }
+
+    std::vector<uint32_t> inCounts, outCounts;
+    for (const auto &bus : _inputBusInfos) inCounts.push_back(bus.channelCount);
+    for (const auto &bus : _outputBusInfos) outCounts.push_back(bus.channelCount);
+    if (inCounts.empty()) inCounts.push_back(0);
+    if (outCounts.empty()) outCounts.push_back(0);
+    for (uint32_t ic : inCounts)
+      for (uint32_t oc : outCounts) add(ic, oc);
+    return pairs;
+  }
+
+  // The index of the main bus in a scope, or -1 where the scope has none.
+  ptrdiff_t mainBusIndex(bool isInput) const
+  {
+    const auto &infos = isInput ? _inputBusInfos : _outputBusInfos;
+    for (size_t i = 0; i < infos.size(); ++i)
+      if (infos[i].isMain) return static_cast<ptrdiff_t>(i);
+    return -1;
+  }
+
+  // One request per port, as the AUv2 and VST3 wrappers send them: the main
+  // ports get the given counts, the others keep theirs - or, when nonMain is
+  // non-zero, move to that.
+  std::vector<clap_audio_port_configuration_request_t> mainBusRequests(uint32_t mainIn, uint32_t mainOut,
+                                                                       uint32_t nonMain) const
+  {
+    std::vector<clap_audio_port_configuration_request_t> requests;
+    auto add = [&requests](bool isInput, size_t port, uint32_t channels)
+    {
+      clap_audio_port_configuration_request_t request{};
+      request.is_input = isInput;
+      request.port_index = static_cast<uint32_t>(port);
+      request.channel_count = channels;
+      request.port_type =
+          (channels == 1) ? CLAP_PORT_MONO : ((channels == 2) ? CLAP_PORT_STEREO : nullptr);
+      request.port_details = nullptr;
+      requests.push_back(request);
+    };
+    for (size_t i = 0; i < _inputBusInfos.size(); ++i)
+    {
+      const auto &bus = _inputBusInfos[i];
+      add(true, i, bus.isMain ? mainIn : (nonMain ? nonMain : bus.channelCount));
+    }
+    for (size_t i = 0; i < _outputBusInfos.size(); ++i)
+    {
+      const auto &bus = _outputBusInfos[i];
+      add(false, i, bus.isMain ? mainOut : (nonMain ? nonMain : bus.channelCount));
+    }
+    return requests;
+  }
+
+  // The requests that put every port back to what the bus infos say it is,
+  // with the layout the port described where describe is set.
+  std::vector<clap_audio_port_configuration_request_t> restoreRequests(bool describe) const
+  {
+    std::vector<clap_audio_port_configuration_request_t> requests;
+    auto add = [&requests, describe](bool isInput, size_t port, const BusInfo &bus)
+    {
+      clap_audio_port_configuration_request_t request{};
+      request.is_input = isInput;
+      request.port_index = static_cast<uint32_t>(port);
+      request.channel_count = bus.channelCount;
+      request.port_type = (bus.channelCount == 1)   ? CLAP_PORT_MONO
+                          : (bus.channelCount == 2) ? CLAP_PORT_STEREO
+                                                    : nullptr;
+      request.port_details = nullptr;
+      if (describe && !request.port_type)
       {
-        _inputBusInfos.push_back({info.channel_count, info.name});
+        if (!bus.channelMap.empty())
+        {
+          request.port_type = CLAP_PORT_SURROUND;
+          request.port_details = bus.channelMap.data();
+        }
+        else if (bus.hasAmbisonicConfig)
+        {
+          request.port_type = CLAP_PORT_AMBISONIC;
+          request.port_details = &bus.ambisonicConfig;
+        }
+      }
+      requests.push_back(request);
+    };
+    for (size_t i = 0; i < _inputBusInfos.size(); ++i) add(true, i, _inputBusInfos[i]);
+    for (size_t i = 0; i < _outputBusInfos.size(); ++i) add(false, i, _outputBusInfos[i]);
+    return requests;
+  }
+
+  // Probes the main-bus layouts the plugin accepts, the way the AUv2 wrapper's
+  // PostConstructor does (wrapasauv2.cpp has the reasoning behind each choice
+  // made here). Called once at init, with the plugin deactivated - the state
+  // can_apply_configuration and apply_configuration require.
+  void probeChannelLayouts()
+  {
+    _probedLayouts.clear();
+    _inputLayoutTags.clear();
+    _outputLayoutTags.clear();
+
+    // the layout as it is, whether or not anything else can be probed
+    for (size_t i = 0; i < _inputBusInfos.size(); ++i)
+      addLayoutTag(_inputLayoutTags, i, _inputBusInfos[i].layout);
+    for (size_t i = 0; i < _outputBusInfos.size(); ++i)
+      addLayoutTag(_outputLayoutTags, i, _outputBusInfos[i].layout);
+
+    auto *cap = _plugin ? _plugin->_ext._configurable_audio_ports : nullptr;
+    if (!cap || !_plugin->_ext._audioports || _outputBusInfos.empty()) return;
+
+    const clap_plugin_t *plugin = _plugin->_plugin;
+    auto *audioports = _plugin->_ext._audioports;
+
+    bool hasMainIn = false, hasMainOut = false;
+    uint32_t currentIn = 0, currentOut = 0;
+    for (const auto &bus : _inputBusInfos)
+      if (bus.isMain)
+      {
+        hasMainIn = true;
+        currentIn = bus.channelCount;
+        break;
+      }
+    for (const auto &bus : _outputBusInfos)
+      if (bus.isMain)
+      {
+        hasMainOut = true;
+        currentOut = bus.channelCount;
+        break;
+      }
+
+    // Only the main ports are varied, and a channel capability pair can only
+    // describe the main busses: a scope with ports but none marked main can be
+    // neither, so nothing is probed and every bus stays pinned to its port.
+    if ((!_inputBusInfos.empty() && !hasMainIn) || !hasMainOut)
+    {
+      AUV3LOG("probeChannelLayouts: a scope has ports but no main port, not probing");
+      return;
+    }
+
+    recordProbedLayout(currentIn, currentOut, _inputBusInfos, _outputBusInfos);
+
+    const uint32_t minIn = currentIn ? 1 : 0, maxIn = currentIn ? kMaxProbedChannels : 0;
+    const uint32_t minOut = currentOut ? 1 : 0, maxOut = currentOut ? kMaxProbedChannels : 0;
+
+    bool moved = false;
+    for (uint32_t in = minIn; in <= maxIn; ++in)
+    {
+      for (uint32_t out = minOut; out <= maxOut; ++out)
+      {
+        if (in == currentIn && out == currentOut) continue;  // recorded above
+
+        // Two shapes per candidate: the non-main ports left where they are,
+        // and taken along with the main input - a host may ask for either.
+        // Without inputs both are the same request.
+        for (uint32_t nonMain : {uint32_t{0}, in})
+        {
+          auto requests = mainBusRequests(in, out, nonMain);
+          const auto size = static_cast<uint32_t>(requests.size());
+          if (cap->can_apply_configuration(plugin, requests.data(), size) &&
+              cap->apply_configuration(plugin, requests.data(), size))
+          {
+            moved = true;
+            recordProbedLayout(in, out, scanPorts(plugin, audioports, true),
+                               scanPorts(plugin, audioports, false));
+          }
+          if (in == 0) break;
+        }
       }
     }
 
-    for (decltype(numOut) i = 0; i < numOut; ++i)
+    if (moved)
     {
-      clap_audio_port_info_t info;
-      if (audioports->get(plugin, i, false, &info))
+      // Back to the layout the plugin came up with, described as it described
+      // it - a bare channel count could let a 7.1 come back as some other 8
+      // channel layout. Rescanned either way: the bus infos are the wrapper's
+      // only record of the live layout and must not describe one the plugin
+      // did not return to.
+      auto restore = restoreRequests(true);
+      bool restored = cap->apply_configuration(plugin, restore.data(), (uint32_t)restore.size());
+      if (!restored)
       {
-        _outputBusInfos.push_back({info.channel_count, info.name});
+        restore = restoreRequests(false);
+        restored = cap->apply_configuration(plugin, restore.data(), (uint32_t)restore.size());
       }
+      if (!restored)
+      {
+        AUV3LOG("probeChannelLayouts: could not restore the %u/%u layout", currentIn, currentOut);
+      }
+      setupAudioBusses(plugin, audioports);
     }
+
+    AUV3LOG("probeChannelLayouts: %zu channel layouts", _probedLayouts.size());
   }
 
   void setupMIDIBusses(const clap_plugin_t *plugin, const clap_plugin_note_ports_t *noteports) override
@@ -1006,6 +1317,19 @@ static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
 - (void)_publishSizeWidth:(uint32_t)width height:(uint32_t)height;
 @end
 
+// AUAudioUnitBus declares supportedChannelLayoutTags readonly, so a bus that
+// wants to advertise layouts has to carry them itself and override the getter.
+@interface ClapAUv3AudioUnitBus : AUAudioUnitBus
+@property(nonatomic, copy, nullable) NSArray<NSNumber *> *clapLayoutTags;
+@end
+
+@implementation ClapAUv3AudioUnitBus
+- (NSArray<NSNumber *> *)supportedChannelLayoutTags
+{
+  return self.clapLayoutTags;
+}
+@end
+
 // -----------------------------------------------------------------------
 // ClapAUv3AudioUnit implementation
 // -----------------------------------------------------------------------
@@ -1182,6 +1506,13 @@ static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
     AUV3LOG("init: starting idle timer on main queue");
     _impl->startIdleTimer();
 
+    // Find the channel layouts the plugin accepts besides its own, while it is
+    // still deactivated.
+    {
+      auto mainGuard = _impl->_plugin->AlwaysMainThread();
+      _impl->probeChannelLayouts();
+    }
+
     // Build audio bus arrays from the CLAP audio port info
     AUV3LOG("init: building bus arrays (inputs=%zu outputs=%zu)", _impl->_inputBusInfos.size(),
             _impl->_outputBusInfos.size());
@@ -1268,48 +1599,61 @@ static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
 
 - (void)_buildBusArrays
 {
-  // Build input bus array
-  NSMutableArray<AUAudioUnitBus *> *inputs = [NSMutableArray new];
-  for (auto &busInfo : _impl->_inputBusInfos)
-  {
-    AVAudioFormat *format = [[AVAudioFormat alloc]
-        initStandardFormatWithSampleRate:self.outputBusses.count > 0 ? 44100.0 : 44100.0
-                                channels:busInfo.channelCount];
-    if (format)
-    {
-      NSError *error = nil;
-      AUAudioUnitBus *bus = [[AUAudioUnitBus alloc] initWithFormat:format error:&error];
-      if (bus)
-      {
-        bus.name = [NSString stringWithUTF8String:busInfo.name.c_str()];
-        [inputs addObject:bus];
-      }
-    }
-  }
-  _inputBusArray = [[AUAudioUnitBusArray alloc] initWithAudioUnit:self
-                                                          busType:AUAudioUnitBusTypeInput
-                                                           busses:inputs];
+  using BusInfo = free_audio::auv3_wrapper::AUv3ImplDetail::BusInfo;
+  using LayoutTags = std::vector<std::vector<AudioChannelLayoutTag>>;
 
-  // Build output bus array
-  NSMutableArray<AUAudioUnitBus *> *outputs = [NSMutableArray new];
-  for (auto &busInfo : _impl->_outputBusInfos)
+  // A bus with more than two channels has to carry its layout:
+  // initStandardFormatWithSampleRate:channels: returns nil for it, and the bus
+  // used to be dropped without a word.
+  auto makeBusses = [](const std::vector<BusInfo> &infos, const LayoutTags &tags)
   {
-    AVAudioFormat *format =
-        [[AVAudioFormat alloc] initStandardFormatWithSampleRate:44100.0 channels:busInfo.channelCount];
-    if (format)
+    NSMutableArray<AUAudioUnitBus *> *busses = [NSMutableArray new];
+    for (size_t i = 0; i < infos.size(); ++i)
     {
+      const auto &busInfo = infos[i];
+      AVAudioFormat *format = nil;
+      if (busInfo.layout && busInfo.layout.channelCount == busInfo.channelCount)
+      {
+        format = [[AVAudioFormat alloc] initStandardFormatWithSampleRate:44100.0
+                                                           channelLayout:busInfo.layout];
+      }
+      if (!format && busInfo.channelCount <= 2)
+      {
+        format = [[AVAudioFormat alloc] initStandardFormatWithSampleRate:44100.0
+                                                                channels:busInfo.channelCount];
+      }
+      if (!format)
+      {
+        AUV3ERR("_buildBusArrays: no format for '%{public}s' with %u channels", busInfo.name.c_str(),
+                busInfo.channelCount);
+        continue;
+      }
+
       NSError *error = nil;
-      AUAudioUnitBus *bus = [[AUAudioUnitBus alloc] initWithFormat:format error:&error];
+      ClapAUv3AudioUnitBus *bus = [[ClapAUv3AudioUnitBus alloc] initWithFormat:format error:&error];
       if (bus)
       {
         bus.name = [NSString stringWithUTF8String:busInfo.name.c_str()];
-        [outputs addObject:bus];
+        if (i < tags.size() && !tags[i].empty())
+        {
+          NSMutableArray<NSNumber *> *supported = [NSMutableArray new];
+          for (auto tag : tags[i]) [supported addObject:@(tag)];
+          bus.clapLayoutTags = supported;
+        }
+        [busses addObject:bus];
       }
     }
-  }
-  _outputBusArray = [[AUAudioUnitBusArray alloc] initWithAudioUnit:self
-                                                           busType:AUAudioUnitBusTypeOutput
-                                                            busses:outputs];
+    return busses;
+  };
+
+  _inputBusArray = [[AUAudioUnitBusArray alloc]
+      initWithAudioUnit:self
+                busType:AUAudioUnitBusTypeInput
+                 busses:makeBusses(_impl->_inputBusInfos, _impl->_inputLayoutTags)];
+  _outputBusArray = [[AUAudioUnitBusArray alloc]
+      initWithAudioUnit:self
+                busType:AUAudioUnitBusTypeOutput
+                 busses:makeBusses(_impl->_outputBusInfos, _impl->_outputLayoutTags)];
 }
 
 - (void)_wireParameterObserver
@@ -1532,28 +1876,73 @@ static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
 {
   if (!_impl) return nil;
 
-  // Build the channel capability pairs from CLAP audio port info, matching AUv2's
-  // SupportedNumChannels() approach. Each pair is [inChannels, outChannels].
-  // If there are no input ports, report 0 for input (generator/instrument).
+  // The main-bus pairs the probe found - the plugin's own first - or, without
+  // the extension, the pairs the CLAP audio ports give, matching AUv2's
+  // SupportedNumChannels(). A scope with no ports reports 0 on that side.
   NSMutableArray<NSNumber *> *caps = [NSMutableArray new];
-
-  std::vector<int> inCounts, outCounts;
-  for (auto &bus : _impl->_inputBusInfos) inCounts.push_back((int)bus.channelCount);
-  for (auto &bus : _impl->_outputBusInfos) outCounts.push_back((int)bus.channelCount);
-
-  if (inCounts.empty()) inCounts.push_back(0);
-  if (outCounts.empty()) outCounts.push_back(0);
-
-  for (int ic : inCounts)
+  for (const auto &pair : _impl->advertisedMainPairs())
   {
-    for (int oc : outCounts)
-    {
-      [caps addObject:@(ic)];
-      [caps addObject:@(oc)];
-    }
+    [caps addObject:@(pair.first)];
+    [caps addObject:@(pair.second)];
+  }
+  return caps;
+}
+
+// Whether a bus can take a channel count: its port's own, or the one any probed
+// layout gives that bus. Per bus and not per main bus only, because a layout may
+// move a sidechain along with the main input (see ValidFormat in the AUv2
+// wrapper). The count the host settles on is applied to the plugin in
+// allocateRenderResources, which refuses a combination no layout has.
+- (BOOL)_bus:(NSUInteger)index isInput:(BOOL)isInput acceptsChannels:(uint32_t)channels
+{
+  const auto &infos = isInput ? _impl->_inputBusInfos : _impl->_outputBusInfos;
+  if (index >= infos.size())
+  {
+    AUV3LOG("shouldChangeToFormat: %{public}s bus %lu out of range", isInput ? "input" : "output",
+            (unsigned long)index);
+    return NO;
   }
 
-  return caps;
+  BOOL ok = (channels == infos[index].channelCount);
+  for (const auto &probed : _impl->_probedLayouts)
+  {
+    if (ok) break;
+    const auto &counts = isInput ? probed.inputBusChannels : probed.outputBusChannels;
+    ok = index < counts.size() && counts[index] == channels;
+  }
+
+  AUV3LOG("shouldChangeToFormat: %{public}s bus %lu requested %u ch, port has %u -> %{public}s",
+          isInput ? "input" : "output", (unsigned long)index, channels, infos[index].channelCount,
+          ok ? "YES" : "NO");
+  return ok;
+}
+
+// Whether changing the main bus of one scope to a channel count leaves the unit
+// on a pair channelCapabilities advertises, given what the other scope's main
+// bus carries now. Only asked once the unit is initialized: before that a host
+// is free to walk through pairs on its way to the one it wants, and
+// allocateRenderResources has the plugin itself to answer to.
+- (BOOL)_mainPairStaysValidFor:(NSUInteger)index isInput:(BOOL)isInput channels:(uint32_t)channels
+{
+  if (!self.renderResourcesAllocated) return YES;
+
+  const ptrdiff_t main = _impl->mainBusIndex(isInput);
+  if (main < 0 || static_cast<NSUInteger>(main) != index) return YES;
+
+  const ptrdiff_t other = _impl->mainBusIndex(!isInput);
+  AUAudioUnitBusArray *otherBusses = isInput ? self.outputBusses : self.inputBusses;
+  uint32_t otherChannels = 0;
+  if (other >= 0 && static_cast<NSUInteger>(other) < otherBusses.count)
+    otherChannels = otherBusses[static_cast<NSUInteger>(other)].format.channelCount;
+
+  const uint32_t in = isInput ? channels : otherChannels;
+  const uint32_t out = isInput ? otherChannels : channels;
+
+  for (const auto &pair : _impl->advertisedMainPairs())
+    if (pair.first == in && pair.second == out) return YES;
+
+  AUV3LOG("shouldChangeToFormat: %u/%u is not a channel capability of this unit", in, out);
+  return NO;
 }
 
 - (BOOL)shouldChangeToFormat:(AVAudioFormat *)format forBus:(AUAudioUnitBus *)bus
@@ -1562,44 +1951,143 @@ static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
 
   uint32_t requestedChannels = format.channelCount;
 
-  // Check input busses
   for (NSUInteger i = 0; i < self.inputBusses.count; ++i)
   {
     if (self.inputBusses[i] == bus)
-    {
-      if (i < _impl->_inputBusInfos.size())
-      {
-        BOOL ok = (requestedChannels == _impl->_inputBusInfos[i].channelCount);
-        AUV3LOG("shouldChangeToFormat: input bus %lu requested %u ch, supported %u -> %{public}s",
-                (unsigned long)i, requestedChannels, _impl->_inputBusInfos[i].channelCount,
-                ok ? "YES" : "NO");
-        return ok;
-      }
-      AUV3LOG("shouldChangeToFormat: input bus %lu out of range", (unsigned long)i);
-      return NO;
-    }
+      return [self _bus:i isInput:YES acceptsChannels:requestedChannels] &&
+             [self _mainPairStaysValidFor:i isInput:YES channels:requestedChannels];
   }
 
-  // Check output busses
   for (NSUInteger i = 0; i < self.outputBusses.count; ++i)
   {
     if (self.outputBusses[i] == bus)
-    {
-      if (i < _impl->_outputBusInfos.size())
-      {
-        BOOL ok = (requestedChannels == _impl->_outputBusInfos[i].channelCount);
-        AUV3LOG("shouldChangeToFormat: output bus %lu requested %u ch, supported %u -> %{public}s",
-                (unsigned long)i, requestedChannels, _impl->_outputBusInfos[i].channelCount,
-                ok ? "YES" : "NO");
-        return ok;
-      }
-      AUV3LOG("shouldChangeToFormat: output bus %lu out of range", (unsigned long)i);
-      return NO;
-    }
+      return [self _bus:i isInput:NO acceptsChannels:requestedChannels] &&
+             [self _mainPairStaysValidFor:i isInput:NO channels:requestedChannels];
   }
 
   AUV3LOG("shouldChangeToFormat: bus not found, rejecting");
   return NO;
+}
+
+// Hands the formats the host settled on to the plugin, before it is activated:
+// a channel count the plugin's port does not have yet, and the layout of a bus
+// where the plugin can tell layouts apart. Mirrors setBusArrangements in the
+// VST3 wrapper - described first, by channel count alone if the plugin turns
+// the description down. Returns NO when the host's counts cannot be had, which
+// the render path could not survive.
+- (BOOL)_applyBusFormatsToPlugin
+{
+  auto *cap = _impl->_plugin->_ext._configurable_audio_ports;
+  auto *audioports = _impl->_plugin->_ext._audioports;
+  const clap_plugin_t *plugin = _impl->_plugin->_plugin;
+  if (!cap || !audioports) return YES;
+
+  const size_t numIn = std::min<size_t>(_impl->_inputBusInfos.size(), self.inputBusses.count);
+  const size_t numOut = std::min<size_t>(_impl->_outputBusInfos.size(), self.outputBusses.count);
+  const size_t numPorts = numIn + numOut;
+
+  // the channel maps and ambisonic configurations outlive the requests pointing
+  // at them, and are sized once so that filling them cannot move them
+  std::vector<std::vector<uint8_t>> channelMaps(numPorts);
+  std::vector<clap_ambisonic_config_t> ambisonicConfigs(numPorts);
+  std::vector<clap_audio_port_configuration_request_t> requests, undescribed;
+
+  bool countsDiffer = false, layoutsDiffer = false, describesLayout = false;
+
+  for (size_t i = 0; i < numPorts; ++i)
+  {
+    const bool isInput = i < numIn;
+    const size_t port = isInput ? i : i - numIn;
+    const auto &info = isInput ? _impl->_inputBusInfos[port] : _impl->_outputBusInfos[port];
+    AVAudioFormat *format = (isInput ? self.inputBusses : self.outputBusses)[port].format;
+    const uint32_t channels = format.channelCount;
+
+    clap_audio_port_configuration_request_t request{};
+    request.is_input = isInput;
+    request.port_index = static_cast<uint32_t>(port);
+    request.channel_count = channels;
+    request.port_type =
+        (channels == 1) ? CLAP_PORT_MONO : ((channels == 2) ? CLAP_PORT_STEREO : nullptr);
+    request.port_details = nullptr;
+    undescribed.push_back(request);
+
+    countsDiffer |= (channels != info.channelCount);
+
+    const AudioChannelLayout *layout = format.channelLayout ? format.channelLayout.layout : nullptr;
+    if (!request.port_type && layout)
+    {
+      if (Clap::AUv3Channels::ambisonicConfigFromLayout(layout, channels, ambisonicConfigs[i]))
+      {
+        request.port_type = CLAP_PORT_AMBISONIC;
+        request.port_details = &ambisonicConfigs[i];
+        describesLayout = true;
+        // only a plugin that reports its configuration can be found to differ
+        if (_impl->_plugin->_ext._ambisonic)
+        {
+          layoutsDiffer |= !info.hasAmbisonicConfig ||
+                           info.ambisonicConfig.ordering != ambisonicConfigs[i].ordering ||
+                           info.ambisonicConfig.normalization != ambisonicConfigs[i].normalization;
+        }
+      }
+      else if (Clap::AUv3Channels::channelMapFromLayout(layout, channels, channelMaps[i]))
+      {
+        request.port_type = CLAP_PORT_SURROUND;
+        request.port_details = channelMaps[i].data();
+        describesLayout = true;
+        if (_impl->_plugin->_ext._surround)
+        {
+          layoutsDiffer |= (info.channelMap != channelMaps[i]);
+        }
+      }
+    }
+    requests.push_back(request);
+  }
+
+  if (!countsDiffer && !layoutsDiffer) return YES;
+
+  auto apply = [&](const std::vector<clap_audio_port_configuration_request_t> &set)
+  { return cap->apply_configuration(plugin, set.data(), static_cast<uint32_t>(set.size())); };
+
+  if (!(apply(requests) || (describesLayout && apply(undescribed))))
+  {
+    // Nothing is lost when only the layout was asked for: the counts the
+    // plugin keeps are the ones the host set.
+    AUV3LOG("_applyBusFormatsToPlugin: the plugin refused the bus formats");
+    return !countsDiffer;
+  }
+
+  // The ports changed: rescan them - the plugin is deactivated, so that is
+  // legal - and check they are what the render path is going to hand over.
+  _impl->setupAudioBusses(plugin, audioports);
+  for (size_t i = 0; i < numPorts; ++i)
+  {
+    const bool isInput = i < numIn;
+    const size_t port = isInput ? i : i - numIn;
+    const auto &infos = isInput ? _impl->_inputBusInfos : _impl->_outputBusInfos;
+    const uint32_t channels = (isInput ? self.inputBusses : self.outputBusses)[port].format.channelCount;
+    if (port >= infos.size() || infos[port].channelCount != channels)
+    {
+      AUV3ERR("_applyBusFormatsToPlugin: %{public}s port %zu does not have the %u channels "
+              "the plugin accepted",
+              isInput ? "input" : "output", port, channels);
+      return NO;
+    }
+  }
+
+  // The bus count and the formats are the host's and stay; a port the plugin
+  // renamed for its new layout ("5.1 In") is passed on.
+  for (size_t i = 0; i < numPorts; ++i)
+  {
+    const bool isInput = i < numIn;
+    const size_t port = isInput ? i : i - numIn;
+    const auto &info = isInput ? _impl->_inputBusInfos[port] : _impl->_outputBusInfos[port];
+    AUAudioUnitBus *bus = (isInput ? self.inputBusses : self.outputBusses)[port];
+    NSString *name = [NSString stringWithUTF8String:info.name.c_str()];
+    if (name && ![bus.name isEqualToString:name]) bus.name = name;
+  }
+
+  AUV3LOG("_applyBusFormatsToPlugin: applied the host's bus formats");
+  return YES;
 }
 
 // --- State save/restore ---
@@ -1716,9 +2204,28 @@ static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
 
   auto guarantee_mainthread = _impl->_plugin->AlwaysMainThread();
 
+  // The busses have to match the plugin's ports before anything is set up
+  // from them.
+  if (![self _applyBusFormatsToPlugin])
+  {
+    if (outError)
+      *outError = [NSError errorWithDomain:NSOSStatusErrorDomain
+                                      code:kAudioUnitErr_FormatNotSupported
+                                  userInfo:@{
+                                    NSLocalizedDescriptionKey :
+                                        @"The CLAP plugin does not support this channel configuration"
+                                  }];
+    [super deallocateRenderResources];
+    return NO;
+  }
+
   AUV3LOG("allocateRenderResources: setting sample rate and block sizes");
   _impl->_plugin->setSampleRate(sampleRate);
   _impl->_plugin->setBlockSizes(1, self.maximumFramesToRender);
+
+  // The mode is set whenever the host changes it; once more before activation
+  // for a plugin that only looks at it there.
+  [self _applyRenderMode];
 
   // Collect channel counts
   std::vector<uint32_t> inputChs, outputChs;
@@ -2235,6 +2742,45 @@ static const char *const _windowApi = CLAP_WINDOW_API_COCOA;
       [param setValue:(AUValue)newValue originator:_impl->_parameterObserverToken];
       s_suppressParamObserverEcho = false;
     }
+  }
+}
+
+// --- Offline rendering ---
+
+// A host that bounces faster than real time says so here - Logic sets it for
+// an offline bounce, it is kAudioUnitProperty_OfflineRender on the AUv2 side of
+// the bridge. Passed on through clap.render, as the VST3 wrapper does for
+// kOffline, so a plugin can switch to its offline quality or drop a bypass it
+// only uses live.
+- (void)setRenderingOffline:(BOOL)renderingOffline
+{
+  [super setRenderingOffline:renderingOffline];
+  AUV3LOG("setRenderingOffline: %{public}s", renderingOffline ? "YES" : "NO");
+  [self _applyRenderMode];
+}
+
+- (void)_applyRenderMode
+{
+  if (!_impl || !_impl->_plugin || !_impl->_plugin->_ext._render) return;
+
+  auto *render = _impl->_plugin->_ext._render;
+  const clap_plugin_t *plugin = _impl->_plugin->_plugin;
+
+  // render.set is [main-thread], and a host sets the property from wherever
+  // it happens to be - the same reasoning as every other host-driven call here.
+  auto mainGuard = _impl->_plugin->AlwaysMainThread();
+
+  clap_plugin_render_mode mode = self.renderingOffline ? CLAP_RENDER_OFFLINE : CLAP_RENDER_REALTIME;
+  if (mode == CLAP_RENDER_OFFLINE && render->has_hard_realtime_requirement(plugin))
+  {
+    // the property cannot be refused, so the plugin simply stays in real time
+    AUV3LOG("_applyRenderMode: plugin has a hard real-time requirement, staying in real time");
+    mode = CLAP_RENDER_REALTIME;
+  }
+
+  if (!render->set(plugin, mode))
+  {
+    AUV3LOG("_applyRenderMode: plugin refused render mode %d", (int)mode);
   }
 }
 

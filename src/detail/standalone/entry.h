@@ -3,9 +3,18 @@
 #include <clap/clap.h>
 #include <clap_proxy.h>
 #include <string>
+#include <vector>
 
 namespace freeaudio::clap_wrapper::standalone
 {
+// the first half of mainCreatePlugin, for a frontend that shows its window before the plugin
+// exists: initializes the entry, resolves the settings folder and reads the settings in it,
+// and asks the entry for its window hints (windowHints(), standalone_window_hints.h). once;
+// mainCreatePlugin does it itself where the frontend has not. false when the entry has no
+// plugin factory
+bool mainPrepare(const clap_plugin_entry *entry, const std::string &clapId, uint32_t clapIndex, int argc,
+                 char **argv);
+
 std::shared_ptr<Clap::Plugin> mainCreatePlugin(const clap_plugin_entry *entry, const std::string &clapId,
                                                uint32_t clapIndex, int argc, char **argv);
 void mainStartAudio();
@@ -22,4 +31,15 @@ int mainFinish();
 // MIDI ports, as the standalone sees them, to stdout and returns true; the caller then
 // exits. false otherwise. for support, and to compare backends on one machine
 bool mainListAudioDevices(int argc, const char *const *argv);
+
+// whether the standalone was built to open urls in any scheme (URL_SCHEMES)
+bool opensUrls();
+
+// whether url is in one of the schemes this standalone was built to open, which no url is
+// in a standalone built with none
+bool isOwnUrl(const std::string &url);
+
+// the arguments that are such urls: on windows and linux, what a link clicked in a browser
+// launches the standalone with
+std::vector<std::string> ownUrlsInArgs(int argc, const char *const *argv);
 }  // namespace freeaudio::clap_wrapper::standalone

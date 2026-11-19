@@ -285,6 +285,18 @@ struct StandaloneHost : Clap::IHost, AudioStreamCallback
   // extension, if it has one. result is a clap_wrapper_standalone_configuration_result
   void settingsScreenClosed(uint32_t result);
 
+  // a url in a scheme this standalone was built to open (isOwnUrl), from a link clicked
+  // in a browser or an argument it was launched with: the platform frontend hands each one
+  // here, on the main thread. held until beginUrlDelivery(), then passed on in arrival
+  // order to the plugin's side of the standalone features extension, if it opens urls
+  void openUrl(const std::string &url);
+
+  // called by the platform frontend once the plugin exists and its gui is shown, or could
+  // not be: what openUrl() held is passed on now, and later urls at once
+  void beginUrlDelivery();
+  bool urlDeliveryBegun{false};
+  std::vector<std::string> pendingUrls;
+
   // the settings screen's appearance, a clap_wrapper_standalone_appearance. a plugin that
   // sets it owns it for the session: the settings file and the screen's own choice no
   // longer count, and the plugin's value is never saved
@@ -392,6 +404,11 @@ struct StandaloneHost : Clap::IHost, AudioStreamCallback
   void openMidiPorts(const std::vector<std::string> &references, bool bindAll);
   void closeMidiPorts();
 
+  // [main-thread] a port came or went: what is open follows the settings again - every
+  // input where they bind all, one plugged in since included, and a chosen port that is
+  // back. a port still open stays open
+  void followMidiPorts();
+
   // Virtual ports: a destination other applications send to, which feeds the plugin like
   // an input, and a source they receive the plugin's output from. Each lives on its own,
   // so reopening the port lists never makes another application lose its connection.
@@ -472,8 +489,8 @@ struct StandaloneHost : Clap::IHost, AudioStreamCallback
 
   // [main-thread] what the backends reported from their threads since the last call: a
   // stream that stopped on its own is reported, and opened again once its devices are
-  // back; a change in the devices goes to onAudioDevicesChanged. frontends call it from a
-  // timer
+  // back; a change in the devices or ports opens the midi ports the settings name
+  // (followMidiPorts) and goes to onAudioDevicesChanged. frontends call it from a timer
   void pollAudioEvents();
   // [main-thread] set by a frontend whose settings screen lists devices or ports
   std::function<void()> onAudioDevicesChanged{nullptr};

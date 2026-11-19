@@ -1,5 +1,6 @@
 #include "generated_entrypoints.hxx"
 #include "detail/auv2/process.h"
+#include "detail/ara/araaudiounit.h"
 #include <set>
 #include <limits>
 #include <cassert>
@@ -159,42 +160,54 @@ WrapAsAUV2::WrapAsAUV2(const std::string &clapname, const std::string &clapid, i
   , _idx{idx}
   , _os_attached([this] { os::attach(this); }, [this] { os::detach(this); })
 {
+  _uiIsOpened = false;
+  // Fail the AudioComponent open before the SDK publishes an unusable unit.
+  ausdk::ThrowExceptionIf(!initializeClapDesc(), kAudioUnitErr_FailedInitialization);
+
+  // pffffrzz();  // <- enable this to have a hook to attach a debugger
+  _underlying_hostname = os::getHostAppName();
+  _plugin = Clap::Plugin::createInstance(_library._pluginFactory, _desc->id, this);
+  ausdk::ThrowExceptionIf(!_plugin || !_plugin->initialize(), kAudioUnitErr_FailedInitialization);
+  std::cout << "[clap-wrapper] auv2: Initialized '" << _desc->id << "' / '" << _desc->name << "' / '"
+            << _desc->version << "'" << std::endl;
+
   // Logic may initialize an AU on a worker while its editor and idle timer run.
   // The SDK holds this lock across its complete non-realtime dispatch, including
   // changes to AUBase::IsInitialized() before and after the virtual callbacks.
   SetMutex(_mainThreadMutex.get());
-  _uiIsOpened = false;
-  if (!_desc)
-  {
-    if (initializeClapDesc())
-    {
-      std::cout << "[clap-wrapper] auv2: Initialized '" << _desc->id << "' / '" << _desc->name << "' / '"
-                << _desc->version << "'" << std::endl;
-      /*
-       * ToDo: Stand up the host, create the plugin instance here
-       */
-
-      // pffffrzz();  // <- enable this to have a hook to attach a debugger
-      _underlying_hostname = os::getHostAppName();
-      _plugin = Clap::Plugin::createInstance(_library._pluginFactory, _desc->id, this);
-      if (_plugin)
-      {
-        _plugin->initialize();
-      }
-      else
-      {
-        std::cout << "[clap-wrapper] ERROR: the clap did not create an instance with id " << _desc->id
-                  << std::endl;
-        // this will exit in WrapAsAUV2::Initialize() with an error
-        // if this happens, the wrapper or the clap plugin has a real bug
-        _desc = nullptr;
-      }
-    }
-  }
 }
 
 WrapAsAUV2::~WrapAsAUV2()
 {
+  // An editor still open goes first: it is AppKit's, and removing its view on
+  // another thread throws there. A host may dispose of an instance from another
+  // thread (an out-of-process AU host does when its application quits), so the
+  // editor is destroyed on the main thread, before the lock below: the view
+  // takes the lock on the main thread, and waiting for the main thread while
+  // holding it could deadlock.
+  const auto destroyOpenUI = [this]
+  {
+    if (_uiIsOpened && _uiconn._canary)
+    {
+      *_uiconn._canary = 0;       // notify the view
+      _uiconn._canary = nullptr;  // disable the canary reference
+
+      // close destroy the gui ourselves
+      _plugin->_ext._gui->destroy(_plugin->_plugin);
+      _uiconn._window = nullptr;
+      _uiIsOpened = false;
+    }
+  };
+  if (_plugin && !auv2shared_mm_is_main_thread())
+  {
+    auv2shared_mm_run_on_main_thread(
+        [&]
+        {
+          const ausdk::AUEntryGuard uiGuard(_mainThreadMutex.get());
+          destroyOpenUI();
+        });
+  }
+
   const std::lock_guard<ausdk::AUMutex> mainThreadGuard(*_mainThreadMutex);
   // The index outlives this instance (it is cached per module) and its crawl
   // thread holds our callback, so it has to be dropped before anything else.
@@ -214,24 +227,11 @@ WrapAsAUV2::~WrapAsAUV2()
 #endif
   if (_plugin)
   {
-    if (_uiIsOpened && _uiconn._canary)
-    {
-      *_uiconn._canary = 0;       // notify the view
-      _uiconn._canary = nullptr;  // disable the canary reference
-
-      // close destroy the gui ourselves
-      _plugin->_ext._gui->destroy(_plugin->_plugin);
-      _uiconn._window = nullptr;
-      _uiIsOpened = false;
-    }
+    destroyOpenUI();
 
     _os_attached.off();
     _plugin->terminate();
     _plugin.reset();
-  }
-  if (_current_program_name)
-  {
-    CFRelease(_current_program_name);
   }
   // AUBase must not retain a pointer to a member-owned lock during base destruction.
   SetMutex(nullptr);
@@ -688,7 +688,35 @@ void WrapAsAUV2::param_rescan(clap_param_rescan_flags flags)
   // Re-call setup parameters which will just reset info if the param exists
   setupParameters(_plugin->_plugin, _plugin->_ext._params);
 
-  // if ( flags & CLAP_PARAM_RESCAN_ALL) // TODO: check out how differentiated we can do this
+  // Only the values changed (a preset the plugin loaded itself, say): the list
+  // and the infos are the ones the host has, so a new ParameterList, ParameterInfo
+  // and ClassInfo are the wrong news. Logic Pro takes its time over each of them:
+  // a few presets stepped through in the plugin's UI backed its UI up by seconds.
+  // What the host needs is a value change per parameter; setupParameters() has
+  // already stored the new values. (Whether the state is dirty is mark_dirty's
+  // to say, not a rescan's.)
+  if ((flags & (CLAP_PARAM_RESCAN_ALL | CLAP_PARAM_RESCAN_INFO | CLAP_PARAM_RESCAN_TEXT)) == 0)
+  {
+    std::vector<AudioUnitParameterID> ids;
+    {
+      std::lock_guard<std::mutex> guard(_paramTreeMutex);
+      ids = _orderedParameterList;
+    }
+    for (auto id : ids)
+    {
+      AudioUnitEvent myEvent;
+      myEvent.mEventType = kAudioUnitEvent_ParameterValueChange;
+      myEvent.mArgument.mParameter.mAudioUnit = GetComponentInstance();
+      myEvent.mArgument.mParameter.mParameterID = id;
+      myEvent.mArgument.mParameter.mScope = kAudioUnitScope_Global;
+      myEvent.mArgument.mParameter.mElement = 0;
+      AUEventListenerNotify(NULL, NULL, &myEvent);
+    }
+    if (_isBypassed != wasBypassed)
+      PropertyChanged(kAudioUnitProperty_BypassEffect, kAudioUnitScope_Global, 0);
+    return;
+  }
+
   {
     PropertyChanged(kAudioUnitProperty_ParameterList, kAudioUnitScope_Global, 0);
     PropertyChanged(kAudioUnitProperty_ParameterInfo, kAudioUnitScope_Global, 0);
@@ -879,6 +907,31 @@ void WrapAsAUV2::SetBypassEffect(bool bypass)
   }
 }
 
+// as vst3 does for kOffline and auv3 for renderingOffline; logic sets it around a bounce
+void WrapAsAUV2::applyRenderMode()
+{
+  if (!_plugin || !_plugin->_ext._render) return;
+
+  auto *render = _plugin->_ext._render;
+  auto *plugin = _plugin->_plugin;
+
+  // render.set is [main-thread], and a host sets the property from wherever it is
+  auto guarantee_mainthread = _plugin->AlwaysMainThread();
+
+  auto mode = _offlineRender ? CLAP_RENDER_OFFLINE : CLAP_RENDER_REALTIME;
+  if (mode == CLAP_RENDER_OFFLINE && render->has_hard_realtime_requirement(plugin))
+  {
+    // the property cannot be refused, so the plugin simply stays in real time
+    LOGDETAIL("[clap-wrapper] auv2: hard realtime requirement, staying in realtime render");
+    mode = CLAP_RENDER_REALTIME;
+  }
+
+  if (!render->set(plugin, mode))
+  {
+    LOGDETAIL("[clap-wrapper] auv2: plugin refused render mode {}", (int)mode);
+  }
+}
+
 OSStatus WrapAsAUV2::CopyClumpName(AudioUnitScope inScope, UInt32 inClumpID, UInt32 inDesiredNameLength,
                                    CFStringRef *outClumpName)
 {
@@ -927,7 +980,18 @@ void WrapAsAUV2::Cleanup()
 {
   LOGINFO("[clap-wrapper] Cleaning up Plugin");
   auto guarantee_mainthread = _plugin->AlwaysMainThread();
-  if (this->_uiIsOpened)
+  // The editor is AppKit's, so it is destroyed here on the main thread only. A
+  // host may uninitialize from another thread (an out-of-process AU host does
+  // when its application quits); removing the view there throws in AppKit. Nor
+  // can this wait for the main thread: the SDK holds _mainThreadMutex across
+  // this call and the view takes it there. The editor stays open - a plugin
+  // that is not active may keep its GUI - until its view goes or the instance
+  // is destroyed, which both close it on the main thread.
+  if (this->_uiIsOpened && !auv2shared_mm_is_main_thread())
+  {
+    LOGINFO("[clap-wrapper] UI still open, uninitialized off the main thread: left to its view");
+  }
+  else if (this->_uiIsOpened)
   {
     LOGINFO("[clap-wrapper] !! UI still open, destroying UI and disconnecting view");
     if (_uiconn._canary)
@@ -1005,6 +1069,10 @@ OSStatus WrapAsAUV2::GetPropertyInfo(AudioUnitPropertyID inID, AudioUnitScope in
         outWritable = true;
         outDataSize = sizeof(UInt32);
         return noErr;
+      case kAudioUnitProperty_OfflineRender:
+        outWritable = true;
+        outDataSize = sizeof(UInt32);
+        return noErr;
 #ifdef DUAL_SCHEDULING_ENABLED
       case kMusicDeviceProperty_DualSchedulingMode:
         outWritable = true;
@@ -1017,6 +1085,24 @@ OSStatus WrapAsAUV2::GetPropertyInfo(AudioUnitPropertyID inID, AudioUnitScope in
         outDataSize = sizeof(UInt32);
         return noErr;
         break;
+
+      // ARA is only advertised when the CLAP has the ARA extension
+      case kAudioUnitProperty_ARAFactory:
+        if (!_plugin || !_plugin->_ext._ara) return kAudioUnitErr_InvalidProperty;
+        outWritable = false;
+        outDataSize = sizeof(ARAAudioUnitFactory);
+        return noErr;
+      case kAudioUnitProperty_ARAPlugInExtensionBindingWithRoles:
+        if (!_plugin || !_plugin->_ext._ara) return kAudioUnitErr_InvalidProperty;
+        outWritable = false;
+        outDataSize = sizeof(ARAAudioUnitPlugInExtensionBinding);
+        return noErr;
+      case kAudioUnitProperty_ARAPlugInExtensionBinding:
+        if (!_plugin || !_plugin->_ext._ara) return kAudioUnitErr_InvalidProperty;
+        outWritable = false;
+        // ARA 1 hosts pass the struct without the role fields
+        outDataSize = offsetof(ARAAudioUnitPlugInExtensionBinding, knownRoles);
+        return noErr;
 
       case kAudioUnitProperty_CocoaUI:
         if (!_plugin->_ext._gui) return kAudioUnitErr_InvalidProperty;
@@ -1107,6 +1193,9 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         LOGDETAIL("[clap-wrapper] auv2: host read BypassEffect={}", IsBypassEffect() ? 1 : 0);
         *static_cast<UInt32 *>(outData) = (IsBypassEffect() ? 1 : 0);  // NOLINT
         return noErr;
+      case kAudioUnitProperty_OfflineRender:
+        *static_cast<UInt32 *>(outData) = (_offlineRender ? 1 : 0);
+        return noErr;
         //    case kAudioUnitProperty_InPlaceProcessing:
         //      *static_cast<UInt32*>(outData) = (mProcessesInPlace ? 1 : 0); // NOLINT
         //      return noErr;
@@ -1140,6 +1229,40 @@ OSStatus WrapAsAUV2::GetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         };
         *static_cast<ui_connection *>(outData) = _uiconn;
         return noErr;
+
+      // ARA: the host passes the struct in with the magic number set and reads the result
+      // from the same struct (like AudioUnitParameterStringFromValue)
+      case kAudioUnitProperty_ARAFactory:
+      {
+        if (!_plugin || !_plugin->_ext._ara) return kAudioUnitErr_InvalidProperty;
+        auto *p = static_cast<ARAAudioUnitFactory *>(outData);
+        if (p->inOutMagicNumber != kARAAudioUnitMagic) return kAudioUnitErr_InvalidPropertyValue;
+        auto guarantee_mainthread = _plugin->AlwaysMainThread();
+        p->outFactory = _plugin->_ext._ara->get_factory(_plugin->_plugin);
+        if (!p->outFactory) return kAudioUnitErr_InvalidProperty;
+        return noErr;
+      }
+      case kAudioUnitProperty_ARAPlugInExtensionBindingWithRoles:
+      case kAudioUnitProperty_ARAPlugInExtensionBinding:
+      {
+        if (!_plugin || !_plugin->_ext._ara) return kAudioUnitErr_InvalidProperty;
+        auto *p = static_cast<ARAAudioUnitPlugInExtensionBinding *>(outData);
+        if (p->inOutMagicNumber != kARAAudioUnitMagic) return kAudioUnitErr_InvalidPropertyValue;
+        // binding is allowed once, before the unit is initialized - also when the plugin
+        // refused the first attempt, the CLAP has been called already
+        if (IsInitialized() || _araBound) return kAudioUnitErr_Initialized;
+        _araBound = true;
+        // the ARA 1 struct has no role fields, ARA 1 hosts use all three roles
+        constexpr ARAPlugInInstanceRoleFlags allRoles =
+            kARAPlaybackRendererRole | kARAEditorRendererRole | kARAEditorViewRole;
+        const bool withRoles = (inID == kAudioUnitProperty_ARAPlugInExtensionBindingWithRoles);
+        auto guarantee_mainthread = _plugin->AlwaysMainThread();
+        p->outPlugInExtension = _plugin->_ext._ara->bind_to_document_controller(
+            _plugin->_plugin, p->inDocumentControllerRef, withRoles ? p->knownRoles : allRoles,
+            withRoles ? p->assignedRoles : allRoles);
+        if (!p->outPlugInExtension) return kAudioUnitErr_InvalidPropertyValue;
+        return noErr;
+      }
 
       case kAudioUnitProperty_CocoaUI:
         LOGINFO("[clap-wrapper] Property: kAudioUnitProperty_CocoaUI {}",
@@ -1232,6 +1355,7 @@ OSStatus WrapAsAUV2::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
         {
           if (!tempNewSetting && IsBypassEffect() && IsInitialized())
           {  // turning bypass off and we're initialized
+            // Reset the CLAP processor's audio history before resuming from bypass.
             Reset(kAudioUnitScope_Global, 0);
           }
           SetBypassEffect(tempNewSetting);
@@ -1242,6 +1366,19 @@ OSStatus WrapAsAUV2::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
       //      mProcessesInPlace = *static_cast<const UInt32*>(inData) != 0;
       //      return noErr;
       break;
+      case kAudioUnitProperty_OfflineRender:
+      {
+        if (inDataSize < sizeof(UInt32)) return kAudioUnitErr_InvalidPropertyValue;
+        const bool offline = *static_cast<const UInt32 *>(inData) != 0;
+        LOGDETAIL("[clap-wrapper] auv2: host set OfflineRender={} (was {})", offline ? 1 : 0,
+                  _offlineRender ? 1 : 0);
+        if (offline != _offlineRender)
+        {
+          _offlineRender = offline;
+          applyRenderMode();
+        }
+        return noErr;
+      }
       case kAudioUnitProperty_MIDIOutputCallbackInfo:
         // this is actually read only
         return noErr;
@@ -1565,6 +1702,9 @@ bool WrapAsAUV2::activateCLAP()
     _plugin->setBlockSizes(minSampleFrames, maxSampleFrames);
     _plugin->setSampleRate(Output(0).GetStreamFormat().mSampleRate);
 
+    // set whenever the host changes it; once more here for a plugin that only reads it at activation
+    applyRenderMode();
+
     // How long onIdle() waits before it decides the host has stopped rendering.
     // A fixed number of ticks cannot work: at 4096 frames and 44.1kHz a block is
     // 93ms, so a host that is rendering perfectly normally leaves gaps longer
@@ -1716,6 +1856,17 @@ void WrapAsAUV2::releaseHostMIDIOutput()
 #endif
 }
 
+OSStatus WrapAsAUV2::Reset(AudioUnitScope scope, AudioUnitElement element)
+{
+  ClapWrapper::detail::shared::SpinLockGuard processGuard(_processLock);
+  const auto result = Base::Reset(scope, element);
+  if (result != noErr) return result;
+  if (_processAdapter) _processAdapter->reset();
+  if (_flushAdapter) _flushAdapter->reset();
+  if (_initialized) _plugin->reset();
+  return noErr;
+}
+
 OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags &inFlags, const AudioTimeStamp &inTimeStamp,
                             UInt32 inFrames)
 {
@@ -1853,6 +2004,8 @@ OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags &inFlags, const AudioTime
 
 void WrapAsAUV2::onBeginEdit(clap_id id)
 {
+  _openGestures.fetch_add(1, std::memory_order_relaxed);
+
 #ifdef NOTIFYDIRECT
   AudioUnitEvent myEvent;
   myEvent.mEventType = kAudioUnitEvent_BeginParameterChangeGesture;
@@ -1893,6 +2046,13 @@ void WrapAsAUV2::onPerformEdit(const clap_event_param_value_t *value)
 
 void WrapAsAUV2::onEndEdit(clap_id id)
 {
+  // Never below zero: an end without a begin must not make a later gesture
+  // look closed while it is still open.
+  auto open = _openGestures.load(std::memory_order_relaxed);
+  while (open > 0 && !_openGestures.compare_exchange_weak(open, open - 1, std::memory_order_relaxed))
+  {
+  }
+
 #ifdef NOTIFYDIRECT
   AudioUnitEvent myEvent;
   myEvent.mEventType = kAudioUnitEvent_EndParameterChangeGesture;
@@ -1993,8 +2153,26 @@ void WrapAsAUV2::onIdle()
     PropertyChanged(kAudioUnitProperty_BypassEffect, kAudioUnitScope_Global, 0);
   }
 
-  if (_requestMarkDirty.exchange(false))
+  // Not while the plugin is in a parameter gesture. Logic records none of the
+  // parameter changes of a gesture that the PresentPreset notification below
+  // arrives in, as if it were a preset load - in Latch and Write the lane
+  // keeps the value from before the touch. A plugin can easily get there:
+  // the change that a gesture reports is often a change to its state as well,
+  // and a mark_dirty() for it reaches onIdle() before the gesture has ended.
+  // Once every gesture has ended the host has recorded what it needed, and the
+  // notification goes out on the next idle tick.
+  bool holdMarkDirty = false;
+  if (_requestMarkDirty && _openGestures.load(std::memory_order_relaxed) > 0)
   {
+    const auto now = std::chrono::steady_clock::now();
+    if (!_markDirtyHeldSince) _markDirtyHeldSince = now;
+    holdMarkDirty = now - *_markDirtyHeldSince < kMaxMarkDirtyHold;
+  }
+
+  if (!holdMarkDirty && _requestMarkDirty.exchange(false))
+  {
+    _markDirtyHeldSince.reset();
+
     // The plugin's state no longer matches what the host last read. Apple's
     // v2->v3 bridge turns this into a KVO notification on the AUAudioUnit's
     // fullState, so v3 hosts hear it too.
@@ -2204,7 +2382,7 @@ OSStatus WrapAsAUV2::SaveState(CFPropertyListRef *ptPList)
 {
   if (!ptPList) return kAudioUnitErr_InvalidParameter;
 
-  if (!IsInitialized()) return kAudioUnitErr_Uninitialized;
+  if (!_plugin) return kAudioUnitErr_Uninitialized;
 
   auto guarantee_mainthread = _plugin->AlwaysMainThread();
 
@@ -2253,13 +2431,17 @@ OSStatus WrapAsAUV2::SaveState(CFPropertyListRef *ptPList)
     CFRelease(tData);
     chunk.clear();
 
-    if (_current_program_name == nullptr)
+    // The name is the present preset's, as AUBase::SaveState writes it: the
+    // factory preset the host or the plugin chose last, or the name of the
+    // state restored last.
+    AUPreset present{};
+    if (DispatchGetProperty(kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0, &present) ==
+            noErr &&
+        present.presetName)
     {
-      _current_program_name = CFStringCreateWithCString(NULL, "Program", kCFStringEncodingUTF8);
+      CFDictionarySetValue(*dict, CFSTR(kAUPresetNameKey), present.presetName);
+      CFRelease(present.presetName);  // retained for the caller
     }
-    // const char  *name = "blarb";
-    // mPlugin->getProgramName(name);
-    CFDictionarySetValue(*dict, CFSTR(kAUPresetNameKey), _current_program_name);
 
     *ptPList = static_cast<CFPropertyListRef>(dict.release());  // transfer ownership
 #endif
@@ -2272,7 +2454,14 @@ OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
 {
   if (!plist) return kAudioUnitErr_InvalidParameter;
 
-  if (!IsInitialized()) return kAudioUnitErr_Uninitialized;
+  if (!_plugin) return kAudioUnitErr_Uninitialized;
+
+  auto guarantee_mainthread = _plugin->AlwaysMainThread();
+
+  if (!_plugin->_ext._state)
+  {
+    return AUBase::RestoreState(plist);
+  }
 
   CFDictionaryRef tDict = CFDictionaryRef(plist);
 
@@ -2282,6 +2471,15 @@ OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
   {
     return -1;
   }
+
+  // The saved name becomes the present preset, as in AUBase::RestoreState, so
+  // the next SaveState writes it again. Set before the state loads: a preset
+  // the plugin reports as loaded from it takes its place.
+  const void *pName = CFDictionaryGetValue(tDict, CFSTR(kAUPresetNameKey));
+  const bool hasName = pName && CFGetTypeID(CFTypeRef(pName)) == CFStringGetTypeID();
+  NewCustomPresetSet(AUPreset{-1, hasName ? static_cast<CFStringRef>(pName) : CFSTR("Untitled")});
+  PropertyChanged(kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0);
+
   /*
    * In the read side I fall through to default, whereas in the write
    * side I use an 'else' on the set of stream formats. This means
@@ -2313,12 +2511,6 @@ OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
     return noErr;
   }
 #endif
-
-  const void *pName = CFDictionaryGetValue(tDict, CFSTR(kAUPresetNameKey));
-  if (pName)
-  {
-    _current_program_name = CFStringCreateCopy(NULL, (CFStringRef)pName);
-  }
 
   CFDataRef tData = CFDataRef(pData);
 

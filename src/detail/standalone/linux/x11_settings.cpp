@@ -854,26 +854,15 @@ void SettingsWindow::fillBufferSizes(uint32_t preferred)
   if (running > 0 && std::find(sizes.begin(), sizes.end(), running) == sizes.end())
     sizes.insert(std::upper_bound(sizes.begin(), sizes.end(), running), running);
 
+  // each size in samples only, "256": what it comes to in time is the latency note's
   if (preferred == 0) preferred = StandaloneSettings::defaultBufferSize;
   buffer.tags.assign(sizes.begin(), sizes.end());
+  buffer.items.clear();
   buffer.selected = sizes.empty() ? -1 : 0;
   for (size_t i = 0; i < sizes.size(); ++i)
   {
+    buffer.items.push_back(std::to_string(sizes[i]));
     if (sizes[i] <= preferred) buffer.selected = static_cast<int>(i);
-  }
-  updateBufferTitles();
-}
-
-// each size with how long it lasts at the selected rate: "256 (5.8 ms)"
-void SettingsWindow::updateBufferTitles()
-{
-  const auto r{shownRate()};
-  buffer.items.clear();
-  for (auto frames : buffer.tags)
-  {
-    const auto f{static_cast<uint32_t>(frames)};
-    buffer.items.push_back(r > 0 ? std::to_string(f) + " (" + formatMs(f, r) + " ms)"
-                                 : std::to_string(f));
   }
   updateLatencyNote();
 }
@@ -900,8 +889,11 @@ void SettingsWindow::updateInputNote()
   }
 }
 
-// "Latency: in 5.3 ms, out 30.0 ms" for the running stream, while the window shows its
-// devices, channels, rate and size. not shown when the numbers are not known
+// the running stream's whole latency, input device, the blocks and output device added up
+// (latencyReadoutOf): "Latency: 27.4 ms round trip", or "Latency: 18.5 ms output" with no
+// input open, or "Latency: \u2265 5.8 ms output (device latency unknown)" when the backend
+// could not tell a device's share. while the window shows its devices, channels, rate and
+// size
 void SettingsWindow::updateLatencyNote()
 {
   const auto &stream{host->currentStream};
@@ -918,13 +910,11 @@ void SettingsWindow::updateLatencyNote()
   std::string text;
   if (showsRunning)
   {
-    const bool hasIn{stream.inputChannels > 0 && stream.inputLatency > 0};
-    const bool hasOut{stream.outputChannels > 0 && stream.outputLatency > 0};
-    if (hasIn) text = "in " + formatMs(stream.inputLatency, stream.sampleRate) + " ms";
-    if (hasOut)
-      text += (text.empty() ? "" : ", ") + std::string{"out "} +
-              formatMs(stream.outputLatency, stream.sampleRate) + " ms";
-    if (!text.empty()) text = "Latency: " + text;
+    const auto readout{latencyReadoutOf(stream)};
+    text = std::string{"Latency: "} + (readout.atLeast() ? "\u2265 " : "") +
+           formatMs(readout.total, stream.sampleRate) + " ms " +
+           (readout.roundTrip ? "round trip" : "output") +
+           (readout.atLeast() ? " (device latency unknown)" : "");
   }
   latencyNote.text = text;
 }
@@ -1079,8 +1069,16 @@ bool SettingsWindow::openShownAudio()
   {
     audioOpenedHere = true;
     apiChanged = false;
-    // the size the device granted, where it is not the one asked for
-    if (shown.frames != host->currentBufferSize) fillBufferSizes(host->currentBufferSize);
+    // the rate and the size the device granted, where they are not the ones asked for: the
+    // sizes' lengths are at the rate the stream runs at
+    const auto grantedRate{host->currentStream.sampleRate};
+    if (grantedRate > 0 && shownRate() != grantedRate)
+    {
+      fillRates(grantedRate);
+      fillBufferSizes(host->currentBufferSize);
+    }
+    else if (shown.frames != host->currentBufferSize)
+      fillBufferSizes(host->currentBufferSize);
     updateLatencyNote();
     return true;
   }
@@ -1164,7 +1162,7 @@ void SettingsWindow::onDeviceChanged()
 
 void SettingsWindow::onRateChanged()
 {
-  updateBufferTitles();
+  updateLatencyNote();
   openShownAudio();
 }
 

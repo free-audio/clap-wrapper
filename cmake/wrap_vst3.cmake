@@ -76,7 +76,7 @@ function(target_add_vst3_wrapper)
     endif()
 
     if (NOT DEFINED V3_WINDOWS_FOLDER_VST3)
-        if(TCLP_RESOURCE_DIRECTORY STREQUAL "")
+        if(V3_RESOURCE_DIRECTORY STREQUAL "")
             set(V3_WINDOWS_FOLDER_VST3 FALSE)
         else()
             set(V3_WINDOWS_FOLDER_VST3 TRUE)
@@ -125,7 +125,7 @@ function(target_add_vst3_wrapper)
                 -DCLAP_VST3_TUID_STRING="${V3_SINGLE_PLUGIN_TUID}"
                 )
     endif()
-    set_target_properties(${V3_TARGET} PROPERTIES LIBRARY_OUTPUT_NAME "${CLAP_WRAPPER_OUTPUT_NAME}")
+    set_target_properties(${V3_TARGET} PROPERTIES LIBRARY_OUTPUT_NAME "${V3_OUTPUT_NAME}")
     target_link_libraries(${V3_TARGET} PUBLIC ${V3_TARGET}-clap-wrapper-vst3-lib )
 
 
@@ -135,8 +135,8 @@ function(target_add_vst3_wrapper)
             set(V3_BUNDLE_IDENTIFIER "org.cleveraudio.wrapper.${repout}.vst3")
         endif()
 
-        if ("${CLAP_WRAPPER_BUNDLE_VERSION}" STREQUAL "")
-            set(CLAP_WRAPPER_BUNDLE_VERSION "1.0")
+        if ("${V3_BUNDLE_VERSION}" STREQUAL "")
+            set(V3_BUNDLE_VERSION "1.0")
         endif()
 
         target_link_libraries (${V3_TARGET} PUBLIC "-framework Foundation" "-framework CoreFoundation")
@@ -165,7 +165,7 @@ function(target_add_vst3_wrapper)
         macos_bundle_flag(TARGET ${V3_TARGET})
 
         if (NOT "${V3_ASSET_OUTPUT_DIRECTORY}" STREQUAL "")
-            set_target_properties(${VST3_TARGET} PROPERTIES
+            set_target_properties(${V3_TARGET} PROPERTIES
                     LIBRARY_OUTPUT_DIRECTORY ${V3_ASSET_OUTPUT_DIRECTORY})
         endif()
 
@@ -198,7 +198,7 @@ function(target_add_vst3_wrapper)
                 LIBRARY_OUTPUT_DIRECTORY_RELEASE "${v3root}/${v3root_r}/${V3_OUTPUT_NAME}.vst3/Contents/${CMAKE_SYSTEM_PROCESSOR}-linux"
                 SUFFIX ".so" PREFIX "")
         # Copy resource directory, if defined
-        if(NOT TCLP_RESOURCE_DIRECTORY STREQUAL "")
+        if(NOT V3_RESOURCE_DIRECTORY STREQUAL "")
             message(WARNING "RESOURCE_DIRECTORY defined, but not (yet) supported for Unix VST3s")
         endif()
     else()
@@ -209,12 +209,12 @@ function(target_add_vst3_wrapper)
                     SUFFIX ".vst3")
 
             if (NOT "${V3_ASSET_OUTPUT_DIRECTORY}" STREQUAL "")
-                set_target_properties(${VST3_TARGET} PROPERTIES
+                set_target_properties(${V3_TARGET} PROPERTIES
                         LIBRARY_OUTPUT_DIRECTORY "${V3_ASSET_OUTPUT_DIRECTORY}")
             endif()
 
             # Copy resource directory, if defined
-            if(NOT TCLP_RESOURCE_DIRECTORY STREQUAL "")
+            if(NOT V3_RESOURCE_DIRECTORY STREQUAL "")
                 message(WARNING "RESOURCE_DIRECTORY set, but WINDOWS_FOLDER_VST3=FALSE")
             endif()
         else()
@@ -257,7 +257,7 @@ function(target_add_vst3_wrapper)
                     SUFFIX ".vst3")
 
             # Copy resource directory, if defined
-            if(NOT TCLP_RESOURCE_DIRECTORY STREQUAL "")
+            if(NOT V3_RESOURCE_DIRECTORY STREQUAL "")
                 message(WARNING "RESOURCE_DIRECTORY defined, but not (yet) supported for Windows VST3s")
             endif()
 

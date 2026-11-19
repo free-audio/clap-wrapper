@@ -47,6 +47,14 @@ extern "C"
   typedef void *ARADocumentControllerRef;
   typedef int32_t ARAPlugInInstanceRoleFlags;
 
+  // role flags, values from ARA_API/ARAInterface.h
+  enum
+  {
+    kARAPlaybackRendererRole = 1 << 0,
+    kARAEditorRendererRole = 1 << 1,
+    kARAEditorViewRole = 1 << 2
+  };
+
   /***************************************************************************************************/
   //! Extension interface to connect to ARA at CLAP factory level.
   //! The host can pass CLAP_EXT_ARA_FACTORY to clap_plugin_entry_t.get_factory() to directly obtain an

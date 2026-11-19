@@ -12,6 +12,8 @@
 */
 
 #include "wrapper.h"
+#include <algorithm>
+#include <cmath>
 // #include "clap_proxy.h"
 #include "AAX.h"
 #include "AAX_ICollection.h"
@@ -695,23 +697,31 @@ AAX_Result ClapAsAAX::GetParameterIsAutomatable(AAX_CParamID iParameterID, AAX_C
 
 AAX_Result ClapAsAAX::GetParameterNumberOfSteps(AAX_CParamID iParameterID, int32_t *aNumSteps) const
 {
-  auto n = this->_parameterMap.find(iParameterID);
-  if (n != _parameterMap.end())
-  {
-    auto &info = n->second->_clap_param_info;
-    if (info.flags & CLAP_PARAM_IS_STEPPED)
-    {
-      // the number of steps if min=0 and max=1 is 2
-      *aNumSteps = 1 + (info.max_value - info.min_value);
-    }
-    else
-    {
-      *aNumSteps = 0;  // 0 means discrete/continuous, see class AAX_CParameter
-    }
+  if (!aNumSteps) return AAX_ERROR_NULL_ARGUMENT;
 
-    return AAX_SUCCESS;
+  auto n = this->_parameterMap.find(iParameterID);
+  if (n == _parameterMap.end())
+  {
+    // not one of ours - the base class owns any parameter we did not add
+    return AAX_CEffectParameters::GetParameterNumberOfSteps(iParameterID, aNumSteps);
   }
-  return AAX_ERROR_INVALID_PARAMETER_ID;
+
+  auto &info = n->second->_clap_param_info;
+  if (!(info.flags & CLAP_PARAM_IS_STEPPED))
+  {
+    // A continuous CLAP parameter has no step count of its own, but AAX still
+    // requires a positive one: AAX_IParameter::SetNumberOfSteps documents that
+    // "numSteps MUST be greater than zero. All other values may be considered
+    // an error by the host." AAX_CParameter already carries the right default
+    // for that case - 128, one full turn of a Command|8 style encoder - so let
+    // the base class report it rather than inventing a number here.
+    return AAX_CEffectParameters::GetParameterNumberOfSteps(iParameterID, aNumSteps);
+  }
+
+  // A stepped parameter covers every integer in [min, max], so min=0 max=1 is 2 steps.
+  const double steps = std::floor(info.max_value) - std::ceil(info.min_value) + 1.0;
+  *aNumSteps = (int32_t)std::clamp(steps, 1.0, 2147483647.0);
+  return AAX_SUCCESS;
 }
 
 AAX_Result ClapAsAAX::GetParameterValueString(AAX_CParamID iParameterID, AAX_IString *oValueString,

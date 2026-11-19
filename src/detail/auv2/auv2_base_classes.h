@@ -18,6 +18,7 @@
 #include <CoreMIDI/CoreMIDI.h>
 #include "auv2_shared.h"
 #include <atomic>
+#include <chrono>
 #include <iostream>
 #include <memory>
 #include <map>
@@ -592,6 +593,9 @@ class WrapAsAUV2 : public ausdk::AUBase,
   OSStatus SaveState(CFPropertyListRef *ptPList) override;
   OSStatus RestoreState(CFPropertyListRef plist) override;
 
+  /// Clears host render caches, pending notes, and the active CLAP processor.
+  OSStatus Reset(AudioUnitScope scope, AudioUnitElement element) override;
+
   // render
   OSStatus Render(AudioUnitRenderActionFlags &inFlags, const AudioTimeStamp &inTimeStamp,
                   UInt32 inFrames) override;
@@ -622,7 +626,8 @@ class WrapAsAUV2 : public ausdk::AUBase,
     //
     // Accompanied by a kAudioUnitProperty_PresentPreset notification, though
     // the preset has not changed: Logic Pro ignores ClassInfo, and only that
-    // lights its Compare button. See onIdle().
+    // lights its Compare button. Held back while a parameter gesture is open,
+    // because Logic then records nothing of that gesture. See onIdle().
     _requestMarkDirty = true;
   }
   void restartPlugin() override
@@ -886,6 +891,8 @@ class WrapAsAUV2 : public ausdk::AUBase,
     return _isBypassed;
   }
   void SetBypassEffect(bool bypass);
+  // passes kAudioUnitProperty_OfflineRender on through clap.render
+  void applyRenderMode();
 
   // --------------- internals
 
@@ -994,6 +1001,9 @@ class WrapAsAUV2 : public ausdk::AUBase,
   clap_id _bypassParamID = CLAP_INVALID_ID;
   bool _isBypassed = false;
 
+  // kAudioUnitProperty_OfflineRender, which a host sets around a faster than real time bounce
+  bool _offlineRender = false;
+
   // Set when the bypass parameter moved from the plugin's side of the wrapper
   // - a value the plugin emitted, or a host write of the parameter rather than
   // of the property - and drained by onIdle(), which fires the property change
@@ -1010,8 +1020,6 @@ class WrapAsAUV2 : public ausdk::AUBase,
   // writing the parameter - from announcing the host's own write back to it.
   void noteBypassParameterValue(clap_id id, double value);
 
-  CFStringRef _current_program_name = 0;
-
   // ------------- for the MIDI output
   AUMIDIOutputCallbackStruct _midioutput_hostcallback = {nullptr, nullptr};
 #if AUSDK_MIDI2_AVAILABLE
@@ -1024,6 +1032,9 @@ class WrapAsAUV2 : public ausdk::AUBase,
   std::vector<AUMIDIEventListBlock> _retiredEventListBlocks;
   MIDIProtocolID _host_midi_protocol = kMIDIProtocol_1_0;
 #endif
+
+  // ARA: the instance may be bound to a document controller only once
+  bool _araBound = false;
 
   std::atomic_bool _requestUICallback = false;
   // ---- clap.preset-load, published as AU factory presets ----
@@ -1056,6 +1067,15 @@ class WrapAsAUV2 : public ausdk::AUBase,
 
   // set by mark_dirty(), serviced in onIdle()
   std::atomic_bool _requestMarkDirty = false;
+  // Parameter gestures the plugin has begun and not ended yet: counted in
+  // onBeginEdit()/onEndEdit(), which run on the audio thread as well as the
+  // main one. onIdle() holds a mark_dirty() back while this is not zero, but
+  // not for longer than kMaxMarkDirtyHold, so an end the plugin never sends
+  // cannot keep the host from ever hearing of the change.
+  std::atomic<int32_t> _openGestures = 0;
+  static constexpr std::chrono::seconds kMaxMarkDirtyHold{5};
+  // main thread: when onIdle() first held the pending mark_dirty() back
+  std::optional<std::chrono::steady_clock::time_point> _markDirtyHeldSince;
   std::atomic_bool _requestRestart = false;
   // set by request_process(), serviced in onIdle()
   std::atomic_bool _requestProcess = false;

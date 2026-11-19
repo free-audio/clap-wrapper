@@ -188,6 +188,7 @@ function(target_add_auv3_standalone_ios_wrapper)
             "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/wrapasauv3.mm"
             "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv3/auv3_audiounit.mm"
             "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv3/auv3_parameters.mm"
+            "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv3/auv3_channellayout.mm"
             "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv3/process.mm"
             "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/os/macos.mm")
 
@@ -287,21 +288,11 @@ function(target_add_auv3_standalone_ios_wrapper)
     # broken on device. The previous version of this function rewrote the
     # ID via PlistBuddy; we stopped doing that and instead require the
     # caller to choose `<host-id>.auv3` up front.
-    add_dependencies(${AUSAIOS_TARGET} ${AUSAIOS_AUV3_TARGET})
-
-    set(_appex_src "$<TARGET_BUNDLE_DIR:${AUSAIOS_AUV3_TARGET}>")
-    set(_appex_dst "$<TARGET_BUNDLE_DIR:${AUSAIOS_TARGET}>/PlugIns/$<TARGET_PROPERTY:${AUSAIOS_AUV3_TARGET},OUTPUT_NAME>.appex")
-
+    #
     # Embedding is a copy + re-sign of the HOST (its nested-code hash
     # changes when we add the appex). The appex itself keeps the signature
     # Xcode produced. Re-signing uses Xcode's EXPANDED_CODE_SIGN_IDENTITY
     # env var so device builds get the dev cert and simulator builds fall
     # back to ad-hoc.
-    set(_ios_embed_script "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/cmake/ios_embed_appex.sh")
-    add_custom_command(TARGET ${AUSAIOS_TARGET} POST_BUILD
-            COMMAND "${_ios_embed_script}"
-                "${_appex_src}"
-                "${_appex_dst}"
-                "$<TARGET_BUNDLE_DIR:${AUSAIOS_TARGET}>"
-            COMMENT "Embedding ${AUSAIOS_AUV3_TARGET}.appex into host")
+    target_embed_auv3_appex(TARGET ${AUSAIOS_TARGET} AUV3_TARGET ${AUSAIOS_AUV3_TARGET})
 endfunction()

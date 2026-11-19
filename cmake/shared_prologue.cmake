@@ -76,7 +76,9 @@ endif()
 # deployment targets below 10.15 do not support std::filesystem
 if (APPLE)
     add_library(macos_filesystem_support INTERFACE)
-    if ("${CMAKE_OSX_DEPLOYMENT_TARGET}" VERSION_GREATER_EQUAL "10.15")
+    # Empty is the SDK's default, 10.15 or later in any SDK that builds this project. CMake
+    # defines the variable empty on Apple, so a parent project that sets no target lands here.
+    if (("${CMAKE_OSX_DEPLOYMENT_TARGET}" STREQUAL "") OR ("${CMAKE_OSX_DEPLOYMENT_TARGET}" VERSION_GREATER_EQUAL "10.15"))
         message(STATUS "cmake-wrapper: using std::filesystem as macOS deployment it ${CMAKE_OSX_DEPLOYMENT_TARGET}; using std::filesystem")
         target_compile_definitions(macos_filesystem_support INTERFACE -DMACOS_USE_STD_FILESYSTEM)
     else()
@@ -265,6 +267,20 @@ function(guarantee_clap_wrapper_shared)
         target_link_libraries(clap-wrapper-shared-detail PRIVATE macos_filesystem_support)
     endif()
 endfunction(guarantee_clap_wrapper_shared)
+
+# The category a macOS app the wrapper makes is filed under (LSApplicationCategoryType):
+# Finder groups the Applications folder by it, and the Apps view sorts by it. `category` is
+# one of Apple's public.app-category.* identifiers; empty means Music, which is what a
+# standalone or an AUv3's host app is. `result` gets the identifier, for the Info.plist.
+function(macos_app_category category result)
+    if ("${category}" STREQUAL "")
+        set(category "public.app-category.music")
+    endif()
+    if (NOT category MATCHES "^public\\.app-category\\.[a-z]+(-[a-z]+)*$")
+        message(FATAL_ERROR "clap-wrapper: MACOS_APP_CATEGORY '${category}' is not an app category such as public.app-category.music")
+    endif()
+    set(${result} "${category}" PARENT_SCOPE)
+endfunction(macos_app_category)
 
 # add a SetFile POST_BUILD for bundles if you aren't using xcode
 function(macos_bundle_flag)

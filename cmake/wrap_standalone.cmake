@@ -34,10 +34,20 @@ function(target_add_standalone_wrapper)
 
             WINDOWS_ICON
             MACOS_ICON
+            MACOS_APP_CATEGORY  # the app's category on macOS; public.app-category.music if not given
 
             MACOS_EMBEDDED_CLAP_LOCATION
+
+            # what the window shows before the plugin's gui exists (standalone_window_hints.h)
+            WINDOW_SIZE         # "<width>x<height>", the gui's size, for a first launch
+            BACKGROUND_COLOR    # "#RRGGBB", the gui's background
+            SPLASH_IMAGE        # a png, drawn in the middle of the window until the gui is there
+            SPLASH_IMAGE_SCALE  # how many of the png's pixels make one point; 1 if not given
             )
-    cmake_parse_arguments(SA "" "${oneValueArgs}" "" ${ARGN} )
+    set(multiValueArgs
+            URL_SCHEMES  # schemes a link opens the standalone with; the plugin gets the url
+            )
+    cmake_parse_arguments(SA "" "${oneValueArgs}" "${multiValueArgs}" ${ARGN} )
 
     if (NOT DEFINED SA_TARGET)
         message(FATAL_ERROR "clap-wrapper: target_add_standalone_wrapper requires a target")
@@ -80,6 +90,90 @@ function(target_add_standalone_wrapper)
     if (NOT DEFINED SA_BUNDLE_VERSION)
         message(STATUS "No SA_BUNDLE_VERSION - using ${PROJECT_VERSION}")
         set(SA_BUNDLE_VERSION "${PROJECT_VERSION}")
+    endif()
+
+    # the url schemes a link opens the standalone with (open_url, standalone features):
+    # declared in the macos bundle's Info.plist, and on every platform the ones the
+    # standalone takes from the system and hands the plugin. lowercase, as a scheme is
+    # compared without case
+    set(sa_url_schemes "")
+    foreach(_scheme IN LISTS SA_URL_SCHEMES)
+        string(TOLOWER "${_scheme}" _scheme)
+        if (NOT _scheme MATCHES "^[a-z][a-z0-9+.-]*$")
+            message(FATAL_ERROR "clap-wrapper: '${_scheme}' in URL_SCHEMES is not a url scheme: a letter, then letters, digits, '+', '-' or '.'")
+        endif()
+        list(APPEND sa_url_schemes "${_scheme}")
+    endforeach()
+    list(REMOVE_DUPLICATES sa_url_schemes)
+
+    # the app's category in the macos bundle's Info.plist, checked on every platform so that
+    # a typo fails where it is made
+    macos_app_category("${SA_MACOS_APP_CATEGORY}" sa_app_category)
+
+    # what the window shows before the plugin's gui exists, checked here so that a typo is a
+    # configure error and not a window that silently comes up without it
+    set(sa_window_definitions "")
+    if (DEFINED SA_WINDOW_SIZE AND NOT "${SA_WINDOW_SIZE}" STREQUAL "")
+        if (NOT SA_WINDOW_SIZE MATCHES "^([1-9][0-9]*)x([1-9][0-9]*)$")
+            message(FATAL_ERROR "clap-wrapper: WINDOW_SIZE '${SA_WINDOW_SIZE}' is not <width>x<height>, such as 800x600")
+        endif()
+        set(sa_window_width ${CMAKE_MATCH_1})
+        set(sa_window_height ${CMAKE_MATCH_2})
+        if (sa_window_width GREATER 16384 OR sa_window_height GREATER 16384)
+            message(FATAL_ERROR "clap-wrapper: WINDOW_SIZE '${SA_WINDOW_SIZE}' is larger than 16384 a side")
+        endif()
+        list(APPEND sa_window_definitions
+                CLAP_WRAPPER_STANDALONE_WINDOW_WIDTH=${sa_window_width}
+                CLAP_WRAPPER_STANDALONE_WINDOW_HEIGHT=${sa_window_height})
+    endif()
+    if (DEFINED SA_BACKGROUND_COLOR AND NOT "${SA_BACKGROUND_COLOR}" STREQUAL "")
+        if (NOT SA_BACKGROUND_COLOR MATCHES "^#([0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F])$")
+            message(FATAL_ERROR "clap-wrapper: BACKGROUND_COLOR '${SA_BACKGROUND_COLOR}' is not #RRGGBB")
+        endif()
+        list(APPEND sa_window_definitions CLAP_WRAPPER_STANDALONE_BACKGROUND_COLOR=0x${CMAKE_MATCH_1})
+    endif()
+    set(sa_splash_source "")
+    if (DEFINED SA_SPLASH_IMAGE AND NOT "${SA_SPLASH_IMAGE}" STREQUAL "")
+        get_filename_component(sa_splash_image "${SA_SPLASH_IMAGE}" ABSOLUTE)
+        if (NOT EXISTS "${sa_splash_image}" OR IS_DIRECTORY "${sa_splash_image}")
+            message(FATAL_ERROR "clap-wrapper: SPLASH_IMAGE '${SA_SPLASH_IMAGE}' is not a file")
+        endif()
+        file(READ "${sa_splash_image}" sa_splash_signature LIMIT 8 HEX)
+        if (NOT sa_splash_signature STREQUAL "89504e470d0a1a0a")
+            message(FATAL_ERROR "clap-wrapper: SPLASH_IMAGE '${SA_SPLASH_IMAGE}' is not a png")
+        endif()
+        set(sa_splash_scale 1)
+        if (DEFINED SA_SPLASH_IMAGE_SCALE AND NOT "${SA_SPLASH_IMAGE_SCALE}" STREQUAL "")
+            if (NOT SA_SPLASH_IMAGE_SCALE MATCHES "^[1-8]$")
+                message(FATAL_ERROR "clap-wrapper: SPLASH_IMAGE_SCALE '${SA_SPLASH_IMAGE_SCALE}' is not a whole number from 1 to 8")
+            endif()
+            set(sa_splash_scale ${SA_SPLASH_IMAGE_SCALE})
+        endif()
+
+        # the png's bytes as a c array, written only when they changed, so that the
+        # standalone is not rebuilt on every configure
+        file(READ "${sa_splash_image}" sa_splash_hex HEX)
+        string(LENGTH "${sa_splash_hex}" sa_splash_hex_length)
+        math(EXPR sa_splash_size "${sa_splash_hex_length} / 2")
+        string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," sa_splash_bytes "${sa_splash_hex}")
+        string(REGEX REPLACE "((0x[0-9a-f][0-9a-f],){32})" "\\1\n  " sa_splash_bytes "${sa_splash_bytes}")
+        set(sa_splash_source "${CMAKE_BINARY_DIR}/generated_splash/${SA_TARGET}/splash_image.cpp")
+        file(WRITE "${sa_splash_source}.tmp"
+                "// written by clap-wrapper's wrap_standalone.cmake from ${sa_splash_image}\n"
+                "#include <cstddef>\n\n"
+                "namespace freeaudio::clap_wrapper::standalone\n{\n"
+                "extern const unsigned char splashImagePng[];\n"
+                "extern const size_t splashImagePngSize;\n"
+                "const unsigned char splashImagePng[] = {\n  ${sa_splash_bytes}\n};\n"
+                "const size_t splashImagePngSize = ${sa_splash_size};\n"
+                "}  // namespace freeaudio::clap_wrapper::standalone\n")
+        configure_file("${sa_splash_source}.tmp" "${sa_splash_source}" COPYONLY)
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${sa_splash_image}")
+        list(APPEND sa_window_definitions
+                CLAP_WRAPPER_STANDALONE_SPLASH_IMAGE=1
+                CLAP_WRAPPER_STANDALONE_SPLASH_SCALE=${sa_splash_scale})
+    elseif (DEFINED SA_SPLASH_IMAGE_SCALE AND NOT "${SA_SPLASH_IMAGE_SCALE}" STREQUAL "")
+        message(FATAL_ERROR "clap-wrapper: SPLASH_IMAGE_SCALE is given without a SPLASH_IMAGE")
     endif()
 
     # RtAudio and RtMidi for everything, or RtAudio for ASIO only
@@ -142,12 +236,21 @@ function(target_add_standalone_wrapper)
             ${sasrc}/standalone_settings.cpp
             ${sasrc}/standalone_audio.cpp
             ${sasrc}/standalone_backends.cpp
+            ${sasrc}/standalone_window_hints.cpp
+            ${sa_splash_source}
             )
     target_link_libraries(${salib}
             PUBLIC
             clap-wrapper-shared-detail
             )
     target_link_libraries(${salib} PRIVATE clap-wrapper-compile-options)
+    # one string, the schemes separated by commas; empty for a standalone no link opens
+    string(REPLACE ";" "," sa_url_schemes_joined "${sa_url_schemes}")
+    target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_URL_SCHEMES="${sa_url_schemes_joined}")
+    # read only by standalone_window_hints.cpp; the frontends ask windowHints()
+    target_compile_definitions(${salib} PRIVATE ${sa_window_definitions})
+    # the backends each keep file-local helpers, some with the same names
+    set_target_properties(${salib} PROPERTIES UNITY_BUILD OFF)
 
     if (sa_rtaudio OR sa_asio)
         guarantee_rtaudio()
@@ -191,7 +294,7 @@ function(target_add_standalone_wrapper)
         endif()
         target_link_libraries(${salib}
                 PUBLIC "-framework AVFoundation" "-framework Foundation" "-framework CoreFoundation" "-framework AppKit"
-                "-framework CoreAudio" "-framework CoreMIDI")
+                "-framework QuartzCore" "-framework CoreAudio" "-framework CoreMIDI")
     elseif (WIN32 AND NOT sa_rtaudio)
         target_sources(${salib} PRIVATE
                 ${sasrc}/windows/wasapi_backend.cpp
@@ -203,6 +306,39 @@ function(target_add_standalone_wrapper)
         set(MAIN_XIB "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/macos/MainMenu.xib")
         set(GEN_XIB "${CMAKE_BINARY_DIR}/generated_xib/${SA_TARGET}/MainMenu.xib")
         configure_file(${MAIN_XIB} ${GEN_XIB})
+
+        # the Info.plist template with the url schemes and the app category in it, one per
+        # target as the xib. cmake fills in the template's ${} and @@ itself when it makes the
+        # bundle, so these go in by plain replacement, and what cmake fills in is left for it
+        set(MAIN_PLIST "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/macos/Info.plist.in")
+        set(GEN_PLIST "${CMAKE_BINARY_DIR}/generated_plist/${SA_TARGET}/Info.plist.in")
+        set(sa_url_types "")
+        if (sa_url_schemes)
+            string(CONCAT sa_url_types
+                    "<key>CFBundleURLTypes</key>\n"
+                    "\t<array>\n"
+                    "\t\t<dict>\n"
+                    "\t\t\t<key>CFBundleURLName</key>\n"
+                    "\t\t\t<string>\${MACOSX_BUNDLE_GUI_IDENTIFIER}</string>\n"
+                    "\t\t\t<key>CFBundleTypeRole</key>\n"
+                    "\t\t\t<string>Viewer</string>\n"
+                    "\t\t\t<key>CFBundleURLSchemes</key>\n"
+                    "\t\t\t<array>\n")
+            foreach(_scheme IN LISTS sa_url_schemes)
+                string(APPEND sa_url_types "\t\t\t\t<string>${_scheme}</string>\n")
+            endforeach()
+            string(APPEND sa_url_types
+                    "\t\t\t</array>\n"
+                    "\t\t</dict>\n"
+                    "\t</array>")
+        endif()
+        file(READ "${MAIN_PLIST}" sa_plist)
+        string(REPLACE "<!-- clap-wrapper: url types -->" "${sa_url_types}" sa_plist "${sa_plist}")
+        string(REPLACE "<!-- clap-wrapper: app category -->" "${sa_app_category}" sa_plist "${sa_plist}")
+        # written only when it changed, so that the bundle is not remade on every configure
+        file(WRITE "${GEN_PLIST}.tmp" "${sa_plist}")
+        configure_file("${GEN_PLIST}.tmp" "${GEN_PLIST}" COPYONLY)
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${MAIN_PLIST}")
 
         target_sources(${SA_TARGET} PRIVATE
                 "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/wrapasstandalone.mm"
@@ -223,7 +359,7 @@ function(target_add_standalone_wrapper)
                 MACOSX_BUNDLE_LONG_VERSION_STRING ${SA_BUNDLE_VERSION}
                 MACOSX_BUNDLE_BUNDLE_VERSION ${SA_BUNDLE_VERSION}
                 MACOSX_BUNDLE TRUE
-                MACOSX_BUNDLE_INFO_PLIST ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/standalone/macos/Info.plist.in
+                MACOSX_BUNDLE_INFO_PLIST ${GEN_PLIST}
                 XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${SA_BUNDLE_IDENTIFIER}"
                 RESOURCE "${GEN_XIB}"
                 )
@@ -285,8 +421,10 @@ function(target_add_standalone_wrapper)
             target_compile_definitions(${salib} PUBLIC CLAP_WRAPPER_STANDALONE_ASIO=1)
         endif()
 
-        # Dwmapi and UxTheme give the settings window its dark title bar and controls
-        target_link_libraries(${SA_TARGET} PRIVATE base-sdk-wil ComCtl32.Lib Dwmapi.lib UxTheme.lib)
+        # Dwmapi and UxTheme give the settings window its dark title bar and controls;
+        # windowscodecs decodes the splash image and Msimg32 draws it (AlphaBlend)
+        target_link_libraries(${SA_TARGET} PRIVATE base-sdk-wil ComCtl32.Lib Dwmapi.lib UxTheme.lib
+                windowscodecs.lib Msimg32.lib)
 
     elseif(UNIX)
         target_sources(${SA_TARGET} PRIVATE

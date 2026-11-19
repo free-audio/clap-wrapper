@@ -2,18 +2,116 @@
 
 #include <dwmapi.h>
 #include <uxtheme.h>
+#include <wincodec.h>
 
 #include <algorithm>
 #include <cmath>
 #include <iterator>
+
+#include "detail/standalone/standalone_window_hints.h"
 
 namespace freeaudio::clap_wrapper::standalone::windows_standalone
 {
 namespace
 {
 // the plugin window whose settings window the standalone features extension shows;
-// null before it is created and after it is destroyed
+// null before the plugin is in it and after it is destroyed
 Plugin *settingsWindowOwner{nullptr};
+
+::COLORREF fromRgb(uint32_t rgb)
+{
+  return RGB((rgb >> 16) & 0xff, (rgb >> 8) & 0xff, rgb & 0xff);
+}
+
+// a whole number of pixels, rounded down also below zero
+int floorHalf(int value)
+{
+  return static_cast<int>(std::floor(value / 2.0));
+}
+
+// the splash image at a dpi, as a premultiplied 32-bit dib section: the png's pixels over its
+// scale make units of 96 dpi, which the dpi scales. null when the bytes do not decode
+::HBITMAP decodeSplashImage(const unsigned char *png, size_t size, uint32_t scale, uint32_t dpi,
+                            uint32_t &width, uint32_t &height)
+{
+  auto factory{wil::CoCreateInstanceNoThrow<::IWICImagingFactory>(CLSID_WICImagingFactory)};
+  wil::com_ptr_nothrow<::IWICStream> stream;
+  if (!factory || FAILED(factory->CreateStream(&stream)) ||
+      FAILED(stream->InitializeFromMemory(const_cast<::BYTE *>(png), static_cast<::DWORD>(size))))
+    return nullptr;
+
+  wil::com_ptr_nothrow<::IWICBitmapDecoder> decoder;
+  wil::com_ptr_nothrow<::IWICBitmapFrameDecode> frame;
+  ::UINT pixelsWide{0}, pixelsHigh{0};
+  if (FAILED(factory->CreateDecoderFromStream(stream.get(), nullptr, WICDecodeMetadataCacheOnDemand,
+                                              &decoder)) ||
+      FAILED(decoder->GetFrame(0, &frame)) || FAILED(frame->GetSize(&pixelsWide, &pixelsHigh)) ||
+      pixelsWide == 0 || pixelsHigh == 0)
+    return nullptr;
+
+  const auto toPixels = [&](::UINT imagePixels)
+  { return std::max<::UINT>(1, static_cast<::UINT>(std::lround(imagePixels * dpi / (96.0 * scale)))); };
+  width = toPixels(pixelsWide);
+  height = toPixels(pixelsHigh);
+
+  wil::com_ptr_nothrow<::IWICBitmapScaler> scaler;
+  wil::com_ptr_nothrow<::IWICFormatConverter> converter;
+  if (FAILED(factory->CreateBitmapScaler(&scaler)) ||
+      FAILED(scaler->Initialize(frame.get(), width, height, WICBitmapInterpolationModeFant)) ||
+      FAILED(factory->CreateFormatConverter(&converter)) ||
+      FAILED(converter->Initialize(scaler.get(), GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone,
+                                   nullptr, 0.0, WICBitmapPaletteTypeCustom)))
+    return nullptr;
+
+  ::BITMAPINFO info{};
+  info.bmiHeader.biSize = sizeof(info.bmiHeader);
+  info.bmiHeader.biWidth = static_cast<::LONG>(width);
+  info.bmiHeader.biHeight = -static_cast<::LONG>(height);  // top down
+  info.bmiHeader.biPlanes = 1;
+  info.bmiHeader.biBitCount = 32;
+  info.bmiHeader.biCompression = BI_RGB;
+  void *bits{nullptr};
+  wil::unique_hbitmap bitmap{::CreateDIBSection(nullptr, &info, DIB_RGB_COLORS, &bits, nullptr, 0)};
+  if (!bitmap || !bits ||
+      FAILED(converter->CopyPixels(nullptr, width * 4, width * height * 4, static_cast<::BYTE *>(bits))))
+    return nullptr;
+
+  return bitmap.release();
+}
+
+// a window's title bar, dark or not; one already on screen is drawn again
+void applyTitleBarAppearance(::HWND hwnd, bool dark)
+{
+  // 20 from Windows 10 20H1, 19 before it
+  ::BOOL useDark{dark ? TRUE : FALSE};
+  if (FAILED(::DwmSetWindowAttribute(hwnd, 20, &useDark, sizeof(useDark))))
+    ::DwmSetWindowAttribute(hwnd, 19, &useDark, sizeof(useDark));
+
+  // a title bar already on screen keeps its colours until its frame is drawn again, which
+  // windows 10 does only on a change of activation
+  if (::IsWindowVisible(hwnd))
+  {
+    ::SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+                   SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    if (::GetActiveWindow() == hwnd)
+    {
+      ::DefWindowProcW(hwnd, WM_NCACTIVATE, FALSE, 0);
+      ::DefWindowProcW(hwnd, WM_NCACTIVATE, TRUE, 0);
+    }
+  }
+}
+
+// the font of Windows' own dialogs, at a size in units of 96 dpi
+::HFONT getMessageFontOfSize(uint32_t dpi, uint32_t size)
+{
+  ::NONCLIENTMETRICSW metrics{sizeof(::NONCLIENTMETRICSW)};
+  if (!::SystemParametersInfoForDpi(SPI_GETNONCLIENTMETRICS, sizeof(metrics), &metrics, 0, dpi))
+    ::GetObjectW(getFontFromSystem(), sizeof(metrics.lfMessageFont), &metrics.lfMessageFont);
+
+  auto font{metrics.lfMessageFont};
+  font.lfHeight = -::MulDiv(static_cast<int>(size), static_cast<int>(dpi), USER_DEFAULT_SCREEN_DPI);
+  return ::CreateFontIndirectW(&font);
+}
 }  // namespace
 
 std::vector<std::string> getArgs()
@@ -448,6 +546,50 @@ void Window::adjustSize(uint32_t width, uint32_t height)
                  SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOMOVE);
 }
 
+::SIZE Window::frameSize()
+{
+  ::RECT rect{};
+  ::AdjustWindowRectExForDpi(&rect, static_cast<::DWORD>(::GetWindowLongPtrW(hwnd.get(), GWL_STYLE)),
+                             ::GetMenu(hwnd.get()) != nullptr,
+                             static_cast<::DWORD>(::GetWindowLongPtrW(hwnd.get(), GWL_EXSTYLE)), dpi);
+  return {rect.right - rect.left, rect.bottom - rect.top};
+}
+
+// adjustSize keeps the top-left corner, so a window that grows near the screen's edge, as a gui
+// asks for when it zooms, runs off it. If the size changed, the window is moved as little as it
+// takes to lie on its monitor's work area: pushed back from the right and the bottom, and, if
+// it is larger than the area, with its top-left corner and so its title bar in it. A window the
+// user left partly off the screen stays where it is as long as its size does.
+void Window::resizeOnWorkArea(uint32_t width, uint32_t height)
+{
+  const auto before{client};
+  adjustSize(width, height);
+  if (client.width == before.width && client.height == before.height) return;
+
+  ::MONITORINFO info{sizeof(::MONITORINFO)};
+  ::RECT frame{};
+  if (!::GetMonitorInfoW(::MonitorFromWindow(hwnd.get(), MONITOR_DEFAULTTONEAREST), &info) ||
+      !::GetWindowRect(hwnd.get(), &frame))
+    return;
+
+  // what is seen of the window: without the resize borders Windows draws invisibly around it
+  ::RECT visible{frame};
+  if (FAILED(
+          ::DwmGetWindowAttribute(hwnd.get(), DWMWA_EXTENDED_FRAME_BOUNDS, &visible, sizeof(visible))))
+    visible = frame;
+
+  const auto &work{info.rcWork};
+  ::LONG dx{0}, dy{0};
+  if (visible.right > work.right) dx = work.right - visible.right;
+  if (visible.bottom > work.bottom) dy = work.bottom - visible.bottom;
+  dx = std::max(dx, work.left - visible.left);
+  dy = std::max(dy, work.top - visible.top);
+  if (dx == 0 && dy == 0) return;
+
+  ::SetWindowPos(hwnd.get(), nullptr, frame.left + dx, frame.top + dy, 0, 0,
+                 SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOSIZE);
+}
+
 void Window::setPosition(Position position)
 {
   ::SetWindowPos(hwnd.get(), nullptr, position.x, position.y, position.width, position.height,
@@ -457,6 +599,10 @@ void Window::setPosition(Position position)
 void Window::setStyle(::LONG_PTR style)
 {
   ::SetWindowLongPtrW(hwnd.get(), GWL_STYLE, style);
+  // the frame follows only when told, which matters for a window already on screen (the
+  // splash), whose size is set for the new frame next
+  ::SetWindowPos(hwnd.get(), nullptr, 0, 0, 0, 0,
+                 SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 void Window::toggleCentered(bool centered)
@@ -816,6 +962,118 @@ bool showSettingsScreen()
 
 namespace
 {
+// a WM_COPYDATA that carries a url, as utf-8 without a terminator; anything else sent to
+// the receiver is not taken
+constexpr ::ULONG_PTR copyDataUrl{0x434c5552};  // 'CLUR'
+
+// what arrived and was not handed on yet
+std::vector<std::string> receivedUrls;
+
+// per plugin, so that the standalones of two plugins do not take each other's urls
+std::wstring urlReceiverClassName()
+{
+  std::string key{PLUGIN_ID};
+  if (key.empty()) key = OUTPUT_NAME;
+  return toUTF16("clap-wrapper.open-url." + key);
+}
+}  // namespace
+
+size_t forwardUrlsToRunningInstance(const std::vector<std::string> &urls)
+{
+  auto receiver{::FindWindowExW(HWND_MESSAGE, nullptr, urlReceiverClassName().c_str(), nullptr)};
+  if (!receiver) return 0;
+
+  // this launch may give the foreground away, having been started by the browser the user
+  // clicked in, and the instance brings its window to the front
+  ::DWORD processId{0};
+  ::GetWindowThreadProcessId(receiver, &processId);
+  if (processId != 0) ::AllowSetForegroundWindow(processId);
+
+  size_t taken{0};
+  for (const auto &url : urls)
+  {
+    ::COPYDATASTRUCT data{copyDataUrl, static_cast<::DWORD>(url.size()), const_cast<char *>(url.data())};
+    ::DWORD_PTR result{FALSE};
+    // an instance still starting up answers once its main loop runs: it made the receiver
+    // before the plugin, which can take seconds
+    if (::SendMessageTimeoutW(receiver, WM_COPYDATA, 0, reinterpret_cast<::LPARAM>(&data), SMTO_NORMAL,
+                              15000, &result) == 0 ||
+        result != TRUE)
+    {
+      log("The running instance did not take a url; this launch opens it itself");
+      break;
+    }
+    ++taken;
+  }
+
+  return taken;
+}
+
+bool UrlReceiver::create()
+{
+  const auto className{urlReceiverClassName()};
+  auto instance{getInstance()};
+
+  ::WNDCLASSEXW windowClass{sizeof(::WNDCLASSEXW)};
+  windowClass.lpfnWndProc = procedure;
+  windowClass.hInstance = instance;
+  windowClass.lpszClassName = className.c_str();
+
+  if (::GetClassInfoExW(instance, className.c_str(), &windowClass) == 0 &&
+      ::RegisterClassExW(&windowClass) == 0)
+  {
+    return false;
+  }
+
+  hwnd.reset(::CreateWindowExW(0, className.c_str(), L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, instance,
+                               nullptr));
+
+  return static_cast<bool>(hwnd);
+}
+
+::LRESULT CALLBACK UrlReceiver::procedure(::HWND hwnd, ::UINT msg, ::WPARAM wparam, ::LPARAM lparam)
+{
+  if (msg == WM_COPYDATA)
+  {
+    auto data{reinterpret_cast<const ::COPYDATASTRUCT *>(lparam)};
+    if (!data || data->dwData != copyDataUrl || !data->lpData) return FALSE;
+
+    std::string url{static_cast<const char *>(data->lpData), data->cbData};
+    if (!isOwnUrl(url)) return FALSE;
+
+    receivedUrls.push_back(std::move(url));
+    ::PostMessageW(hwnd, WM_OPEN_RECEIVED_URLS, 0, 0);
+
+    return TRUE;
+  }
+
+  if (msg == WM_OPEN_RECEIVED_URLS)
+  {
+    auto urls{std::move(receivedUrls)};
+    receivedUrls.clear();
+
+    auto *sah{getStandaloneHost()};
+
+    if (sah->urlDeliveryBegun)
+    {
+      // closing: the plugin is on its way out with its window
+      if (!settingsWindowOwner || !settingsWindowOwner->hwnd) return 0;
+
+      auto window{settingsWindowOwner->hwnd.get()};
+      if (::IsIconic(window)) ::ShowWindow(window, SW_RESTORE);
+      ::SetForegroundWindow(window);
+    }
+
+    for (const auto &url : urls) sah->openUrl(url);
+
+    return 0;
+  }
+
+  return ::DefWindowProcW(hwnd, msg, wparam, lparam);
+}
+
+namespace
+{
 // the settings window's measures, in device independent pixels; the macos window's, in
 // points, where windows has no convention of its own
 constexpr int windowMargin{20};
@@ -978,13 +1236,8 @@ void Plugin::hideSettings()
   ::PostMessageW(hwnd.get(), WM_SETTINGS_CLOSED, settingsApplied ? 1 : 0, 0);
 }
 
-Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
+Plugin::Plugin(int nCmdShow) : showCommand{nCmdShow == SW_HIDE ? SW_SHOWNORMAL : nCmdShow}
 {
-  plugin.clap = clapPlugin;
-  plugin.plugin = plugin.clap->_plugin;
-  plugin.gui = plugin.clap->_ext._gui;
-  plugin.state = plugin.clap->_ext._state;
-
   message.on(WM_CREATE,
              [this](Message msg)
              {
@@ -1021,7 +1274,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
              {
                auto windowPos{reinterpret_cast<::LPWINDOWPOS>(msg.lparam)};
 
-               if (plugin.gui)
+               if (plugin.gui && guiCreated)
                {
                  if (windowPos->flags & SWP_SHOWWINDOW)
                  {
@@ -1044,6 +1297,15 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                  }
                }
 
+               // The splash is drawn for the window's size, and while it is up nothing else
+               // paints the window: the message loop runs once the plugin and its gui are made.
+               // So a new size, such as the gui's own, is painted now, with the splash in its
+               // middle; otherwise what was kept of the old one shows until the gui covers it.
+               if (splashUp && !(windowPos->flags & SWP_NOSIZE))
+               {
+                 ::RedrawWindow(msg.hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW);
+               }
+
                // Only remember the restored (normal) geometry. Capturing while minimized or
                // maximized would persist the -32000 iconic sentinel and throw the window
                // off-screen on the next launch. GetWindowRect is the true screen rect (the
@@ -1061,6 +1323,76 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                return 0;
              });
 
+  // A drag of the window's edge or corner gives the gui the size it would make, and the window
+  // takes the gui's answer (adjust_size), the edge opposite the one dragged staying where it
+  // is. So the window never becomes smaller than the gui, which would clip it, nor of a size
+  // the gui does not take - and the size the gui remembers is the window's.
+  message.on(
+      WM_SIZING,
+      [this](Message msg) -> ::LRESULT
+      {
+        if (!plugin.gui || !guiCreated || !plugin.gui->can_resize(plugin.plugin))
+          return ::DefWindowProcW(msg.hwnd, msg.msg, msg.wparam, msg.lparam);
+
+        auto rect{reinterpret_cast<::LPRECT>(msg.lparam)};
+        const auto frame{frameSize()};
+        const auto frameWidth{frame.cx}, frameHeight{frame.cy};
+
+        auto width{static_cast<uint32_t>(std::max(0L, (rect->right - rect->left) - frameWidth))};
+        auto height{static_cast<uint32_t>(std::max(0L, (rect->bottom - rect->top) - frameHeight))};
+        if (!plugin.gui->adjust_size(plugin.plugin, &width, &height)) return TRUE;
+
+        const auto outerWidth{static_cast<::LONG>(width) + frameWidth};
+        const auto outerHeight{static_cast<::LONG>(height) + frameHeight};
+        switch (msg.wparam)
+        {
+          case WMSZ_LEFT:
+          case WMSZ_TOPLEFT:
+          case WMSZ_BOTTOMLEFT:
+            rect->left = rect->right - outerWidth;
+            break;
+          default:
+            rect->right = rect->left + outerWidth;
+            break;
+        }
+        switch (msg.wparam)
+        {
+          case WMSZ_TOP:
+          case WMSZ_TOPLEFT:
+          case WMSZ_TOPRIGHT:
+            rect->top = rect->bottom - outerHeight;
+            break;
+          default:
+            rect->bottom = rect->top + outerHeight;
+            break;
+        }
+
+        return TRUE;
+      });
+
+  // The smallest window the gui takes, for whatever sizes the window without a drag of its
+  // edge: a snap to half or a quarter of the screen keeps to this minimum, and does not ask
+  // WM_SIZING. The gui's adjust_size gives it as its answer to the smallest size, 1 x 1.
+  message.on(WM_GETMINMAXINFO,
+             [this](Message msg) -> ::LRESULT
+             {
+               if (!plugin.gui || !guiCreated || !plugin.gui->can_resize(plugin.plugin))
+                 return ::DefWindowProcW(msg.hwnd, msg.msg, msg.wparam, msg.lparam);
+
+               uint32_t width{1}, height{1};
+               if (!plugin.gui->adjust_size(plugin.plugin, &width, &height))
+                 return ::DefWindowProcW(msg.hwnd, msg.msg, msg.wparam, msg.lparam);
+
+               const auto frame{frameSize()};
+               auto info{reinterpret_cast<::LPMINMAXINFO>(msg.lparam)};
+               info->ptMinTrackSize.x =
+                   std::max(info->ptMinTrackSize.x, static_cast<::LONG>(width) + frame.cx);
+               info->ptMinTrackSize.y =
+                   std::max(info->ptMinTrackSize.y, static_cast<::LONG>(height) + frame.cy);
+
+               return 0;
+             });
+
   message.on(WM_EXITSIZEMOVE,
              [this](Message msg)
              {
@@ -1074,10 +1406,35 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
   message.on(WM_DPICHANGED,
              [this](Message msg)
              {
-               if (plugin.gui)
+               if (plugin.gui && guiCreated)
                {
                  plugin.gui->set_scale(plugin.plugin, scale);
                }
+
+               return 0;
+             });
+
+  // the gui's background, where the window shows it: under the splash, and wherever the gui
+  // does not cover the window
+  message.on(WM_ERASEBKGND,
+             [this](Message msg) -> ::LRESULT
+             {
+               if (!backgroundBrush) return ::DefWindowProcW(msg.hwnd, msg.msg, msg.wparam, msg.lparam);
+
+               ::RECT area{};
+               ::GetClientRect(msg.hwnd, &area);
+               ::FillRect(reinterpret_cast<::HDC>(msg.wparam), &area, backgroundBrush.get());
+
+               return 1;
+             });
+
+  message.on(WM_PAINT,
+             [this](Message msg)
+             {
+               ::PAINTSTRUCT paint{};
+               auto dc{::BeginPaint(msg.hwnd, &paint)};
+               if (splashUp) paintSplash(dc);
+               ::EndPaint(msg.hwnd, &paint);
 
                return 0;
              });
@@ -1106,6 +1463,15 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
              [this](Message msg)
              {
                if (!sah) return 0;
+
+               // the menu's own entries need the plugin, which the window is up without while
+               // the plugin is made (attach); the system's still work, and closing is refused
+               // until then (WM_CLOSE)
+               if (!plugin.clap)
+               {
+                 ::DefWindowProcW(msg.hwnd, msg.msg, msg.wparam, msg.lparam);
+                 return 0;
+               }
 
                switch (msg.wparam)
                {
@@ -1275,11 +1641,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
             break;
 
           case Settings::Identifier::AudioSamplerate:
-            if (code == CBN_SELCHANGE)
-            {
-              refreshBufferSizeTitles();
-              applyShownAudio();
-            }
+            if (code == CBN_SELCHANGE) applyShownAudio();
             break;
 
           case Settings::Identifier::AudioBuffersize:
@@ -1521,7 +1883,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                sah->onScreenAppearanceChanged = nullptr;
                settingsWindowOwner = nullptr;
 
-               if (plugin.gui)
+               if (plugin.gui && guiCreated)
                {
                  plugin.gui->destroy(plugin.plugin);
                }
@@ -1563,6 +1925,16 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                return 0;
              });
 
+  // closing quits (WM_DESTROY), which cannot happen while the plugin is still being made: a
+  // modal box during that, from the plugin say, would let the window be closed under it
+  message.on(WM_CLOSE,
+             [this](Message msg)
+             {
+               if (plugin.clap) hwnd.reset();
+
+               return 0;
+             });
+
   // the title bar's close button, which is Cancel
   settings.message.on(WM_CLOSE,
                       [this](Message msg)
@@ -1584,14 +1956,20 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
                return 0;
              });
 
+  if (windowHints().hasBackground)
+    backgroundBrush.reset(::CreateSolidBrush(fromRgb(windowHints().background)));
+
   create(OUTPUT_NAME);
+  // in the appearance the plugin's entry named, if it did (mainPrepare), from the first frame
+  applyTitleBarAppearance(hwnd.get(), isDark(sah->screenAppearance));
 
   settings.create("Audio/MIDI Settings");
-  settingsWindowOwner = this;
 
-  // a plugin may set the appearance at any time, on an open window too
+  // a plugin may set the appearance at any time, on an open window too, and the window the
+  // gui is in follows it: its title bar
   sah->onScreenAppearanceChanged = [this]()
   {
+    if (hwnd) applyTitleBarAppearance(hwnd.get(), isDark(sah->screenAppearance));
     if (!settings.hwnd) return;
     applySettingsAppearance();
     if (settings.isVisible())
@@ -1600,6 +1978,136 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
       layoutSettings();
     }
   };
+
+  showSplash();
+}
+
+void Plugin::showSplash()
+{
+  const auto &hints{windowHints()};
+
+  // the place the window had when the standalone last quit, which Windows keeps with the
+  // frame; or the size the gui is going to ask for, in the middle of the screen
+  if (sah->settings.hasWindowPosition)
+  {
+    position.x = sah->settings.windowX;
+    position.y = sah->settings.windowY;
+    position.width = sah->settings.windowWidth;
+    position.height = sah->settings.windowHeight;
+  }
+  if ((position.width != 0 || position.height != 0) && isRectOnAnyMonitor(position))
+  {
+    setPosition(position);
+  }
+  else if (hints.hasSize())
+  {
+    adjustSize(static_cast<uint32_t>(std::lround(hints.width * scale)),
+               static_cast<uint32_t>(std::lround(hints.height * scale)));
+
+    ::MONITORINFO info{sizeof(::MONITORINFO)};
+    ::RECT frame{};
+    if (::GetMonitorInfoW(::MonitorFromWindow(hwnd.get(), MONITOR_DEFAULTTONEAREST), &info) &&
+        ::GetWindowRect(hwnd.get(), &frame))
+    {
+      const auto &work{info.rcWork};
+      const auto x{work.left + floorHalf((work.right - work.left) - (frame.right - frame.left))};
+      const auto y{work.top + floorHalf((work.bottom - work.top) - (frame.bottom - frame.top))};
+      ::SetWindowPos(hwnd.get(), nullptr, std::max<int>(x, work.left), std::max<int>(y, work.top), 0, 0,
+                     SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOSIZE);
+    }
+  }
+  else
+  {
+    // nothing to go by: shown once the gui has its size
+    return;
+  }
+
+  splashUp = hints.splashPng != nullptr || !hints.text.empty();
+  showWindow();
+  // painted now: the message loop, which would paint it, runs only once the plugin is made
+  ::UpdateWindow(hwnd.get());
+}
+
+void Plugin::paintSplash(::HDC dc)
+{
+  const auto &hints{windowHints()};
+
+  ::RECT area{};
+  ::GetClientRect(hwnd.get(), &area);
+
+  // where the text is measured from, down from the top: the image's top edge, or the middle
+  int anchor{floorHalf(area.bottom)};
+
+  if (hints.splashPng)
+  {
+    if (splashBitmapDpi != dpi)
+    {
+      splashBitmap.reset(decodeSplashImage(hints.splashPng, hints.splashPngSize, hints.splashScale, dpi,
+                                           splashBitmapWidth, splashBitmapHeight));
+      splashBitmapDpi = dpi;
+    }
+    if (splashBitmap)
+    {
+      // whole pixels from the top left, rounded down: where a gui that centres the same
+      // image in the same area draws it
+      const auto w{static_cast<int>(splashBitmapWidth)}, h{static_cast<int>(splashBitmapHeight)};
+      const int left{floorHalf(area.right - w)}, top{floorHalf(area.bottom - h)};
+
+      wil::unique_hdc source{::CreateCompatibleDC(dc)};
+      const auto previous{::SelectObject(source.get(), splashBitmap.get())};
+      const ::BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
+      ::AlphaBlend(dc, left, top, w, h, source.get(), 0, 0, w, h, blend);
+      ::SelectObject(source.get(), previous);
+
+      anchor = top;
+    }
+  }
+
+  if (!hints.text.empty())
+  {
+    if (splashFontDpi != dpi)
+    {
+      splashFont.reset(getMessageFontOfSize(dpi, hints.textSize));
+      splashFontDpi = dpi;
+    }
+
+    // DrawText breaks lines at a carriage return and line feed
+    std::string lines;
+    for (auto c : hints.text)
+    {
+      if (c == '\n') lines += '\r';
+      lines += c;
+    }
+    auto text{toUTF16(lines)};
+
+    const auto previous{::SelectObject(dc, splashFont.get())};
+    ::SetBkMode(dc, TRANSPARENT);
+    ::SetTextColor(dc, fromRgb(hints.textColor));
+    ::RECT box{0, anchor + ::MulDiv(hints.textTop, static_cast<int>(dpi), USER_DEFAULT_SCREEN_DPI),
+               area.right, area.bottom};
+    ::DrawTextW(dc, text.c_str(), static_cast<int>(text.size()), &box,
+                DT_CENTER | DT_TOP | DT_NOPREFIX | DT_NOCLIP);
+    ::SelectObject(dc, previous);
+  }
+}
+
+void Plugin::showWindow()
+{
+  if (isVisible()) return;
+
+  // the show state the launcher asked for (a shortcut's "Run:", STARTUPINFO); SW_HIDE would
+  // leave the standalone running unseen
+  ::ShowWindow(hwnd.get(), showCommand);
+}
+
+void Plugin::attach(std::shared_ptr<Clap::Plugin> clapPlugin)
+{
+  plugin.clap = clapPlugin;
+  plugin.plugin = plugin.clap->_plugin;
+  plugin.gui = plugin.clap->_ext._gui;
+  plugin.state = plugin.clap->_ext._state;
+
+  settingsWindowOwner = this;
 
   isTimerRunning = startTimer(timerId, 8);
 
@@ -1627,7 +2135,16 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
   {
     if (plugin.gui->is_api_supported(plugin.plugin, CLAP_WINDOW_API_WIN32, false))
     {
-      plugin.gui->create(plugin.plugin, CLAP_WINDOW_API_WIN32, false);
+      guiCreated = plugin.gui->create(plugin.plugin, CLAP_WINDOW_API_WIN32, false);
+      if (!guiCreated) log("The plugin's gui create() failed");
+    }
+    else
+    {
+      log("CLAP_WINDOW_API_WIN32 is not supported");
+    }
+
+    if (guiCreated)
+    {
       plugin.gui->set_scale(plugin.plugin, scale);
 
       if (plugin.gui->can_resize(plugin.plugin))
@@ -1650,14 +2167,17 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
       plugin.gui->get_size(plugin.plugin, &pluginSize.width, &pluginSize.height);
       log("{}, {}", pluginSize.width, pluginSize.height);
 
-      adjustSize(pluginSize.width, pluginSize.height);
+      resizeOnWorkArea(pluginSize.width, pluginSize.height);
 
       clap_window clapWindow{CLAP_WINDOW_API_WIN32, static_cast<void *>(hwnd.get())};
       plugin.gui->set_parent(plugin.plugin, &clapWindow);
-    }
-    else
-    {
-      log("CLAP_WINDOW_API_WIN32 is not supported");
+
+      // the gui is over it now, and wherever it does not cover the window, the background
+      // alone is painted from the next paint on; a window already up shows the gui here, where
+      // one that is not does so when it comes up (WM_WINDOWPOSCHANGED)
+      splashUp = false;
+      ::InvalidateRect(hwnd.get(), nullptr, true);
+      if (isVisible()) plugin.gui->show(plugin.plugin);
     }
   }
   else
@@ -1672,7 +2192,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
     if (placement.showCmd != SW_MAXIMIZE && placement.showCmd != SW_SHOWMINIMIZED &&
         !::IsIconic(hwnd.get()))
     {
-      adjustSize(width, height);
+      resizeOnWorkArea(width, height);
     }
 
     return true;
@@ -1735,9 +2255,7 @@ Plugin::Plugin(std::shared_ptr<Clap::Plugin> clapPlugin, int nCmdShow)
 
   startAudio();
 
-  // Honor the show state requested by the launcher (shortcut "Run:" / STARTUPINFO),
-  // falling back to a normal window. SW_HIDE would otherwise leave us invisible-but-running.
-  ::ShowWindow(hwnd.get(), nCmdShow == SW_HIDE ? SW_SHOWNORMAL : nCmdShow);
+  showWindow();
 }
 
 std::optional<clap_gui_resize_hints> Plugin::getResizeHints()
@@ -2136,7 +2654,8 @@ void Plugin::refreshSampleRates(int32_t preferred)
 }
 
 // the sizes both selected devices accept, from the standalone's list; selects the
-// preferred size, or the largest below it, or the smallest there is
+// preferred size, or the largest below it, or the smallest there is. each size is shown
+// in samples only, "256": what it comes to in time is the latency note's
 void Plugin::refreshBufferSizes(uint32_t preferred)
 {
   const auto out{shownOutput()};
@@ -2156,37 +2675,21 @@ void Plugin::refreshBufferSizes(uint32_t preferred)
 
   settings.bufferSizesShown = sizes;
 
+  settings.bufferSize.reset();
   int selected{sizes.empty() ? -1 : 0};
   for (size_t i = 0; i < sizes.size(); ++i)
   {
+    settings.bufferSize.add(std::to_string(sizes[i]));
     if (sizes[i] <= preferred) selected = static_cast<int>(i);
   }
-
-  refreshBufferSizeTitles();
   settings.bufferSize.set(selected);
 }
 
-// each size with how long it lasts at the selected rate, "256 (5.8 ms)"
-void Plugin::refreshBufferSizeTitles()
-{
-  const auto selected{settings.bufferSize.get()};
-  const auto rate{shownSampleRate()};
-
-  settings.bufferSize.reset();
-  for (auto frames : settings.bufferSizesShown)
-  {
-    settings.bufferSize.add(
-        rate > 0 ? fmt::format("{} ({:.1f} ms)", frames,
-                               1000.0 * static_cast<double>(frames) / static_cast<double>(rate))
-                 : std::to_string(frames));
-  }
-  settings.bufferSize.set(static_cast<int>(selected));
-}
-
-// the latencies the running stream's devices report, beside the buffer size and not added
-// to it: they are the device's and the driver's, which no buffer size changes. shown only
-// while the window shows what runs - another device, rate or size would have others - and
-// only what the backend could tell
+// beside the buffer size, the running stream's whole latency: input device, the blocks
+// and output device added up (latencyReadoutOf), "Latency: 27.4 ms round trip", or
+// "Latency: 18.5 ms output" with no input open. shown only while the window shows what
+// runs - another device, rate or size would have another. a device latency the backend
+// could not tell makes it "Latency: \u2265 5.8 ms output (device latency unknown)"
 void Plugin::refreshLatencyNote()
 {
   const auto out{shownOutput()};
@@ -2208,13 +2711,14 @@ void Plugin::refreshLatencyNote()
   std::string text;
   if (asRunning)
   {
-    auto ms = [&stream](uint32_t frames)
-    { return fmt::format("{:.1f} ms", 1000.0 * frames / static_cast<double>(stream.sampleRate)); };
-    if (in && stream.inputLatency > 0) text = "in " + ms(stream.inputLatency);
-    if (stream.outputLatency > 0) text += (text.empty() ? "out " : ", out ") + ms(stream.outputLatency);
+    const auto readout{latencyReadoutOf(stream)};
+    text = fmt::format("Latency: {}{:.1f} ms {}{}", readout.atLeast() ? "\u2265 " : "",
+                       millisecondsOf(readout.total, stream.sampleRate),
+                       readout.roundTrip ? "round trip" : "output",
+                       readout.atLeast() ? " (device latency unknown)" : "");
   }
 
-  settings.latencyNote.setText(text.empty() ? std::string{} : "Latency: " + text);
+  settings.latencyNote.setText(text);
   settings.latencyNote.setVisible(!text.empty());
 }
 
@@ -2637,7 +3141,11 @@ void Plugin::applyShownAudio()
   {
     if (openShownAudio())
     {
-      // the size the device granted, which a driver may have chosen itself
+      // the rate and the size the device granted, which a driver may have chosen itself:
+      // the sizes' lengths are at the rate the stream runs at
+      if (sah->currentStream.sampleRate > 0 &&
+          shownSampleRate() != static_cast<int32_t>(sah->currentStream.sampleRate))
+        refreshSampleRates(static_cast<int32_t>(sah->currentStream.sampleRate));
       refreshBufferSizes(sah->currentBufferSize);
     }
     else

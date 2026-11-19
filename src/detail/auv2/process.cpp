@@ -232,6 +232,24 @@ void ProcessAdapter::flush()
   for (size_t i = 0; i < kept; ++i) _eventindices.emplace_back(i);
 }
 
+void ProcessAdapter::reset()
+{
+  // Keep gesture boundaries so a reset cannot leave an earlier gesture open.
+  _events.erase(std::remove_if(_events.begin(), _events.end(),
+                               [](const auto &event)
+                               {
+                                 const auto type = event.header.type;
+                                 return !isParameterEvent(type) &&
+                                        type != CLAP_EVENT_PARAM_GESTURE_BEGIN &&
+                                        type != CLAP_EVENT_PARAM_GESTURE_END;
+                               }),
+                _events.end());
+  _eventindices.clear();
+  for (size_t i = 0; i < _events.size(); ++i) _eventindices.emplace_back(i);
+  _activeNotes.clear();
+  _sysexBuffers.reset();
+}
+
 void ProcessAdapter::process(ProcessData &data)
 {
   // CLAP requires event times within [0, frames_count); a host stamping
@@ -259,9 +277,10 @@ void ProcessAdapter::process(ProcessData &data)
     _transport.flags |= data._isRecording ? CLAP_TRANSPORT_IS_RECORDING : 0;
     // CLAP_TRANSPORT_IS_RECORDING can not be retrieved from this data block
     _transport.flags |= data._isLooping ? CLAP_TRANSPORT_IS_LOOP_ACTIVE : 0;
-    // CLAP_TRANSPORT_IS_RECORDING can not be retrieved from the AudioUnit API
-    _transport.loop_end_beats = data._cycleStart;
-    _transport.loop_end_beats = data._cycleEnd;
+    // the cycle comes from the host in beats, which clap_beattime counts in
+    // CLAP_BEATTIME_FACTOR units, not in whole beats
+    _transport.loop_start_beats = doubleToBeatTime(data._cycleStart);
+    _transport.loop_end_beats = doubleToBeatTime(data._cycleEnd);
 
     _transport.song_pos_seconds = doubleToSecTime(data._currentSongPosInSeconds);
     _transport.flags |= CLAP_TRANSPORT_HAS_SECONDS_TIMELINE;
@@ -273,11 +292,9 @@ void ProcessAdapter::process(ProcessData &data)
       _transport.tempo = data._tempo;
       _transport.flags |= CLAP_TRANSPORT_HAS_TEMPO;
     }
-    if (data._beat)
-    {
-      _transport.song_pos_beats = doubleToBeatTime(data._beat);
-      _transport.flags |= CLAP_TRANSPORT_HAS_BEATS_TIMELINE;
-    }
+
+    _transport.song_pos_beats = doubleToBeatTime(data._beat);
+    _transport.flags |= CLAP_TRANSPORT_HAS_BEATS_TIMELINE;
   }
   if (data._AUmusicalTimeValid)
   {

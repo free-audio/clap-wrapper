@@ -195,7 +195,8 @@ class Plugin
   {
     return &_host;
   }
-  void connectClap(const clap_plugin_t *clap);
+  /// Takes ownership of the instance and reports whether its CLAP initialization succeeded.
+  bool connectClap(const clap_plugin_t *clap);
 
  public:
   Plugin(const Plugin &) = delete;

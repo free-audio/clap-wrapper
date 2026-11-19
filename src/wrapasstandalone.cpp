@@ -2,6 +2,7 @@
 
 #include "detail/standalone/standalone_details.h"
 #include "detail/standalone/entry.h"
+#include "detail/standalone/standalone_host.h"
 
 #if LIN && CLAP_WRAPPER_STANDALONE_X11
 #include "detail/standalone/linux/x11_gui.h"
@@ -56,6 +57,14 @@ int main(int argc, char **argv)
 
   auto plugin =
       freeaudio::clap_wrapper::standalone::mainCreatePlugin(entry, pid, pindex, 1, (char **)argv);
+
+  // a link clicked in a browser launches the standalone with its url, by way of the
+  // installer's .desktop file. held until the gui is up. a standalone already running does
+  // not hear of it: this launch is another instance
+  auto *standaloneHost = freeaudio::clap_wrapper::standalone::getStandaloneHost();
+  for (const auto &url : freeaudio::clap_wrapper::standalone::ownUrlsInArgs(argc, argv))
+    standaloneHost->openUrl(url);
+
   freeaudio::clap_wrapper::standalone::mainStartAudio();
 
 #if LIN && CLAP_WRAPPER_STANDALONE_X11
@@ -63,10 +72,12 @@ int main(int argc, char **argv)
   if (!freeaudio::clap_wrapper::standalone::getStandaloneHost()->settingsLoaded) x11Gui.saveSettings();
 
   x11Gui.setPlugin(plugin);
+  standaloneHost->beginUrlDelivery();
   x11Gui.runloop();
   x11Gui.saveSettings();
   x11Gui.shutdown();
 #else
+  standaloneHost->beginUrlDelivery();
   freeaudio::clap_wrapper::standalone::mainWait();
 #endif
 

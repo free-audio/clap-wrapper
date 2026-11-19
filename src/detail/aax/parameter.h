@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <algorithm>
+#include <cmath>
 
 // TODO: REmove
 #include "AAX_CLinearTaperDelegate.h"
@@ -35,25 +37,33 @@ typedef struct AAXWrappedParameterInfo
   {
     return _clap_param_info.flags & CLAP_PARAM_IS_AUTOMATABLE;
   }
+  inline bool isStepped() const
+  {
+    return (_clap_param_info.flags & CLAP_PARAM_IS_STEPPED) != 0;
+  }
+
+  // AAX hands us a normalized [0, 1]; CLAP wants a value in [min_value, max_value].
+  // A stepped parameter is discrete in CLAP, so the result is rounded to the nearest
+  // step rather than handed over as the fraction AAX happened to land on.
   inline double asClapValue(double aaxvalue) const
   {
-    if (_clap_param_info.flags & CLAP_PARAM_IS_STEPPED)
-    {
-      return (aaxvalue * (_clap_param_info.max_value - _clap_param_info.min_value)) +
-             _clap_param_info.min_value;
-    }
-    return (aaxvalue * (_clap_param_info.max_value - _clap_param_info.min_value)) +
-           _clap_param_info.min_value;
+    const double range = _clap_param_info.max_value - _clap_param_info.min_value;
+    double v = (aaxvalue * range) + _clap_param_info.min_value;
+    if (isStepped()) v = std::round(v);
+    return std::clamp(v, _clap_param_info.min_value, _clap_param_info.max_value);
   }
+
+  // The inverse of asClapValue(). It rounds a stepped value the same way, so that
+  // converting back and forth settles instead of drifting: without the matching
+  // round, a value quantized on the way in would normalize to a different point
+  // than the one AAX is holding.
   inline double asAAXValue(double clapvalue) const
   {
-    if (_clap_param_info.flags & CLAP_PARAM_IS_STEPPED)
-    {
-      return floor(clapvalue - _clap_param_info.min_value) /
-             (_clap_param_info.max_value - _clap_param_info.min_value);
-    }
-    return (clapvalue - _clap_param_info.min_value) /
-           (_clap_param_info.max_value - _clap_param_info.min_value);
+    const double range = _clap_param_info.max_value - _clap_param_info.min_value;
+    if (range <= 0.0) return 0.0;  // degenerate range: never divide by it
+    double v = clapvalue;
+    if (isStepped()) v = std::round(v);
+    return std::clamp((v - _clap_param_info.min_value) / range, 0.0, 1.0);
   }
 
 } AAXWrappedParameterInfo_t;

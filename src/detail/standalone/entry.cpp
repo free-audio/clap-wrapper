@@ -1,9 +1,11 @@
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <memory>
 
 #include "standalone_details.h"
 #include "standalone_host.h"
+#include "standalone_window_hints.h"
 #include "entry.h"
 
 namespace freeaudio::clap_wrapper::standalone
@@ -13,9 +15,16 @@ static std::unique_ptr<StandaloneHost> standaloneHost;
 std::shared_ptr<Clap::Plugin> plugin;
 const clap_plugin_entry *entry{nullptr};
 
-std::shared_ptr<Clap::Plugin> mainCreatePlugin(const clap_plugin_entry *ee, const std::string &clapId,
-                                               uint32_t clapIndex, int argc, char **argv)
+// what mainPrepare found: whether it has run, and the entry's plugin factory
+static bool prepared{false};
+static const clap_plugin_factory *factory{nullptr};
+
+bool mainPrepare(const clap_plugin_entry *ee, const std::string &clapId, uint32_t clapIndex, int argc,
+                 char **argv)
 {
+  if (prepared) return factory != nullptr;
+  prepared = true;
+
   entry = ee;
   LOGINFO("Standalone starting : {}", argv[0]);
 
@@ -24,11 +33,11 @@ std::shared_ptr<Clap::Plugin> mainCreatePlugin(const clap_plugin_entry *ee, cons
 
   entry->init(argv[0]);
 
-  auto fac = (const clap_plugin_factory *)entry->get_factory(CLAP_PLUGIN_FACTORY_ID);
-  if (!fac)
+  factory = static_cast<const clap_plugin_factory *>(entry->get_factory(CLAP_PLUGIN_FACTORY_ID));
+  if (!factory)
   {
     LOGINFO("[ERROR] entry->get_factory return nullptr");
-    return nullptr;
+    return false;
   }
 
   if (!standaloneHost)
@@ -38,15 +47,32 @@ std::shared_ptr<Clap::Plugin> mainCreatePlugin(const clap_plugin_entry *ee, cons
 
   // before the plugin exists, so its init() can already save the audio and midi setup
   std::string pluginId{clapId};
-  if (pluginId.empty() && clapIndex < fac->get_plugin_count(fac))
+  if (pluginId.empty() && clapIndex < factory->get_plugin_count(factory))
   {
-    auto desc = fac->get_plugin_descriptor(fac, clapIndex);
+    auto desc = factory->get_plugin_descriptor(factory, clapIndex);
     if (desc && desc->id) pluginId = desc->id;
   }
-  standaloneHost->resolveStandaloneSettings(entry, fac, pluginId);
+  standaloneHost->resolveStandaloneSettings(entry, factory, pluginId);
   // and the settings in it, so that what init() changes through the standalone features is
   // saved over the setup the user saved, not over an empty one
   standaloneHost->loadStandaloneSettings();
+
+  // what the window shows until the plugin's gui is there, and the appearance it is drawn in,
+  // which counts as the plugin's: the window follows it, as the settings screen does
+  readPluginWindowHints(entry, factory, pluginId);
+  if (windowHints().hasAppearance &&
+      !standaloneHost->setScreenAppearance(windowHints().appearance, true))
+    LOGINFO("[WARNING] The plugin's window appearance hint {} is not one this standalone has; ignored",
+            windowHints().appearance);
+
+  return true;
+}
+
+std::shared_ptr<Clap::Plugin> mainCreatePlugin(const clap_plugin_entry *ee, const std::string &clapId,
+                                               uint32_t clapIndex, int argc, char **argv)
+{
+  if (!mainPrepare(ee, clapId, clapIndex, argc, argv)) return nullptr;
+  auto *fac{factory};
 
   if (clapId.empty())
   {
@@ -181,6 +207,53 @@ bool mainListAudioDevices(int argc, const char *const *argv)
 
   fflush(stdout);
   return true;
+}
+
+namespace
+{
+// the build's schemes, lowercase and separated by commas
+const std::string urlSchemes{
+#ifdef CLAP_WRAPPER_STANDALONE_URL_SCHEMES
+    CLAP_WRAPPER_STANDALONE_URL_SCHEMES
+#endif
+};
+}  // namespace
+
+bool opensUrls()
+{
+  return !urlSchemes.empty();
+}
+
+bool isOwnUrl(const std::string &url)
+{
+  // the scheme, up to the first colon: a letter, then letters, digits, '+', '-' or '.'
+  const auto colon{url.find(':')};
+  if (colon == std::string::npos || colon == 0 || !isalpha((unsigned char)url[0])) return false;
+  std::string scheme;
+  for (size_t i = 0; i < colon; ++i)
+  {
+    const auto c{(unsigned char)url[i]};
+    if (!isalnum(c) && c != '+' && c != '-' && c != '.') return false;
+    scheme += (char)tolower(c);
+  }
+
+  size_t from{0};
+  while (from <= urlSchemes.size())
+  {
+    auto to{urlSchemes.find(',', from)};
+    if (to == std::string::npos) to = urlSchemes.size();
+    if (urlSchemes.compare(from, to - from, scheme) == 0) return true;
+    from = to + 1;
+  }
+  return false;
+}
+
+std::vector<std::string> ownUrlsInArgs(int argc, const char *const *argv)
+{
+  std::vector<std::string> urls;
+  for (int i = 1; i < argc && argv && argv[i]; ++i)
+    if (isOwnUrl(argv[i])) urls.emplace_back(argv[i]);
+  return urls;
 }
 
 StandaloneHost *getStandaloneHost()

@@ -16,6 +16,17 @@ function(target_add_auv3_wrapper)
 
             ENTITLEMENTS  # optional: per-plugin entitlements file (macOS appex signing)
 
+            # optional: a property list whose keys are merged into the generated
+            # Info.plist (dictionaries merge key by key, anything else replaces)
+            INFO_PLIST_ADDITIONS
+
+            # optional, macOS: sign the appex with this identity / team instead of
+            # ad hoc. Default to CMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY and
+            # CMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM; with neither set the appex
+            # is signed ad hoc as before.
+            CODE_SIGN_IDENTITY
+            DEVELOPMENT_TEAM
+
             MACOS_EMBEDDED_CLAP_LOCATION
             MACOSX_EMBEDDED_CLAP_LOCATION
             )
@@ -325,6 +336,7 @@ function(target_add_auv3_wrapper)
             ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/wrapasauv3.mm
             ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv3/auv3_audiounit.mm
             ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv3/auv3_parameters.mm
+            ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv3/auv3_channellayout.mm
             ${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/src/detail/auv3/process.mm
             ${bhtgoutdir}/generated_auv3_entrypoints.hxx)
     target_compile_options(${AUV3_TARGET} PRIVATE -fno-char8_t -fobjc-arc)
@@ -416,8 +428,46 @@ function(target_add_auv3_wrapper)
                 XCODE_PRODUCT_TYPE com.apple.product-type.app-extension
                 )
     endif()
+
+    # INFO_PLIST_ADDITIONS: merge the plugin's own keys into a copy of the
+    # generated plist, in a target of its own that runs before the appex is
+    # built - the same reasoning as above: Xcode has to find the finished file
+    # when it reads INFOPLIST_FILE, never one that is rewritten under it.
+    set(_auv3_infoplist "${bhtgoutdir}/auv3_Info.plist")
+    if (DEFINED AUV3_INFO_PLIST_ADDITIONS AND NOT "${AUV3_INFO_PLIST_ADDITIONS}" STREQUAL "")
+        get_filename_component(_auv3_additions "${AUV3_INFO_PLIST_ADDITIONS}" ABSOLUTE)
+        if (NOT EXISTS "${_auv3_additions}")
+            message(FATAL_ERROR "clap-wrapper: INFO_PLIST_ADDITIONS file '${_auv3_additions}' does not exist")
+        endif()
+        message(STATUS "clap-wrapper: merging ${_auv3_additions} into the ${AUV3_TARGET} Info.plist")
+
+        set(_auv3_merged_infoplist "${bhtgoutdir}/auv3_Info.merged.plist")
+        set(_auv3_merge_depends "${_auv3_infoplist}" "${_auv3_additions}"
+                "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/cmake/merge_plist.cmake")
+        if (NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+            # the helper rewrites the base plist whenever it is rebuilt
+            list(APPEND _auv3_merge_depends ${bhtg})
+        endif()
+        add_custom_command(
+                OUTPUT "${_auv3_merged_infoplist}"
+                COMMAND ${CMAKE_COMMAND}
+                        "-DBASE=${_auv3_infoplist}"
+                        "-DADDITIONS=${_auv3_additions}"
+                        "-DOUT=${_auv3_merged_infoplist}"
+                        -P "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/cmake/merge_plist.cmake"
+                DEPENDS ${_auv3_merge_depends}
+                COMMENT "Merging INFO_PLIST_ADDITIONS into the ${AUV3_TARGET} Info.plist"
+        )
+        add_custom_target(${AUV3_TARGET}-auv3-infoplist DEPENDS "${_auv3_merged_infoplist}")
+        if (NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+            add_dependencies(${AUV3_TARGET}-auv3-infoplist ${bhtg})
+        endif()
+        add_dependencies(${AUV3_TARGET} ${AUV3_TARGET}-auv3-infoplist)
+        set(_auv3_infoplist "${_auv3_merged_infoplist}")
+    endif()
+
     set_target_properties(${AUV3_TARGET} PROPERTIES
-            XCODE_ATTRIBUTE_INFOPLIST_FILE "${bhtgoutdir}/auv3_Info.plist")
+            XCODE_ATTRIBUTE_INFOPLIST_FILE "${_auv3_infoplist}")
 
     set_target_properties(${AUV3_TARGET} PROPERTIES XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${AUV3_BUNDLE_IDENTIFIER}")
 
@@ -459,18 +509,93 @@ function(target_add_auv3_wrapper)
         # For Xcode, set the entitlements via build settings
         set_target_properties(${AUV3_TARGET} PROPERTIES
                 XCODE_ATTRIBUTE_CODE_SIGN_ENTITLEMENTS "${AUV3_ENTITLEMENTS}"
-                XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "-"
                 XCODE_ATTRIBUTE_ENABLE_APP_SANDBOX "YES"
                 )
 
-        # Ad-hoc sign the appex with entitlements so macOS will register it as an Audio Unit
-        add_custom_command(TARGET ${AUV3_TARGET} POST_BUILD
-                COMMAND codesign -s - -f --entitlements "${AUV3_ENTITLEMENTS}" "$<TARGET_BUNDLE_DIR:${AUV3_TARGET}>"
-                COMMENT "Ad-hoc signing AUv3 appex with sandbox entitlements"
-                )
+        # Who signs the appex. A team / identity configured for the project is
+        # left to Xcode: re-signing ad hoc afterwards would throw away the team
+        # signature, and with it every entitlement that needs one - an App
+        # Group shared with a containing app above all.
+        if (NOT DEFINED AUV3_CODE_SIGN_IDENTITY AND DEFINED CMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY)
+            set(AUV3_CODE_SIGN_IDENTITY "${CMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY}")
+        endif()
+        if (NOT DEFINED AUV3_DEVELOPMENT_TEAM AND DEFINED CMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM)
+            set(AUV3_DEVELOPMENT_TEAM "${CMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM}")
+        endif()
+
+        if (NOT "${AUV3_DEVELOPMENT_TEAM}" STREQUAL "")
+            set_target_properties(${AUV3_TARGET} PROPERTIES
+                    XCODE_ATTRIBUTE_DEVELOPMENT_TEAM "${AUV3_DEVELOPMENT_TEAM}")
+            if ("${AUV3_CODE_SIGN_IDENTITY}" STREQUAL "")
+                set(AUV3_CODE_SIGN_IDENTITY "Apple Development")
+            endif()
+        endif()
+
+        if ("${AUV3_CODE_SIGN_IDENTITY}" STREQUAL "" OR "${AUV3_CODE_SIGN_IDENTITY}" STREQUAL "-")
+            set_target_properties(${AUV3_TARGET} PROPERTIES
+                    XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "-")
+
+            # Ad-hoc sign the appex with entitlements so macOS will register it as an Audio Unit
+            add_custom_command(TARGET ${AUV3_TARGET} POST_BUILD
+                    COMMAND codesign -s - -f --entitlements "${AUV3_ENTITLEMENTS}" "$<TARGET_BUNDLE_DIR:${AUV3_TARGET}>"
+                    COMMENT "Ad-hoc signing AUv3 appex with sandbox entitlements"
+                    )
+        else()
+            message(STATUS "clap-wrapper: ${AUV3_TARGET} is signed by Xcode as '${AUV3_CODE_SIGN_IDENTITY}'")
+            set_target_properties(${AUV3_TARGET} PROPERTIES
+                    XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "${AUV3_CODE_SIGN_IDENTITY}")
+        endif()
     endif()
 
     if (${CLAP_WRAPPER_COPY_AFTER_BUILD})
         target_copy_after_build(TARGET ${AUV3_TARGET} FLAVOR auv3)
     endif ()
 endfunction(target_add_auv3_wrapper)
+
+# target_embed_auv3_appex(TARGET <app> AUV3_TARGET <appex>)
+#
+# Embeds the appex built by target_add_auv3_wrapper into an application bundle
+# of your own - Contents/PlugIns on macOS, PlugIns on iOS - which is how an
+# AUv3 is shipped: the system registers the extension from its containing app.
+# The appex's BUNDLE_IDENTIFIER has to be the app's identifier plus a suffix
+# (e.g. com.you.plug and com.you.plug.auv3), and app and appex have to be signed
+# by the same team for anything they share, such as an App Group.
+function(target_embed_auv3_appex)
+    set(oneValueArgs TARGET AUV3_TARGET)
+    cmake_parse_arguments(EMB "" "${oneValueArgs}" "" ${ARGN})
+
+    if (NOT APPLE)
+        return()
+    endif()
+    if (NOT DEFINED EMB_TARGET OR NOT TARGET ${EMB_TARGET})
+        message(FATAL_ERROR "clap-wrapper: target_embed_auv3_appex requires a TARGET")
+    endif()
+    if (NOT DEFINED EMB_AUV3_TARGET OR NOT TARGET ${EMB_AUV3_TARGET})
+        message(FATAL_ERROR "clap-wrapper: target_embed_auv3_appex requires an AUV3_TARGET")
+    endif()
+
+    add_dependencies(${EMB_TARGET} ${EMB_AUV3_TARGET})
+
+    set(_appex_src "$<TARGET_BUNDLE_DIR:${EMB_AUV3_TARGET}>")
+    set(_appex_name "$<TARGET_PROPERTY:${EMB_AUV3_TARGET},OUTPUT_NAME>.appex")
+
+    if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        # iOS needs the host re-signed once the appex is in (see the script)
+        add_custom_command(TARGET ${EMB_TARGET} POST_BUILD
+                COMMAND "${CLAP_WRAPPER_CMAKE_CURRENT_SOURCE_DIR}/cmake/ios_embed_appex.sh"
+                    "${_appex_src}"
+                    "$<TARGET_BUNDLE_DIR:${EMB_TARGET}>/PlugIns/${_appex_name}"
+                    "$<TARGET_BUNDLE_DIR:${EMB_TARGET}>"
+                COMMENT "Embedding ${EMB_AUV3_TARGET}.appex into ${EMB_TARGET}")
+    else()
+        # The appex keeps the signature wrap_auv3.cmake gave it. -H follows the
+        # link an Archive build makes of the appex's products path (see
+        # ios_embed_appex.sh) instead of copying the link itself.
+        set(_appex_dst "$<TARGET_BUNDLE_DIR:${EMB_TARGET}>/Contents/PlugIns/${_appex_name}")
+        add_custom_command(TARGET ${EMB_TARGET} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_BUNDLE_DIR:${EMB_TARGET}>/Contents/PlugIns"
+                COMMAND ${CMAKE_COMMAND} -E rm -rf "${_appex_dst}"
+                COMMAND cp -RH "${_appex_src}" "${_appex_dst}"
+                COMMENT "Embedding ${EMB_AUV3_TARGET}.appex into ${EMB_TARGET}")
+    endif()
+endfunction(target_embed_auv3_appex)

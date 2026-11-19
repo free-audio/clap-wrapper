@@ -149,7 +149,9 @@ void utf8_to_utf16l(const char *utf8string, uint16_t *target, size_t targetsize)
 tresult PLUGIN_API ClapAsVst3::initialize(FUnknown *context)
 {
   auto result = super::initialize(context);
-  context->queryInterface(Vst::IHostApplication::iid, (void **)&vst3HostApplication);
+  // IPluginBase::initialize documents the context as mandatory, but a host that passes
+  // null should not take the plugin down with it
+  if (context) context->queryInterface(Vst::IHostApplication::iid, (void **)&vst3HostApplication);
   if (result == kResultOk)
   {
     if (!_plugin)
@@ -160,6 +162,9 @@ tresult PLUGIN_API ClapAsVst3::initialize(FUnknown *context)
       _plugin = Clap::Plugin::createInstance(*_library, _libraryIndex, this);
     }
     result = (_plugin && _plugin->initialize()) ? kResultOk : kResultFalse;
+    // Clap::Plugin::initialize() sets parameters up only for a CLAP with a params extension,
+    // but the IMidiMapping parameters and the preset list are built there too.
+    if (result == kResultOk && !_plugin->_ext._params) setupParameters(_plugin->_plugin, nullptr);
   }
 
   return result;
@@ -882,6 +887,23 @@ tresult PLUGIN_API ClapAsVst3::getMidiControllerAssignment(int32 busIndex, int16
   return kResultFalse;
 }
 
+//----from IPrefetchableSupport--------------------------------
+// A plugin with a hard realtime requirement, such as one driving external hardware,
+// cannot be processed ahead of playback; ASIO-Guard in Cubase would otherwise do so.
+tresult PLUGIN_API ClapAsVst3::getPrefetchableSupport(Vst::PrefetchableSupport &prefetchable)
+{
+  // [UI-thread]
+  std::lock_guard<std::recursive_mutex> mainThreadGuard(_mainThreadLock);
+  if (!_plugin || !_plugin->_ext._render)
+  {
+    return kNotImplemented;
+  }
+  prefetchable = _plugin->_ext._render->has_hard_realtime_requirement(_plugin->_plugin)
+                     ? Vst::kIsNeverPrefetchable
+                     : Vst::kIsYetPrefetchable;
+  return kResultOk;
+}
+
 //----from IInfoListener--------------------------------------
 tresult PLUGIN_API ClapAsVst3::setChannelContextInfos(Vst::IAttributeList *list /*in*/)
 {
@@ -977,7 +999,7 @@ tresult ClapAsVst3::executeMenuItem(int32 tag)
 ARAFactoryPtr PLUGIN_API ClapAsVst3::getFactory()
 {
   LOGDETAIL("-> ARA::IPlugInEntryPoint::getFactory");
-  if (_plugin->_ext._ara)
+  if (_plugin && _plugin->_ext._ara)
   {
     return _plugin->_ext._ara->get_factory(_plugin->_plugin);
   }
@@ -987,9 +1009,12 @@ ARAFactoryPtr PLUGIN_API ClapAsVst3::getFactory()
 ARAPlugInExtensionInstancePtr PLUGIN_API
 ClapAsVst3::bindToDocumentController(ARADocumentControllerRef documentControllerRef)
 {
-  LOGDETAIL("-> ARA::IPlugInEntryPoint::bindToDocumentController (!!! DEPRECATED !!!)");
-  // "call is deprecated in ARA 2, host must not call this"
-  return nullptr;
+  LOGDETAIL("-> ARA::IPlugInEntryPoint::bindToDocumentController (deprecated, ARA 1 host)");
+  // ARA 1 hosts use every instance as playback renderer, edit renderer and editor view,
+  // so this is bindToDocumentControllerWithRoles() with those three roles (see aravst3.h)
+  constexpr ARAPlugInInstanceRoleFlags allRoles =
+      kARAPlaybackRendererRole | kARAEditorRendererRole | kARAEditorViewRole;
+  return bindToDocumentControllerWithRoles(documentControllerRef, allRoles, allRoles);
 }
 
 ARAPlugInExtensionInstancePtr PLUGIN_API ClapAsVst3::bindToDocumentControllerWithRoles(
@@ -997,7 +1022,7 @@ ARAPlugInExtensionInstancePtr PLUGIN_API ClapAsVst3::bindToDocumentControllerWit
     ARAPlugInInstanceRoleFlags assignedRoles)
 {
   LOGDETAIL("-> ARA::IPlugInEntryPoint2::bindToDocumentControllerWithRoles");
-  if (_plugin->_ext._ara)
+  if (_plugin && _plugin->_ext._ara)
   {
     return _plugin->_ext._ara->bind_to_document_controller(_plugin->_plugin, documentControllerRef,
                                                            knownRoles, assignedRoles);
@@ -1350,10 +1375,10 @@ void ClapAsVst3::setupMIDIBusses(const clap_plugin_t *plugin, const clap_plugin_
   }
 }
 
+// params may be null: a CLAP without parameters still gets the IMidiMapping parameters,
+// note expressions and presets.
 void ClapAsVst3::setupParameters(const clap_plugin_t *plugin, const clap_plugin_params_t *params)
 {
-  if (!params) return;
-
   // clear the units, they will be rebuild during the parameter conversion
   _moduleToUnit.clear();
   units.clear();
@@ -1369,7 +1394,7 @@ void ClapAsVst3::setupParameters(const clap_plugin_t *plugin, const clap_plugin_
     addUnit(rootUnit);
   }
 
-  auto numparams = params->count(plugin);
+  auto numparams = params ? params->count(plugin) : 0;
   parameters.removeAll();
   this->parameters.init(numparams);
   for (decltype(numparams) i = 0; i < numparams; ++i)

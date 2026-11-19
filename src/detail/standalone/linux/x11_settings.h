@@ -123,7 +123,6 @@ class SettingsWindow
   void fillChannels(uint32_t outputFirst, uint32_t inputFirst);
   void fillRates(uint32_t preferred);
   void fillBufferSizes(uint32_t preferred);
-  void updateBufferTitles();
   void updateInputNote();
   void updateLatencyNote();
   void fillMidi();
