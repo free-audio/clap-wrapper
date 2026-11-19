@@ -235,7 +235,8 @@ class AudioBackend
   virtual ~AudioBackend() = default;
 
   // RtAudio's api names, which settings files and plugins already hold: "core", "wasapi",
-  // "asio", "alsa", "pulse", "jack"; and "pipewire", which RtAudio does not have
+  // "asio", "alsa", "pulse", "jack"; and "pipewire" and "wasapi-exclusive", which RtAudio
+  // does not have
   virtual std::string apiId() const = 0;
   virtual std::string apiDisplayName() const = 0;
 

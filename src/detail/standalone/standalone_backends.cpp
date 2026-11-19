@@ -23,6 +23,7 @@ const std::vector<NativeApi> &nativeApis()
       {{"core", "CoreAudio"}, &createCoreAudioBackend, nullptr},
 #elif !CLAP_WRAPPER_STANDALONE_RTAUDIO && WIN
       {{"wasapi", "WASAPI"}, &createWasapiBackend, nullptr},
+      {{"wasapi-exclusive", "WASAPI (Exclusive)"}, &createWasapiExclusiveBackend, nullptr},
 #endif
 #if CLAP_WRAPPER_STANDALONE_PIPEWIRE
       {{"pipewire", "PipeWire"}, &createPipeWireBackend, &pipeWireUsable},
