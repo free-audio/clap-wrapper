@@ -1127,6 +1127,8 @@ class WasapiBackend final : public AudioBackend
     ComScope threadCom(COINIT_MULTITHREADED);
     DWORD taskIndex{0};
     auto task{::AvSetMmThreadCharacteristicsW(L"Pro Audio", &taskIndex)};
+    // exclusive periods are a few ms, so ask for more than the class's normal priority
+    if (task && exclusive) ::AvSetMmThreadPriority(task, AVRT_PRIORITY_HIGH);
 
     StreamFailure failure;
     // the side that drives, and in exclusive mode an input beside the output, which is
