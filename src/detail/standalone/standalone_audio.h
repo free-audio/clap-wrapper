@@ -272,6 +272,13 @@ class AudioBackend
   // [main-thread] process() calls are being made, or are about to be
   virtual bool isRunning() const = 0;
 
+  // one device serves both directions, as an ASIO driver does: an input and an output
+  // of different devices cannot be opened together
+  virtual bool sharesOneDevice() const
+  {
+    return false;
+  }
+
   // the driver's own settings window, which ASIO drivers have; shown only while a stream
   // is open on the driver
   virtual bool hasControlPanel() const

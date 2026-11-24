@@ -1626,6 +1626,13 @@ Plugin::Plugin(int nCmdShow) : showCommand{nCmdShow == SW_HIDE ? SW_SHOWNORMAL :
           case Settings::Identifier::AudioInput:
             if (code == CBN_SELCHANGE)
             {
+              // under asio the input follows the output's driver, staying on if it was
+              if (id == Settings::Identifier::AudioOutput && sah->audioSharesOneDevice())
+              {
+                const auto out{shownOutput()};
+                const auto outId{out ? settings.outDevices[*out].id : std::string{}};
+                refreshDevices(outId, outId, shownInput().has_value());
+              }
               // the same channels on the other device, where it has them
               refreshChannelChoices(shownChannels(false).first, shownChannels(true).first);
               refreshSampleRates(shownSampleRate());
@@ -2498,6 +2505,18 @@ void Plugin::refreshDevices(const std::string &outputId, const std::string &inpu
   }
   settings.output.set(selected);
 
+  // under asio one driver is both, so the input offered is the output's driver or none
+  // and follows it; any other driver would fail to open with it
+  std::string shownInputId{inputId};
+  if (sah->audioSharesOneDevice())
+  {
+    shownInputId = selected >= 0 ? settings.outDevices[static_cast<size_t>(selected)].id : std::string{};
+    auto &devices{settings.inDevices};
+    devices.erase(std::remove_if(devices.begin(), devices.end(),
+                                 [&](const AudioDevice &device) { return device.id != shownInputId; }),
+                  devices.end());
+  }
+
   settings.input.reset();
   settings.input.add("No Input");
   selected = 0;
@@ -2505,7 +2524,7 @@ void Plugin::refreshDevices(const std::string &outputId, const std::string &inpu
   for (size_t i = 0; i < settings.inDevices.size(); ++i)
   {
     settings.input.add(inTitles[i]);
-    if (useInput && settings.inDevices[i].id == inputId) selected = static_cast<int>(i + 1);
+    if (useInput && settings.inDevices[i].id == shownInputId) selected = static_cast<int>(i + 1);
   }
   settings.input.set(selected);
 }

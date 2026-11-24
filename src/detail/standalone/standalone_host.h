@@ -475,6 +475,10 @@ struct StandaloneHost : Clap::IHost, AudioStreamCallback
   // session only: a launch never starts muted on a previous session's say-so
   std::atomic<bool> inputMuted{false};
 
+  // whether the api in use opens input and output on one device (asio), so the input
+  // can only be the output's device or none
+  bool audioSharesOneDevice();
+
   // the audio driver's own settings window, which only asio has: whether the api in use
   // has one
   bool hasDriverControlPanel();

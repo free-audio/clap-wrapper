@@ -332,6 +332,15 @@ class RtAudioBackend final : public AudioBackend
     return dac->isStreamRunning();
   }
 
+  bool sharesOneDevice() const override
+  {
+#ifdef CLAP_WRAPPER_STANDALONE_ASIO
+    return api == RtAudio::Api::WINDOWS_ASIO;
+#else
+    return false;
+#endif
+  }
+
   bool hasControlPanel() const override
   {
 #ifdef CLAP_WRAPPER_STANDALONE_ASIO

@@ -34,6 +34,11 @@ int32_t rateOfferedBy(const AudioDevice &device, int32_t requested)
 }
 }  // namespace
 
+bool StandaloneHost::audioSharesOneDevice()
+{
+  return audioBackend && audioBackend->sharesOneDevice();
+}
+
 bool StandaloneHost::hasDriverControlPanel()
 {
   return audioBackend && audioBackend->hasControlPanel();
