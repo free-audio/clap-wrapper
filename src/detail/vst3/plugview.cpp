@@ -279,7 +279,7 @@ bool WrappedView::request_resize(uint32_t width, uint32_t height)
 
   return _plugFrame->resizeView(this, &requestedRect) == kResultOk;
 }
-tresult WrappedView::setContentScaleFactor(IPlugViewContentScaleSupport::ScaleFactor factor)
+tresult PLUGIN_API WrappedView::setContentScaleFactor(IPlugViewContentScaleSupport::ScaleFactor factor)
 {
   ensure_ui();
   if (_extgui->set_scale(_plugin, factor))

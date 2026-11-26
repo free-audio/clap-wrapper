@@ -81,7 +81,7 @@ class WrappedView : public Steinberg::IPlugView,
 	 *	adjust the rect to the allowed size. */
   tresult PLUGIN_API checkSizeConstraint(ViewRect *rect) override;
 
-  tresult setContentScaleFactor(ScaleFactor factor) override;
+  tresult PLUGIN_API setContentScaleFactor(ScaleFactor factor) override;
 
   //---Interface------
   OBJ_METHODS(WrappedView, FObject)
