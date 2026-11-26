@@ -437,10 +437,13 @@ function(guarantee_rtaudio)
         # Use the provided root
     elseif (${CLAP_WRAPPER_DOWNLOAD_DEPENDENCIES})
         guarantee_cpm()
+        # Past 6.0.1, the last release, for thestk/rtaudio#486: ASIO left
+        # bufferSwitchTimeInfo NULL, and a driver that calls it anyway (Steinberg's
+        # Generic Low Latency ASIO driver) took the process down on ASIOStart().
         CPMAddPackage(
                 NAME "rtaudio"
                 GITHUB_REPOSITORY "thestk/rtaudio"
-                GIT_TAG "6.0.1"
+                GIT_TAG "521fcaba5ed96376714718c3c23c79783d211c2b"
                 EXCLUDE_FROM_ALL TRUE
                 SOURCE_DIR cpm/rtaudio
                 DOWNLOAD_ONLY TRUE

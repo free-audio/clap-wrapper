@@ -1626,6 +1626,13 @@ Plugin::Plugin(int nCmdShow) : showCommand{nCmdShow == SW_HIDE ? SW_SHOWNORMAL :
           case Settings::Identifier::AudioInput:
             if (code == CBN_SELCHANGE)
             {
+              // under asio the input follows the output's driver, staying on if it was
+              if (id == Settings::Identifier::AudioOutput && sah->audioSharesOneDevice())
+              {
+                const auto out{shownOutput()};
+                const auto outId{out ? settings.outDevices[*out].id : std::string{}};
+                refreshDevices(outId, outId, shownInput().has_value());
+              }
               // the same channels on the other device, where it has them
               refreshChannelChoices(shownChannels(false).first, shownChannels(true).first);
               refreshSampleRates(shownSampleRate());
@@ -2498,6 +2505,24 @@ void Plugin::refreshDevices(const std::string &outputId, const std::string &inpu
   }
   settings.output.set(selected);
 
+  // under asio one driver is both, so there is one menu, the driver's, and the input is
+  // that driver's wherever it has one; any other driver would fail to open with it
+  const bool oneDriver{sah->audioSharesOneDevice()};
+  settings.outputLabel.setText(oneDriver ? "Driver:" : "Output:");
+  settings.inputLabel.setVisible(!oneDriver);
+  settings.input.setVisible(!oneDriver);
+
+  std::string shownInputId{inputId};
+  if (oneDriver)
+  {
+    useInput = true;
+    shownInputId = selected >= 0 ? settings.outDevices[static_cast<size_t>(selected)].id : std::string{};
+    auto &devices{settings.inDevices};
+    devices.erase(std::remove_if(devices.begin(), devices.end(),
+                                 [&](const AudioDevice &device) { return device.id != shownInputId; }),
+                  devices.end());
+  }
+
   settings.input.reset();
   settings.input.add("No Input");
   selected = 0;
@@ -2505,7 +2530,7 @@ void Plugin::refreshDevices(const std::string &outputId, const std::string &inpu
   for (size_t i = 0; i < settings.inDevices.size(); ++i)
   {
     settings.input.add(inTitles[i]);
-    if (useInput && settings.inDevices[i].id == inputId) selected = static_cast<int>(i + 1);
+    if (useInput && settings.inDevices[i].id == shownInputId) selected = static_cast<int>(i + 1);
   }
   settings.input.set(selected);
 }
@@ -2738,7 +2763,7 @@ void Plugin::refreshInputNote()
         "while it is open.";
     settings.inputNoteCaution = true;
   }
-  else if (!in && sah->numAudioInputs > 0)
+  else if (!in && sah->numAudioInputs > 0 && !sah->audioSharesOneDevice())
   {
     auto [input, output, rate] = sah->getDefaultAudioInOutSampleRate();
     const auto *device{sah->findDevice(input)};
@@ -2948,16 +2973,12 @@ void Plugin::layoutSettings()
   comboRow(settings.inputChannelsLabel, settings.inputChannels, width);
   noteRow(settings.inputNote);
   comboRow(settings.sampleRateLabel, settings.sampleRate, px(smallControlWidth));
+  comboRow(settings.bufferSizeLabel, settings.bufferSize, px(smallControlWidth));
+  // the latency on a line of its own, under the size it follows
+  if (settings.latencyNote.visible)
   {
-    const int rowTop{y};
-    comboRow(settings.bufferSizeLabel, settings.bufferSize, px(smallControlWidth));
-    if (settings.latencyNote.visible)
-    {
-      const int noteX{controlX + px(smallControlWidth) + px(columnSpacing)};
-      const int rowHeight{y - px(rowSpacing) - rowTop};
-      settings.latencyNote.setPosition(noteX, rowTop + (rowHeight - lineHeight) / 2, right - noteX,
-                                       lineHeight);
-    }
+    settings.latencyNote.setPosition(controlX, y, width, lineHeight);
+    y += lineHeight + px(rowSpacing);
   }
 
   settings.resetToDefault.setPosition(controlX, y, buttonWidth(settings.resetToDefault),
