@@ -314,7 +314,10 @@ class RtAudioBackend final : public AudioBackend
 
   void stop() override
   {
-    if (dac->isStreamRunning()) dac->stopStream();
+    // ASIO's stopStream() waits, without a timeout, for the driver's next callback to
+    // drain the output, and a driver that has stopped calling back hangs it. closeStream()
+    // stops a running ASIO stream without that wait.
+    if (dac->isStreamRunning() && api != RtAudio::Api::WINDOWS_ASIO) dac->stopStream();
     if (dac->isStreamOpen()) dac->closeStream();
     callback = nullptr;
     const auto count{xruns.exchange(0)};
