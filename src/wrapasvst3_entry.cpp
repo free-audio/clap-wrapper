@@ -207,7 +207,6 @@ IPluginFactory *GetPluginFactoryEntryPoint()
     if (!gClapLibrary.hasEntryPoint())
     {
       // try to find a clap which filename stem matches our own
-      auto kx = os::getParentFolderName();
       auto plugname = os::getBinaryName();
       plugname.append(".clap");
 
