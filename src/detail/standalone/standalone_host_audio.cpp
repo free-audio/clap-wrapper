@@ -514,12 +514,12 @@ std::vector<int32_t> StandaloneHost::getSampleRates()
 std::vector<uint32_t> StandaloneHost::getBufferSizes()
 {
   // A menu of plausible sizes, narrowed per device where the backend knows its range
-  // (getBufferSizesFor). 16 used to head the list and was taken as the Windows first-run
-  // default, which is far too small to run reliably on any backend. Powers of two from 32
-  // to 512: what a player chooses between, from as little latency as the machine
-  // manages to a safe 512; a saved size beyond the last is clamped to it
-  // (applyAudioSettings)
-  return {32, 64, 128, 256, 512};
+  // (getBufferSizesFor). Powers of two from 16 to 512: what a player chooses between,
+  // from as little latency as the machine manages to a safe 512; a saved size beyond the
+  // last is clamped to it (applyAudioSettings). The first entry is not a default: a first
+  // run starts at StandaloneSettings::defaultBufferSize, because 16 is far too small to
+  // run reliably on every machine and backend
+  return {16, 32, 64, 128, 256, 512};
 }
 
 std::vector<uint32_t> StandaloneHost::getBufferSizesFor(const std::string &outputId,
