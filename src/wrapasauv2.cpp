@@ -812,6 +812,41 @@ OSStatus WrapAsAUV2::GetParameterInfo(AudioUnitScope inScope, AudioUnitParameter
   return AUBase::GetParameterInfo(inScope, inParameterID, outParameterInfo);
 }
 
+OSStatus WrapAsAUV2::GetParameterValueStrings(AudioUnitScope inScope, AudioUnitParameterID inParameterID,
+                                              CFArrayRef *outStrings)
+{
+  if (inScope != kAudioUnitScope_Global || !_plugin || !_plugin->_ext._params)
+    return kAudioUnitErr_InvalidProperty;
+
+  clap_param_info_t info;
+  {
+    std::lock_guard<std::mutex> guard(_paramTreeMutex);
+    auto pi = _parametertree.find(inParameterID);
+    if (pi == _parametertree.end()) return kAudioUnitErr_InvalidParameter;
+    info = pi->second->info();
+  }
+
+  // CLAP_PARAM_IS_ENUM promises a name for every value
+  if (!(info.flags & CLAP_PARAM_IS_ENUM)) return kAudioUnitErr_InvalidProperty;
+  if (!outStrings) return noErr;
+
+  auto guarantee_mainthread = _plugin->AlwaysMainThread();
+  auto strings = CFArrayCreateMutable(nullptr, 0, &kCFTypeArrayCallBacks);
+  for (double value = info.min_value; value <= info.max_value; value += 1.0)
+  {
+    char text[CLAP_NAME_SIZE] = {0};
+    if (!_plugin->_ext._params->value_to_text(_plugin->_plugin, info.id, value, text, sizeof(text)))
+      text[0] = 0;
+    auto string = CFStringCreateWithCString(nullptr, text, kCFStringEncodingUTF8);
+    if (!string) string = CFStringCreateWithCString(nullptr, text, kCFStringEncodingISOLatin1);
+    // hosts index the array by value, so a failed conversion still takes its slot
+    CFArrayAppendValue(strings, string ? string : CFSTR(""));
+    if (string) CFRelease(string);
+  }
+  *outStrings = strings;
+  return noErr;
+}
+
 OSStatus WrapAsAUV2::SetParameter(AudioUnitParameterID inID, AudioUnitScope inScope,
                                   AudioUnitElement inElement, AudioUnitParameterValue inValue,
                                   UInt32 inBufferOffsetInFrames)
@@ -827,6 +862,7 @@ OSStatus WrapAsAUV2::SetParameter(AudioUnitParameterID inID, AudioUnitScope inSc
       // render, so without this the queue would have two writers.
       ClapWrapper::detail::shared::SpinLockGuard processGuard(_processLock);
       auto &param = p->second.get()->info();
+      if (param.flags & CLAP_PARAM_IS_STEPPED) inValue = std::round(inValue);
       if (_processAdapter)
       {
         _processAdapter->addParameterEvent(param, inValue, inBufferOffsetInFrames);
