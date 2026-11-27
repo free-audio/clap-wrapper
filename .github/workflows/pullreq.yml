@@ -173,7 +173,11 @@ jobs:
 
       - name: Apt Update
         if: ${{ matrix.run_aptget }}
-        run: sudo apt-get update
+        # The runner image's packages.microsoft.com source has answered 403 and failed the
+        # whole update; nothing installed below comes from it, so it is dropped first
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list /etc/apt/sources.list.d/microsoft-prod.sources
+          sudo apt-get update
 
       - name: Get Deps
         if: ${{ matrix.run_aptget }}
@@ -257,7 +261,11 @@ jobs:
 
       - name: Apt Update
         if: ${{ matrix.run_aptget }}
-        run: sudo apt-get update
+        # The runner image's packages.microsoft.com source has answered 403 and failed the
+        # whole update; nothing installed below comes from it, so it is dropped first
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list /etc/apt/sources.list.d/microsoft-prod.sources
+          sudo apt-get update
 
       - name: Get Deps
         if: ${{ matrix.run_aptget }}
