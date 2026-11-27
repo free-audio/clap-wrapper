@@ -20,6 +20,7 @@
 #include <atomic>
 #include <chrono>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <map>
 #include <mutex>
@@ -884,6 +885,8 @@ class WrapAsAUV2 : public ausdk::AUBase,
   // parameter-only round trip on the deactivated-case adapter, for when no render
   // is running to carry the events. Only legal while the CLAP is deactivated.
   void flushParameters();
+  // delivers the queued parameter sets to the plugin unless a render is about to; main thread
+  void drainParameterEvents();
   // the AU-level half of the teardown, which an internal restart must not do
   void releaseHostMIDIOutput();
   bool IsBypassEffect()
@@ -1086,8 +1089,9 @@ class WrapAsAUV2 : public ausdk::AUBase,
   // has carried the plugin's events since it last looked. See onIdle().
   std::atomic_bool _renderedSinceIdle = false;
   // consecutive idle ticks that saw no render, saturating at the point where the
-  // idle tick takes over the flushing. Only onIdle() touches it.
-  uint32_t _idleTicksSinceRender = 0;
+  // idle tick takes over the flushing; a new instance has seen none. Only onIdle()
+  // writes it, and its readers hold the AU mutex onIdle() runs under.
+  uint32_t _idleTicksSinceRender = std::numeric_limits<uint32_t>::max();
   // how many of those ticks make a stopped host, sized from the block period in
   // activateCLAP(). See onIdle().
   static constexpr double kIdleTickMs = 10.0;

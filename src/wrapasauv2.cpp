@@ -2366,6 +2366,28 @@ void WrapAsAUV2::flushParameters()
   }
 }
 
+void WrapAsAUV2::drainParameterEvents()
+{
+  // onIdle()'s stopped-host test: while a host renders, its next render delivers the queue
+  const bool rendering =
+      _initialized && (_renderedSinceIdle || _idleTicksSinceRender < _idleTicksBeforeFlush);
+  if (!_requestedFlush || rendering) return;
+
+  ClapWrapper::detail::shared::SpinLockGuard processGuard(_processLock);
+
+  _requestedFlush = false;
+
+  if (_initialized && _processAdapter)
+  {
+    auto guarantee_audiothread = _plugin->AlwaysAudioThread();
+    _processAdapter->flush();
+  }
+  else
+  {
+    flushParameters();
+  }
+}
+
 OSStatus WrapAsAUV2::SaveState(CFPropertyListRef *ptPList)
 {
   if (!ptPList) return kAudioUnitErr_InvalidParameter;
@@ -2381,6 +2403,7 @@ OSStatus WrapAsAUV2::SaveState(CFPropertyListRef *ptPList)
   else
   {
     Clap::StateMemento chunk;
+    drainParameterEvents();
     _plugin->_ext._state->save(_plugin->_plugin, chunk);
 
 #if DICTIONARY_STREAM_FORMAT_JUCE
@@ -2494,6 +2517,7 @@ OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
       UInt8 *streamData = (UInt8 *)(CFDataGetBytePtr(juceData));
 
       chunk.setData(streamData, numBytes);
+      drainParameterEvents();
       _plugin->_ext._state->load(_plugin->_plugin, chunk);
     }
     return noErr;
@@ -2511,6 +2535,7 @@ OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
     {
       Clap::StateMemento chunk;
       chunk.setData(pData, lLen);
+      drainParameterEvents();
       _plugin->_ext._state->load(_plugin->_plugin, chunk);
     }
   }
