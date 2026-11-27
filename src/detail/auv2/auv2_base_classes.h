@@ -609,6 +609,9 @@ class WrapAsAUV2 : public ausdk::AUBase,
   OSStatus SetParameter(AudioUnitParameterID inID, AudioUnitScope inScope, AudioUnitElement inElement,
                         AudioUnitParameterValue inValue, UInt32 /*inBufferOffsetInFrames*/) override;
 
+  OSStatus GetParameterValueStrings(AudioUnitScope inScope, AudioUnitParameterID inParameterID,
+                                    CFArrayRef *outStrings) override;
+
   OSStatus CopyClumpName(AudioUnitScope inScope, UInt32 inClumpID, UInt32 inDesiredNameLength,
                          CFStringRef *outClumpName) override;
 
